@@ -1,0 +1,226 @@
+# beacon zsh integration — publishes project + branch user vars to iTerm2
+# on every prompt. Source from .zshrc:
+#
+#   source /path/to/beacon/shell/beacon.zsh
+#
+# When in a recognized project, sets user.beacon_project to the project name
+# and user.beacon_branch to the current git branch (with a leading separator
+# so empty values collapse cleanly in the badge format string).
+
+if [[ -n "${_BEACON_INSTALLED:-}" ]]; then
+  return 0
+fi
+
+# Path to the beacon-iterm CLI, derived from this file's location.
+typeset -g _BEACON_ITERM="${0:A:h:h}/bin/beacon-iterm"
+
+if [[ ! -x "$_BEACON_ITERM" ]]; then
+  echo "beacon.zsh: beacon-iterm not found at $_BEACON_ITERM" >&2
+  return 1
+fi
+
+# Alias `beacon` to the plugin script so users have a short, completable
+# command. Tab completion installs to ~/.zsh/completions/_beacon via
+# `beacon completions zsh`.
+typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
+alias beacon="python3 $_BEACON_SCRIPT"
+
+# Critical escape sequences emitted FAST via raw printf — no python3 startup
+# in the hot path. These determine how soon a freshly-split pane stops
+# showing the parent's post-it.
+#
+# Clear inherited bg-image first (visible side effect users notice most).
+printf '\e]1337;SetBackgroundImageFile=\a'
+# Badge format: project only (BADGE-03). Stage/status/branch live in the
+# status bar, not the badge.
+printf '\e]1337;SetBadgeFormat=%s\a' \
+  "$(printf '%s' '\(user.beacon_project)' | base64)"
+
+# Project markers (mirrors PROV-05 in DESIGN.md).
+typeset -gra _BEACON_MARKERS=(
+  .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile
+)
+
+_beacon_project_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" && -n "$dir" ]]; do
+    # Stop at $HOME — markers there (stray package.json, dotfiles .git) don't
+    # represent the user's "current project".
+    [[ "$dir" == "$HOME" ]] && return 1
+    for m in $_BEACON_MARKERS; do
+      [[ -e "$dir/$m" ]] && { print -r -- "$dir"; return 0 }
+    done
+    dir="${dir:h}"
+  done
+  return 1
+}
+
+_beacon_project_name() {
+  local root
+  root="$(_beacon_project_root)" || { print -r -- ""; return }
+
+  # Prefer git remote's namespace/repo form (e.g. "chris-peterson/beacon",
+  # "dotnet/docs"). Intermediate subgroups in nested hosts are dropped.
+  local url=""
+  if [[ -d "$root/.git" || -f "$root/.git" ]]; then
+    url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
+  fi
+
+  if [[ -n "$url" ]]; then
+    local path="$url"
+    if [[ "$path" == *"://"* ]]; then
+      path="${path#*://}"
+      path="${path#*/}"
+    elif [[ "$path" == *":"* ]]; then
+      # ssh form: git@host:owner/repo.git
+      path="${path#*:}"
+    fi
+    path="${path%/}"
+    path="${path%.git}"
+
+    if [[ -n "$path" ]]; then
+      local -a parts
+      parts=("${(@s:/:)path}")
+      local n=${#parts}
+      if (( n == 1 )); then
+        print -r -- "${parts[1]}"
+        return
+      elif (( n >= 2 )); then
+        print -r -- "${parts[1]}/${parts[-1]}"
+        return
+      fi
+    fi
+  fi
+
+  # Fallback: project root basename
+  print -r -- "${root:t}"
+}
+
+_beacon_branch_name() {
+  local b
+  b="$(git symbolic-ref --short HEAD 2>/dev/null)" || { print -r -- ""; return }
+  print -r -- "$b"
+}
+
+# Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
+_beacon_local_path() {
+  print -r -- "${PWD/#$HOME/~}"
+}
+
+# Full project path (host/owner/repo), or empty when not in a recognized
+# git project. Used by the status bar's project_full chip.
+_beacon_project_full() {
+  local root
+  root="$(_beacon_project_root)" || { print -r -- ""; return }
+  local url=""
+  if [[ -d "$root/.git" || -f "$root/.git" ]]; then
+    url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
+  fi
+  if [[ -z "$url" ]]; then
+    print -r -- ""
+    return
+  fi
+  local path="$url"
+  if [[ "$path" == *"://"* ]]; then
+    path="${path#*://}"
+    path="${path#*@}"            # strip optional user@ prefix
+  elif [[ "$path" == *":"* ]]; then
+    # ssh form: git@host:owner/repo.git → host/owner/repo
+    local host_path="${path#*@}"
+    local host="${host_path%%:*}"
+    local p="${host_path#*:}"
+    path="$host/$p"
+  fi
+  path="${path%/}"
+  path="${path%.git}"
+  print -r -- "$path"
+}
+
+# PROV-07 implementation. Override-point: redefine in your .zshrc
+# AFTER sourcing beacon.zsh to swap in a non-tack URL provider (Linear, Jira,
+# GitHub Issues, etc.). Default impl delegates to the plugin, which knows the
+# full chain (override → tack → branch URL → project URL).
+# Output format: "<url>\t<label>\n" (TAB-separated).
+_beacon_resolve_url() {
+  python3 "$_BEACON_SCRIPT" resolve-url 2>/dev/null
+}
+
+# Track last-published values so we only emit on change. The sentinel ensures
+# the first publish always fires — including when the resolved value is empty
+# (e.g. shell starts in a non-project directory). Without this, an empty
+# resolved value would match the initial empty state and we'd skip the publish.
+typeset -g _BEACON_LAST_PROJECT='__unset__'
+typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
+typeset -g _BEACON_LAST_BRANCH='__unset__'
+typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
+typeset -g _BEACON_LAST_URL='__unset__'
+
+# Per-session file handoff for status-bar action buttons. Action enum 35
+# doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
+# read these files instead.
+typeset -gr _BEACON_CACHE_DIR="${HOME}/.claude/plugins/data/beacon/cache"
+mkdir -p "$_BEACON_CACHE_DIR"
+
+_beacon_write_session_file() {
+  print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID}.txt"
+}
+
+_beacon_precmd() {
+  local p="$(_beacon_project_name)"
+  if [[ "$p" != "$_BEACON_LAST_PROJECT" ]]; then
+    "$_BEACON_ITERM" uservar beacon_project "$p"
+    _BEACON_LAST_PROJECT="$p"
+  fi
+
+  local pf="$(_beacon_project_full)"
+  if [[ "$pf" != "$_BEACON_LAST_PROJECT_FULL" ]]; then
+    "$_BEACON_ITERM" uservar beacon_project_full "$pf"
+    _BEACON_LAST_PROJECT_FULL="$pf"
+  fi
+
+  local b="$(_beacon_branch_name)"
+  if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch "$b"
+    _BEACON_LAST_BRANCH="$b"
+  fi
+
+  local lp="$(_beacon_local_path)"
+  if [[ "$lp" != "$_BEACON_LAST_LOCAL_PATH" ]]; then
+    "$_BEACON_ITERM" uservar beacon_local_path "$lp"
+    _beacon_write_session_file cwd "$PWD"
+    _BEACON_LAST_LOCAL_PATH="$lp"
+  fi
+
+  # URL resolution is heavier (python startup + possible tack subprocess).
+  # Only re-resolve when cwd or branch changed; otherwise the cached URL is
+  # still valid.
+  local url_signal="${lp}@${b}"
+  if [[ "$url_signal" != "$_BEACON_LAST_URL" ]]; then
+    local raw="$(_beacon_resolve_url)"
+    local url="${raw%%	*}"
+    "$_BEACON_ITERM" uservar beacon_url "$url"
+    _beacon_write_session_file url "$url"
+    _BEACON_LAST_URL="$url_signal"
+  fi
+}
+
+_beacon_chpwd() {
+  # Force re-publish on directory change — branch may have changed even if
+  # project is the same, and project may have changed entirely.
+  _BEACON_LAST_PROJECT='__unset__'
+  _BEACON_LAST_PROJECT_FULL='__unset__'
+  _BEACON_LAST_BRANCH='__unset__'
+  _BEACON_LAST_LOCAL_PATH='__unset__'
+  _BEACON_LAST_URL='__unset__'
+  _beacon_precmd
+}
+
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _beacon_precmd
+add-zsh-hook chpwd  _beacon_chpwd
+
+# Publish immediately on source so a fresh shell shows the right values
+# without waiting for the first prompt.
+_beacon_chpwd
+
+typeset -g _BEACON_INSTALLED=1

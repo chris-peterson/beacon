@@ -1,0 +1,1339 @@
+#!/usr/bin/env python3
+"""beacon — at-a-glance session awareness for Claude Code in iTerm2.
+
+Resolves four signals (project, task, stage, status) via chain-of-responsibility
+providers, then invokes bin/beacon-iterm to surface results. The CLI is the
+only writer to iTerm2.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# --- paths and identity ---
+
+PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent)
+DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or (Path.home() / ".claude" / "plugins" / "data" / "beacon"))
+STATE_DIR = DATA_DIR / "state"
+CACHE_DIR = DATA_DIR / "cache"
+
+BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
+
+DEFAULT_BRANCHES = {"main", "master", "develop", "trunk", "HEAD"}
+
+PROJECT_MARKERS = [".git", "package.json", "Cargo.toml", "pyproject.toml",
+                   "go.mod", ".hg", "pom.xml", "Gemfile"]
+
+DEPLOY_RE = re.compile(
+    r"git\s+push\s+(?:[^|;&]*\s)?(?:origin\s+)?(?:HEAD:)?(?:main|master|production|release)\b"
+    r"|git\s+push\s+--tags\b"
+    r"|\b(?:npm|yarn|pnpm)\s+publish\b"
+    r"|\bcargo\s+publish\b"
+    r"|\bdocker\s+push\b"
+    r"|\bterraform\s+apply\b"
+    r"|\bkubectl\s+apply\b"
+    r"|\bgh\s+release\s+create\b"
+    r"|\bflyctl\s+deploy\b"
+    r"|\bvercel\s+deploy\b|\bvercel\s+--prod\b"
+    r"|\bheroku\b[^|;&]*\bmaster\b"
+)
+
+VALID_STAGES = {"plan", "dev", "review", "shipping", "none"}
+VALID_STATUSES = {"idle", "working", "waiting"}
+VALID_FIELDS = ("project", "task", "stage", "status", "url")
+
+# Shell-native completion script — installed by `beacon completions zsh`.
+ZSH_COMPLETION = r"""#compdef beacon
+
+_beacon_stages() { compadd plan dev review shipping none }
+_beacon_statuses() { compadd idle working waiting }
+_beacon_fields()   { compadd project task stage status url }
+
+_beacon() {
+  local -a commands=(
+    'show:show resolved signals'
+    'set:set an override (project|task|stage|status)'
+    'task:set task override'
+    'stage:set stage override'
+    'project:set project override'
+    'clear:clear one or all overrides'
+    'pause:pause and snapshot state (optional note)'
+    'resume:resume from pause'
+    'reset:clear all per-session state'
+    'render:re-render current state'
+    'signal:write a non-override signal (stage|status)'
+    'completions:install or print shell completions'
+    'install:run all install steps (shell, completions, profile)'
+    'set-default-profile:orchestrate iTerm2 quit+relaunch to set beacon as default profile'
+    'copy-url:copy the resolved URL to the clipboard'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  local command="${words[2]}"
+  case "$command" in
+    set)
+      case "$CURRENT" in
+        3) _beacon_fields ;;
+        4)
+          case "${words[3]}" in
+            stage)  _beacon_stages   ;;
+            status) _beacon_statuses ;;
+            *)      _message 'value' ;;
+          esac
+          ;;
+      esac
+      ;;
+    stage)  (( CURRENT == 3 )) && _beacon_stages ;;
+    status) (( CURRENT == 3 )) && _beacon_statuses ;;
+    task|project) (( CURRENT == 3 )) && _message 'value' ;;
+    clear)
+      (( CURRENT == 3 )) && _beacon_fields
+      ;;
+    signal)
+      case "$CURRENT" in
+        3) compadd stage status ;;
+        4)
+          case "${words[3]}" in
+            stage)  _beacon_stages   ;;
+            status) _beacon_statuses ;;
+          esac
+          ;;
+      esac
+      ;;
+    pause)
+      (( CURRENT == 3 )) && _message 'note text'
+      ;;
+    completions)
+      (( CURRENT == 3 )) && compadd zsh
+      ;;
+    set-default-profile)
+      (( CURRENT == 3 )) && compadd -- --yes -y
+      ;;
+  esac
+}
+
+_beacon "$@"
+"""
+
+# Logical status states → badge color hex (no leading #). Logical names are
+# the contract (BADGE-09); hex values are tunable without touching call sites.
+# Pause shares `blocked` — the post-it bg image distinguishes it visually.
+BADGE_COLOR_PALETTE = {
+    "ready":   "00aa44",
+    "busy":    "cc8800",
+    "blocked": "cc2233",
+}
+
+STATUS_TO_BADGE_STATE = {
+    "idle":    "ready",
+    "working": "busy",
+    "waiting": "blocked",
+}
+
+# Static badge format: project only (BADGE-03). Kept in sync with shell/beacon.zsh.
+BADGE_FORMAT = r"\(user.beacon_project)"
+
+
+def session_hash() -> str:
+    seed = os.environ.get("ITERM_SESSION_ID") or _tty_name() or "default"
+    return hashlib.sha1(seed.encode()).hexdigest()[:16]
+
+
+def _tty_name() -> str | None:
+    try:
+        return os.ttyname(0)
+    except OSError:
+        return None
+
+
+def find_project_root(cwd: Path) -> Path:
+    # Treat $HOME as a boundary — markers at or above $HOME (stray package.json,
+    # dotfiles .git, etc.) don't represent the user's "current project".
+    p = cwd.resolve()
+    home = Path.home().resolve()
+    for d in (p, *p.parents):
+        if d == home or home not in (d, *d.parents):
+            break
+        for marker in PROJECT_MARKERS:
+            if (d / marker).exists():
+                return d
+    return p
+
+
+# --- state files ---
+
+def _state_path(field: str) -> Path:
+    return STATE_DIR / f"{session_hash()}.{field}"
+
+
+def read_state(field: str) -> str | None:
+    try:
+        v = _state_path(field).read_text().strip()
+        return v or None
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+
+
+def read_state_json(field: str, default):
+    raw = read_state(field)
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except Exception:
+        return default
+
+
+def write_state(field: str, value: str) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    _state_path(field).write_text(value)
+
+
+def remove_state(field: str) -> None:
+    try:
+        _state_path(field).unlink()
+    except FileNotFoundError:
+        pass
+
+
+# --- providers ---
+
+def p_override(field: str):
+    return read_state(f"override.{field}")
+
+
+def p_signal(field: str):
+    return read_state(f"signal.{field}")
+
+
+def p_package_name(cwd: Path):
+    root = find_project_root(cwd)
+    pkg = root / "package.json"
+    if pkg.is_file():
+        try:
+            return (json.loads(pkg.read_text()).get("name") or "").strip() or None
+        except Exception:
+            pass
+    cargo = root / "Cargo.toml"
+    if cargo.is_file():
+        try:
+            m = re.search(r'(?ms)^\[package\][^\[]*?^\s*name\s*=\s*"([^"]+)"', cargo.read_text())
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    pyp = root / "pyproject.toml"
+    if pyp.is_file():
+        try:
+            m = re.search(r'(?ms)^\[project\][^\[]*?^\s*name\s*=\s*"([^"]+)"', pyp.read_text())
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return None
+
+
+def p_git_remote(cwd: Path):
+    """Resolve project name from git remote, preferring `<top>/<repo>` form
+    (e.g. `chris-peterson/beacon`, `dotnet/docs`). Intermediate subgroups
+    in nested-group hosts (GitLab) are dropped."""
+    root = find_project_root(cwd)
+    out = subprocess.run(
+        ["git", "config", "remote.origin.url"],
+        cwd=root, capture_output=True, text=True, timeout=2,
+    )
+    if out.returncode != 0:
+        return None
+    url = out.stdout.strip()
+    if not url:
+        return None
+    # Strip protocol/host. Two URL forms:
+    #   ssh:   git@host:owner/path/to/repo.git
+    #   https: https://host/owner/path/to/repo.git
+    if "://" in url:
+        path = url.split("://", 1)[1]
+        path = path.split("/", 1)[1] if "/" in path else ""
+    elif ":" in url:
+        path = url.split(":", 1)[1]
+    else:
+        path = url
+    path = path.rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    parts = [p for p in path.split("/") if p]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]}/{parts[-1]}"
+
+
+def p_project_dir(cwd: Path):
+    name = find_project_root(cwd).name
+    return name or None
+
+
+def p_branch(cwd: Path):
+    root = find_project_root(cwd)
+    out = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=root, capture_output=True, text=True, timeout=2,
+    )
+    if out.returncode != 0:
+        return None
+    branch = out.stdout.strip()
+    return branch if branch and branch not in DEFAULT_BRANCHES else None
+
+
+def p_pr_title(cwd: Path):
+    if not _which("gh"):
+        return None
+    root = find_project_root(cwd)
+    out = subprocess.run(
+        ["gh", "pr", "view", "--json", "title", "-q", ".title"],
+        cwd=root, capture_output=True, text=True, timeout=3,
+    )
+    if out.returncode != 0:
+        return None
+    return out.stdout.strip() or None
+
+
+def _which(cmd):
+    for p in os.environ.get("PATH", "").split(os.pathsep):
+        if (Path(p) / cmd).exists():
+            return True
+    return False
+
+
+# --- URL resolution (PROV-07) ---
+
+def _git_remote_url_normalized(cwd: Path) -> str:
+    """Return the project's git remote URL in https form, or empty.
+    Normalizes ssh URLs (`git@host:owner/repo.git`) to https for browser use."""
+    root = find_project_root(cwd)
+    out = subprocess.run(
+        ["git", "config", "remote.origin.url"],
+        cwd=root, capture_output=True, text=True, timeout=2,
+    )
+    if out.returncode != 0:
+        return ""
+    url = out.stdout.strip()
+    if not url:
+        return ""
+    if url.startswith("git@"):
+        host_path = url[len("git@"):]
+        host, _, path = host_path.partition(":")
+        if host and path:
+            url = f"https://{host}/{path}"
+    if url.endswith(".git"):
+        url = url[:-4]
+    return url.rstrip("/")
+
+
+def _branch_url(cwd: Path) -> tuple[str, str]:
+    """Return (url, branch) for the current non-default branch's tree, or empty."""
+    branch = p_branch(cwd)
+    if not branch:
+        return "", ""
+    base = _git_remote_url_normalized(cwd)
+    if not base:
+        return "", ""
+    host = ""
+    if "://" in base:
+        host = base.split("://", 1)[1].split("/", 1)[0].lower()
+    # GitLab uses /-/tree/<branch>; GitHub and most others use /tree/<branch>.
+    sep = "/-/tree/" if "gitlab" in host else "/tree/"
+    return f"{base}{sep}{branch}", branch
+
+
+def _tack_url_for(cwd: Path) -> tuple[str, str]:
+    """Look up tack route by branch slug; return first useful URL via the
+    in_progress-deliverable → done-deliverable → first-link sub-chain."""
+    if not _which("tack"):
+        return "", ""
+    branch = p_branch(cwd)
+    if not branch:
+        return "", ""
+    try:
+        r = subprocess.run(["tack", "list", "--json"],
+                           capture_output=True, text=True, timeout=2)
+        if r.returncode != 0:
+            return "", ""
+        routes = json.loads(r.stdout)
+    except Exception:
+        return "", ""
+
+    route = next((r for r in routes if r.get("slug") == branch), None)
+    if not route:
+        return "", ""
+    tacks = route.get("tacks", []) or []
+
+    # a. first in_progress with deliverable
+    for t in tacks:
+        if t.get("status") == "in_progress":
+            d = t.get("deliverable") or {}
+            if d.get("url"):
+                return d["url"], d.get("label", "")
+
+    # b. most-recently-completed done with deliverable
+    done = [t for t in tacks if t.get("status") == "done"]
+    done.sort(key=lambda t: t.get("done_at", ""), reverse=True)
+    for t in done:
+        d = t.get("deliverable") or {}
+        if d.get("url"):
+            return d["url"], d.get("label", "")
+
+    # c. first link.url across any tack
+    for t in tacks:
+        for ln in (t.get("links") or []):
+            if ln.get("url"):
+                return ln["url"], ln.get("label", "")
+
+    return "", ""
+
+
+def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
+    """Implements PROV-07. Returns (url, label)."""
+    cwd = cwd or Path.cwd()
+
+    # 1. user override
+    o = p_override("url")
+    if o:
+        return o, o[:30]
+
+    # 2. tack-derived
+    url, label = _tack_url_for(cwd)
+    if url:
+        return url, label
+
+    # 3. branch URL
+    url, label = _branch_url(cwd)
+    if url:
+        return url, label
+
+    # 4. project URL
+    url = _git_remote_url_normalized(cwd)
+    if url:
+        # Label = project name from the existing project chain (PROV-01 + ALIAS)
+        label = (p_git_remote(cwd) or p_project_dir(cwd) or "")
+        return url, label
+
+    # 5. empty
+    return "", ""
+
+
+def cmd_resolve_url(_args):
+    url, label = resolve_url()
+    sys.stdout.write(f"{url}\t{label}\n")
+
+
+def cmd_copy_url(_args):
+    """Resolve the current URL (PROV-07) and pipe it through pbcopy."""
+    url, _ = resolve_url()
+    if not url:
+        sys.exit("no URL resolved (no override, no tack route, no git remote)")
+    try:
+        r = subprocess.run(["pbcopy"], input=url, text=True, timeout=2)
+        if r.returncode != 0:
+            sys.exit(f"pbcopy failed (exit {r.returncode})")
+    except FileNotFoundError:
+        sys.exit("pbcopy not found — copy-url requires macOS")
+    print(f"copied: {url}")
+
+
+def cmd_open_url(_args):
+    """Resolve the current URL (PROV-07) and open it in the default browser
+    via `open`. Used by the status bar 'go' button via Send Text — runs in
+    the user's interactive shell at the prompt, so the cwd is correct."""
+    url, _ = resolve_url()
+    if not url:
+        sys.exit("no URL resolved (no override, no tack route, no git remote)")
+    try:
+        r = subprocess.run(["open", url], capture_output=True, timeout=2)
+        if r.returncode != 0:
+            sys.exit(f"open failed (exit {r.returncode}): {r.stderr.decode().strip()}")
+    except FileNotFoundError:
+        sys.exit("open not found — open-url requires macOS")
+    print(f"opened: {url}")
+
+
+def cmd_json(_args):
+    """Print the resolved session state as a JSON object — for handoff,
+    cmd+click of the embedded URL, or piping into jq / your own tooling."""
+    cwd = Path.cwd()
+    state = resolve(cwd)
+    url, _ = resolve_url(cwd)
+    claude_sid = read_state("claude_session_id") or ""
+    home = str(Path.home())
+    cwd_str = str(cwd)
+    if cwd_str == home or cwd_str.startswith(home + "/"):
+        cwd_str = "~" + cwd_str[len(home):]
+    payload = {
+        "project": state["project"],
+        "branch": p_branch(cwd) or "",
+        "stage": state["stage"],
+        "status": state["status"],
+        "url": url,
+        "cwd": cwd_str,
+        "claude_session": claude_sid,
+    }
+    print(json.dumps(payload, indent=2))
+
+
+# --- resolver ---
+
+def chain(providers):
+    for name, fn in providers:
+        try:
+            v = fn()
+            if v:
+                return v, name
+        except Exception:
+            continue
+    return None, None
+
+
+def resolve(cwd: Path | None = None) -> dict:
+    cwd = cwd or Path.cwd()
+
+    project, p_proj = chain([
+        ("override",   lambda: p_override("project")),
+        ("package",    lambda: p_package_name(cwd)),
+        ("git-remote", lambda: p_git_remote(cwd)),
+        ("dir",        lambda: p_project_dir(cwd)),
+    ])
+    if not project:
+        project, p_proj = "?", "default"
+
+    task, p_task = chain([
+        ("override", lambda: p_override("task")),
+        ("pr",       lambda: p_pr_title(cwd)),
+        ("branch",   lambda: p_branch(cwd)),
+    ])
+
+    stage, p_stage = chain([
+        ("override", lambda: p_override("stage")),
+        ("signal",   lambda: p_signal("stage")),
+    ])
+    if not stage:
+        stage, p_stage = "none", "default"
+
+    status, p_status = chain([
+        ("override", lambda: p_override("status")),
+        ("signal",   lambda: p_signal("status")),
+    ])
+    if not status:
+        status, p_status = "idle", "default"
+
+    return {
+        "project": project, "project_provider": p_proj,
+        "task": task, "task_provider": p_task,
+        "stage": stage, "stage_provider": p_stage,
+        "status": status, "status_provider": p_status,
+        "paused": _state_path("paused").exists(),
+    }
+
+
+# --- CLI bridge ---
+
+def _cli(*args, timeout: float = 5.0) -> None:
+    """Invoke beacon-iterm. Failures are swallowed so the plugin never crashes
+    a hook on display issues."""
+    cmd = ["python3", str(BEACON_ITERM), *map(str, args)]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+    except Exception:
+        pass
+
+
+# --- pane sizing for note overlay ---
+
+def detect_pane_pixels(default=(1440, 1080)) -> tuple[int, int]:
+    cols = lines = 0
+    try:
+        cols = int(os.environ.get("COLUMNS") or 0)
+        lines = int(os.environ.get("LINES") or 0)
+    except ValueError:
+        pass
+    if cols == 0 or lines == 0:
+        try:
+            with open("/dev/tty", "rb") as tty:
+                r = subprocess.run(["stty", "size"], stdin=tty,
+                                   capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                parts = r.stdout.split()
+                if len(parts) == 2:
+                    lines, cols = int(parts[0]), int(parts[1])
+        except Exception:
+            pass
+    if cols <= 0 or lines <= 0:
+        return default
+    try:
+        cell_w = float(os.environ.get("BEACON_CELL_WIDTH") or "7")
+        cell_h = float(os.environ.get("BEACON_CELL_HEIGHT") or "16")
+    except ValueError:
+        cell_w, cell_h = 7.0, 16.0
+    w = max(640, min(3200, int(cols * cell_w)))
+    h = max(480, min(2000, int(lines * cell_h)))
+    return (w // 8) * 8, (h // 8) * 8
+
+
+NOTE_POOL_SIZE = 8
+
+
+def _next_note_slot() -> Path:
+    """Pick the LRU slot from the fixed pool of note-NN.png files.
+
+    Reusing a fixed pool of paths means iTerm2's trust prompt for
+    SetBackgroundImageFile only fires N times ever (once per slot). After
+    that, every pause reuses an already-trusted path.
+
+    Avoid slots currently referenced by another session's `note-image` state
+    file so that overwriting one slot doesn't visually replace the post-it
+    in a different paused pane. If every slot is in use (very unlikely with
+    N=8), fall back to LRU and accept the race.
+    """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    slots = [CACHE_DIR / f"note-{i:02d}.png" for i in range(1, NOTE_POOL_SIZE + 1)]
+
+    sh = session_hash()
+    in_use: set[str] = set()
+    for state_file in STATE_DIR.glob("*.note-image"):
+        # Skip our own session — we're going to overwrite our slot anyway.
+        if state_file.name.startswith(f"{sh}."):
+            continue
+        try:
+            path = state_file.read_text().strip()
+            if path:
+                in_use.add(path)
+        except OSError:
+            pass
+
+    def mtime(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    free = [s for s in slots if str(s) not in in_use]
+    return min(free or slots, key=mtime)
+
+
+def render_note_card(text: str) -> str | None:
+    """Compose the post-it via beacon-iterm note --out, returning the path on
+    success. Slot selected by LRU rotation across the fixed pool so iTerm2's
+    trust prompt only fires N times ever."""
+    out = _next_note_slot()
+    cmd = ["python3", str(BEACON_ITERM), "note", text, "--out", str(out)]
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=15, check=False)
+    except Exception:
+        return None
+    return str(out) if out.exists() else None
+
+
+# --- initialization ---
+
+_initialized = False
+
+
+def ensure_initialized():
+    global _initialized
+    if _initialized:
+        return
+    for d in (STATE_DIR, CACHE_DIR):
+        d.mkdir(parents=True, exist_ok=True)
+    ensure_per_pane_bg_image()
+    _initialized = True
+
+
+def _is_iterm_running() -> bool:
+    # osascript is the reliable cross-macOS way to ask. pgrep can return
+    # false negatives under sandboxing.
+    try:
+        r = subprocess.run(
+            ["osascript", "-e", 'application "iTerm" is running'],
+            capture_output=True, text=True, timeout=2,
+        )
+        return r.returncode == 0 and r.stdout.strip().lower() == "true"
+    except Exception:
+        return False
+
+
+def _pre_approve_iterm_paths() -> tuple[bool, list[str]]:
+    """Pre-approve the pool slots and the bg-image-clear sentinel (empty path)
+    in iTerm2's AlwaysAllowBackgroundImage array so SetBackgroundImageFile
+    never prompts the user.
+
+    Skipped (returns False) if iTerm2 is currently running, because iTerm2
+    holds prefs in memory and overwrites the plist on quit — any writes here
+    would be silently undone.
+    """
+    if _is_iterm_running():
+        return False, []
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    paths = ["", *(str(CACHE_DIR / f"note-{i:02d}.png")
+                   for i in range(1, NOTE_POOL_SIZE + 1))]
+
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.googlecode.iterm2",
+             "AlwaysAllowBackgroundImage"],
+            capture_output=True, text=True, timeout=2,
+        )
+        existing = out.stdout if out.returncode == 0 else ""
+    except Exception:
+        existing = ""
+
+    added: list[str] = []
+    for path in paths:
+        # Match by quoted entry to avoid substring false-matches (e.g.
+        # `note-01` matching `note-010` in some hypothetical future).
+        if f'"{path}"' in existing:
+            continue
+        try:
+            r = subprocess.run(
+                ["defaults", "write", "com.googlecode.iterm2",
+                 "AlwaysAllowBackgroundImage", "-array-add", path],
+                capture_output=True, timeout=2,
+            )
+            if r.returncode == 0:
+                added.append(path)
+        except Exception:
+            pass
+
+    return True, added
+
+
+BEACON_PROFILE_GUID = "ec2933e2-0e56-4d96-9a63-245d5ec7c527"
+
+
+def install_dynamic_profile() -> tuple[bool, str]:
+    """Write the beacon dynamic profile (with status bar layout) to iTerm2's
+    DynamicProfiles directory. iTerm2 watches the directory and reloads on
+    change without restart.
+
+    Substitutes `__BEACON_SCRIPT__` placeholders with the absolute path of
+    scripts/beacon so action coprocesses can locate the script directly
+    (without depending on the shell alias, which non-interactive shells
+    invoked by iTerm2's coprocess action wouldn't see).
+    """
+    template = PLUGIN_ROOT / "iterm" / "profile.json.template"
+    if not template.is_file():
+        return False, f"profile template not found: {template}"
+    target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
+    target = target_dir / "beacon.json"
+    beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
+    content = template.read_text().replace("__BEACON_SCRIPT__", beacon_script)
+    if target.exists() and target.read_text() == content:
+        return False, f"already up to date: {target}"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
+    except OSError as e:
+        return False, f"failed to write {target}: {e}"
+    return True, f"wrote {target}"
+
+
+def _is_beacon_already_default() -> bool:
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.googlecode.iterm2", "Default Bookmark Guid"],
+            capture_output=True, text=True, timeout=2,
+        )
+        return out.returncode == 0 and out.stdout.strip() == BEACON_PROFILE_GUID
+    except Exception:
+        return False
+
+
+def _write_default_profile_now() -> None:
+    """Write the default-profile pref. Caller is responsible for ensuring
+    iTerm2 is not running (otherwise the prefs cache will overwrite this)."""
+    r = subprocess.run(
+        ["defaults", "write", "com.googlecode.iterm2",
+         "Default Bookmark Guid", "-string", BEACON_PROFILE_GUID],
+        capture_output=True, timeout=2,
+    )
+    if r.returncode != 0:
+        sys.exit(f"defaults write failed (exit {r.returncode})")
+
+
+def ensure_per_pane_bg_image():
+    """Force iTerm2 to scope SetBackgroundImageFile to the pane, not the window.
+    Required for the post-it overlay to appear only in the paused pane."""
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.googlecode.iterm2", "PerPaneBackgroundImage"],
+            capture_output=True, text=True, timeout=2,
+        )
+        if out.returncode == 0 and out.stdout.strip() == "1":
+            return
+    except Exception:
+        pass
+    try:
+        subprocess.run(
+            ["defaults", "write", "com.googlecode.iterm2",
+             "PerPaneBackgroundImage", "-bool", "true"],
+            capture_output=True, timeout=2,
+        )
+        sys.stderr.write(
+            "beacon: enabled iTerm2 'Separate background images per pane' "
+            "(restart iTerm2 for this to take effect in existing windows)\n"
+        )
+    except Exception:
+        pass
+
+
+# --- apply ---
+
+def _badge_color_for(state: dict) -> str:
+    """Resolve the badge color hex. Pause maps to `blocked` regardless of
+    underlying status — the post-it bg image distinguishes pause from waiting."""
+    logical = "blocked" if state.get("paused") else STATUS_TO_BADGE_STATE.get(state["status"], "ready")
+    return BADGE_COLOR_PALETTE[logical]
+
+
+def apply(state: dict):
+    s = state["status"]
+
+    prev = read_state_json("resolved", {})
+    prev_status = prev.get("status")
+    prev_stage = prev.get("stage")
+    prev_paused = prev.get("paused", False)
+    prev_note_image = prev.get("note_image")
+
+    # First render of this session: set the badge format. The shell snippet
+    # also does this on source — this is the backup for non-zsh / remote
+    # shell scenarios where shell/beacon.zsh hasn't run.
+    if not prev:
+        _cli("badge-format", BADGE_FORMAT)
+
+    # Badge color reflects status (BADGE-09). Recompute on any change to
+    # status or paused flag.
+    badge_hex = _badge_color_for(state)
+    prev_badge_hex = prev.get("badge_color", "")
+    if prev_badge_hex != badge_hex:
+        _cli("badge-color", badge_hex)
+
+    # Publish stage/status user vars even though no chip displays them — the
+    # `export` button's interpolated JSON references them. Empty strings would
+    # unset the iTerm var, breaking non-nullable interpolation contexts.
+    if prev_stage != state["stage"]:
+        _cli("uservar", "beacon_stage", state["stage"])
+    if prev_status != s:
+        _cli("uservar", "beacon_status", s)
+
+    # Claude session id — included in the export JSON so a colleague can
+    # `claude --resume <id>` to pick up the conversation. Captured by cmd_hook.
+    claude_sid = read_state("claude_session_id") or ""
+    prev_claude_sid = prev.get("claude_session_id", "")
+    if prev_claude_sid != claude_sid:
+        _cli("uservar", "beacon_claude_session", claude_sid)
+
+    # Background image: only for the post-it overlay.
+    note_image = state.get("note_image")
+    if state["paused"] and note_image:
+        if note_image != prev_note_image:
+            _cli("bg-image", note_image)
+    elif prev_paused or prev_note_image:
+        _cli("bg-image", "clear")
+
+    # Dock attention: only on transition into waiting.
+    if s == "waiting" and prev_status != "waiting":
+        _cli("attention")
+
+    snapshot = {
+        "project": state["project"], "project_provider": state["project_provider"],
+        "task": state["task"], "task_provider": state["task_provider"],
+        "stage": state["stage"], "stage_provider": state["stage_provider"],
+        "status": s, "status_provider": state["status_provider"],
+        "paused": state["paused"],
+        "note_image": note_image,
+        "claude_session_id": claude_sid,
+        "badge_color": badge_hex,
+    }
+    write_state("resolved", json.dumps(snapshot, indent=2))
+
+
+def render():
+    ensure_initialized()
+    state = resolve()
+    if state["paused"]:
+        state["note_image"] = read_state("note-image")
+    apply(state)
+
+
+# --- subcommands ---
+
+def cmd_show(_args):
+    state = resolve()
+    rows = []
+    for field in ("project", "task", "stage", "status"):
+        value = state[field]
+        provider = state[f"{field}_provider"]
+        if value and provider and provider != "default":
+            rows.append((field, value, provider))
+    if state["paused"]:
+        rows.append(("paused", "yes", None))
+    if not rows:
+        return
+    width = max(len(v) for _, v, _ in rows)
+    for field, value, provider in rows:
+        suffix = f"  ({provider})" if provider else ""
+        print(f"{field+':':<9} {value:<{width}}{suffix}")
+
+
+def _set_field(field: str, value: str):
+    if field not in VALID_FIELDS:
+        sys.exit(f"unknown field: {field}")
+    if field == "stage" and value not in VALID_STAGES:
+        sys.exit(f"invalid stage: {value} (allowed: {sorted(VALID_STAGES)})")
+    if field == "status" and value not in VALID_STATUSES:
+        sys.exit(f"invalid status: {value} (allowed: {sorted(VALID_STATUSES)})")
+    write_state(f"override.{field}", value)
+
+
+def cmd_set(args):
+    _set_field(args.field, " ".join(args.value))
+    render()
+
+
+def cmd_task(args):
+    _set_field("task", " ".join(args.value))
+    render()
+
+
+def cmd_stage(args):
+    _set_field("stage", " ".join(args.value))
+    render()
+
+
+def cmd_project(args):
+    _set_field("project", " ".join(args.value))
+    render()
+
+
+def cmd_clear(args):
+    if args.field:
+        remove_state(f"override.{args.field}")
+    else:
+        for f in VALID_FIELDS:
+            remove_state(f"override.{f}")
+    render()
+
+
+def cmd_pause(args):
+    for f in VALID_FIELDS:
+        remove_state(f"override.{f}")
+    state = resolve()
+    for field in ("project", "task", "stage"):
+        if state[f"{field}_provider"] != "default" and state[field]:
+            write_state(f"override.{field}", state[field])
+    write_state("override.status", "idle")
+    write_state("paused", "1")
+    note = " ".join(args.note).strip() if args.note else ""
+    if note:
+        write_state("override.task", note)
+        ensure_initialized()
+        path = render_note_card(note)
+        if path:
+            write_state("note-image", path)
+    render()
+
+
+def cmd_resume(_args):
+    for f in VALID_FIELDS:
+        remove_state(f"override.{f}")
+    remove_state("paused")
+    # Don't unlink the note image — it's part of the LRU pool and other
+    # sessions or future pauses may reuse the slot. Just forget our reference.
+    remove_state("note-image")
+    render()
+
+
+def cmd_reset(_args):
+    sh = session_hash()
+    for p in STATE_DIR.glob(f"{sh}.*"):
+        try:
+            p.unlink()
+        except OSError:
+            pass
+    # Don't delete pool slots — they're shared and persisting them keeps
+    # iTerm2's bg-image trust intact across sessions.
+    _cli("clear")
+
+
+def cmd_render(_args):
+    render()
+
+
+def cmd_signal(args):
+    field = args.field
+    if field not in {"stage", "status"}:
+        sys.exit(f"can't signal field: {field} (only stage|status)")
+    value = " ".join(args.value)
+    if field == "stage" and value not in VALID_STAGES:
+        sys.exit(f"invalid stage: {value}")
+    if field == "status" and value not in VALID_STATUSES:
+        sys.exit(f"invalid status: {value}")
+    write_state(f"signal.{field}", value)
+    render()
+
+
+def _is_active(line: str) -> bool:
+    """A zshrc line is active if it isn't a comment and isn't blank."""
+    stripped = line.strip()
+    return bool(stripped) and not stripped.startswith("#")
+
+
+def _has_active(content: str, needle: str) -> bool:
+    return any(needle in line for line in content.splitlines() if _is_active(line))
+
+
+def _install_completions(print_only: bool = False) -> None:
+    if print_only:
+        sys.stdout.write(ZSH_COMPLETION)
+        return
+
+    target_dir = Path.home() / ".zsh" / "completions"
+    target = target_dir / "_beacon"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(ZSH_COMPLETION)
+    print(f"  ✓ wrote {target}")
+
+    zshrc = Path.home() / ".zshrc"
+    fpath_line = "fpath=(~/.zsh/completions $fpath)"
+
+    if not zshrc.exists():
+        print(f"  ! {zshrc} doesn't exist; create it and add:")
+        print(f"      {fpath_line}")
+        print("      autoload -Uz compinit && compinit")
+        return
+
+    content = zshrc.read_text()
+
+    # Only consider uncommented lines — a stale `# fpath=…` shouldn't pass.
+    if _has_active(content, ".zsh/completions"):
+        print(f"  ✓ {zshrc} already configures fpath")
+        return
+
+    if _has_active(content, "compinit"):
+        lines = content.splitlines(keepends=True)
+        out_lines = []
+        inserted = False
+        for line in lines:
+            if not inserted and "compinit" in line and _is_active(line):
+                indent = line[: len(line) - len(line.lstrip())]
+                out_lines.append(f"{indent}{fpath_line}\n")
+                inserted = True
+            out_lines.append(line)
+        zshrc.write_text("".join(out_lines))
+        print(f"  ✓ inserted fpath line before compinit in {zshrc}")
+    else:
+        with zshrc.open("a") as f:
+            if not content.endswith("\n"):
+                f.write("\n")
+            f.write(f"{fpath_line}\nautoload -Uz compinit && compinit\n")
+        print(f"  ✓ appended fpath + compinit to {zshrc}")
+
+
+_SHELL_SENTINEL = "# beacon: project · branch · stage badging"
+
+
+def _install_shell_source() -> None:
+    # Upgrade-safe: if the marketplace bumps the plugin version, the cache path
+    # changes. Detect any prior beacon source line via the sentinel comment and
+    # rewrite it to point at this PLUGIN_ROOT.
+    snippet = PLUGIN_ROOT / "shell" / "beacon.zsh"
+    if not snippet.is_file():
+        print(f"  ! shell snippet not found at {snippet}")
+        return
+
+    zshrc = Path.home() / ".zshrc"
+    source_line = f'source "{snippet}"  {_SHELL_SENTINEL}'
+
+    if not zshrc.exists():
+        print(f"  ! {zshrc} doesn't exist; create it and add:")
+        print(f"      {source_line}")
+        return
+
+    content = zshrc.read_text()
+    lines = content.splitlines(keepends=True)
+    existing_idx = next(
+        (i for i, line in enumerate(lines)
+         if _SHELL_SENTINEL in line and _is_active(line)),
+        None,
+    )
+
+    if existing_idx is not None:
+        if str(snippet) in lines[existing_idx]:
+            print(f"  ✓ {zshrc} already sources beacon.zsh from this path")
+            return
+        old = lines[existing_idx].rstrip("\n")
+        lines[existing_idx] = source_line + "\n"
+        zshrc.write_text("".join(lines))
+        print(f"  ✓ updated source line in {zshrc} (path changed)")
+        print(f"      old: {old}")
+        print(f"      new: {source_line}")
+        return
+
+    with zshrc.open("a") as f:
+        if not content.endswith("\n"):
+            f.write("\n")
+        f.write(f"\n{source_line}\n")
+    print(f"  ✓ appended source line to {zshrc}")
+
+
+def cmd_completions(args):
+    if args.shell != "zsh":
+        sys.exit(f"only zsh is supported (got: {args.shell})")
+    _install_completions(print_only=args.print_only)
+    if not args.print_only:
+        print("restart your shell (or run 'exec zsh') to activate completions")
+
+
+def cmd_install(_args):
+    print("beacon install")
+    print("==============")
+    print()
+    print("[1/6] shell integration")
+    _install_shell_source()
+    print()
+    print("[2/6] tab completion")
+    _install_completions()
+    print()
+    print("[3/6] iTerm2 'separate background images per pane'")
+    ensure_per_pane_bg_image()
+    print("  ✓ defaults set (PerPaneBackgroundImage = true)")
+    print()
+    print("[4/6] iTerm2 bg-image trust pre-approval")
+    ok, added = _pre_approve_iterm_paths()
+    if not ok:
+        print("  ! iTerm2 is currently running. Quit iTerm2 fully (⌘Q) and re-run")
+        print("    this command to pre-approve bg-image paths. Without this,")
+        print("    iTerm2 prompts once per pool slot the first time it's used.")
+    elif added:
+        print(f"  ✓ added {len(added)} entries to AlwaysAllowBackgroundImage:")
+        for p in added:
+            print(f"      {p or '(empty — bg-image clear)'}")
+    else:
+        print("  ✓ all bg-image paths already pre-approved")
+    print()
+    print("[5/6] iTerm2 dynamic profile (status bar layout)")
+    changed, msg = install_dynamic_profile()
+    print(f"  ✓ {msg}")
+    print()
+    print("[6/6] iTerm2 default profile")
+    if _is_beacon_already_default():
+        print("  ✓ 'beacon' is already the default profile")
+    else:
+        print("  ⚠ requires iTerm2 quit (it caches prefs in memory). Set it via:")
+        print("      iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default")
+        print("    Or run: beacon set-default-profile  (orchestrates quit + relaunch)")
+    print()
+    print("Next: exec zsh, then open a fresh iTerm2 tab.")
+    print("(If step 4 deferred, quit iTerm2 fully and re-run this command.)")
+
+
+def cmd_set_default_profile(args):
+    """Make beacon iTerm2's default profile. iTerm2 caches its prefs in memory
+    and overwrites the plist on quit, so we cannot write the default while it
+    is running. Two paths:
+
+    - iTerm2 not running: write the pref directly, optionally relaunch.
+    - iTerm2 running: spawn a detached helper that polls for iTerm2 to fully
+      exit, writes the pref, then relaunches iTerm2. Then send `quit` via
+      AppleScript. The helper survives our process being SIGHUP'd by iTerm2.
+    """
+    if _is_beacon_already_default() and not _is_iterm_running():
+        print("'beacon' is already the default profile")
+        return
+
+    if not _is_iterm_running():
+        _write_default_profile_now()
+        print("set 'beacon' as default profile")
+        subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=5)
+        return
+
+    if not args.yes:
+        print("This will quit iTerm2 (closing all windows and panes including this one)")
+        print("and relaunch it with 'beacon' as the default profile.")
+        try:
+            with open("/dev/tty") as tty:
+                sys.stdout.write("Continue? [y/N] ")
+                sys.stdout.flush()
+                response = tty.readline().strip().lower()
+        except OSError:
+            sys.exit("no controlling tty; re-run with --yes to skip the prompt")
+        if response not in ("y", "yes"):
+            print("aborted")
+            return
+
+    log_path = Path(tempfile.gettempdir()) / "beacon-set-default-profile.log"
+    # Mirrors _write_default_profile_now() in shell form. If the key or GUID
+    # ever changes, update both — the orchestrated path can't reuse the
+    # Python helper because iTerm2 has SIGHUP'd this process by then.
+    helper = (
+        f"while pgrep -x iTerm2 >/dev/null; do sleep 0.5; done; "
+        f'defaults write com.googlecode.iterm2 "Default Bookmark Guid" '
+        f'-string "{BEACON_PROFILE_GUID}"; '
+        f"open -a iTerm"
+    )
+    with open(log_path, "w") as log:
+        subprocess.Popen(
+            ["nohup", "zsh", "-c", helper],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    print(f"helper logged to {log_path}")
+    print("quitting iTerm2 — it will relaunch with the new default")
+    subprocess.run(
+        ["osascript", "-e", 'tell application "iTerm" to quit'],
+        capture_output=True, timeout=10,
+    )
+
+
+def cmd_hook(args):
+    payload = {}
+    try:
+        raw = sys.stdin.read()
+        if raw.strip():
+            payload = json.loads(raw)
+    except Exception:
+        payload = {}
+    event = args.event
+
+    # Capture the Claude session ID for cross-session handoff. It's stable
+    # for the lifetime of the Claude conversation; a colleague can resume it
+    # via `claude --resume <id>`.
+    claude_sid = payload.get("session_id") or ""
+    if claude_sid:
+        write_state("claude_session_id", claude_sid)
+
+    if event == "UserPromptSubmit":
+        if _state_path("paused").exists():
+            remove_state("paused")
+            remove_state("override.status")
+            # Forget the reference to the note pool slot — don't delete the
+            # file (other paused sessions may reference it; preserves trust).
+            remove_state("note-image")
+        write_state("signal.status", "working")
+
+    elif event == "Stop":
+        if not payload.get("stop_hook_active"):
+            write_state("signal.status", "waiting")
+
+    elif event == "Notification":
+        write_state("signal.status", "waiting")
+
+    elif event == "PreToolUse":
+        tool = payload.get("tool_name") or payload.get("tool") or ""
+        tool_input = payload.get("tool_input") or {}
+        if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+            current = (read_state("override.stage")
+                       or read_state("signal.stage")
+                       or "none")
+            if current in ("plan", "none"):
+                write_state("signal.stage", "dev")
+        elif tool == "Bash":
+            command = (tool_input.get("command") or "")
+            if DEPLOY_RE.search(command):
+                write_state("signal.stage", "shipping")
+        elif tool == "ExitPlanMode":
+            write_state("signal.stage", "dev")
+
+    render()
+
+
+# --- argparse ---
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
+    sub = parser.add_subparsers(dest="cmd")
+
+    sub.add_parser("show", help="show resolved signal state")
+
+    sp = sub.add_parser("set", help="set an override")
+    sp.add_argument("field", choices=list(VALID_FIELDS))
+    sp.add_argument("value", nargs="+")
+
+    sp = sub.add_parser("task", help="set task override")
+    sp.add_argument("value", nargs="+")
+
+    sp = sub.add_parser("stage", help="set stage override")
+    sp.add_argument("value", nargs="+")
+
+    sp = sub.add_parser("project", help="set project override")
+    sp.add_argument("value", nargs="+")
+
+    sp = sub.add_parser("clear", help="clear overrides")
+    sp.add_argument("field", nargs="?", choices=list(VALID_FIELDS))
+
+    sp = sub.add_parser("pause", help="pause and snapshot state")
+    sp.add_argument("note", nargs="*")
+
+    sub.add_parser("resume", help="resume from pause")
+    sub.add_parser("reset", help="clear all session state")
+    sub.add_parser("render", help="re-render current state")
+
+    sp = sub.add_parser("signal", help="write a non-override signal (used by skills)")
+    sp.add_argument("field", choices=["stage", "status"])
+    sp.add_argument("value", nargs="+")
+
+    sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
+    sp.add_argument("event")
+
+    sp = sub.add_parser("completions", help="install or print shell completions")
+    sp.add_argument("shell", choices=["zsh"], nargs="?", default="zsh")
+    sp.add_argument("--print", dest="print_only", action="store_true",
+                    help="print the script to stdout instead of installing")
+
+    sub.add_parser("install", help="run all install steps (shell, completions, profile)")
+
+    sp = sub.add_parser("set-default-profile",
+                        help="orchestrate iTerm2 quit + relaunch to set 'beacon' as the default profile")
+    sp.add_argument("--yes", "-y", action="store_true",
+                    help="skip the confirmation prompt")
+
+    sub.add_parser("resolve-url", help="(internal) print resolved url+label as TAB-separated text")
+
+    sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
+
+    sub.add_parser("open-url", help="open the resolved URL in the default browser via `open`")
+
+    sub.add_parser("json", help="print the resolved session state as JSON")
+
+    args = parser.parse_args(argv)
+
+    handlers = {
+        "show": cmd_show, "set": cmd_set, "task": cmd_task,
+        "stage": cmd_stage, "project": cmd_project, "clear": cmd_clear,
+        "pause": cmd_pause, "resume": cmd_resume, "reset": cmd_reset,
+        "render": cmd_render, "signal": cmd_signal, "hook": cmd_hook,
+        "completions": cmd_completions, "install": cmd_install,
+        "set-default-profile": cmd_set_default_profile,
+        "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
+        "open-url": cmd_open_url, "json": cmd_json,
+    }
+    if not args.cmd:
+        return cmd_show(args)
+    handlers[args.cmd](args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""beacon-iterm — emit iTerm2 escape sequences.
+
+Stateless CLI. Subcommands paint one surface each:
+  uservar      — set a user variable (SetUserVar=)
+  badge-format — set the per-session badge format template
+  badge-color  — set the per-session badge color (SetColors=badge=)
+  attention    — request dock attention once
+  bg-image     — set the per-session background image
+  note         — compose a post-it card and paint it as bg-image
+  clear        — restore all surfaces to profile defaults
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+# Allow `from _compose import ...` regardless of cwd.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+_TTY = None
+
+
+def _tty():
+    global _TTY
+    if _TTY is None:
+        try:
+            _TTY = open("/dev/tty", "w")
+        except OSError:
+            _TTY = sys.stdout
+    return _TTY
+
+
+def _osc(payload: str, st: str = "\x07") -> None:
+    f = _tty()
+    f.write(f"\x1b]{payload}{st}")
+    f.flush()
+
+
+def _b64(s: str) -> str:
+    return base64.b64encode(s.encode("utf-8")).decode("ascii")
+
+
+def _hex6(s: str) -> bool:
+    return len(s) == 6 and all(c in "0123456789abcdefABCDEF" for c in s)
+
+
+# --- subcommands ---
+
+def cmd_badge_color(args):
+    v = args.value
+    if v.lower() == "default":
+        _osc("1337;SetColors=badge=default")
+        return
+    if not _hex6(v):
+        sys.exit(f"badge-color expects 6-digit hex or 'default', got: {v}")
+    _osc(f"1337;SetColors=badge={v.lower()}")
+
+
+def cmd_uservar(args):
+    name = args.name
+    value = args.value or ""
+    _osc(f"1337;SetUserVar={name}={_b64(value)}")
+
+
+def cmd_badge_format(args):
+    # iTerm2 expects the format template base64-encoded. The template can
+    # reference \(user.foo) variables; iTerm re-evaluates them whenever the
+    # vars change, so SetUserVar updates flow into the badge automatically.
+    _osc(f"1337;SetBadgeFormat={_b64(args.template)}")
+
+
+def cmd_attention(_args):
+    _osc("1337;RequestAttention=once")
+
+
+def cmd_bg_image(args):
+    v = args.path
+    if v.lower() == "clear":
+        _osc("1337;SetBackgroundImageFile=")
+        return
+    p = Path(v).expanduser().resolve()
+    if not p.exists():
+        sys.exit(f"bg-image: file not found: {p}")
+    _osc(f"1337;SetBackgroundImageFile={_b64(str(p))}")
+
+
+def cmd_note(args):
+    try:
+        from _compose import compose_note, has_pillow
+    except ImportError as e:
+        sys.exit(f"note: failed to import compositor: {e}")
+    if not has_pillow():
+        sys.exit("note: Pillow required for note composition (pip install Pillow)")
+    if args.out:
+        out = Path(args.out).expanduser()
+        out.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        fd, tmp = tempfile.mkstemp(prefix="beacon-note-", suffix=".png")
+        os.close(fd)
+        out = Path(tmp)
+    cw, ch = _detect_pane_pixels()
+    compose_note(args.text, out, w=cw, h=ch)
+    _osc(f"1337;SetBackgroundImageFile={_b64(str(out))}")
+
+
+def cmd_clear(_args):
+    _osc("1337;SetColors=badge=default")
+    _osc("1337;SetBackgroundImageFile=")
+
+
+def _detect_pane_pixels(default=(1440, 1080)) -> tuple[int, int]:
+    cols = lines = 0
+    try:
+        cols = int(os.environ.get("COLUMNS") or 0)
+        lines = int(os.environ.get("LINES") or 0)
+    except ValueError:
+        pass
+    if cols == 0 or lines == 0:
+        try:
+            with open("/dev/tty", "rb") as tty:
+                r = subprocess.run(["stty", "size"], stdin=tty,
+                                   capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                parts = r.stdout.split()
+                if len(parts) == 2:
+                    lines, cols = int(parts[0]), int(parts[1])
+        except Exception:
+            pass
+    if cols <= 0 or lines <= 0:
+        return default
+    try:
+        cell_w = float(os.environ.get("BEACON_CELL_WIDTH") or "7")
+        cell_h = float(os.environ.get("BEACON_CELL_HEIGHT") or "16")
+    except ValueError:
+        cell_w, cell_h = 7.0, 16.0
+    w = max(640, min(3200, int(cols * cell_w)))
+    h = max(480, min(2000, int(lines * cell_h)))
+    return (w // 8) * 8, (h // 8) * 8
+
+
+# --- entry ---
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="beacon-iterm")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sp = sub.add_parser("badge-color", help="set badge color (6-hex or 'default')")
+    sp.add_argument("value")
+    sp.set_defaults(func=cmd_badge_color)
+
+    sp = sub.add_parser("uservar", help="publish user.<name>=<value>")
+    sp.add_argument("name")
+    sp.add_argument("value", nargs="?", default="")
+    sp.set_defaults(func=cmd_uservar)
+
+    sp = sub.add_parser("badge-format", help="set the per-session badge format template")
+    sp.add_argument("template")
+    sp.set_defaults(func=cmd_badge_format)
+
+    sp = sub.add_parser("attention", help="bounce dock once")
+    sp.set_defaults(func=cmd_attention)
+
+    sp = sub.add_parser("bg-image", help="set per-session bg image (path or 'clear')")
+    sp.add_argument("path")
+    sp.set_defaults(func=cmd_bg_image)
+
+    sp = sub.add_parser("note", help="compose a post-it and paint as bg image")
+    sp.add_argument("text")
+    sp.add_argument("--out")
+    sp.set_defaults(func=cmd_note)
+
+    sp = sub.add_parser("clear", help="restore all surfaces to profile defaults")
+    sp.set_defaults(func=cmd_clear)
+
+    args = p.parse_args(argv)
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()
