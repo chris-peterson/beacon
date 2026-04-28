@@ -1242,6 +1242,11 @@ def cmd_hook(args):
         write_state("signal.status", "waiting")
 
     elif event == "PreToolUse":
+        # Tool activity means the agent is working, not waiting. This
+        # transitions out of `waiting` after a permission_prompt Notification
+        # is granted — without this, the badge would stay red for the rest of
+        # the turn.
+        write_state("signal.status", "working")
         tool = payload.get("tool_name") or payload.get("tool") or ""
         tool_input = payload.get("tool_input") or {}
         if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
@@ -1256,6 +1261,12 @@ def cmd_hook(args):
                 write_state("signal.stage", "shipping")
         elif tool == "ExitPlanMode":
             write_state("signal.stage", "dev")
+
+    elif event == "PostToolUse":
+        # Re-assert working between tool calls — a tool just returned and the
+        # agent is back to thinking, even if no further matching PreToolUse
+        # fires before the next Notification or Stop.
+        write_state("signal.status", "working")
 
     render()
 

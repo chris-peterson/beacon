@@ -31,6 +31,12 @@ alias beacon="python3 $_BEACON_SCRIPT"
 #
 # Clear inherited bg-image first (visible side effect users notice most).
 printf '\e]1337;SetBackgroundImageFile=\a'
+# Reset badge color to the profile default. iTerm2 badge color is sticky for
+# the lifetime of the session, so a pane split off a Claude-active pane (or a
+# fresh shell after Claude's last `Stop` set 'blocked' red) would otherwise
+# inherit an alarming color even though no Claude activity is happening here.
+# Claude's hooks repaint on the next turn.
+printf '\e]1337;SetColors=badge=default\a'
 # Badge format: project only (BADGE-03). Stage/status/branch live in the
 # status bar, not the badge.
 printf '\e]1337;SetBadgeFormat=%s\a' \
@@ -96,10 +102,31 @@ _beacon_project_name() {
   print -r -- "${root:t}"
 }
 
-_beacon_branch_name() {
-  local b
-  b="$(git symbolic-ref --short HEAD 2>/dev/null)" || { print -r -- ""; return }
-  print -r -- "$b"
+# Outputs three lines: display, state, indicator.
+#   display   — branch name with optional ahead/behind indicators (e.g. "main ↑3↓1")
+#   state     — "clean" when synced or no upstream; "diverged" when ahead/behind
+#   indicator — "" | "↑N" | "↓N" | "↑N↓M"
+# All three empty when not in a git repo.
+_beacon_branch_info() {
+  local name
+  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n'; return }
+  local state="clean" ind="" counts ahead behind
+  # No-upstream is treated as clean — there's nothing to diverge from until you push.
+  if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 \
+     && counts="$(git rev-list --left-right --count "@{u}...HEAD" 2>/dev/null)"; then
+    behind="${counts%%	*}"
+    ahead="${counts##*	}"
+    if (( ahead != 0 || behind != 0 )); then
+      state="diverged"
+      (( ahead > 0 ))  && ind+="↑${ahead}"
+      (( behind > 0 )) && ind+="↓${behind}"
+    fi
+  fi
+  local display="$name"
+  [[ -n "$ind" ]] && display="${name} ${ind}"
+  print -r -- "$display"
+  print -r -- "$state"
+  print -r -- "$ind"
 }
 
 # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
@@ -152,6 +179,9 @@ _beacon_resolve_url() {
 typeset -g _BEACON_LAST_PROJECT='__unset__'
 typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
+typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
+typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
+typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
 typeset -g _BEACON_LAST_URL='__unset__'
 
@@ -178,10 +208,28 @@ _beacon_precmd() {
     _BEACON_LAST_PROJECT_FULL="$pf"
   fi
 
-  local b="$(_beacon_branch_name)"
+  local -a binfo
+  binfo=("${(@f)$(_beacon_branch_info)}")
+  local b="${binfo[1]}" bstate="${binfo[2]}"
+  local b_clean="" b_diverged=""
+  [[ "$bstate" == "clean"    ]] && b_clean="$b"
+  [[ "$bstate" == "diverged" ]] && b_diverged="$b"
+
   if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch "$b"
     _BEACON_LAST_BRANCH="$b"
+  fi
+  if [[ "$bstate" != "$_BEACON_LAST_BRANCH_STATE" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_state "$bstate"
+    _BEACON_LAST_BRANCH_STATE="$bstate"
+  fi
+  if [[ "$b_clean" != "$_BEACON_LAST_BRANCH_CLEAN" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_clean "$b_clean"
+    _BEACON_LAST_BRANCH_CLEAN="$b_clean"
+  fi
+  if [[ "$b_diverged" != "$_BEACON_LAST_BRANCH_DIVERGED" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_diverged "$b_diverged"
+    _BEACON_LAST_BRANCH_DIVERGED="$b_diverged"
   fi
 
   local lp="$(_beacon_local_path)"
@@ -210,6 +258,9 @@ _beacon_chpwd() {
   _BEACON_LAST_PROJECT='__unset__'
   _BEACON_LAST_PROJECT_FULL='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
+  _BEACON_LAST_BRANCH_STATE='__unset__'
+  _BEACON_LAST_BRANCH_CLEAN='__unset__'
+  _BEACON_LAST_BRANCH_DIVERGED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
   _BEACON_LAST_URL='__unset__'
   _beacon_precmd

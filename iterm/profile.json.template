@@ -12,11 +12,30 @@
       "Status Bar Layout": {
         "advanced configuration": {
           "remove empty components": true,
-          "font": "SFMono-Regular 18",
+          "font": "SFMono-Regular 22",
           "algorithm": 1,
           "auto-rainbow style": 0
         },
         "components": [
+          {
+            "class": "iTermStatusBarSwiftyStringComponent",
+            "configuration": {
+              "knobs": {
+                "expression": "\\(user.beacon_project_full)",
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 360,
+                "shared font": ""
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "SFMono-Regular 22",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
           {
             "class": "iTermStatusBarActionComponent",
             "configuration": {
@@ -37,7 +56,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 18",
+                "font": "SFMono-Regular 22",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -47,35 +66,23 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_project_full)",
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 360,
-                "shared font": ""
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "SFMono-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarSwiftyStringComponent",
-            "configuration": {
-              "knobs": {
-                "expression": "\\(user.beacon_branch)",
+                "expression": "\\(user.beacon_branch_clean)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
                 "maxwidth": 240,
-                "shared font": ""
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.4,
+                  "Green Component": 0.85,
+                  "Blue Component": 0.4,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 18",
+                "font": "SFMono-Regular 22",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -85,42 +92,23 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_local_path)",
+                "expression": "\\(user.beacon_branch_diverged)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 360,
-                "shared font": ""
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "SFMono-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarActionComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 80,
+                "maxwidth": 240,
                 "shared font": "",
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "code",
-                  "parameter": "cwd=$(cat \"$HOME/.claude/plugins/data/beacon/cache/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && code \"$cwd\"",
-                  "action": 35,
-                  "version": 2
+                "shared text color": {
+                  "Red Component": 1.0,
+                  "Green Component": 0.65,
+                  "Blue Component": 0.2,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
                 }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 18",
+                "font": "SFMono-Regular 22",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -143,18 +131,63 @@
             }
           },
           {
+            "class": "iTermStatusBarSwiftyStringComponent",
+            "configuration": {
+              "knobs": {
+                "expression": "\\(user.beacon_local_path)",
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 360,
+                "shared font": ""
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "SFMono-Regular 22",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
             "class": "iTermStatusBarActionComponent",
             "configuration": {
               "knobs": {
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 100,
+                "maxwidth": 80,
                 "shared font": "",
                 "action": {
                   "applyMode": 0,
                   "escaping": 1,
-                  "title": "export",
+                  "title": "code",
+                  "parameter": "cwd=$(cat \"$HOME/.claude/plugins/data/beacon/cache/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
+                  "action": 35,
+                  "version": 2
+                }
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "SFMono-Regular 22",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
+            "class": "iTermStatusBarActionComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 60,
+                "shared font": "",
+                "action": {
+                  "applyMode": 0,
+                  "escaping": 1,
+                  "title": "{}",
                   "parameter": "{\"project\":\"\\(user.beacon_project_full?)\",\"branch\":\"\\(user.beacon_branch?)\",\"stage\":\"\\(user.beacon_stage?)\",\"status\":\"\\(user.beacon_status?)\",\"url\":\"\\(user.beacon_url?)\",\"cwd\":\"\\(user.beacon_local_path?)\",\"claude\":\"\\(user.beacon_claude_session?)\"}",
                   "action": 72,
                   "version": 2
@@ -162,7 +195,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 18",
+                "font": "SFMono-Regular 22",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }

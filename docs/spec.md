@@ -44,7 +44,7 @@ Stage is **never demoted by hooks** — once `review` or `shipping`, a subsequen
 | Value | Meaning | Driven by |
 |:---|:---|:---|
 | `idle` | Not actively engaged (just opened, paused, or freshly resumed) | Default; pause sets it explicitly |
-| `working` | Claude is processing a turn | Hook UserPromptSubmit |
+| `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse (any tool); Hook PostToolUse (any tool) |
 | `waiting` | Claude is waiting on the user (highest user-attention priority) | Hook Stop (when `stop_hook_active` not set); Hook Notification (`idle_prompt` / `permission_prompt`) |
 
 Both stage and status accept user override via `/beacon set <field> <value>` and revert to provider chain on `/beacon clear <field>`.
@@ -185,6 +185,8 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 **HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = waiting`.
 
 **HOOK-03.** When Claude requests user attention (Notification hook with matcher `idle_prompt|permission_prompt`), the plugin shall set `signal.status = waiting`.
+
+**HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn after a `permission_prompt` Notification flips it to `waiting` — without it, the badge would remain red for the rest of the turn even while Claude is actively running tools and thinking. The PreToolUse and PostToolUse hooks are registered with no matcher (fire on every tool) so the transition is reliable regardless of which tool the permission was for. The pause flag still wins via `_badge_color_for`, so a paused session is unaffected.
 
 **HOOK-04.** When Claude invokes any of `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, the plugin shall promote `signal.stage = dev` only if the current stage is `plan`, `none`, or unset.
 
@@ -390,7 +392,7 @@ flowchart TB
     PRECMD --> SF2[file cwd-SESSION.txt]
     INSTALL([beacon install])
     INSTALL --> PROFILE[Dynamic profile written with status bar layout]
-    PROFILE --> CHIPS[Fixed sequence left to right: go arrow project_full branch local_path code spring export]
+    PROFILE --> CHIPS[Fixed sequence left to right: project_full go arrow branch spring local_path code export]
     S1 --> STORE[iTerm2 user var store]
     S2 --> STORE
     S3 --> STORE
@@ -412,21 +414,22 @@ The `install` command shall **not** make the beacon profile iTerm2's default aut
 1. The manual click path: *iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default*.
 2. A pointer to the dedicated subcommand `beacon set-default-profile` (CMD-12) which orchestrates the quit + relaunch.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right:
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right. The sequence is grouped into a **remote-context cluster** (project / URL / branch) on the left and a **local-context cluster** (cwd / code) on the right, separated by a spring so a glance can land on the side that matches the question being asked.
 
-1. **`go` action button** — `iTermStatusBarActionComponent` titled `↗` (open-external glyph). Reads the per-session URL file written by the shell snippet and runs `open <url>`. Sits adjacent to the URL chip so the action is proximal to its data.
-2. **Full project path** — `\(user.beacon_project_full)` (e.g. `git.example/acme/widgets`); cmd+click target.
-3. **Branch** — `\(user.beacon_branch)`.
-4. **Local path** — `\(user.beacon_local_path)` (`$HOME` substituted as `~`).
-5. **`code` action button** — `iTermStatusBarActionComponent` titled `code`. Reads the per-session cwd file written by the shell snippet and runs `code <cwd>` to open the directory in VS Code. Sits adjacent to the local-path chip.
-6. **Spring** — `iTermStatusBarSpringComponent`, pushes the export button to the right edge.
-7. **`export` action button** — `iTermStatusBarActionComponent` titled `export`. Copies a one-line JSON object containing all signal values to the macOS pasteboard via action enum `72` ("Copy to Pasteboard").
+1. **Full project path** — `\(user.beacon_project_full)` (e.g. `git.example/acme/widgets`); cmd+click target. Leads the bar so the most identifying value reads first; the URL action button sits adjacent.
+2. **`go` action button** — `iTermStatusBarActionComponent` titled `↗` (open-external glyph). Reads the per-session URL file written by the shell snippet and runs `open <url>`.
+3. **Branch (synced)** — `\(user.beacon_branch_clean)`, rendered with a clean-state text color (green). Empty (and thus collapsed) when the branch is diverged from upstream.
+4. **Branch (diverged)** — `\(user.beacon_branch_diverged)`, rendered with a diverged-state text color (orange). Empty when synced. The two branch chips are mutually exclusive — exactly one renders when in a git repo, neither when outside one. The text includes ahead/behind indicators (e.g. `main ↑3`, `feature ↓1`, `main ↑3↓1`) per STATUS-BAR-05.
+5. **Spring** — `iTermStatusBarSpringComponent`, separates the remote cluster from the local cluster and pushes the local items to the right edge.
+6. **Local path** — `\(user.beacon_local_path)` (`$HOME` substituted as `~`).
+7. **`code` action button** — `iTermStatusBarActionComponent` titled `code`. Reads the per-session cwd file and runs `code <cwd>` to open the directory in VS Code. Sits adjacent to the local-path chip.
+8. **`{}` action button** — `iTermStatusBarActionComponent` titled `{}` (JSON glyph; previously labeled `export`). Copies a one-line JSON object containing all signal values to the macOS pasteboard via action enum `72` ("Copy to Pasteboard").
 
-The chip sequence is **fixed** — chips are not hidden when their underlying value is empty. The layout's `remove empty components` setting is left enabled at the framework level but no chip relies on it.
+The chip sequence is **fixed** — chips are not hidden when their underlying value is empty, with the lone exception of the mutually-exclusive branch pair (which relies on `remove empty components` to collapse the inactive half cleanly).
 
 **STATUS-BAR-03.** Two component classes are used:
 
-- **Data chips** — `iTermStatusBarSwiftyStringComponent` with knobs `expression`, `minwidth`, `maxwidth`, `base: priority`, `base: compression resistance`, `shared font`. No click action.
+- **Data chips** — `iTermStatusBarSwiftyStringComponent` with knobs `expression`, `minwidth`, `maxwidth`, `base: priority`, `base: compression resistance`, `shared font`, optionally `shared text color`. No click action.
 - **Action buttons** — `iTermStatusBarActionComponent` with the same shared knobs plus an `action` knob:
 
   ```json
@@ -440,17 +443,22 @@ The chip sequence is **fixed** — chips are not hidden when their underlying va
   }
   ```
 
-  Action enum `72` = "Copy to Pasteboard" (used by `export`). Action enum `35` runs the parameter as a shell coprocess command (used by `↗` and `code`); these read per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) because coprocess actions do not interpolate `\(user.*)` reliably.
+  Action enum `72` = "Copy to Pasteboard" (used by `{}`). Action enum `35` runs the parameter as a shell coprocess command (used by `↗` and `code`); these read per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) because coprocess actions do not interpolate `\(user.*)` reliably. Coprocess commands run under the iTerm2 process's `/bin/sh`, which does not inherit the user's interactive `PATH`; the `code` parameter therefore prepends `/opt/homebrew/bin:/usr/local/bin` to `PATH` so the editor binary resolves on both Apple-Silicon and Intel macOS without sourcing the user's shell rc files.
 
-The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF Mono 18` (monospace, sized to read clearly across many panes), `auto-rainbow style: 0`. (Schema verified empirically against iTerm2 3.6.x.)
+The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF Mono 22` (monospace, sized to read clearly across many panes), `auto-rainbow style: 0`. (Schema verified empirically against iTerm2 3.6.x.)
 
-**STATUS-BAR-04.** *(removed)* Per-chip `shared text color` is no longer specified. All chips render in the profile's default text color. Value-based status coloring is delivered via the badge (BADGE-09); kind-based palette was decorative once layout positions stabilized.
+**STATUS-BAR-04.** Two of the data chips — the mutually-exclusive branch-clean and branch-diverged pair — set a `shared text color` knob to communicate **value-based** state (clean = green, diverged = orange). All other data chips render in the profile's default text color. Earlier iterations applied a *kind*-based palette (one color per chip role); that was dropped because, with positions fixed, role-color was decorative rather than informative. The current pair is informational: which one is non-empty (and thus rendered) tells the operator at a glance whether a push/pull is pending. Cross-cutting status (e.g. ready / busy / blocked) remains delivered via the badge (BADGE-09), not the status bar.
 
 **STATUS-BAR-05.** When the shell prompt redraws, the integration shall publish these additional user vars (beyond the badge-side `beacon_project`):
 - `beacon_project_full` — full git remote URL (e.g. `git.example/acme/widgets`); empty when not in a recognized project
-- `beacon_branch` — current git branch, or empty when not in a repo
+- `beacon_branch` — current git branch with optional ahead/behind indicators (`↑N`, `↓N`, or `↑N↓M`) appended; empty when not in a repo. This is the canonical branch text and feeds the `{}` export JSON.
+- `beacon_branch_state` — `clean` when synced or no upstream is set, `diverged` when ahead and/or behind upstream, empty when not in a repo
+- `beacon_branch_clean` — equals `beacon_branch` when state is `clean`, else empty (drives the green branch chip)
+- `beacon_branch_diverged` — equals `beacon_branch` when state is `diverged`, else empty (drives the orange branch chip)
 - `beacon_local_path` — cwd with `$HOME` substituted as `~`
 - `beacon_url` — full URL resolved per PROV-07
+
+The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` pair is published from the shell rather than evaluated as a SwiftyString conditional in the profile, because iTerm2's interpolation grammar does not reliably support comparison expressions on user vars across versions; pre-resolving in the shell keeps the profile portable.
 
 The shell shall additionally write two per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/` for the `↗` and `code` action buttons to read. (Coprocess actions cannot interpolate user vars, hence the file-based handoff.)
 
@@ -634,8 +642,7 @@ _beacon_precmd() {
   beacon-iterm uservar beacon_project "$(_beacon_project_name)"
 }
 _beacon_chpwd() {
-  beacon-iterm uservar beacon_branch "$(_beacon_branch_name)"
-  _beacon_precmd
+  _beacon_precmd  # re-publishes branch + branch_clean/branch_diverged via _beacon_branch_info
 }
 add-zsh-hook precmd _beacon_precmd
 add-zsh-hook chpwd  _beacon_chpwd
