@@ -753,18 +753,6 @@ No iTerm2 profile is installed or modified. No user-default profile is changed.
 
 ## 8. Out of scope
 
-### 8.1 Cut from the original design (v1 pivot)
-
-- **Status background images** — gradient + icon backgrounds keyed to `idle` / `working` / `waiting`. Tried, then briefly replaced by tab+bg color shifts (also too loud), now replaced by **badge color** alone (BADGE-09). The badge is the only signal-coloring surface beacon paints — small enough not to disrupt the pane, large enough to read in Mission Control.
-- **Tab color and terminal bg color shifts** — emitted briefly during the transition out of full-screen status images. Loud, low information density, dropped in favor of the badge.
-- **Dynamic iTerm2 profile installer** for the badge format — beacon originally installed three profiles (one per status), then a single profile carrying the static badge format. Both are gone. The badge format is set per-session via `SetBadgeFormat` so beacon works in any profile and never modifies user profile state. (A profile *is* installed for the status bar layout, see §4.4.)
-- **Stage hue rotation** — moot once status bg images were dropped.
-- **Project icon support** — icon discovery, normalization, transparency stripping, post-it composition with icon. The visual added complexity (rasterizers, background detection, flood-fill) that didn't pay off. Post-it is text-only in v1.
-- **Per-chip kind-based text colors** in the status bar (originally STATUS-BAR-04) — once chip positions stabilized as fixed, the kind-coloring became decorative. Removed.
-- **Status bar chips for stage, status, claude session id** — the badge color carries `status`; `stage` is rarely informative across windows; the claude session id is only useful in the export JSON, which still includes it.
-
-### 8.2 Always out of scope
-
 - Render targets other than iTerm2 (tmux, kitty, web, etc.) — architecture allows future `beacon-tmux` etc., but v1 ships only `beacon-iterm`.
 - Shell adapters other than zsh (bash, fish) — same architectural posture.
 - Drivers other than Claude Code (other agents, CI hooks) — the CLI is usable from any caller, but only the Claude Code plugin ships in v1.
