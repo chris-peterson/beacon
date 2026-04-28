@@ -12,7 +12,7 @@
       "Status Bar Layout": {
         "advanced configuration": {
           "remove empty components": true,
-          "font": "SFMono-Regular 22",
+          "font": "Menlo-Regular 18",
           "algorithm": 1,
           "auto-rainbow style": 0
         },
@@ -26,11 +26,18 @@
                 "base: compression resistance": 1,
                 "minwidth": "0",
                 "maxwidth": 360,
-                "shared font": ""
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.4,
+                  "Green Component": 0.7,
+                  "Blue Component": 1.0,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -45,6 +52,13 @@
                 "minwidth": "0",
                 "maxwidth": 60,
                 "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.4,
+                  "Green Component": 0.7,
+                  "Blue Component": 1.0,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                },
                 "action": {
                   "applyMode": 0,
                   "escaping": 1,
@@ -56,7 +70,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -82,7 +96,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -108,7 +122,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -143,7 +157,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -169,7 +183,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -195,7 +209,7 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "SFMono-Regular 22",
+                "font": "Menlo-Regular 18",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
