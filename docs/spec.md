@@ -254,16 +254,21 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **CMD-11.** When the user invokes `beacon alias <full> <short>`, `beacon alias` (no args), or `beacon alias clear [<full>]`, the plugin shall apply ALIAS-03..05 and re-render so any in-flight session picks up the new alias table.
 
-**CMD-12.** When the user invokes `set-default-profile`, the plugin shall make the beacon dynamic profile iTerm2's default by orchestrating an iTerm2 quit + relaunch:
+**CMD-12.** When the user invokes `exclusive-configuration`, the plugin shall apply iTerm2 prefs that require iTerm2 to be fully quit (because iTerm2 caches prefs in memory and overwrites the plist on quit). The covered prefs are:
 
-1. If the beacon profile is already the default and iTerm2 is not running, the plugin shall exit early.
-2. If iTerm2 is not running, the plugin shall write `Default Bookmark Guid` directly via `defaults write` and relaunch iTerm2 via `open -a iTerm`.
+- **Default profile** — `Default Bookmark Guid` set to the beacon dynamic profile's GUID.
+- **Bg-image trust pre-approval** — every pool slot path plus the empty-string sentinel added to `AlwaysAllowBackgroundImage` (subset of CMD-08, finished here when `install` had to defer).
+
+Behavior:
+
+1. If the default profile is already set and no bg-image paths are missing approval, the plugin shall exit early ("nothing to do").
+2. If iTerm2 is not running, the plugin shall apply both writes directly via `defaults write` and relaunch iTerm2 via `open -a iTerm`. Each write is conditional on its own state — already-correct prefs are not rewritten.
 3. If iTerm2 is running, the plugin shall:
-   a. Confirm intent interactively (read y/N from `/dev/tty`). The `--yes` flag skips the prompt.
-   b. Spawn a detached helper process (`nohup`, `start_new_session=True`) that polls until iTerm2 has fully exited, then writes the default-profile pref, then relaunches iTerm2.
+   a. Confirm intent interactively (read y/N from `/dev/tty`), listing which writes will be applied. The `--yes` flag skips the prompt.
+   b. Spawn a detached helper process (`nohup`, `start_new_session=True`) that polls until iTerm2 has fully exited, then re-invokes `beacon exclusive-configuration --yes` (which then takes path 2 above — single source of truth for the writes).
    c. Send `tell application "iTerm" to quit` via `osascript`. The helper survives our process being SIGHUP'd by iTerm2 and finishes the job.
 
-The user is warned in the prompt that all iTerm2 windows and panes (including the one running this command) will close. The helper logs to a tempfile so post-mortem inspection is possible if the relaunch doesn't happen.
+The user is warned in the prompt that all iTerm2 windows and panes (including the one running this command) will close. The helper logs to a tempfile (`beacon-exclusive-configuration.log` under `$TMPDIR`) so post-mortem inspection is possible if the relaunch doesn't happen.
 
 ---
 
@@ -412,7 +417,7 @@ flowchart TB
 The `install` command shall **not** make the beacon profile iTerm2's default automatically. Setting `Default Bookmark Guid` requires iTerm2 to be fully quit (it caches prefs in memory and overwrites the plist on quit), and silently quitting the user's only terminal is unacceptable. Instead, the installer shall print:
 
 1. The manual click path: *iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default*.
-2. A pointer to the dedicated subcommand `beacon set-default-profile` (CMD-12) which orchestrates the quit + relaunch.
+2. A pointer to the dedicated subcommand `beacon exclusive-configuration` (CMD-12) which orchestrates the quit + relaunch.
 
 **STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right. The sequence is grouped into a **remote-context cluster** (project / URL / branch) on the left and a **local-context cluster** (cwd / code) on the right, separated by a spring so a glance can land on the side that matches the question being asked.
 

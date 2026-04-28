@@ -51,7 +51,7 @@ Session hash is SHA-1 of `$ITERM_SESSION_ID` truncated; collisions are not a sec
 iTerm2 caches its plist in memory while running and writes it back on quit. Any `defaults write com.googlecode.iterm2 ...` while iTerm2 is running gets clobbered when iTerm2 next quits. Three places this matters:
 
 - `PerPaneBackgroundImage` and `AlwaysAllowBackgroundImage` writes — `_pre_approve_iterm_paths()` defers when iTerm2 is running, telling the user to quit + re-run.
-- `Default Bookmark Guid` — `cmd_set_default_profile` orchestrates a quit + relaunch via a detached `nohup` helper. **`install` does NOT auto-set the default** — it'd quietly close the user's only terminal.
+- `Default Bookmark Guid` and `AlwaysAllowBackgroundImage` — `cmd_exclusive_configuration` orchestrates a quit + relaunch via a detached `nohup` helper that re-invokes the script after iTerm2 exits, so all writes that need an iTerm2-dead window happen in one pass. **`install` does NOT trigger this orchestration** — it'd quietly close the user's only terminal. Install instead emits a deferred-action notice pointing the user at `beacon exclusive-configuration`.
 - The dynamic profile JSON in `DynamicProfiles/` works fine while running; iTerm2 watches the directory.
 
 ## Conventions
@@ -68,7 +68,7 @@ iTerm2 caches its plist in memory while running and writes it back on quit. Any 
 |:---|:---|
 | Run plugin once | `python3 scripts/beacon <subcommand>` |
 | Bootstrap install | `python3 scripts/beacon install` |
-| Set beacon as default profile | `python3 scripts/beacon set-default-profile` |
+| Apply prefs needing iTerm2 quit (default profile, bg-image trust) | `python3 scripts/beacon exclusive-configuration` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
 

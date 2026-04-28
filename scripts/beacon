@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,13 @@ STATE_DIR = DATA_DIR / "state"
 CACHE_DIR = DATA_DIR / "cache"
 
 BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
+
+
+def _color(code: str, s: str) -> str:
+    """Wrap `s` in an ANSI SGR sequence when stdout is a TTY; passthrough
+    otherwise so logs and pipes stay clean."""
+    return f"\x1b[{code}m{s}\x1b[0m" if sys.stdout.isatty() else s
+
 
 DEFAULT_BRANCHES = {"main", "master", "develop", "trunk", "HEAD"}
 
@@ -71,7 +79,7 @@ _beacon() {
     'signal:write a non-override signal (stage|status)'
     'completions:install or print shell completions'
     'install:run all install steps (shell, completions, profile)'
-    'set-default-profile:orchestrate iTerm2 quit+relaunch to set beacon as default profile'
+    'exclusive-configuration:orchestrate iTerm2 quit+relaunch to apply prefs that require iTerm2 to be quit'
     'copy-url:copy the resolved URL to the clipboard'
   )
 
@@ -117,7 +125,7 @@ _beacon() {
     completions)
       (( CURRENT == 3 )) && compadd zsh
       ;;
-    set-default-profile)
+    exclusive-configuration)
       (( CURRENT == 3 )) && compadd -- --yes -y
       ;;
   esac
@@ -673,6 +681,26 @@ def _is_iterm_running() -> bool:
         return False
 
 
+def _bg_paths_needing_approval() -> list[str]:
+    """Pool slots + empty-string sentinel not yet in iTerm2's
+    AlwaysAllowBackgroundImage. Empty list ⇒ already fully approved.
+
+    Match by quoted entry to avoid substring false-matches (e.g. `note-01`
+    matching `note-010` in some hypothetical future)."""
+    paths = ["", *(str(CACHE_DIR / f"note-{i:02d}.png")
+                   for i in range(1, NOTE_POOL_SIZE + 1))]
+    try:
+        out = subprocess.run(
+            ["defaults", "read", "com.googlecode.iterm2",
+             "AlwaysAllowBackgroundImage"],
+            capture_output=True, text=True, timeout=2,
+        )
+        existing = out.stdout if out.returncode == 0 else ""
+    except Exception:
+        existing = ""
+    return [p for p in paths if f'"{p}"' not in existing]
+
+
 def _pre_approve_iterm_paths() -> tuple[bool, list[str]]:
     """Pre-approve the pool slots and the bg-image-clear sentinel (empty path)
     in iTerm2's AlwaysAllowBackgroundImage array so SetBackgroundImageFile
@@ -686,25 +714,8 @@ def _pre_approve_iterm_paths() -> tuple[bool, list[str]]:
         return False, []
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    paths = ["", *(str(CACHE_DIR / f"note-{i:02d}.png")
-                   for i in range(1, NOTE_POOL_SIZE + 1))]
-
-    try:
-        out = subprocess.run(
-            ["defaults", "read", "com.googlecode.iterm2",
-             "AlwaysAllowBackgroundImage"],
-            capture_output=True, text=True, timeout=2,
-        )
-        existing = out.stdout if out.returncode == 0 else ""
-    except Exception:
-        existing = ""
-
     added: list[str] = []
-    for path in paths:
-        # Match by quoted entry to avoid substring false-matches (e.g.
-        # `note-01` matching `note-010` in some hypothetical future).
-        if f'"{path}"' in existing:
-            continue
+    for path in _bg_paths_needing_approval():
         try:
             r = subprocess.run(
                 ["defaults", "write", "com.googlecode.iterm2",
@@ -731,6 +742,10 @@ def install_dynamic_profile() -> tuple[bool, str]:
     scripts/beacon so action coprocesses can locate the script directly
     (without depending on the shell alias, which non-interactive shells
     invoked by iTerm2's coprocess action wouldn't see).
+
+    Always rewrites — iTerm2 re-serializes dynamic profiles back to disk
+    with its own formatting and any GUI-edited values, so a "content
+    matches" short-circuit silently lets stale state win.
     """
     template = PLUGIN_ROOT / "iterm" / "profile.json.template"
     if not template.is_file():
@@ -739,8 +754,6 @@ def install_dynamic_profile() -> tuple[bool, str]:
     target = target_dir / "beacon.json"
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
     content = template.read_text().replace("__BEACON_SCRIPT__", beacon_script)
-    if target.exists() and target.read_text() == content:
-        return False, f"already up to date: {target}"
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
@@ -1110,6 +1123,8 @@ def cmd_install(_args):
     print("beacon install")
     print("==============")
     print()
+    deferred: list[str] = []
+
     print("[1/6] shell integration")
     _install_shell_source()
     print()
@@ -1123,9 +1138,14 @@ def cmd_install(_args):
     print("[4/6] iTerm2 bg-image trust pre-approval")
     ok, added = _pre_approve_iterm_paths()
     if not ok:
-        print("  ! iTerm2 is currently running. Quit iTerm2 fully (⌘Q) and re-run")
-        print("    this command to pre-approve bg-image paths. Without this,")
-        print("    iTerm2 prompts once per pool slot the first time it's used.")
+        for line in (
+            "  ! DEFERRED — iTerm2 is currently running.",
+            "    iTerm2 caches prefs in memory and overwrites the plist on quit,",
+            "    so this write must happen with iTerm2 fully exited. Without it,",
+            "    iTerm2 prompts once per pool slot the first time it's used.",
+        ):
+            print(_color("33", line))
+        deferred.append("[4/6] bg-image trust pre-approval")
     elif added:
         print(f"  ✓ added {len(added)} entries to AlwaysAllowBackgroundImage:")
         for p in added:
@@ -1134,44 +1154,78 @@ def cmd_install(_args):
         print("  ✓ all bg-image paths already pre-approved")
     print()
     print("[5/6] iTerm2 dynamic profile (status bar layout)")
-    changed, msg = install_dynamic_profile()
+    _, msg = install_dynamic_profile()
     print(f"  ✓ {msg}")
     print()
     print("[6/6] iTerm2 default profile")
     if _is_beacon_already_default():
         print("  ✓ 'beacon' is already the default profile")
     else:
-        print("  ⚠ requires iTerm2 quit (it caches prefs in memory). Set it via:")
-        print("      iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default")
-        print("    Or run: beacon set-default-profile  (orchestrates quit + relaunch)")
+        for line in (
+            "  ! DEFERRED — requires iTerm2 quit (caches prefs in memory).",
+            "    Set via: iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default",
+        ):
+            print(_color("33", line))
+        deferred.append("[6/6] default profile")
     print()
-    print("Next: exec zsh, then open a fresh iTerm2 tab.")
-    print("(If step 4 deferred, quit iTerm2 fully and re-run this command.)")
+    if deferred:
+        print(_color("1;33", "ACTION REQUIRED — deferred steps:"))
+        for s in deferred:
+            print(_color("33", f"  • {s}"))
+        print()
+        print(_color("1;33",
+            "  Run `beacon exclusive-configuration` to apply both at once."))
+        print(_color("33",
+            "  It confirms before quitting iTerm2, applies the deferred writes"))
+        print(_color("33",
+            "  while iTerm2 is dead, and relaunches it."))
+    else:
+        print("Next: exec zsh, then open a fresh iTerm2 tab.")
 
 
-def cmd_set_default_profile(args):
-    """Make beacon iTerm2's default profile. iTerm2 caches its prefs in memory
-    and overwrites the plist on quit, so we cannot write the default while it
-    is running. Two paths:
+def cmd_exclusive_configuration(args):
+    """Apply iTerm2 prefs that require iTerm2 to be fully quit. iTerm2 caches
+    prefs in memory and overwrites the plist on quit, so the writes only stick
+    when iTerm2 is not running.
 
-    - iTerm2 not running: write the pref directly, optionally relaunch.
-    - iTerm2 running: spawn a detached helper that polls for iTerm2 to fully
-      exit, writes the pref, then relaunches iTerm2. Then send `quit` via
-      AppleScript. The helper survives our process being SIGHUP'd by iTerm2.
+    Currently covers:
+      - bg-image trust (AlwaysAllowBackgroundImage array — pool slots + the
+        bg-image-clear sentinel)
+      - default profile (Default Bookmark Guid → beacon)
+
+    Two execution paths:
+      - iTerm2 not running: do the writes directly, then relaunch.
+      - iTerm2 running: spawn a detached helper that polls for iTerm2 to
+        fully exit, then re-invokes this same command (which then takes
+        the not-running path). Send `quit` via AppleScript. The detached
+        helper survives our process being SIGHUP'd by iTerm2.
     """
-    if _is_beacon_already_default() and not _is_iterm_running():
-        print("'beacon' is already the default profile")
+    needs_default = not _is_beacon_already_default()
+    missing_bg = _bg_paths_needing_approval()
+
+    if not needs_default and not missing_bg:
+        print("nothing to do — already configured")
         return
 
     if not _is_iterm_running():
-        _write_default_profile_now()
-        print("set 'beacon' as default profile")
+        ok, added = _pre_approve_iterm_paths()
+        if added:
+            print(f"pre-approved {len(added)} bg-image path(s):")
+            for p in added:
+                print(f"  {p or '(empty — bg-image clear)'}")
+        if needs_default:
+            _write_default_profile_now()
+            print("set 'beacon' as default profile")
         subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=5)
         return
 
     if not args.yes:
         print("This will quit iTerm2 (closing all windows and panes including this one)")
-        print("and relaunch it with 'beacon' as the default profile.")
+        print("and relaunch it after applying:")
+        if needs_default:
+            print("  - default profile → 'beacon'")
+        if missing_bg:
+            print(f"  - bg-image trust for {len(missing_bg)} path(s)")
         try:
             with open("/dev/tty") as tty:
                 sys.stdout.write("Continue? [y/N] ")
@@ -1183,15 +1237,14 @@ def cmd_set_default_profile(args):
             print("aborted")
             return
 
-    log_path = Path(tempfile.gettempdir()) / "beacon-set-default-profile.log"
-    # Mirrors _write_default_profile_now() in shell form. If the key or GUID
-    # ever changes, update both — the orchestrated path can't reuse the
-    # Python helper because iTerm2 has SIGHUP'd this process by then.
+    log_path = Path(tempfile.gettempdir()) / "beacon-exclusive-configuration.log"
+    self_path = Path(__file__).resolve()
+    # Re-invoke ourselves once iTerm2 is dead — single source of truth for the
+    # writes. The detached process survives our SIGHUP because of nohup +
+    # start_new_session.
     helper = (
         f"while pgrep -x iTerm2 >/dev/null; do sleep 0.5; done; "
-        f'defaults write com.googlecode.iterm2 "Default Bookmark Guid" '
-        f'-string "{BEACON_PROFILE_GUID}"; '
-        f"open -a iTerm"
+        f"python3 {shlex.quote(str(self_path))} exclusive-configuration --yes"
     )
     with open(log_path, "w") as log:
         subprocess.Popen(
@@ -1201,7 +1254,7 @@ def cmd_set_default_profile(args):
             start_new_session=True,
         )
     print(f"helper logged to {log_path}")
-    print("quitting iTerm2 — it will relaunch with the new default")
+    print("quitting iTerm2 — it will relaunch with the new configuration")
     subprocess.run(
         ["osascript", "-e", 'tell application "iTerm" to quit'],
         capture_output=True, timeout=10,
@@ -1316,8 +1369,8 @@ def main(argv=None):
 
     sub.add_parser("install", help="run all install steps (shell, completions, profile)")
 
-    sp = sub.add_parser("set-default-profile",
-                        help="orchestrate iTerm2 quit + relaunch to set 'beacon' as the default profile")
+    sp = sub.add_parser("exclusive-configuration",
+                        help="orchestrate iTerm2 quit + relaunch to apply prefs that require iTerm2 to be quit (bg-image trust, default profile)")
     sp.add_argument("--yes", "-y", action="store_true",
                     help="skip the confirmation prompt")
 
@@ -1337,7 +1390,7 @@ def main(argv=None):
         "pause": cmd_pause, "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "signal": cmd_signal, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
-        "set-default-profile": cmd_set_default_profile,
+        "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
     }

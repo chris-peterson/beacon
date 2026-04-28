@@ -24,7 +24,7 @@ Plus a third surface only during pause:
 
 The first two commands install the Claude plugin (hooks, slash command, skill, scripts). `/beacon install` then bootstraps everything around it: shell `source` line, zsh tab completion, the iTerm2 dynamic profile, `PerPaneBackgroundImage`, and post-it bg-image trust pre-approval.
 
-To make the beacon profile the default (a one-time setup), run `beacon set-default-profile` — it confirms before quitting and relaunching iTerm2 to commit the change.
+Some prefs (default profile, bg-image trust pre-approval) only stick when iTerm2 is fully quit. If `install` reports those steps as DEFERRED, run `beacon exclusive-configuration` — it confirms before quitting iTerm2, applies the writes, and relaunches.
 
 ## Stage vs status
 
