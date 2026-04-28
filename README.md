@@ -5,7 +5,7 @@ At-a-glance session awareness for Claude Code in iTerm2.
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
 - **Badge** (always on) — project name (e.g. `acme/widgets`, or `ac/auth-svc` after applying an alias) plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
-- **Status bar** (in the beacon profile) — a fixed-layout strip grouped as remote-context on the left and local-context on the right: `project_url · ↗ · branch │ cwd · code · {}`. The branch chip is colored by remote-relative state (green when synced, orange when ahead/behind, with `↑N↓M` indicators inline). The `↗` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `code` button opens the cwd in VS Code; the `{}` button copies a JSON block of the session state to the clipboard for sharing.
+- **Status bar** (in the beacon profile) — a symmetrical strip with remote-context flush left, branch centered, and local-context flush right: `↖ web · project │ branch ⎘ │ cwd · ↗ code`. The branch chip is colored by remote-relative state (green when synced, orange when ahead/behind, with `↑N↓M` indicators inline). The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `⎘` button copies the bare branch name to the clipboard; the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
 
@@ -57,7 +57,7 @@ beacon <TAB>        # twelve+ subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, red when it stops waiting on you
-- stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show` and the `export` JSON
+- stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
 - `/beacon pause "checking lunch options"` paints a yellow post-it (and the badge goes red); sending the next prompt clears both
 
 ## Usage
@@ -75,7 +75,6 @@ Then run `claude` in that tab and type any prompt:
 /beacon alias acmecorp ac                  # shorten a project segment
 /beacon alias                              # list aliases
 /beacon alias clear acmecorp               # remove one
-/beacon copy-status                        # print shareable session block
 ```
 
 ### Shell command (outside Claude Code)

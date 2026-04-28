@@ -825,7 +825,6 @@ def apply(state: dict):
 
     prev = read_state_json("resolved", {})
     prev_status = prev.get("status")
-    prev_stage = prev.get("stage")
     prev_paused = prev.get("paused", False)
     prev_note_image = prev.get("note_image")
 
@@ -836,26 +835,14 @@ def apply(state: dict):
         _cli("badge-format", BADGE_FORMAT)
 
     # Badge color reflects status (BADGE-09). Recompute on any change to
-    # status or paused flag.
+    # status or paused flag. Tab color mirrors badge color (TAB-01) — same
+    # logical state, painted on a second surface so a glance at the tab strip
+    # carries the traffic-light without focusing each pane.
     badge_hex = _badge_color_for(state)
     prev_badge_hex = prev.get("badge_color", "")
     if prev_badge_hex != badge_hex:
         _cli("badge-color", badge_hex)
-
-    # Publish stage/status user vars even though no chip displays them — the
-    # `export` button's interpolated JSON references them. Empty strings would
-    # unset the iTerm var, breaking non-nullable interpolation contexts.
-    if prev_stage != state["stage"]:
-        _cli("uservar", "beacon_stage", state["stage"])
-    if prev_status != s:
-        _cli("uservar", "beacon_status", s)
-
-    # Claude session id — included in the export JSON so a colleague can
-    # `claude --resume <id>` to pick up the conversation. Captured by cmd_hook.
-    claude_sid = read_state("claude_session_id") or ""
-    prev_claude_sid = prev.get("claude_session_id", "")
-    if prev_claude_sid != claude_sid:
-        _cli("uservar", "beacon_claude_session", claude_sid)
+        _cli("tab-color", badge_hex)
 
     # Background image: only for the post-it overlay.
     note_image = state.get("note_image")
@@ -876,7 +863,6 @@ def apply(state: dict):
         "status": s, "status_provider": state["status_provider"],
         "paused": state["paused"],
         "note_image": note_image,
-        "claude_session_id": claude_sid,
         "badge_color": badge_hex,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
@@ -1169,12 +1155,14 @@ def cmd_install(_args):
         deferred.append("[6/6] default profile")
     print()
     if deferred:
-        print(_color("1;33", "ACTION REQUIRED — deferred steps:"))
+        label = "deferred step" if len(deferred) == 1 else "deferred steps"
+        print(_color("1;33", f"ACTION REQUIRED — {label}:"))
         for s in deferred:
             print(_color("33", f"  • {s}"))
         print()
+        tail = "it" if len(deferred) == 1 else "all of them at once"
         print(_color("1;33",
-            "  Run `beacon exclusive-configuration` to apply both at once."))
+            f"  Run `beacon exclusive-configuration` to apply {tail}."))
         print(_color("33",
             "  It confirms before quitting iTerm2, applies the deferred writes"))
         print(_color("33",

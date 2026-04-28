@@ -5,7 +5,7 @@ At-a-glance session awareness for Claude Code in iTerm2.
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
 - **Badge** (always on) — project name plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge stays readable in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
-- **Status bar** (in the beacon profile) — a fixed-layout strip: `↗ project_url · branch · cwd · code · export`. The `↗` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `code` button opens the cwd in VS Code; the `export` button copies a JSON block of session state to the clipboard.
+- **Status bar** (in the beacon profile) — a fixed-layout strip: `↖ web · project · branch · ⎘ · cwd · ↗ code`. The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `⎘` button copies the bare branch name to the clipboard; the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
 
@@ -34,7 +34,7 @@ Some prefs (default profile, bg-image trust pre-approval) only stick when iTerm2
 | Pace | Minutes-to-hours | Sub-second-to-seconds |
 | Driven by | Skill (`plan`, `review`) + hooks (`dev`, `shipping`) + override | Hooks (`working`, `waiting`) + override |
 
-Status drives the badge color; stage rides along in the export JSON for cross-session handoff.
+Status drives the badge color; stage shows up in `beacon show` for cross-session handoff.
 
 ## Usage
 

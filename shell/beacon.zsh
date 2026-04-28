@@ -102,14 +102,15 @@ _beacon_project_name() {
   print -r -- "${root:t}"
 }
 
-# Outputs three lines: display, state, indicator.
+# Outputs four lines: display, state, indicator, name.
 #   display   — branch name with optional ahead/behind indicators (e.g. "main ↑3↓1")
 #   state     — "clean" when synced or no upstream; "diverged" when ahead/behind
 #   indicator — "" | "↑N" | "↓N" | "↑N↓M"
-# All three empty when not in a git repo.
+#   name      — bare branch name (no indicators), suitable for `git checkout`
+# All four empty when not in a git repo.
 _beacon_branch_info() {
   local name
-  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n'; return }
+  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n\n'; return }
   local state="clean" ind="" counts ahead behind
   # No-upstream is treated as clean — there's nothing to diverge from until you push.
   if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 \
@@ -127,6 +128,7 @@ _beacon_branch_info() {
   print -r -- "$display"
   print -r -- "$state"
   print -r -- "$ind"
+  print -r -- "$name"
 }
 
 # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
@@ -179,6 +181,7 @@ _beacon_resolve_url() {
 typeset -g _BEACON_LAST_PROJECT='__unset__'
 typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
+typeset -g _BEACON_LAST_BRANCH_NAME='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
 typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
@@ -210,7 +213,7 @@ _beacon_precmd() {
 
   local -a binfo
   binfo=("${(@f)$(_beacon_branch_info)}")
-  local b="${binfo[1]}" bstate="${binfo[2]}"
+  local b="${binfo[1]}" bstate="${binfo[2]}" bname="${binfo[4]}"
   local b_clean="" b_diverged=""
   [[ "$bstate" == "clean"    ]] && b_clean="$b"
   [[ "$bstate" == "diverged" ]] && b_diverged="$b"
@@ -218,6 +221,10 @@ _beacon_precmd() {
   if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch "$b"
     _BEACON_LAST_BRANCH="$b"
+  fi
+  if [[ "$bname" != "$_BEACON_LAST_BRANCH_NAME" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_name "$bname"
+    _BEACON_LAST_BRANCH_NAME="$bname"
   fi
   if [[ "$bstate" != "$_BEACON_LAST_BRANCH_STATE" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch_state "$bstate"
@@ -258,6 +265,7 @@ _beacon_chpwd() {
   _BEACON_LAST_PROJECT='__unset__'
   _BEACON_LAST_PROJECT_FULL='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
+  _BEACON_LAST_BRANCH_NAME='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'
   _BEACON_LAST_BRANCH_CLEAN='__unset__'
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'

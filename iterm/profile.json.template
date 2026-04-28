@@ -18,6 +18,39 @@
         },
         "components": [
           {
+            "class": "iTermStatusBarActionComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 80,
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.4,
+                  "Green Component": 0.7,
+                  "Blue Component": 1.0,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                },
+                "action": {
+                  "applyMode": 0,
+                  "escaping": 1,
+                  "title": "↖ web",
+                  "parameter": "url=$(cat \"$HOME/.claude/plugins/data/beacon/cache/url-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$url\" ] && open \"$url\"",
+                  "action": 35,
+                  "version": 2
+                }
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "Menlo-Regular 18",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
@@ -28,9 +61,9 @@
                 "maxwidth": 360,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.4,
-                  "Green Component": 0.7,
-                  "Blue Component": 1.0,
+                  "Red Component": 0.5,
+                  "Green Component": 0.65,
+                  "Blue Component": 0.8,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -44,34 +77,17 @@
             }
           },
           {
-            "class": "iTermStatusBarActionComponent",
+            "class": "iTermStatusBarSpringComponent",
             "configuration": {
               "knobs": {
                 "base: priority": 5,
                 "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 60,
-                "shared font": "",
-                "shared text color": {
-                  "Red Component": 0.4,
-                  "Green Component": 0.7,
-                  "Blue Component": 1.0,
-                  "Color Space": "sRGB",
-                  "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "↗",
-                  "parameter": "url=$(cat \"$HOME/.claude/plugins/data/beacon/cache/url-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$url\" ] && open \"$url\"",
-                  "action": 35,
-                  "version": 2
-                }
+                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
+                "iTermStatusBarSpringComponentSizeMultipleKey": 1
               },
               "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "Menlo-Regular 18",
                 "algorithm": 1,
+                "remove empty components": false,
                 "auto-rainbow style": 0
               }
             }
@@ -129,6 +145,39 @@
             }
           },
           {
+            "class": "iTermStatusBarActionComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 40,
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.7,
+                  "Green Component": 0.7,
+                  "Blue Component": 0.7,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                },
+                "action": {
+                  "applyMode": 0,
+                  "escaping": 1,
+                  "title": "⎘",
+                  "parameter": "\\(user.beacon_branch_name?)",
+                  "action": 72,
+                  "version": 2
+                }
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "Menlo-Regular 18",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
             "class": "iTermStatusBarSpringComponent",
             "configuration": {
               "knobs": {
@@ -153,32 +202,13 @@
                 "base: compression resistance": 1,
                 "minwidth": "0",
                 "maxwidth": 360,
-                "shared font": ""
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "Menlo-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarActionComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 80,
                 "shared font": "",
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "code",
-                  "parameter": "cwd=$(cat \"$HOME/.claude/plugins/data/beacon/cache/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
-                  "action": 35,
-                  "version": 2
+                "shared text color": {
+                  "Red Component": 0.6,
+                  "Green Component": 0.45,
+                  "Blue Component": 0.7,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
                 }
               },
               "layout advanced configuration dictionary value": {
@@ -196,14 +226,21 @@
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 60,
+                "maxwidth": 90,
                 "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.85,
+                  "Green Component": 0.55,
+                  "Blue Component": 1.0,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                },
                 "action": {
                   "applyMode": 0,
                   "escaping": 1,
-                  "title": "{}",
-                  "parameter": "{\"project\":\"\\(user.beacon_project_full?)\",\"branch\":\"\\(user.beacon_branch?)\",\"stage\":\"\\(user.beacon_stage?)\",\"status\":\"\\(user.beacon_status?)\",\"url\":\"\\(user.beacon_url?)\",\"cwd\":\"\\(user.beacon_local_path?)\",\"claude\":\"\\(user.beacon_claude_session?)\"}",
-                  "action": 72,
+                  "title": "↗ code",
+                  "parameter": "cwd=$(cat \"$HOME/.claude/plugins/data/beacon/cache/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
+                  "action": 35,
                   "version": 2
                 }
               },

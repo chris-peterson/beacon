@@ -250,8 +250,6 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **CMD-09.** When the user invokes `completions zsh`, the plugin shall write the completion script to `~/.zsh/completions/_beacon` and ensure `fpath` is configured before `compinit` in `.zshrc`. With `--print`, the plugin shall print the script to stdout instead of installing.
 
-**CMD-10.** When the user invokes `copy-status`, the plugin shall print the formatted shareable state block (see SHARE-01) to stdout. The status-bar copy action (STATUS-BAR-07) pipes that output through `pbcopy`.
-
 **CMD-11.** When the user invokes `beacon alias <full> <short>`, `beacon alias` (no args), or `beacon alias clear [<full>]`, the plugin shall apply ALIAS-03..05 and re-render so any in-flight session picks up the new alias table.
 
 **CMD-12.** When the user invokes `exclusive-configuration`, the plugin shall apply iTerm2 prefs that require iTerm2 to be fully quit (because iTerm2 caches prefs in memory and overwrites the plist on quit). The covered prefs are:
@@ -278,12 +276,11 @@ The first deliverable adapter targets iTerm2 on macOS with zsh. Section 4 collec
 
 ### 4.1 Pane anatomy
 
-beacon writes to **exactly three areas** of an iTerm2 pane. Every other surface is owned by Claude Code, the user's profile, or other tools, and beacon shall not touch them:
+beacon writes to **exactly four surfaces** of an iTerm2 window. Every other surface is owned by Claude Code, the user's profile, or other tools, and beacon shall not touch them:
 
 ```text
-┌─────────────────────────────────────────────────┐
-│ STATUS BAR  ↗ project_url · branch · cwd · code │ ← §4.4 fixed layout, neutral color
-│                                       · export  │
+┌─[ tab ]─────────────────────────────────────────┐ ← §4.7 tab color
+│ STATUS BAR  ↖ web · project   branch ⎘   cwd ↗  │ ← §4.4 fixed layout, two springs
 ├─────────────────────────────────────────────────┤
 │                                       ┌────────┐│
 │   pane content (terminal output)      │ project││ ← §4.3 badge
@@ -302,8 +299,9 @@ beacon writes to **exactly three areas** of an iTerm2 pane. Every other surface 
 | Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color | OSC `SetBadgeFormat` + `SetUserVar` + `SetColors=badge=` |
 | Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + cross-session actions (`go`, `code`, `export`) | Dynamic profile + `SetUserVar` + Action component |
 | Background image | §4.5 | `OVERLAY` | Post-it overlay during pause | OSC `SetBackgroundImageFile` |
+| Tab color | §4.8 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | OSC `SetColors=tab=` |
 
-beacon shall **not** write to: tab color, terminal background color, terminal foreground color, window title, tab title, cursor color/shape. These are Claude Code's domain (window title) or the user's profile (terminal colors, cursor). The badge is the only signal-coloring surface beacon paints — it's scoped to one corner of the pane and visible in Mission Control where chips are too small to read.
+beacon shall **not** write to: terminal background color, terminal foreground color, window title, tab title, cursor color/shape. These are Claude Code's domain (window title) or the user's profile (terminal colors, cursor). Badge and tab color are the only signal-coloring surfaces beacon paints — both carry the same logical traffic-light state on different scopes (badge is per-pane, visible inside the pane and in Mission Control; tab color is per-tab, visible in the tab strip when many tabs are open).
 
 ### 4.2 CLI: `beacon-iterm` (CLI)
 
@@ -321,13 +319,15 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-06.** When invoked as `beacon-iterm badge-format <template>`, the CLI shall set the per-session badge format via `OSC 1337 SetBadgeFormat=<base64(template)>`. The template may reference user variables as `\(user.foo)`; iTerm2 re-evaluates the template whenever any referenced variable changes.
 
-**CLI-07.** When invoked as `beacon-iterm clear`, the CLI shall reset the surfaces it controls — badge color to default and bg image to empty.
+**CLI-07.** When invoked as `beacon-iterm clear`, the CLI shall reset the surfaces it controls — badge color to default, tab color to default, and bg image to empty.
 
 **CLI-08.** Re-invoking the CLI with the same arguments shall produce the same iTerm2 effect (idempotent).
 
 **CLI-09.** The CLI shall require no environment variables to operate. It shall exit non-zero with a clear error message on invalid arguments and shall not silently fail.
 
 **CLI-10.** When invoked as `beacon-iterm badge-color <hex|default>`, the CLI shall set the per-session badge color via `OSC 1337 SetColors=badge=<hex>` (or `=default` to revert). The hex is 6 digits without a leading `#`.
+
+**CLI-11.** When invoked as `beacon-iterm tab-color <hex|default>`, the CLI shall set the per-tab color via `OSC 1337 SetColors=tab=<hex>` (or `=default` to revert). The hex is 6 digits without a leading `#`. iTerm2 binds tab color to the tab containing the calling session; in multi-pane tabs the most-recent painter wins, which the user is expected to manage via a tabs-not-panes workflow (one Claude session per tab).
 
 ### 4.3 Badge area (BADGE)
 
@@ -381,7 +381,7 @@ The mapping `state → hex` lives in implementation, not this spec, so the palet
 
 ### 4.4 Status bar area (STATUS-BAR)
 
-The status bar carries **a fixed-layout strip of values and actions** that complement the badge: full project URL (cmd+click target), branch, local cwd, plus action buttons to navigate (`go`), open the cwd in an editor (`code`), and export the session state (`export`). It is delivered via a beacon-managed dynamic profile that the user opts into.
+The status bar carries **a fixed-layout strip of values and actions** that complement the badge: full project URL (identification), branch, local cwd, plus action buttons to navigate (`↖ web`), open the cwd in an editor (`↗ code`), and copy the bare branch name to the clipboard (`⎘`). It is delivered via a beacon-managed dynamic profile that the user opts into.
 
 Layout is fixed (no dynamic show/hide based on values). Chip text is rendered in the profile's default text color — kind-based per-chip palettes were tried and dropped because, with positions fixed, the colors became decorative rather than informative. Value-based coloring (e.g. status chip turns red when waiting) requires a custom Python component and is out of scope; the badge color (BADGE-09) covers the same need.
 
@@ -419,18 +419,21 @@ The `install` command shall **not** make the beacon profile iTerm2's default aut
 1. The manual click path: *iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default*.
 2. A pointer to the dedicated subcommand `beacon exclusive-configuration` (CMD-12) which orchestrates the quit + relaunch.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right. The sequence is grouped into a **remote-context cluster** (project / URL / branch) on the left and a **local-context cluster** (cwd / code) on the right, separated by a spring so a glance can land on the side that matches the question being asked.
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right. The sequence places the **remote-context cluster** (web / project) flush left, the **branch** (with adjacent copy button) centered, and the **local-context cluster** (cwd / code) flush right — two springs (one on each side of the branch) produce a symmetrical layout where a glance can land on the side that matches the question being asked.
 
-1. **Full project path** — `\(user.beacon_project_full)` (e.g. `git.example/acme/widgets`); cmd+click target. Leads the bar so the most identifying value reads first; the URL action button sits adjacent.
-2. **`go` action button** — `iTermStatusBarActionComponent` titled `↗` (open-external glyph). Reads the per-session URL file written by the shell snippet and runs `open <url>`.
-3. **Branch (synced)** — `\(user.beacon_branch_clean)`, rendered with a clean-state text color (green). Empty (and thus collapsed) when the branch is diverged from upstream.
-4. **Branch (diverged)** — `\(user.beacon_branch_diverged)`, rendered with a diverged-state text color (orange). Empty when synced. The two branch chips are mutually exclusive — exactly one renders when in a git repo, neither when outside one. The text includes ahead/behind indicators (e.g. `main ↑3`, `feature ↓1`, `main ↑3↓1`) per STATUS-BAR-05.
-5. **Spring** — `iTermStatusBarSpringComponent`, separates the remote cluster from the local cluster and pushes the local items to the right edge.
-6. **Local path** — `\(user.beacon_local_path)` (`$HOME` substituted as `~`).
-7. **`code` action button** — `iTermStatusBarActionComponent` titled `code`. Reads the per-session cwd file and runs `code <cwd>` to open the directory in VS Code. Sits adjacent to the local-path chip.
-8. **`{}` action button** — `iTermStatusBarActionComponent` titled `{}` (JSON glyph; previously labeled `export`). Copies a one-line JSON object containing all signal values to the macOS pasteboard via action enum `72` ("Copy to Pasteboard").
+Action chips use the same color as the data chip they act on (link-blue for `↖ web` paired with the project path, magenta for `↗ code` paired with the local path) so each CTA visually ties to its target. Data chips are rendered in a *dimmer* version of the action color so the bright action chip reads as the active control and the dimmer label reads as its target.
 
-The chip sequence is **fixed** — chips are not hidden when their underlying value is empty, with the lone exception of the mutually-exclusive branch pair (which relies on `remove empty components` to collapse the inactive half cleanly).
+1. **`web` action button** — `iTermStatusBarActionComponent` titled `↖ web` (up-and-to-the-left glyph + label, evoking "leave this pane and follow the link"), rendered in link-blue. Always visible — when no URL has been resolved for the session, clicking is a silent no-op rather than hiding the chip, because iTerm2 status bar action components don't honor `remove empty components` and we tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, and (c) OSC 8 hyperlinks embedded in chip values, none of which produce clean visibility toggling. A persistent labeled chip + no-op-when-empty behavior is the least-bad option. The action reads the per-session URL file written by the shell snippet and runs `open <url>` if non-empty.
+2. **Full project path** — `\(user.beacon_project_full)` (e.g. `git.example/acme/widgets`). Rendered in dimmer link-blue (matching the adjacent `↖ web` action color, but desaturated so it reads as the action's target). Identification-only — not clickable (cmd+click on iTerm2 status bar chips does not work; URL navigation is delegated to the adjacent `↖ web` chip).
+3. **Spring (left)** — `iTermStatusBarSpringComponent`, pushes the remote cluster to the left edge and lets the branch float toward center.
+4. **Branch (synced)** — `\(user.beacon_branch_clean)`, rendered with a clean-state text color (green). Empty (and thus collapsed) when the branch is diverged from upstream.
+5. **Branch (diverged)** — `\(user.beacon_branch_diverged)`, rendered with a diverged-state text color (orange). Empty when synced. The two branch chips are mutually exclusive — exactly one renders when in a git repo, neither when outside one. The text includes ahead/behind indicators (e.g. `main ↑3`, `feature ↓1`, `main ↑3↓1`) per STATUS-BAR-05.
+6. **`copy-branch` action button** — `iTermStatusBarActionComponent` titled `⎘` (clipboard glyph). Copies `\(user.beacon_branch_name?)` (the bare branch name, no ahead/behind indicators) to the macOS pasteboard via action enum `72` ("Copy to Pasteboard"). Always visible adjacent to the branch chips so a quick `git checkout`/chat paste is one click away; copies an empty string and is a silent no-op outside a git repo. Rendered in a neutral light-gray rather than green/orange so it stays visually distinct from the value-state-colored branch text on either side of it.
+7. **Spring (right)** — `iTermStatusBarSpringComponent`, pushes the local cluster to the right edge.
+8. **Local path** — `\(user.beacon_local_path)` (`$HOME` substituted as `~`). Rendered in dimmer magenta (matching the adjacent `↗ code` action color, but desaturated so it reads as the action's target).
+9. **`code` action button** — `iTermStatusBarActionComponent` titled `↗ code` (up-and-to-the-right glyph + label, evoking "open this directory in another window"), rendered in magenta. Reads the per-session cwd file and runs `code <cwd>` to open the directory in VS Code. Sits adjacent to the local-path chip. Color differentiates it from the blue `↖ web` chip so the two action buttons are visually distinct at a glance.
+
+The chip sequence is **fixed** in position. The only chips that collapse via `remove empty components` are the mutually-exclusive branch-clean / branch-diverged pair (whichever doesn't match current state). All action chips remain visible regardless of underlying state — see chip 1 above for why hiding action chips conditionally proved infeasible in iTerm2.
 
 **STATUS-BAR-03.** Two component classes are used:
 
@@ -441,14 +444,16 @@ The chip sequence is **fixed** — chips are not hidden when their underlying va
   {
     "applyMode": 0,
     "escaping": 1,
-    "title": "<short label, e.g. '↗', 'code', 'export'>",
+    "title": "<short label, e.g. '↖ web', '↗ code', '⎘'>",
     "parameter": "<command or interpolated value>",
     "action": <enum>,
     "version": 2
   }
   ```
 
-  Action enum `72` = "Copy to Pasteboard" (used by `{}`). Action enum `35` runs the parameter as a shell coprocess command (used by `↗` and `code`); these read per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) because coprocess actions do not interpolate `\(user.*)` reliably. Coprocess commands run under the iTerm2 process's `/bin/sh`, which does not inherit the user's interactive `PATH`; the `code` parameter therefore prepends `/opt/homebrew/bin:/usr/local/bin` to `PATH` so the editor binary resolves on both Apple-Silicon and Intel macOS without sourcing the user's shell rc files.
+  Action enum `35` runs the parameter as a shell coprocess command (used by `↖ web` and `↗ code`); these read per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) because coprocess actions do not interpolate `\(user.*)` reliably. Coprocess commands run under the iTerm2 process's `/bin/sh`, which does not inherit the user's interactive `PATH`; the `code` parameter therefore prepends `/opt/homebrew/bin:/usr/local/bin` to `PATH` so the editor binary resolves on both Apple-Silicon and Intel macOS without sourcing the user's shell rc files.
+
+  Action enum `72` ("Copy to Pasteboard") is used by the `⎘` copy-branch chip; its parameter is the interpolated `\(user.beacon_branch_name?)` value. Copy-to-pasteboard *does* interpolate user vars, so this chip reads directly from the published var rather than via a per-session file.
 
 The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF Mono 22` (monospace, sized to read clearly across many panes), `auto-rainbow style: 0`. (Schema verified empirically against iTerm2 3.6.x.)
 
@@ -456,7 +461,8 @@ The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF 
 
 **STATUS-BAR-05.** When the shell prompt redraws, the integration shall publish these additional user vars (beyond the badge-side `beacon_project`):
 - `beacon_project_full` — full git remote URL (e.g. `git.example/acme/widgets`); empty when not in a recognized project
-- `beacon_branch` — current git branch with optional ahead/behind indicators (`↑N`, `↓N`, or `↑N↓M`) appended; empty when not in a repo. This is the canonical branch text and feeds the `{}` export JSON.
+- `beacon_branch` — current git branch with optional ahead/behind indicators (`↑N`, `↓N`, or `↑N↓M`) appended; empty when not in a repo. This is the canonical branch text.
+- `beacon_branch_name` — the bare branch name (no indicators), suitable for direct paste into `git checkout` etc.; empty when not in a repo. Drives the `⎘` copy-branch chip's parameter.
 - `beacon_branch_state` — `clean` when synced or no upstream is set, `diverged` when ahead and/or behind upstream, empty when not in a repo
 - `beacon_branch_clean` — equals `beacon_branch` when state is `clean`, else empty (drives the green branch chip)
 - `beacon_branch_diverged` — equals `beacon_branch` when state is `diverged`, else empty (drives the orange branch chip)
@@ -465,13 +471,9 @@ The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF 
 
 The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` pair is published from the shell rather than evaluated as a SwiftyString conditional in the profile, because iTerm2's interpolation grammar does not reliably support comparison expressions on user vars across versions; pre-resolving in the shell keeps the profile portable.
 
-The shell shall additionally write two per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/` for the `↗` and `code` action buttons to read. (Coprocess actions cannot interpolate user vars, hence the file-based handoff.)
+The shell shall additionally write two per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/` for the `↖ web` and `↗ code` action buttons to read. (Coprocess actions cannot interpolate user vars, hence the file-based handoff.)
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
-
-**STATUS-BAR-07.** When the user clicks the `export` button, the action shall copy a shareable JSON block containing the resolved session state (project, branch, stage, status, url, cwd, claude session id) to the macOS clipboard, formatted so a colleague reading it in chat understands what context the original user was in. (Format details — see SHARE namespace.)
-
-**STATUS-BAR-08.** The action button parameters use `\(user.beacon_*?)` (nullable) so clicks never error on undefined values. `beacon_stage`, `beacon_status`, and `beacon_claude_session` are still published by the plugin — though no chip displays them, the `export` button's interpolated JSON references them.
 
 ### 4.5 Background image area (OVERLAY)
 
@@ -516,19 +518,19 @@ These requirements describe **when** the plugin invokes the CLI and **with what*
 
 **RENDER-03.** The plugin shall write a snapshot of the last-rendered resolved state including provenance, for debugging.
 
-**RENDER-04.** On every render, the plugin shall ensure that `user.beacon_stage` and `user.beacon_status` reflect the current resolved state. The plugin may skip a `beacon-iterm uservar` invocation when the value is unchanged from the prior render's snapshot.
+**RENDER-04.** The plugin shall invoke `beacon-iterm bg-image` only when entering or leaving the paused state — never for `idle` / `working` / `waiting` transitions.
 
-**RENDER-05.** The plugin shall invoke `beacon-iterm bg-image` only when entering or leaving the paused state — never for `idle` / `working` / `waiting` transitions.
+### 4.7 Tab color (TAB)
 
-### 4.7 Cross-session sharing (SHARE)
+The tab color is the second signal-coloring surface beacon paints, mirroring the badge's traffic-light state on the iTerm2 tab strip. Where the badge answers "what's this pane doing?" from inside the pane, the tab color answers the same question from a tab-strip-only glance — useful when many tabs are open and the badge is offscreen.
 
-The copy-status-bar feature (STATUS-BAR-07) packages the resolved session state for human-to-human handoff. A colleague reading the copied token in Slack should understand "where" the originator was working. v1 ships the copy direction only; structured import is deferred.
+Tab color is *complementary* to the badge, not redundant: the badge is per-pane and visible inside the pane (and in Mission Control); tab color is per-tab and visible only in the tab strip. The two together cover both glance-modes (focused window with many tabs, vs. zoomed-out Mission Control across many windows). They share the same logical state (`ready` / `busy` / `blocked`) and hex palette so there is no second source of truth to keep in sync.
 
-**SHARE-01.** The `beacon copy-status` command shall format the resolved session state as a multi-line block suitable for direct paste into chat or commit messages. The block shall include: project (full + namespace/repo forms), branch, stage, status, local path (abbreviated), session id, and the pause note if paused.
+**TAB-01.** The plugin shall set the tab color via `beacon-iterm tab-color` (CLI-11) on every status change, mirroring the same logical color state used by BADGE-09 (`ready` / `busy` / `blocked` → palette hex). The same call site that emits `badge-color` shall emit `tab-color` with the same value, so the two surfaces never diverge.
 
-**SHARE-02.** The copy action chip in the status bar (STATUS-BAR-07) shall invoke `beacon copy-status` and place the resulting block on the macOS clipboard via `pbcopy`. No additional confirmation or UI shall be required.
+**TAB-02.** When the resolved session is cleared (CMD-06 reset, or `beacon-iterm clear`), the tab color shall revert to `default` so the user's profile colors take over again.
 
-**SHARE-03.** *(deferred)* `beacon paste-status <token>` for structured import (set overrides matching the originator's state). Captured as a future feature.
+**TAB-03.** beacon shall not infer or guarantee the per-pane semantics of tab color — iTerm2 binds tab color to the *tab*, not the pane, so multi-pane tabs will show the most-recent painter. The intended workflow is one Claude session per tab; users who split panes within a tab accept that the tab color reflects whichever pane painted last. This is a workflow constraint, not a bug to engineer around.
 
 ---
 
@@ -689,10 +691,7 @@ apply(state):
     beacon-iterm badge-format <template>
   if status changed:
     beacon-iterm badge-color <hex>     # logical state → palette → hex
-  if stage changed:
-    beacon-iterm uservar beacon_stage  <stage>
-  if status changed:
-    beacon-iterm uservar beacon_status <status>
+    beacon-iterm tab-color   <hex>     # mirrors badge color (TAB-01)
   if paused with note and note image is new:
     beacon-iterm bg-image <path>
   elif resuming from pause:

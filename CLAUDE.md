@@ -31,8 +31,9 @@ Per docs/spec.md §4.1 — these and only these:
 - **Badge** — text (project) + color (status-driven traffic light: ready / busy / blocked)
 - **Status bar** — the beacon dynamic profile only (never the user's profile)
 - **Background image** — only during pause, for the post-it overlay
+- **Tab color** — mirrors the badge color (same logical state) on the tab strip; intended for tabs-not-panes workflows
 
-beacon does **not** paint: terminal bg/fg, tab color, window title, cursor color/shape. These belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice.
+beacon does **not** paint: terminal bg/fg, window title, tab title, cursor color/shape. These belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice.
 
 ## Logical states are the contract
 
