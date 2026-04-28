@@ -36,7 +36,7 @@ printf '\e]1337;SetBackgroundImageFile=\a'
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)' | base64)"
 
-# Project markers (mirrors PROV-05 in DESIGN.md).
+# Project markers (mirrors PROV-05 in SPEC.md).
 typeset -gra _BEACON_MARKERS=(
   .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile
 )

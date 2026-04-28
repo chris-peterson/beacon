@@ -1,4 +1,4 @@
-# beacon — Design Document
+# beacon — Specification
 
 At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and lifecycle state (what stage, what status) on a render target the user can scan without focusing — terminal background, badge, color, dock.
 
@@ -92,7 +92,7 @@ beacon ships as three discrete deliverables. Section 3 organizes requirements ar
 
 | ID  | Deliverable | Form | Owns |
 |:---|:---|:---|:---|
-| **D1** | This specification | `DESIGN.md` in the repo root | Requirements, architecture, scope. |
+| **D1** | This specification | `SPEC.md` in the repo root | Requirements, architecture, scope. |
 | **D2** | `beacon-iterm` CLI | A standalone executable on `$PATH` | Translating subcommands into iTerm2 escape sequences. Stateless; no Claude awareness. |
 | **D3** | `beacon` Claude Code plugin | A plugin tree (hooks, skill, command, scripts, shell snippet, profile installer) | Hook handlers, COR resolver, slash command, skill, shell integration, profile installation. Calls D2 for every iTerm2 surface change. |
 
@@ -714,7 +714,7 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 
 ```
 beacon/
-├── DESIGN.md
+├── SPEC.md
 ├── README.md
 ├── bin/
 │   ├── beacon-iterm                # D2 — CLI executable

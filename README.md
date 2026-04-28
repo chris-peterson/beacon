@@ -141,11 +141,11 @@ This wires up the shell side just like `/beacon install`, but pointed at your cl
 
 ## Design
 
-Requirements (EARS) and architecture in [DESIGN.md](DESIGN.md). beacon ships as three deliverables:
+Requirements (EARS) and architecture in [SPEC.md](SPEC.md). beacon ships as three deliverables:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | This specification | `DESIGN.md` |
+| D1 | This specification | `SPEC.md` |
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 
