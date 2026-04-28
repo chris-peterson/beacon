@@ -1,0 +1,2 @@
+- [Home](/)
+- [Specification](/spec)

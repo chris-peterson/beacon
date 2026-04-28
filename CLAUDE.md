@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Notes for AI coding agents working on beacon. Behavioral spec is [SPEC.md](./SPEC.md); user-facing docs are [README.md](./README.md). When the spec and the code disagree, ask — don't silently choose one.
+Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](./docs/spec.md); user-facing docs are [README.md](./README.md). When the spec and the code disagree, ask — don't silently choose one.
 
 ## What beacon is
 
@@ -26,7 +26,7 @@ The CLI must remain unaware of Claude — it's usable from CI, ad-hoc terminal s
 
 ## Surfaces beacon paints
 
-Per SPEC.md §4.1 — these and only these:
+Per docs/spec.md §4.1 — these and only these:
 
 - **Badge** — text (project) + color (status-driven traffic light: ready / busy / blocked)
 - **Status bar** — the beacon dynamic profile only (never the user's profile)

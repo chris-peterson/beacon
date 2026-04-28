@@ -92,7 +92,7 @@ beacon ships as three discrete deliverables. Section 3 organizes requirements ar
 
 | ID  | Deliverable | Form | Owns |
 |:---|:---|:---|:---|
-| **D1** | This specification | `SPEC.md` in the repo root | Requirements, architecture, scope. |
+| **D1** | This specification | `docs/spec.md`, served via the docsify site | Requirements, architecture, scope. |
 | **D2** | `beacon-iterm` CLI | A standalone executable on `$PATH` | Translating subcommands into iTerm2 escape sequences. Stateless; no Claude awareness. |
 | **D3** | `beacon` Claude Code plugin | A plugin tree (hooks, skill, command, scripts, shell snippet, profile installer) | Hook handlers, COR resolver, slash command, skill, shell integration, profile installation. Calls D2 for every iTerm2 surface change. |
 
@@ -714,8 +714,15 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 
 ```
 beacon/
-├── SPEC.md
 ├── README.md
+├── AGENTS.md
+├── CLAUDE.md
+├── docs/
+│   ├── spec.md                     # D1 — behavioral specification
+│   ├── README.md                   # docsify landing page
+│   ├── _sidebar.md
+│   ├── index.html
+│   └── favicon.svg
 ├── bin/
 │   ├── beacon-iterm                # D2 — CLI executable
 │   └── _compose.py                 # post-it Pillow composition library
