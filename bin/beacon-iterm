@@ -27,13 +27,60 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 _TTY = None
 
 
+def _ancestor_tty() -> str | None:
+    """Walk up the process tree to find an ancestor with a controlling
+    terminal (a /dev/ttys* device on macOS). Used as a fallback when
+    `/dev/tty` fails — happens when invoked from a subprocess detached
+    from its ctty (e.g., Claude Code's Bash tool spawns subprocesses
+    with `setsid`, so `TT=??` and `/dev/tty` returns ENXIO). Writing
+    OSC to the ancestor's pty reaches iTerm2 directly.
+
+    FUTURE: the iTerm2 Python API (websocket) is a more robust transport
+    and would unlock interactive surfaces (clickable status bar, menus,
+    keyboard shortcuts). Larger refactor — tracked separately.
+    """
+    pid = os.getpid()
+    for _ in range(32):
+        try:
+            r = subprocess.run(
+                ["ps", "-o", "tt=,ppid=", "-p", str(pid)],
+                capture_output=True, text=True, timeout=2,
+            )
+        except Exception:
+            return None
+        if r.returncode != 0:
+            return None
+        parts = r.stdout.split()
+        if len(parts) < 2:
+            return None
+        tt, ppid = parts[0], parts[1]
+        if tt and tt != "??":
+            path = f"/dev/tty{tt}"
+            if Path(path).exists():
+                return path
+        try:
+            pid = int(ppid)
+        except ValueError:
+            return None
+        if pid <= 1:
+            return None
+    return None
+
+
 def _tty():
     global _TTY
     if _TTY is None:
         try:
             _TTY = open("/dev/tty", "w")
         except OSError:
-            _TTY = sys.stdout
+            path = _ancestor_tty()
+            if path:
+                try:
+                    _TTY = open(path, "w")
+                except OSError:
+                    _TTY = sys.stdout
+            else:
+                _TTY = sys.stdout
     return _TTY
 
 
