@@ -145,28 +145,21 @@
             }
           },
           {
-            "class": "iTermStatusBarActionComponent",
+            "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
+                "expression": "\\(user.beacon_branch_untracked)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 40,
+                "maxwidth": 240,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.7,
-                  "Green Component": 0.7,
-                  "Blue Component": 0.7,
+                  "Red Component": 0.55,
+                  "Green Component": 0.55,
+                  "Blue Component": 0.55,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "⎘",
-                  "parameter": "\\(user.beacon_branch_name?)",
-                  "action": 72,
-                  "version": 2
                 }
               },
               "layout advanced configuration dictionary value": {

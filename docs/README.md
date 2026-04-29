@@ -5,7 +5,7 @@ At-a-glance session awareness for Claude Code in iTerm2.
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
 - **Badge** (always on) — project name plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge stays readable in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
-- **Status bar** (in the beacon profile) — a fixed-layout strip: `↖ web · project · branch · ⎘ · cwd · ↗ code`. The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `⎘` button copies the bare branch name to the clipboard; the `↗ code` button opens the cwd in VS Code.
+- **Status bar** (in the beacon profile) — a fixed-layout strip: `↖ web · project · branch · cwd · ↗ code`. The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
 

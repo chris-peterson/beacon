@@ -102,33 +102,42 @@ _beacon_project_name() {
   print -r -- "${root:t}"
 }
 
-# Outputs four lines: display, state, indicator, name.
-#   display   — branch name with optional ahead/behind indicators (e.g. "main ↑3↓1")
-#   state     — "clean" when synced or no upstream; "diverged" when ahead/behind
+# Outputs three lines: display, state, indicator.
+#   display   — sigil + branch name. Sigil reflects state, displayed to the
+#               left so the eye can scan a column of branches and spot
+#               divergent ones without re-parsing each name. Examples:
+#                 "@ main"         (clean — synced with upstream)
+#                 "↑3 feature"     (3 ahead)
+#                 "↑3↓1 feature"   (3 ahead, 1 behind)
+#                 "topic"          (untracked — no sigil; color carries the signal)
+#   state     — "clean" (synced with upstream), "diverged" (ahead/behind), or
+#               "untracked" (no upstream set — local-only branch)
 #   indicator — "" | "↑N" | "↓N" | "↑N↓M"
-#   name      — bare branch name (no indicators), suitable for `git checkout`
-# All four empty when not in a git repo.
+# All three empty when not in a git repo.
 _beacon_branch_info() {
   local name
-  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n\n'; return }
-  local state="clean" ind="" counts ahead behind
-  # No-upstream is treated as clean — there's nothing to diverge from until you push.
+  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n'; return }
+  local state="untracked" ind="" counts ahead behind
   if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 \
      && counts="$(git rev-list --left-right --count "@{u}...HEAD" 2>/dev/null)"; then
     behind="${counts%%	*}"
     ahead="${counts##*	}"
-    if (( ahead != 0 || behind != 0 )); then
+    if (( ahead == 0 && behind == 0 )); then
+      state="clean"
+    else
       state="diverged"
       (( ahead > 0 ))  && ind+="↑${ahead}"
       (( behind > 0 )) && ind+="↓${behind}"
     fi
   fi
   local display="$name"
-  [[ -n "$ind" ]] && display="${name} ${ind}"
+  case "$state" in
+    clean)    display="@ ${name}" ;;
+    diverged) display="${ind} ${name}" ;;
+  esac
   print -r -- "$display"
   print -r -- "$state"
   print -r -- "$ind"
-  print -r -- "$name"
 }
 
 # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
@@ -181,10 +190,10 @@ _beacon_resolve_url() {
 typeset -g _BEACON_LAST_PROJECT='__unset__'
 typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
-typeset -g _BEACON_LAST_BRANCH_NAME='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
 typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
+typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
 typeset -g _BEACON_LAST_URL='__unset__'
 
@@ -213,18 +222,15 @@ _beacon_precmd() {
 
   local -a binfo
   binfo=("${(@f)$(_beacon_branch_info)}")
-  local b="${binfo[1]}" bstate="${binfo[2]}" bname="${binfo[4]}"
-  local b_clean="" b_diverged=""
-  [[ "$bstate" == "clean"    ]] && b_clean="$b"
-  [[ "$bstate" == "diverged" ]] && b_diverged="$b"
+  local b="${binfo[1]}" bstate="${binfo[2]}"
+  local b_clean="" b_diverged="" b_untracked=""
+  [[ "$bstate" == "clean"     ]] && b_clean="$b"
+  [[ "$bstate" == "diverged"  ]] && b_diverged="$b"
+  [[ "$bstate" == "untracked" ]] && b_untracked="$b"
 
   if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch "$b"
     _BEACON_LAST_BRANCH="$b"
-  fi
-  if [[ "$bname" != "$_BEACON_LAST_BRANCH_NAME" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_name "$bname"
-    _BEACON_LAST_BRANCH_NAME="$bname"
   fi
   if [[ "$bstate" != "$_BEACON_LAST_BRANCH_STATE" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch_state "$bstate"
@@ -237,6 +243,10 @@ _beacon_precmd() {
   if [[ "$b_diverged" != "$_BEACON_LAST_BRANCH_DIVERGED" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch_diverged "$b_diverged"
     _BEACON_LAST_BRANCH_DIVERGED="$b_diverged"
+  fi
+  if [[ "$b_untracked" != "$_BEACON_LAST_BRANCH_UNTRACKED" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_untracked "$b_untracked"
+    _BEACON_LAST_BRANCH_UNTRACKED="$b_untracked"
   fi
 
   local lp="$(_beacon_local_path)"
@@ -265,10 +275,10 @@ _beacon_chpwd() {
   _BEACON_LAST_PROJECT='__unset__'
   _BEACON_LAST_PROJECT_FULL='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
-  _BEACON_LAST_BRANCH_NAME='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'
   _BEACON_LAST_BRANCH_CLEAN='__unset__'
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'
+  _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
   _BEACON_LAST_URL='__unset__'
   _beacon_precmd
