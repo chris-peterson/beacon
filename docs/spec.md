@@ -127,7 +127,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 **RES-05.** When no provider returns a value for `task`, the plugin shall treat task as absent (omit from displays).
 
-**RES-06.** When no provider returns a value for `project`, the plugin shall use the placeholder `?` so downstream rendering does not fail.
+**RES-06.** When no provider returns a value for `project`, the plugin shall use a non-empty placeholder so downstream rendering does not fail.
 
 ### 3.2 Provider chains (PROV)
 
@@ -168,7 +168,7 @@ The integration with `tack` is *soft*: beacon detects `tack` at runtime and uses
 
 Aliases let users shorten verbose group/repo names rendered into the badge and status bar. They apply *after* PROV-01 has produced a `<top-group>/<repo>` form, substituting per segment.
 
-**ALIAS-01.** The plugin shall maintain a persistent table of project aliases mapping full segment names to short forms. The table shall live at `${CLAUDE_PLUGIN_DATA}/aliases.txt` in `<full>=<short>` line format, shared across all sessions.
+**ALIAS-01.** The plugin shall maintain a persistent table of project aliases mapping full segment names to short forms, shared across all sessions on the host. Storage location and on-disk format are implementation details (see §6.2).
 
 **ALIAS-02.** When the project signal is resolved (PROV-01), both the plugin and the shell integration shall split the resolved value on `/` and substitute each segment that matches an alias key with its short form, then rejoin. Substitution applies *after* PROV-01's "drop intermediate subgroups" step. Example: with alias `acmecorp=ac` and a git remote of `https://git.example/acmecorp/platform/auth-svc.git`, the resolved project is `ac/auth-svc` (PROV-01 drops `platform`, ALIAS-02 swaps `acmecorp` for `ac`).
 
@@ -186,7 +186,9 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-03.** When Claude requests user attention (Notification hook with matcher `idle_prompt|permission_prompt`), the plugin shall set `signal.status = waiting`.
 
-**HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn after a `permission_prompt` Notification flips it to `waiting` — without it, the badge would remain red for the rest of the turn even while Claude is actively running tools and thinking. The PreToolUse and PostToolUse hooks are registered with no matcher (fire on every tool) so the transition is reliable regardless of which tool the permission was for. The pause flag still wins via `_badge_color_for`, so a paused session is unaffected.
+**HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn so the badge does not remain red for the rest of the turn while Claude is actively running tools and thinking. The pause flag still wins via the precedence rule in BADGE-09a, so a paused session is unaffected.
+
+**HOOK-03b.** When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pending-attention` marker that survives subsequent PostToolUse `working` writes. The marker shall be cleared when the next tool actually starts (PreToolUse), when the user submits a prompt (UserPromptSubmit), or when the turn ends (Stop). While the marker is set, the resolved badge shall reflect the `blocked` color state regardless of `signal.status` (BADGE-09a). Rationale: hook delivery is not strictly ordered, so a late PostToolUse for an earlier tool may arrive after a fresh permission-prompt Notification for a new tool; without the sticky marker, the badge would briefly flip back to `busy` while the user is in fact still blocked.
 
 **HOOK-04.** When Claude invokes any of `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, the plugin shall promote `signal.stage = dev` only if the current stage is `plan`, `none`, or unset.
 
@@ -194,13 +196,15 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-06.** When Claude exits plan mode (PreToolUse for the `ExitPlanMode` tool), the plugin shall set `signal.stage = dev`.
 
-**HOOK-07.** When Claude invokes `Bash` with a command matching a deploy pattern, the plugin shall set `signal.stage = shipping`. Patterns include: `git push` to main/master/production/release branches, `git push --tags`, `npm publish`, `yarn publish`, `pnpm publish`, `cargo publish`, `docker push`, `terraform apply`, `kubectl apply`, `gh release create`, `flyctl deploy`, `vercel deploy` / `vercel --prod`, `heroku ... master`.
+**HOOK-07.** When Claude invokes `Bash` with a command that publishes or deploys to a remote (e.g. push to a release branch, `npm publish`, container registry push, IaC apply, hosted-platform deploy), the plugin shall set `signal.stage = shipping`. The exact pattern set is a tunable implementation list maintained alongside the hook handler.
+
+**HOOK-08.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall refresh shell-owned branch values for the session so that branch state changes Claude introduced (`git checkout`, `git switch`, `git pull`, etc.) are reflected on rendered surfaces without waiting for the user's next interactive shell prompt. This complements the shell integration's prompt-driven refresh (§4.4 / §6.5) — the shell handles user-initiated changes; the plugin handles Claude-initiated changes.
 
 ### 3.5 User overrides (OVR)
 
 **OVR-01.** When the user invokes `set <field> <value>`, the plugin shall persist the value as an override for that field. Valid fields: `project`, `task`, `stage`, `status`, `url`.
 
-**OVR-02.** The override provider shall always be first in every signal's chain.
+**OVR-02.** A user override shall always win over auto-detected values for the same signal.
 
 **OVR-03.** When the user invokes `clear <field>`, the plugin shall remove only that field's override.
 
@@ -215,6 +219,8 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 **PAUSE-03.** When `pause` is invoked with a note argument and the render target supports rich graphics, the plugin shall produce a visual note overlay (e.g. a post-it card) carrying the note text. Adapter-specific overlay behaviors are in §4.4.
 
 **PAUSE-04.** When the user submits a prompt and the session is paused, the plugin shall remove the paused marker and `override.status` before processing the prompt's hook signal. The render adapter shall clear any pause-related visuals.
+
+**PAUSE-04a.** When the user submits a prompt whose text matches a pause-intent pattern (e.g. "stepping away", "brb", "break 'til 4", "pause until …"), the plugin shall apply PAUSE-01..03 with the full prompt text as the note, instead of clearing the paused marker. The prompt itself is not suppressed — it still flows through to Claude. The intent of this rule is to let users announce a pause in natural language without having to remember the explicit `pause` subcommand.
 
 **PAUSE-05.** Auto-resume (PAUSE-04) shall preserve `task` and `stage` overrides set by the pause.
 
@@ -246,27 +252,22 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **CMD-07.** When the user invokes `render`, the plugin shall force a re-render with the current resolved state without changing any state.
 
-**CMD-08.** When the user invokes `install`, the plugin shall perform all bootstrap steps for the active render adapter that can run while iTerm2 is open. For the iTerm2 adapter (§4) this includes: appending the shell snippet `source` line to `.zshrc`, installing zsh tab completion, setting iTerm2's `PerPaneBackgroundImage` default, pre-approving the post-it pool paths in iTerm2's `AlwaysAllowBackgroundImage`, and writing the beacon dynamic profile (with status bar layout) to `DynamicProfiles/`. The plugin shall print one line per step. Setting the beacon profile as iTerm2's default is deliberately **not** part of `install` — see STATUS-BAR-01 and CMD-12.
+**CMD-08.** When the user invokes `install`, the plugin shall perform every bootstrap step the active render adapter can complete without an iTerm2 restart, print one line per step, and emit a deferred-action notice for any steps it cannot complete in-place (see CMD-12). The adapter's specific step list is captured in the adapter section — for iTerm2, see STATUS-BAR-01 and OVERLAY-04.
 
-**CMD-09.** When the user invokes `completions zsh`, the plugin shall write the completion script to `~/.zsh/completions/_beacon` and ensure `fpath` is configured before `compinit` in `.zshrc`. With `--print`, the plugin shall print the script to stdout instead of installing.
+**CMD-09.** When the user invokes `completions zsh`, the plugin shall install a tab-completion script such that `beacon <TAB>` works in a fresh zsh session. With `--print`, the plugin shall print the script to stdout instead of installing. Install location and `fpath` plumbing are implementation details (see §6.5).
 
 **CMD-11.** When the user invokes `beacon alias <full> <short>`, `beacon alias` (no args), or `beacon alias clear [<full>]`, the plugin shall apply ALIAS-03..05 and re-render so any in-flight session picks up the new alias table.
 
 **CMD-12.** When the user invokes `exclusive-configuration`, the plugin shall apply iTerm2 prefs that require iTerm2 to be fully quit (because iTerm2 caches prefs in memory and overwrites the plist on quit). The covered prefs are:
 
-- **Default profile** — `Default Bookmark Guid` set to the beacon dynamic profile's GUID.
-- **Bg-image trust pre-approval** — every pool slot path plus the empty-string sentinel added to `AlwaysAllowBackgroundImage` (subset of CMD-08, finished here when `install` had to defer).
+- **Default profile** — set the beacon dynamic profile as iTerm2's default profile.
+- **Bg-image trust pre-approval** — every pool slot path plus the empty-string sentinel approved (subset of CMD-08, finished here when `install` had to defer).
 
 Behavior:
 
-1. If the default profile is already set and no bg-image paths are missing approval, the plugin shall exit early ("nothing to do").
-2. If iTerm2 is not running, the plugin shall apply both writes directly via `defaults write` and relaunch iTerm2 via `open -a iTerm`. Each write is conditional on its own state — already-correct prefs are not rewritten.
-3. If iTerm2 is running, the plugin shall:
-   a. Confirm intent interactively (read y/N from `/dev/tty`), listing which writes will be applied. The `--yes` flag skips the prompt.
-   b. Spawn a detached helper process (`nohup`, `start_new_session=True`) that polls until iTerm2 has fully exited, then re-invokes `beacon exclusive-configuration --yes` (which then takes path 2 above — single source of truth for the writes).
-   c. Send `tell application "iTerm" to quit` via `osascript`. The helper survives our process being SIGHUP'd by iTerm2 and finishes the job.
-
-The user is warned in the prompt that all iTerm2 windows and panes (including the one running this command) will close. The helper logs to a tempfile (`beacon-exclusive-configuration.log` under `$TMPDIR`) so post-mortem inspection is possible if the relaunch doesn't happen.
+1. If both prefs are already correct, the plugin shall exit early ("nothing to do").
+2. If iTerm2 is not running, the plugin shall apply each write conditionally (skip already-correct prefs) and relaunch iTerm2.
+3. If iTerm2 is running, the plugin shall confirm intent interactively (skippable with `--yes`), warn the user that all iTerm2 windows and panes will close, quit iTerm2, and apply the writes after iTerm2 has exited. The orchestration mechanism (detached helper, AppleScript quit, log path for post-mortem) is captured in §6.10.
 
 ---
 
@@ -356,7 +357,7 @@ flowchart LR
 
 **BADGE-02.** When the shell prompt redraws (precmd / chpwd), the integration shall invoke `beacon-iterm uservar beacon_project <value>` with the value derived per PROV-01 + ALIAS-02 from the current working directory.
 
-**BADGE-03.** The system shall set the iTerm2 badge format via `OSC 1337 SetBadgeFormat` to a compact static template: `\(user.beacon_project)`. The shell integration shall set this format on source (once per shell).
+**BADGE-03.** The shell integration shall set the iTerm2 badge format on source so the badge renders the project user-var. The format string is an implementation detail; the user-observable contract is "the badge text equals the resolved project value" (BADGE-02 + BADGE-04).
 
 **BADGE-04.** When the project provider chain finds no marker, the shell integration shall publish the PROV-06 pwd fallback (e.g. `~/src`) so the badge always carries useful spatial context, never empty.
 
@@ -368,16 +369,22 @@ flowchart LR
 
 **BADGE-08.** The shell integration shall expose `_beacon_resolve_url()` as a public zsh function implementing the PROV-07 chain. Users may redefine this function in their `.zshrc` (after sourcing `beacon.zsh`) to substitute non-tack URL providers (Linear, Jira, GitHub Issues, etc.) without forking beacon.
 
-**BADGE-09.** The plugin shall set the badge color via `beacon-iterm badge-color` (CLI-10) on every status change, mapping the resolved status to a logical color state:
+**BADGE-09.** The plugin shall set the badge color on every status change, mapping the resolved status to a logical color state:
 
 | Status | Color state | Semantics |
 |:---|:---|:---|
 | `idle` | `ready` | Default; nothing is happening |
 | `working` | `busy` | Claude is processing; don't interrupt |
 | `waiting` | `blocked` | Claude needs the user (highest attention) |
-| (paused) | `blocked` | Pause is a user-initiated block; the post-it bg image distinguishes it visually from `waiting` |
 
 The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked`) are the contract.
+
+**BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force the `blocked` state regardless of the underlying `signal.status`:
+
+- The `paused` marker (PAUSE-01) — pause is a user-initiated block; the post-it overlay distinguishes it visually from `waiting`.
+- The `pending-attention` marker (HOOK-03b) — Claude is waiting on the user; sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a fresh permission prompt is open.
+
+When neither flag is set, BADGE-09 applies.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -412,64 +419,32 @@ flowchart TB
     A_EXPORT --> CLIP[macOS clipboard - shareable session block]
 ```
 
-**STATUS-BAR-01.** The `install` command shall write a dynamic profile to `~/Library/Application Support/iTerm2/DynamicProfiles/beacon.json` named `beacon` inheriting from the user's "Default" profile. iTerm2 watches that directory and reloads dynamic profiles without restart, so this write succeeds even while iTerm2 is running.
+**STATUS-BAR-01.** The `install` command shall write a beacon dynamic profile (carrying the status bar layout from STATUS-BAR-02) into iTerm2's `DynamicProfiles` directory, inheriting from the user's currently-default profile. iTerm2 watches that directory and reloads dynamic profiles without restart, so this write succeeds even while iTerm2 is running. Filename and exact directory path are an iTerm2 contract documented in §6.
 
 The `install` command shall **not** make the beacon profile iTerm2's default automatically. Setting `Default Bookmark Guid` requires iTerm2 to be fully quit (it caches prefs in memory and overwrites the plist on quit), and silently quitting the user's only terminal is unacceptable. Instead, the installer shall print:
 
 1. The manual click path: *iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default*.
 2. A pointer to the dedicated subcommand `beacon exclusive-configuration` (CMD-12) which orchestrates the quit + relaunch.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar (`Show Status Bar: true`) with the following fixed chip sequence, left to right. The sequence places the **remote-context cluster** (web / project) flush left, the **branch** centered, and the **local-context cluster** (cwd / code) flush right — two springs (one on each side of the branch) produce a symmetrical layout where a glance can land on the side that matches the question being asked.
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **remote-context cluster** (`↖ web` action + project path) flush left, the **branch** centered between two springs, and the **local-context cluster** (local path + `↗ code` action) flush right — a symmetrical layout where a glance can land on the side that matches the question being asked.
 
-Action chips use the same color as the data chip they act on (link-blue for `↖ web` paired with the project path, magenta for `↗ code` paired with the local path) so each CTA visually ties to its target. Data chips are rendered in a *dimmer* version of the action color so the bright action chip reads as the active control and the dimmer label reads as its target.
+Chip-by-chip behavior:
 
-1. **`web` action button** — `iTermStatusBarActionComponent` titled `↖ web` (up-and-to-the-left glyph + label, evoking "leave this pane and follow the link"), rendered in link-blue. Always visible — when no URL has been resolved for the session, clicking is a silent no-op rather than hiding the chip, because iTerm2 status bar action components don't honor `remove empty components` and we tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, and (c) OSC 8 hyperlinks embedded in chip values, none of which produce clean visibility toggling. A persistent labeled chip + no-op-when-empty behavior is the least-bad option. The action reads the per-session URL file written by the shell snippet and runs `open <url>` if non-empty.
-2. **Full project path** — `\(user.beacon_project_full)` (e.g. `git.example/acme/widgets`). Rendered in dimmer link-blue (matching the adjacent `↖ web` action color, but desaturated so it reads as the action's target). Identification-only — not clickable (cmd+click on iTerm2 status bar chips does not work; URL navigation is delegated to the adjacent `↖ web` chip).
-3. **Spring (left)** — `iTermStatusBarSpringComponent`, pushes the remote cluster to the left edge and lets the branch float toward center.
-4. **Branch (synced)** — `\(user.beacon_branch_clean)`, rendered with a clean-state text color (green). Empty (and thus collapsed) unless the branch is synced with its upstream. Text format: `@ <branch>` — the leading `@` sigil reads "at the expected commit."
-5. **Branch (diverged)** — `\(user.beacon_branch_diverged)`, rendered with a diverged-state text color (orange). Empty unless ahead/behind. Text format: `<indicator> <branch>` where indicator is `↑N`, `↓N`, or `↑N↓M` (e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`). The indicator is positioned left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
-6. **Branch (untracked)** — `\(user.beacon_branch_untracked)`, rendered with a dim-gray text color. Empty unless on a local-only branch (no upstream tracking ref set). Text format: bare `<branch>` — the dim color carries the signal that there's no remote opinion to report; a sigil would be redundant. The three branch chips are mutually exclusive — exactly one renders when in a git repo, none when outside one.
-7. **Spring (right)** — `iTermStatusBarSpringComponent`, pushes the local cluster to the right edge.
-8. **Local path** — `\(user.beacon_local_path)` (`$HOME` substituted as `~`). Rendered in dimmer magenta (matching the adjacent `↗ code` action color, but desaturated so it reads as the action's target).
-9. **`code` action button** — `iTermStatusBarActionComponent` titled `↗ code` (up-and-to-the-right glyph + label, evoking "open this directory in another window"), rendered in magenta. Reads the per-session cwd file and runs `code <cwd>` to open the directory in VS Code. Sits adjacent to the local-path chip. Color differentiates it from the blue `↖ web` chip so the two action buttons are visually distinct at a glance.
+1. **`↖ web` action button** — link-blue. Always visible. Clicking shall navigate to the URL resolved for the session (PROV-07); clicking is a silent no-op when no URL has been resolved.
+2. **Full project path** — full remote project URL (e.g. `git.example/acme/widgets`), rendered in a dimmer link-blue so the action chip reads as the bright control and the path reads as its target. Identification only — not clickable.
+3. **Spring (left)** — pushes the remote cluster to the left edge.
+4. **Branch (synced)** — branch name with leading `@` sigil ("at the expected commit"), rendered in green. Visible only when the local branch is synced with its upstream.
+5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
+6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
+7. **Spring (right)** — pushes the local cluster to the right edge.
+8. **Local path** — current working directory with `$HOME` substituted as `~`, rendered in a dimmer magenta to match the adjacent `↗ code` action.
+9. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
 
-The chip sequence is **fixed** in position. The only chips that collapse via `remove empty components` are the mutually-exclusive branch-clean / branch-diverged / branch-untracked triple (whichever two don't match current state). All action chips remain visible regardless of underlying state — see chip 1 above for why hiding action chips conditionally proved infeasible in iTerm2.
+Action-chip color matches the data chip it acts on so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
 
-**STATUS-BAR-03.** Two component classes are used:
+**STATUS-BAR-03.** Action chips shall remain visible regardless of underlying state. Data chips other than the branch triple shall always render. The branch triple shall use value-based coloring (green / orange / dim gray) to communicate sync state at a glance. Empirical iTerm2 quirks that constrain the implementation (action chips ignoring `remove empty components`, coprocess actions not interpolating user vars, SwiftyString comparison expressions being unreliable) are captured in §6.10.
 
-- **Data chips** — `iTermStatusBarSwiftyStringComponent` with knobs `expression`, `minwidth`, `maxwidth`, `base: priority`, `base: compression resistance`, `shared font`, optionally `shared text color`. No click action.
-- **Action buttons** — `iTermStatusBarActionComponent` with the same shared knobs plus an `action` knob:
-
-  ```json
-  {
-    "applyMode": 0,
-    "escaping": 1,
-    "title": "<short label, e.g. '↖ web', '↗ code'>",
-    "parameter": "<command or interpolated value>",
-    "action": <enum>,
-    "version": 2
-  }
-  ```
-
-  Action enum `35` runs the parameter as a shell coprocess command (used by `↖ web` and `↗ code`); these read per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) because coprocess actions do not interpolate `\(user.*)` reliably. Coprocess commands run under the iTerm2 process's `/bin/sh`, which does not inherit the user's interactive `PATH`; the `code` parameter therefore prepends `/opt/homebrew/bin:/usr/local/bin` to `PATH` so the editor binary resolves on both Apple-Silicon and Intel macOS without sourcing the user's shell rc files.
-
-The layout shall use `algorithm: 1` (tight pack with `|` separators), `font: SF Mono 22` (monospace, sized to read clearly across many panes), `auto-rainbow style: 0`. (Schema verified empirically against iTerm2 3.6.x.)
-
-**STATUS-BAR-04.** Three of the data chips — the mutually-exclusive branch-clean / branch-diverged / branch-untracked triple — set a `shared text color` knob to communicate **value-based** state (clean = green, diverged = orange, untracked = dim gray). All other data chips render in the profile's default text color. Earlier iterations applied a *kind*-based palette (one color per chip role); that was dropped because, with positions fixed, role-color was decorative rather than informative. The current triple is informational: which one is non-empty (and thus rendered) tells the operator at a glance whether a push/pull is pending or whether the branch hasn't been published yet. Cross-cutting status (e.g. ready / busy / blocked) remains delivered via the badge (BADGE-09), not the status bar.
-
-**STATUS-BAR-05.** When the shell prompt redraws, the integration shall publish these additional user vars (beyond the badge-side `beacon_project`):
-- `beacon_project_full` — full git remote URL (e.g. `git.example/acme/widgets`); empty when not in a recognized project
-- `beacon_branch` — sigil + branch name. Sigil is `@` when synced (e.g. `@ main`), the ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M`) when diverged (e.g. `↑3 main`), and absent for untracked (bare branch name). Empty when not in a repo. This is the canonical branch text.
-- `beacon_branch_state` — `clean` when synced with upstream, `diverged` when ahead and/or behind, `untracked` when no upstream is set, empty when not in a repo
-- `beacon_branch_clean` — equals `beacon_branch` when state is `clean`, else empty (drives the green branch chip)
-- `beacon_branch_diverged` — equals `beacon_branch` when state is `diverged`, else empty (drives the orange branch chip)
-- `beacon_branch_untracked` — equals `beacon_branch` when state is `untracked`, else empty (drives the dim-gray branch chip)
-- `beacon_local_path` — cwd with `$HOME` substituted as `~`
-- `beacon_url` — full URL resolved per PROV-07
-
-The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` / `beacon_branch_untracked` triple is published from the shell rather than evaluated as a SwiftyString conditional in the profile, because iTerm2's interpolation grammar does not reliably support comparison expressions on user vars across versions; pre-resolving in the shell keeps the profile portable.
-
-The shell shall additionally write two per-session files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/` for the `↖ web` and `↗ code` action buttons to read. (Coprocess actions cannot interpolate user vars, hence the file-based handoff.)
+**STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL, branch text + sync state (with derived per-state slots so the profile does not need conditional expressions), local cwd with `~`-substitution, and the resolved URL. The integration shall also write per-session handoff files for the `↖ web` and `↗ code` action buttons, since iTerm2 coprocess actions cannot interpolate user variables. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet and the dynamic profile (see §6.5).
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
 
@@ -502,7 +477,7 @@ flowchart LR
 
 **OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's post-it does not carry over into a fresh split.
 
-**OVERLAY-03.** The plugin shall render note images into a fixed-size pool of paths (`cache/note-NN.png`, N=8) using LRU rotation. The plugin shall avoid overwriting a slot currently referenced by another session's `note-image` state. Pool files persist across resume/reset.
+**OVERLAY-03.** The plugin shall render note images into a bounded pool of stable cache paths using LRU rotation, avoiding overwrite of slots currently referenced by another session's `note-image` state. Pool files persist across resume/reset. Pool size is a tunable implementation constant; reusing a fixed pool of paths keeps iTerm2's bg-image trust prompt (OVERLAY-04) tractable — every paint hits an already-approved path.
 
 **OVERLAY-04.** The `install` command shall pre-approve the pool paths (OVERLAY-03) and the empty-path sentinel (which the shell integration sends per OVERLAY-02) in iTerm2's `AlwaysAllowBackgroundImage` array, so `SetBackgroundImageFile` never triggers a trust prompt. When iTerm2 is running at install time, the writes are deferred — iTerm2 caches prefs in memory and would overwrite the plist on quit — and the user is told to quit iTerm2 and re-run.
 
@@ -613,12 +588,16 @@ Tab color is *complementary* to the badge, not redundant: the badge is per-pane 
 state/<session-hash>.override.{project,task,stage,status}
 state/<session-hash>.signal.{stage,status}
 state/<session-hash>.paused
+state/<session-hash>.pending-attention
 state/<session-hash>.note-image
 state/<session-hash>.resolved
-cache/note-<session-hash>.png
+cache/note-NN.png             # bounded LRU pool, OVERLAY-03
+aliases.txt                   # ALIAS-01: <full>=<short> per line, host-shared
 ```
 
 Session hash is derived from `$ITERM_SESSION_ID` (stable for the lifetime of an iTerm tab). SHA-1 truncated to 12–16 chars is sufficient — collisions are not a security concern.
+
+State and cache live under `${CLAUDE_PLUGIN_DATA}` when set (Claude Code provides this for hook invocations) and otherwise under a path derived from `${CLAUDE_PLUGIN_ROOT}` to match Claude Code's `<plugin>-<owner>` data-dir convention. Falling back to env-only would scatter state across two directories — hooks see one, slash commands and the shell alias see another — so the plugin computes a single canonical path regardless of how it was invoked.
 
 The shell side and the CLI are both stateless: each shell prompt recomputes project + branch and republishes via the CLI; each CLI invocation emits its escape sequence and exits.
 
@@ -637,9 +616,29 @@ Python 3 script reacting to hooks, slash commands, and skill signals. Owns the C
 
 The plugin invokes the CLI via subprocess. It does **not** implement any iTerm2 escape sequence directly — that is exclusively the CLI's job.
 
+The plugin's `PostToolUse` handler for `Bash` (HOOK-08) republishes the shell-owned branch user vars; this duplicates logic in `shell/beacon.zsh` because the user's interactive shell `precmd` does not fire while Claude is running tools. The two sites are kept in sync; the contract is the `(display, state, indicator)` triplet the slots consume.
+
 ### 6.5 Shell integration: `shell/beacon.zsh`
 
 Sourceable file the user adds to `.zshrc`. Registers `precmd` and `chpwd` hooks. Each hook shells out to `beacon-iterm uservar …`.
+
+The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consume a fixed user-var name set published by this snippet:
+
+| User var | Source | Empty when |
+|:---|:---|:---|
+| `beacon_project` | PROV-01 + ALIAS-02 | not in a recognized project (uses PROV-06 fallback instead) |
+| `beacon_project_full` | full git remote URL (host/owner/repo) | not in a recognized project |
+| `beacon_branch` | branch text with sigil/indicator (canonical) | not in a repo |
+| `beacon_branch_state` | `clean` / `diverged` / `untracked` | not in a repo |
+| `beacon_branch_clean` | `beacon_branch` when state is `clean`, else empty | n/a |
+| `beacon_branch_diverged` | `beacon_branch` when state is `diverged`, else empty | n/a |
+| `beacon_branch_untracked` | `beacon_branch` when state is `untracked`, else empty | n/a |
+| `beacon_local_path` | cwd with `$HOME` substituted as `~` | always populated |
+| `beacon_url` | PROV-07 | when no provider returns a value |
+
+Per-session handoff files for the action buttons (see §6.10 caveat 6) live at `${CLAUDE_PLUGIN_DATA}/cache/url-$ITERM_SESSION_ID.txt` and `${CLAUDE_PLUGIN_DATA}/cache/cwd-$ITERM_SESSION_ID.txt`.
+
+Tab-completion install (CMD-09) writes `~/.zsh/completions/_beacon` and inserts `fpath=(~/.zsh/completions $fpath)` ahead of the user's `compinit` call (or appends `fpath` + `compinit` if neither is present).
 
 ```zsh
 # Pseudocode
@@ -687,9 +686,11 @@ apply(state):
   load prev resolved snapshot (or empty on first render)
   if first render of this session:
     beacon-iterm badge-format <template>
-  if status changed:
-    beacon-iterm badge-color <hex>     # logical state → palette → hex
-    beacon-iterm tab-color   <hex>     # mirrors badge color (TAB-01)
+  badge_hex = blocked  if state.paused or state.pending_attention   # BADGE-09a precedence
+            else palette[STATUS_TO_BADGE_STATE[state.status]]       # BADGE-09 mapping
+  if badge_hex changed:
+    beacon-iterm badge-color <badge_hex>
+    beacon-iterm tab-color   <badge_hex>     # TAB-01 mirrors badge
   if paused with note and note image is new:
     beacon-iterm bg-image <path>
   elif resuming from pause:
@@ -714,6 +715,11 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 1. **Escape sequences require `/dev/tty`** when invoked from non-TTY contexts.
 2. **One-time iTerm2 permission prompt** for control codes and background image setting on first use of each.
 3. **Per-Pane Background Image** must be enabled in iTerm2 preferences for the post-it to scope to the pane rather than the window. `beacon install` sets this via `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
+4. **Prefs cache vs. on-disk plist.** While iTerm2 is running it holds its prefs in memory and rewrites the plist on quit, clobbering any `defaults write` that ran in between. Pref writes that need to survive an iTerm2 restart must therefore happen with iTerm2 quit. CMD-12 orchestrates this — currently via a detached helper that polls until iTerm2 exits, then re-invokes `beacon exclusive-configuration --yes` to perform the writes; quit is requested via `osascript`. The helper logs to a tempfile so a failed relaunch is debuggable.
+5. **Status bar action chips don't honor `remove empty components`.** Tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, (c) OSC 8 hyperlinks embedded in chip values — none toggle visibility cleanly. The status bar therefore keeps action chips always-visible and routes to a no-op when the underlying value is empty (STATUS-BAR-02 chip 1).
+6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/`, written by the shell snippet on every prompt. Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
+7. **SwiftyString comparison expressions are unreliable across iTerm2 versions.** The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` / `beacon_branch_untracked` triple is therefore pre-resolved in the shell rather than expressed as a profile-side conditional.
+8. **Dynamic profile filename.** `install` writes to `~/Library/Application Support/iTerm2/DynamicProfiles/beacon.json`. Filename is unconstrained by iTerm2; the directory is the contract.
 
 ---
 

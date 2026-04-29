@@ -21,7 +21,24 @@ from pathlib import Path
 # --- paths and identity ---
 
 PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent)
-DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or (Path.home() / ".claude" / "plugins" / "data" / "beacon"))
+
+
+def _default_data_dir() -> Path:
+    """Match Claude Code's `<plugin>-<owner>` data-dir convention by parsing
+    PLUGIN_ROOT. Hooks receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash
+    commands and the shell alias do not — without this derivation those
+    contexts would write to a different directory than hooks read from, and
+    state changes would be invisible across them."""
+    base = Path.home() / ".claude" / "plugins"
+    try:
+        rel = PLUGIN_ROOT.relative_to(base / "cache")
+        owner, plugin = rel.parts[0], rel.parts[1]
+        return base / "data" / f"{plugin}-{owner}"
+    except (ValueError, IndexError):
+        return base / "data" / "beacon"
+
+
+DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or str(_default_data_dir()))
 STATE_DIR = DATA_DIR / "state"
 CACHE_DIR = DATA_DIR / "cache"
 
@@ -51,6 +68,27 @@ DEPLOY_RE = re.compile(
     r"|\bflyctl\s+deploy\b"
     r"|\bvercel\s+deploy\b|\bvercel\s+--prod\b"
     r"|\bheroku\b[^|;&]*\bmaster\b"
+)
+
+PAUSE_RE = re.compile(
+    r"^\s*(?:"
+    r"(?:afk|brb|bbiab)(?:\s|$)"
+    r"|pause(?:\s+(?:until|for|while|'?til)\b|\s*$)"
+    r"|break(?:\s+(?:until|for|'?til|in|after)\b|\s*$)"
+    r"|stepping\s+(?:away|out)\b"
+    r"|step\s+(?:away|out)\b"
+    r"|going\s+(?:afk|away|out)\b"
+    r"|going\s+to\s+(?:lunch|bed|sleep|the\s+\S+|grab\s+\S+|get\s+\S+|a\s+meeting|standup)\b"
+    r"|out\s+(?:for|until|'?til|to\s+lunch)\b"
+    r"|back\s+(?:in|at|by|until|'?til|after)\s+\S+"
+    r"|gone\s+(?:for|until|'?til)\s+\S+"
+    r"|(?:grabbing|getting|having)\s+(?:lunch|coffee|dinner|food)\b"
+    r"|in\s+(?:standup|a\s+meeting|a\s+call)\b"
+    r"|on\s+a\s+call\b"
+    r"|taking\s+a\s+break\b"
+    r"|lunch\s*$"
+    r")",
+    re.IGNORECASE,
 )
 
 VALID_STAGES = {"plan", "dev", "review", "shipping", "none"}
@@ -552,6 +590,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "stage": stage, "stage_provider": p_stage,
         "status": status, "status_provider": p_status,
         "paused": _state_path("paused").exists(),
+        "pending_attention": _state_path("pending-attention").exists(),
     }
 
 
@@ -565,6 +604,82 @@ def _cli(*args, timeout: float = 5.0) -> None:
         subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
     except Exception:
         pass
+
+
+# --- branch info (mirrors shell/beacon.zsh _beacon_branch_info) ---
+#
+# The shell snippet publishes branch user vars on every prompt redraw — fine
+# for human-driven git operations but blind to Claude's Bash tool, which runs
+# in a detached subprocess that never returns to the user's shell. The plugin
+# republishes from PostToolUse so a `git checkout` Claude runs is reflected
+# in the iTerm2 status bar without waiting for the next user prompt.
+#
+# This duplicates logic already present in the shell snippet. Keep them in
+# sync — the contract is the (display, state, indicator) triplet that drives
+# user.beacon_branch* slots. Skip user-shell-owned URL/cwd republishing here:
+# Claude doesn't change the user's interactive cwd, and URL resolution is
+# heavier than needed for every Bash tool call.
+
+def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
+    """Return (display, state, indicator). Empty triplet outside a repo."""
+    try:
+        r = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=2, check=False,
+        )
+    except Exception:
+        return ("", "", "")
+    name = r.stdout.strip()
+    if r.returncode != 0 or not name:
+        return ("", "", "")
+
+    state = "untracked"
+    indicator = ""
+    try:
+        u = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            cwd=str(cwd), capture_output=True, timeout=2, check=False,
+        )
+        if u.returncode == 0:
+            counts = subprocess.run(
+                ["git", "rev-list", "--left-right", "--count", "@{u}...HEAD"],
+                cwd=str(cwd), capture_output=True, text=True, timeout=2, check=False,
+            )
+            if counts.returncode == 0:
+                parts = counts.stdout.split()
+                if len(parts) == 2:
+                    behind, ahead = int(parts[0]), int(parts[1])
+                    if ahead == 0 and behind == 0:
+                        state = "clean"
+                    else:
+                        state = "diverged"
+                        if ahead > 0:
+                            indicator += f"↑{ahead}"
+                        if behind > 0:
+                            indicator += f"↓{behind}"
+    except Exception:
+        pass
+
+    if state == "clean":
+        display = f"@ {name}"
+    elif state == "diverged":
+        display = f"{indicator} {name}"
+    else:
+        display = name
+    return (display, state, indicator)
+
+
+def _publish_branch(cwd: Path) -> None:
+    """Push the five branch slots to iTerm2 via a single CLI invocation."""
+    display, state, _indicator = _detect_branch_info(cwd)
+    pairs = [
+        f"beacon_branch={display}",
+        f"beacon_branch_state={state}",
+        f"beacon_branch_clean={display if state == 'clean' else ''}",
+        f"beacon_branch_diverged={display if state == 'diverged' else ''}",
+        f"beacon_branch_untracked={display if state == 'untracked' else ''}",
+    ]
+    _cli("uservar-batch", *pairs)
 
 
 # --- pane sizing for note overlay ---
@@ -814,9 +929,15 @@ def ensure_per_pane_bg_image():
 # --- apply ---
 
 def _badge_color_for(state: dict) -> str:
-    """Resolve the badge color hex. Pause maps to `blocked` regardless of
-    underlying status — the post-it bg image distinguishes pause from waiting."""
-    logical = "blocked" if state.get("paused") else STATUS_TO_BADGE_STATE.get(state["status"], "ready")
+    """Resolve the badge color hex. Pause and pending-attention both map to
+    `blocked` regardless of underlying status. The post-it bg image
+    distinguishes pause from waiting; pending-attention is the sticky form of
+    waiting that survives PostToolUse out-of-order delivery (a late
+    PostToolUse for an earlier tool would otherwise overwrite the waiting
+    signal set by a fresh permission_prompt Notification for the next tool)."""
+    if state.get("paused") or state.get("pending_attention"):
+        return BADGE_COLOR_PALETTE["blocked"]
+    logical = STATUS_TO_BADGE_STATE.get(state["status"], "ready")
     return BADGE_COLOR_PALETTE[logical]
 
 
@@ -862,6 +983,7 @@ def apply(state: dict):
         "stage": state["stage"], "stage_provider": state["stage_provider"],
         "status": s, "status_provider": state["status_provider"],
         "paused": state["paused"],
+        "pending_attention": state.get("pending_attention", False),
         "note_image": note_image,
         "badge_color": badge_hex,
     }
@@ -888,6 +1010,8 @@ def cmd_show(_args):
             rows.append((field, value, provider))
     if state["paused"]:
         rows.append(("paused", "yes", None))
+    if state.get("pending_attention"):
+        rows.append(("attention", "pending", None))
     if not rows:
         return
     width = max(len(v) for _, v, _ in rows)
@@ -935,7 +1059,10 @@ def cmd_clear(args):
     render()
 
 
-def cmd_pause(args):
+def _apply_pause(note: str) -> None:
+    """Snapshot resolved values into overrides, mark paused, and (when a note
+    is given) render the post-it card. Shared between the explicit `pause`
+    subcommand and the UserPromptSubmit NL pause-intent path."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
     state = resolve()
@@ -944,13 +1071,17 @@ def cmd_pause(args):
             write_state(f"override.{field}", state[field])
     write_state("override.status", "idle")
     write_state("paused", "1")
-    note = " ".join(args.note).strip() if args.note else ""
     if note:
         write_state("override.task", note)
         ensure_initialized()
         path = render_note_card(note)
         if path:
             write_state("note-image", path)
+
+
+def cmd_pause(args):
+    note = " ".join(args.note).strip() if args.note else ""
+    _apply_pause(note)
     render()
 
 
@@ -1267,20 +1398,33 @@ def cmd_hook(args):
         write_state("claude_session_id", claude_sid)
 
     if event == "UserPromptSubmit":
-        if _state_path("paused").exists():
-            remove_state("paused")
-            remove_state("override.status")
-            # Forget the reference to the note pool slot — don't delete the
-            # file (other paused sessions may reference it; preserves trust).
-            remove_state("note-image")
-        write_state("signal.status", "working")
+        prompt_text = (payload.get("prompt") or "").strip()
+        if prompt_text and PAUSE_RE.match(prompt_text):
+            # NL pause-intent: the prompt itself becomes the post-it note.
+            # Don't touch signal.status — _apply_pause writes override.status=idle.
+            _apply_pause(prompt_text)
+        else:
+            if _state_path("paused").exists():
+                remove_state("paused")
+                remove_state("override.status")
+                # Forget the reference to the note pool slot — don't delete the
+                # file (other paused sessions may reference it; preserves trust).
+                remove_state("note-image")
+            write_state("signal.status", "working")
+        # The user just submitted, so any pending Notification is resolved.
+        remove_state("pending-attention")
 
     elif event == "Stop":
         if not payload.get("stop_hook_active"):
             write_state("signal.status", "waiting")
+        # Turn ended: any pending permission/idle notification is no longer in flight.
+        remove_state("pending-attention")
 
     elif event == "Notification":
         write_state("signal.status", "waiting")
+        # Sticky marker: takes precedence over a stale PostToolUse working signal
+        # that may arrive after this Notification due to out-of-order delivery.
+        write_state("pending-attention", "1")
 
     elif event == "PreToolUse":
         # Tool activity means the agent is working, not waiting. This
@@ -1288,6 +1432,9 @@ def cmd_hook(args):
         # is granted — without this, the badge would stay red for the rest of
         # the turn.
         write_state("signal.status", "working")
+        # PreToolUse fires when a tool is starting — past any permission gate.
+        # Clear the sticky marker so the badge can flip back to working.
+        remove_state("pending-attention")
         tool = payload.get("tool_name") or payload.get("tool") or ""
         tool_input = payload.get("tool_input") or {}
         if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
@@ -1306,8 +1453,18 @@ def cmd_hook(args):
     elif event == "PostToolUse":
         # Re-assert working between tool calls — a tool just returned and the
         # agent is back to thinking, even if no further matching PreToolUse
-        # fires before the next Notification or Stop.
+        # fires before the next Notification or Stop. Deliberately does NOT
+        # clear pending-attention: a late PostToolUse arriving after a fresh
+        # Notification must not undo the sticky waiting marker.
         write_state("signal.status", "working")
+        # Refresh shell-owned branch user vars after Bash tool runs — the
+        # user's interactive shell hasn't seen the prompt redraw, so a `git
+        # checkout` Claude ran would otherwise leave the status bar showing
+        # the old branch until the user submits a prompt themselves.
+        tool = payload.get("tool_name") or payload.get("tool") or ""
+        if tool == "Bash":
+            cwd_str = payload.get("cwd") or os.getcwd()
+            _publish_branch(Path(cwd_str))
 
     render()
 

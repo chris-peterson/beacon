@@ -126,6 +126,16 @@ def cmd_uservar(args):
     _osc(f"1337;SetUserVar={name}={_b64(value)}")
 
 
+def cmd_uservar_batch(args):
+    for pair in args.pairs:
+        if "=" not in pair:
+            continue
+        name, value = pair.split("=", 1)
+        if not name:
+            continue
+        _osc(f"1337;SetUserVar={name}={_b64(value)}")
+
+
 def cmd_badge_format(args):
     # iTerm2 expects the format template base64-encoded. The template can
     # reference \(user.foo) variables; iTerm re-evaluates them whenever the
@@ -221,6 +231,11 @@ def main(argv=None):
     sp.add_argument("name")
     sp.add_argument("value", nargs="?", default="")
     sp.set_defaults(func=cmd_uservar)
+
+    sp = sub.add_parser("uservar-batch",
+                        help="publish multiple user.<name>=<value> pairs in one invocation")
+    sp.add_argument("pairs", nargs="+")
+    sp.set_defaults(func=cmd_uservar_batch)
 
     sp = sub.add_parser("badge-format", help="set the per-session badge format template")
     sp.add_argument("template")

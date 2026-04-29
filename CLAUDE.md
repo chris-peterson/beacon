@@ -41,7 +41,9 @@ Status maps to a logical color state (`ready` / `busy` / `blocked`) which then m
 
 ## State and cache locations
 
-- Per-session state: `${CLAUDE_PLUGIN_DATA:-~/.claude/plugins/data/beacon}/state/<session-hash>.<field>`
+`DATA_DIR` resolves to `$CLAUDE_PLUGIN_DATA` when set (Claude Code provides it for hook invocations). For slash commands and the shell alias the env var is unset, so the script derives the same path from `CLAUDE_PLUGIN_ROOT` matching Claude Code's `<plugin>-<owner>` convention (e.g. `~/.claude/plugins/data/beacon-chris-peterson/`). All three invocation contexts must land on the same dir or hooks see no state to act on.
+
+- Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `paused`, `pending-attention` (sticky permission marker), `note-image`, `override.*`, `signal.*`, `resolved`, `claude_session_id`.
 - Note image pool (LRU, fixed N=8): `<DATA_DIR>/cache/note-NN.png`
 - Per-session shell handoff files (read by status-bar action buttons): `<DATA_DIR>/cache/{url,cwd}-$ITERM_SESSION_ID.txt`
 
