@@ -173,12 +173,14 @@ _beacon "$@"
 """
 
 # Logical status states → badge color hex (no leading #). Logical names are
-# the contract (BADGE-09); hex values are tunable without touching call sites.
-# Pause shares `blocked` — the post-it bg image distinguishes it visually.
+# the contract (BADGE-09, BADGE-10); hex values are tunable without touching
+# call sites. `paused` is de-emphasized so a parked session reads distinct
+# from one blocked on the user (BADGE-10).
 BADGE_COLOR_PALETTE = {
     "ready":   "00aa44",
     "busy":    "cc8800",
     "blocked": "cc2233",
+    "paused":  "888888",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -724,20 +726,19 @@ def _next_note_slot() -> Path:
     SetBackgroundImageFile only fires N times ever (once per slot). After
     that, every pause reuses an already-trusted path.
 
-    Avoid slots currently referenced by another session's `note-image` state
-    file so that overwriting one slot doesn't visually replace the post-it
-    in a different paused pane. If every slot is in use (very unlikely with
+    Avoid slots currently referenced by any active `note-image` state file —
+    including our own session's current slot. iTerm2 caches the background
+    image by path, so a second pause that landed on our previous slot would
+    leave the prior post-it on screen even though the file was overwritten.
+    Picking a different slot every pause forces a path change that iTerm2
+    actually refreshes on. If every slot is in use (very unlikely with
     N=8), fall back to LRU and accept the race.
     """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     slots = [CACHE_DIR / f"note-{i:02d}.png" for i in range(1, NOTE_POOL_SIZE + 1)]
 
-    sh = session_hash()
     in_use: set[str] = set()
     for state_file in STATE_DIR.glob("*.note-image"):
-        # Skip our own session — we're going to overwrite our slot anyway.
-        if state_file.name.startswith(f"{sh}."):
-            continue
         try:
             path = state_file.read_text().strip()
             if path:
@@ -929,13 +930,18 @@ def ensure_per_pane_bg_image():
 # --- apply ---
 
 def _badge_color_for(state: dict) -> str:
-    """Resolve the badge color hex. Pause and pending-attention both map to
-    `blocked` regardless of underlying status. The post-it bg image
-    distinguishes pause from waiting; pending-attention is the sticky form of
-    waiting that survives PostToolUse out-of-order delivery (a late
-    PostToolUse for an earlier tool would otherwise overwrite the waiting
-    signal set by a fresh permission_prompt Notification for the next tool)."""
-    if state.get("paused") or state.get("pending_attention"):
+    """Resolve the badge color hex. Two flags take precedence over the
+    status mapping (BADGE-09a):
+    - `paused` → `paused` (BADGE-10): de-emphasized, distinct from waiting
+      so a parked session doesn't compete for attention with one blocked
+      on the user.
+    - `pending_attention` → `blocked`: the sticky form of waiting that
+      survives out-of-order PostToolUse delivery (a late PostToolUse for
+      an earlier tool would otherwise overwrite the waiting signal set by
+      a fresh permission_prompt Notification for the next tool)."""
+    if state.get("paused"):
+        return BADGE_COLOR_PALETTE["paused"]
+    if state.get("pending_attention"):
         return BADGE_COLOR_PALETTE["blocked"]
     logical = STATUS_TO_BADGE_STATE.get(state["status"], "ready")
     return BADGE_COLOR_PALETTE[logical]
@@ -1056,6 +1062,12 @@ def cmd_clear(args):
     else:
         for f in VALID_FIELDS:
             remove_state(f"override.{f}")
+        # Clearing all overrides also unwinds pause: the paused marker and
+        # the note-image reference are direct corollaries of `pause`, so
+        # leaving them after a `clear` would leave the post-it on screen
+        # with no overrides backing it.
+        remove_state("paused")
+        remove_state("note-image")
     render()
 
 

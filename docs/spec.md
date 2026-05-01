@@ -208,7 +208,7 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **OVR-03.** When the user invokes `clear <field>`, the plugin shall remove only that field's override.
 
-**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session.
+**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session and unwind any active pause — that is, remove the `paused` marker and the `note-image` reference. Rationale: the `paused` marker and `note-image` are direct corollaries of `pause` (PAUSE-01), so leaving them after a field-less `clear` would leave the post-it on screen with no overrides backing it. `clear <field>` remains overrides-only.
 
 ### 3.6 Pause and resume (PAUSE)
 
@@ -379,12 +379,14 @@ flowchart LR
 
 The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked`) are the contract.
 
-**BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force the `blocked` state regardless of the underlying `signal.status`:
+**BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying `signal.status`:
 
-- The `paused` marker (PAUSE-01) — pause is a user-initiated block; the post-it overlay distinguishes it visually from `waiting`.
-- The `pending-attention` marker (HOOK-03b) — Claude is waiting on the user; sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a fresh permission prompt is open.
+- The `paused` marker (PAUSE-01) forces the `paused` state (BADGE-10) — pause is a user-initiated halt, distinct from being blocked on the user.
+- The `pending-attention` marker (HOOK-03b) forces the `blocked` state — Claude is waiting on the user; sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a fresh permission prompt is open.
 
 When neither flag is set, BADGE-09 applies.
+
+**BADGE-10.** While the session is paused, the plugin shall set the badge color to the `paused` logical state — a de-emphasized color (e.g., gray) distinct from `ready` / `busy` / `blocked` — so a paused session is visually distinguishable from a session blocked on the user. The post-it overlay (OVERLAY-01) carries the note text; the badge color carries the at-a-glance "this session is parked" signal that is readable in Mission Control where the post-it is not. The `state → hex` mapping lives in implementation, consistent with BADGE-09.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -686,7 +688,8 @@ apply(state):
   load prev resolved snapshot (or empty on first render)
   if first render of this session:
     beacon-iterm badge-format <template>
-  badge_hex = blocked  if state.paused or state.pending_attention   # BADGE-09a precedence
+  badge_hex = paused   if state.paused                              # BADGE-09a + BADGE-10
+            else blocked if state.pending_attention                 # BADGE-09a precedence
             else palette[STATUS_TO_BADGE_STATE[state.status]]       # BADGE-09 mapping
   if badge_hex changed:
     beacon-iterm badge-color <badge_hex>
