@@ -199,8 +199,16 @@ typeset -g _BEACON_LAST_URL='__unset__'
 
 # Per-session file handoff for status-bar action buttons. Action enum 35
 # doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
-# read these files instead.
-typeset -gr _BEACON_CACHE_DIR="${HOME}/.claude/plugins/data/beacon/cache"
+# read these files instead. Derive the cache dir from the script so the
+# shell, hooks, and slash commands converge on the same path regardless
+# of whether the install lives in the marketplace cache or a working tree.
+_beacon_data_dir="$(python3 "$_BEACON_SCRIPT" data-dir)"
+if [[ -z "$_beacon_data_dir" ]]; then
+  echo "beacon.zsh: failed to resolve data dir via $_BEACON_SCRIPT" >&2
+  return 1
+fi
+typeset -gr _BEACON_CACHE_DIR="$_beacon_data_dir/cache"
+unset _beacon_data_dir
 mkdir -p "$_BEACON_CACHE_DIR"
 
 _beacon_write_session_file() {

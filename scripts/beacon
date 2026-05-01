@@ -24,18 +24,60 @@ PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolv
 
 
 def _default_data_dir() -> Path:
-    """Match Claude Code's `<plugin>-<owner>` data-dir convention by parsing
-    PLUGIN_ROOT. Hooks receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash
-    commands and the shell alias do not — without this derivation those
-    contexts would write to a different directory than hooks read from, and
-    state changes would be invisible across them."""
+    """Match Claude Code's `<plugin>-<owner>` data-dir convention. Hooks
+    receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash commands and
+    the shell alias do not — without convergence those contexts would
+    write to a different directory than hooks read from, and state changes
+    would be invisible across them. Cache installs parse the path; dev
+    installs derive the owner from PLUGIN_ROOT's git remote."""
     base = Path.home() / ".claude" / "plugins"
     try:
         rel = PLUGIN_ROOT.relative_to(base / "cache")
-        owner, plugin = rel.parts[0], rel.parts[1]
-        return base / "data" / f"{plugin}-{owner}"
+        return base / "data" / f"{rel.parts[1]}-{rel.parts[0]}"
     except (ValueError, IndexError):
-        return base / "data" / "beacon"
+        pass
+    owner = _git_remote_owner(PLUGIN_ROOT)
+    if owner:
+        return base / "data" / f"{PLUGIN_ROOT.name}-{owner}"
+    raise RuntimeError(
+        f"can't derive a data dir from PLUGIN_ROOT={PLUGIN_ROOT}: not under "
+        f"{base / 'cache'} and no parsable git remote. Set CLAUDE_PLUGIN_DATA "
+        f"explicitly or run from a working tree with an origin."
+    )
+
+
+def _git_remote_owner(repo_dir: Path) -> str | None:
+    """Owner segment of `remote.origin.url` (e.g. `chris-peterson` from
+    `git@github.com:chris-peterson/beacon.git`), or None when no remote.
+
+    Inlined parser instead of reusing `p_git_remote` because this runs at
+    module-load time via the `DATA_DIR = ...` assignment, before
+    `p_git_remote` is defined — Python only resolves names at call time
+    but the call happens during import. The duplication is intentional."""
+    try:
+        r = subprocess.run(
+            ["git", "config", "remote.origin.url"],
+            cwd=str(repo_dir), capture_output=True, text=True, timeout=2,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        return None
+    url = r.stdout.strip()
+    if not url:
+        return None
+    if "://" in url:
+        path = url.split("://", 1)[1]
+        path = path.split("/", 1)[1] if "/" in path else ""
+    elif ":" in url:
+        path = url.split(":", 1)[1]
+    else:
+        path = url
+    path = path.rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    parts = [p for p in path.split("/") if p]
+    return parts[0] if parts else None
 
 
 DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or str(_default_data_dir()))
@@ -518,6 +560,12 @@ def cmd_open_url(_args):
     print(f"opened: {url}")
 
 
+def cmd_data_dir(_args):
+    """Print the resolved data dir — consumed by shell/beacon.zsh to
+    derive its cache path on source."""
+    sys.stdout.write(f"{DATA_DIR}\n")
+
+
 def cmd_json(_args):
     """Print the resolved session state as a JSON object — for handoff,
     cmd+click of the embedded URL, or piping into jq / your own tooling."""
@@ -618,9 +666,10 @@ def _cli(*args, timeout: float = 5.0) -> None:
 #
 # This duplicates logic already present in the shell snippet. Keep them in
 # sync — the contract is the (display, state, indicator) triplet that drives
-# user.beacon_branch* slots. Skip user-shell-owned URL/cwd republishing here:
-# Claude doesn't change the user's interactive cwd, and URL resolution is
-# heavier than needed for every Bash tool call.
+# user.beacon_branch* slots. URL republishing stays out of this hook (URL
+# resolution is heavier than needed for every Bash tool call); cwd is
+# refreshed separately by _publish_cwd_handoff (HOOK-09) since Claude
+# *does* change cwd via the Bash tool.
 
 def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
     """Return (display, state, indicator). Empty triplet outside a repo."""
@@ -682,6 +731,18 @@ def _publish_branch(cwd: Path) -> None:
         f"beacon_branch_untracked={display if state == 'untracked' else ''}",
     ]
     _cli("uservar-batch", *pairs)
+
+
+def _publish_cwd_handoff(cwd_str: str) -> None:
+    """HOOK-09: refresh the per-session cwd handoff after a Claude `Bash`
+    call so the status bar `↗ code` button reflects Claude-side `cd`s.
+    Mirrors `_beacon_write_session_file` in shell/beacon.zsh — keep the
+    `cwd-${ITERM_SESSION_ID}.txt` filename pattern in sync."""
+    iterm_id = os.environ.get("ITERM_SESSION_ID")
+    if not iterm_id:
+        return
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    (CACHE_DIR / f"cwd-{iterm_id}.txt").write_text(f"{cwd_str}\n")
 
 
 # --- pane sizing for note overlay ---
@@ -854,10 +915,10 @@ def install_dynamic_profile() -> tuple[bool, str]:
     DynamicProfiles directory. iTerm2 watches the directory and reloads on
     change without restart.
 
-    Substitutes `__BEACON_SCRIPT__` placeholders with the absolute path of
-    scripts/beacon so action coprocesses can locate the script directly
-    (without depending on the shell alias, which non-interactive shells
-    invoked by iTerm2's coprocess action wouldn't see).
+    Substitutes `__BEACON_SCRIPT__` (script path for non-interactive
+    coprocess shells, which can't see the user's `beacon` alias) and
+    `__BEACON_CACHE_DIR__` (so the `↖ web` and `↗ code` action shells
+    don't have to derive it themselves).
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk
     with its own formatting and any GUI-edited values, so a "content
@@ -869,7 +930,9 @@ def install_dynamic_profile() -> tuple[bool, str]:
     target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
     target = target_dir / "beacon.json"
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
-    content = template.read_text().replace("__BEACON_SCRIPT__", beacon_script)
+    content = (template.read_text()
+               .replace("__BEACON_SCRIPT__", beacon_script)
+               .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR)))
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
@@ -1477,6 +1540,7 @@ def cmd_hook(args):
         if tool == "Bash":
             cwd_str = payload.get("cwd") or os.getcwd()
             _publish_branch(Path(cwd_str))
+            _publish_cwd_handoff(cwd_str)
 
     render()
 
@@ -1539,6 +1603,8 @@ def main(argv=None):
 
     sub.add_parser("json", help="print the resolved session state as JSON")
 
+    sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
+
     args = parser.parse_args(argv)
 
     handlers = {
@@ -1550,6 +1616,7 @@ def main(argv=None):
         "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
+        "data-dir": cmd_data_dir,
     }
     if not args.cmd:
         return cmd_show(args)

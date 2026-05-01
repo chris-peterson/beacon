@@ -200,6 +200,8 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-08.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall refresh shell-owned branch values for the session so that branch state changes Claude introduced (`git checkout`, `git switch`, `git pull`, etc.) are reflected on rendered surfaces without waiting for the user's next interactive shell prompt. This complements the shell integration's prompt-driven refresh (§4.4 / §6.5) — the shell handles user-initiated changes; the plugin handles Claude-initiated changes.
 
+**HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall refresh the per-session cwd handoff consumed by the status bar's `↗ code` action so that a `cd` Claude ran is reflected the next time the user clicks the button. Same rationale as HOOK-08 — the user's interactive shell never re-prompts during a Claude turn, so the shell-driven refresh path is blind to Claude-initiated cwd changes.
+
 ### 3.5 User overrides (OVR)
 
 **OVR-01.** When the user invokes `set <field> <value>`, the plugin shall persist the value as an override for that field. Valid fields: `project`, `task`, `stage`, `status`, `url`.
@@ -432,7 +434,7 @@ The `install` command shall **not** make the beacon profile iTerm2's default aut
 
 Chip-by-chip behavior:
 
-1. **`↖ web` action button** — link-blue. Always visible. Clicking shall navigate to the URL resolved for the session (PROV-07); clicking is a silent no-op when no URL has been resolved.
+1. **`↖ web` action button** — link-blue. Always visible. Clicking shall navigate to the URL resolved for the session (PROV-07); when no URL has been resolved, clicking shall navigate to a generic search-engine landing page so the click is never a no-op.
 2. **Full project path** — full remote project URL (e.g. `git.example/acme/widgets`), rendered in a dimmer link-blue so the action chip reads as the bright control and the path reads as its target. Identification only — not clickable.
 3. **Spring (left)** — pushes the remote cluster to the left edge.
 4. **Branch (synced)** — branch name with leading `@` sigil ("at the expected commit"), rendered in green. Visible only when the local branch is synced with its upstream.
@@ -446,7 +448,7 @@ Action-chip color matches the data chip it acts on so each CTA visually ties to 
 
 **STATUS-BAR-03.** Action chips shall remain visible regardless of underlying state. Data chips other than the branch triple shall always render. The branch triple shall use value-based coloring (green / orange / dim gray) to communicate sync state at a glance. Empirical iTerm2 quirks that constrain the implementation (action chips ignoring `remove empty components`, coprocess actions not interpolating user vars, SwiftyString comparison expressions being unreliable) are captured in §6.10.
 
-**STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL, branch text + sync state (with derived per-state slots so the profile does not need conditional expressions), local cwd with `~`-substitution, and the resolved URL. The integration shall also write per-session handoff files for the `↖ web` and `↗ code` action buttons, since iTerm2 coprocess actions cannot interpolate user variables. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet and the dynamic profile (see §6.5).
+**STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL, branch text + sync state (with derived per-state slots so the profile does not need conditional expressions), local cwd with `~`-substitution, and the resolved URL. The integration shall also write per-session handoff files for the `↖ web` and `↗ code` action buttons, since iTerm2 coprocess actions cannot interpolate user variables. The cwd handoff file is additionally refreshed by the plugin under HOOK-09 so Claude-side `cd`s are reflected without waiting for the user's next prompt. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet, the plugin, and the dynamic profile (see §6.5).
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
 
@@ -638,7 +640,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | `beacon_local_path` | cwd with `$HOME` substituted as `~` | always populated |
 | `beacon_url` | PROV-07 | when no provider returns a value |
 
-Per-session handoff files for the action buttons (see §6.10 caveat 6) live at `${CLAUDE_PLUGIN_DATA}/cache/url-$ITERM_SESSION_ID.txt` and `${CLAUDE_PLUGIN_DATA}/cache/cwd-$ITERM_SESSION_ID.txt`.
+Per-session handoff files for the action buttons (see §6.10 caveat 6) live at `<DATA_DIR>/cache/url-$ITERM_SESSION_ID.txt` and `<DATA_DIR>/cache/cwd-$ITERM_SESSION_ID.txt` — `<DATA_DIR>` resolved per the convergence rule above so the shell, hooks, and slash commands all read and write the same files.
 
 Tab-completion install (CMD-09) writes `~/.zsh/completions/_beacon` and inserts `fpath=(~/.zsh/completions $fpath)` ahead of the user's `compinit` call (or appends `fpath` + `compinit` if neither is present).
 
@@ -720,7 +722,7 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 3. **Per-Pane Background Image** must be enabled in iTerm2 preferences for the post-it to scope to the pane rather than the window. `beacon install` sets this via `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
 4. **Prefs cache vs. on-disk plist.** While iTerm2 is running it holds its prefs in memory and rewrites the plist on quit, clobbering any `defaults write` that ran in between. Pref writes that need to survive an iTerm2 restart must therefore happen with iTerm2 quit. CMD-12 orchestrates this — currently via a detached helper that polls until iTerm2 exits, then re-invokes `beacon exclusive-configuration --yes` to perform the writes; quit is requested via `osascript`. The helper logs to a tempfile so a failed relaunch is debuggable.
 5. **Status bar action chips don't honor `remove empty components`.** Tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, (c) OSC 8 hyperlinks embedded in chip values — none toggle visibility cleanly. The status bar therefore keeps action chips always-visible and routes to a no-op when the underlying value is empty (STATUS-BAR-02 chip 1).
-6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `${CLAUDE_PLUGIN_DATA}/cache/`, written by the shell snippet on every prompt. Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
+6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `<DATA_DIR>/cache/`. The shell snippet writes both on every prompt; the plugin additionally refreshes the cwd file from PostToolUse for `Bash` (HOOK-09). Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
 7. **SwiftyString comparison expressions are unreliable across iTerm2 versions.** The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` / `beacon_branch_untracked` triple is therefore pre-resolved in the shell rather than expressed as a profile-side conditional.
 8. **Dynamic profile filename.** `install` writes to `~/Library/Application Support/iTerm2/DynamicProfiles/beacon.json`. Filename is unconstrained by iTerm2; the directory is the contract.
 

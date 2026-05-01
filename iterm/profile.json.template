@@ -37,7 +37,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↖ web",
-                  "parameter": "url=$(cat \"$HOME/.claude/plugins/data/beacon/cache/url-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$url\" ] && open \"$url\"",
+                  "parameter": "url=$(cat \"__BEACON_CACHE_DIR__/url-$ITERM_SESSION_ID.txt\" 2>/dev/null); open \"${url:-https://www.google.com}\"",
                   "action": 35,
                   "version": 2
                 }
@@ -232,7 +232,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↗ code",
-                  "parameter": "cwd=$(cat \"$HOME/.claude/plugins/data/beacon/cache/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
+                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
                   "action": 35,
                   "version": 2
                 }
