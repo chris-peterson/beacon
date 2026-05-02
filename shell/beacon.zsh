@@ -37,10 +37,15 @@ printf '\e]1337;SetBackgroundImageFile=\a'
 # inherit an alarming color even though no Claude activity is happening here.
 # Claude's hooks repaint on the next turn.
 printf '\e]1337;SetColors=badge=default\a'
-# Badge format: project only (BADGE-03). Stage/status/branch live in the
-# status bar, not the badge.
+# Badge format: project plus an empty drift slot the plugin fills when
+# Claude's Bash subprocess wanders into a different project (HOOK-09).
+# Stage/status/branch live in the status bar, not the badge.
 printf '\e]1337;SetBadgeFormat=%s\a' \
-  "$(printf '%s' '\(user.beacon_project)' | base64)"
+  "$(printf '%s' '\(user.beacon_project)\(user.beacon_project_drift)' | base64)"
+# Clear any stale drift suffix inherited from a previous Claude session in
+# this iTerm pane — the user is back at the shell, so by definition there's
+# no drift. The plugin re-establishes the slot on next SessionStart.
+printf '\e]1337;SetUserVar=beacon_project_drift=\a'
 
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(

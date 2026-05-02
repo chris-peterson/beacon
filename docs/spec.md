@@ -198,9 +198,9 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-07.** When Claude invokes `Bash` with a command that publishes or deploys to a remote (e.g. push to a release branch, `npm publish`, container registry push, IaC apply, hosted-platform deploy), the plugin shall set `signal.stage = shipping`. The exact pattern set is a tunable implementation list maintained alongside the hook handler.
 
-**HOOK-08.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall refresh shell-owned branch values for the session so that branch state changes Claude introduced (`git checkout`, `git switch`, `git pull`, etc.) are reflected on rendered surfaces without waiting for the user's next interactive shell prompt. This complements the shell integration's prompt-driven refresh (§4.4 / §6.5) — the shell handles user-initiated changes; the plugin handles Claude-initiated changes.
+**HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the five `beacon_branch*` slots, `beacon_local_path`, `beacon_url`) plus the per-session handoff files (`cwd-$ITERM_SESSION_ID.txt`, `url-$ITERM_SESSION_ID.txt`) that the `↗ code` and `↖ web` action buttons consume. The plugin shall additionally record the resolved project name as `anchor.project` per-session state. After SessionStart, these slots and files shall not be refreshed for the remainder of the session — the status bar represents the identity of the Claude session ("which session is this"), not the cwd of Claude's most recent Bash subprocess. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall refresh the per-session cwd handoff consumed by the status bar's `↗ code` action so that a `cd` Claude ran is reflected the next time the user clicks the button. Same rationale as HOOK-08 — the user's interactive shell never re-prompts during a Claude turn, so the shell-driven refresh path is blind to Claude-initiated cwd changes.
+**HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall compare the resolved project name of the payload's cwd against `anchor.project` (HOOK-08). When they differ, the plugin shall set `beacon_project_drift = " (<basename>)"` (where `<basename>` is the cwd's last path segment) and write the `drift.active` flag, so the badge text appends a parenthetical drift hint and the badge color flips to the `drifted` state (BADGE-09a / BADGE-11). When they match, the plugin shall clear `beacon_project_drift` and remove `drift.active`. Rationale: the user needs to know at a glance both *which* session this is (anchor — preserved on the status bar and the action buttons per HOOK-08) and *that* Claude has wandered (drift — surfaced on the badge alone, the only beacon surface readable in Mission Control). The cwd basename is short and visually distinct from the anchor's `owner/repo` form.
 
 ### 3.5 User overrides (OVR)
 
@@ -381,14 +381,17 @@ flowchart LR
 
 The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked`) are the contract.
 
-**BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying `signal.status`:
+**BADGE-09a.** Three flags take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying `signal.status`. Precedence is `paused` > `pending-attention` > `drift.active` — pause is the most explicit user intent, pending attention demands action, drift is informational and yields to anything more urgent:
 
 - The `paused` marker (PAUSE-01) forces the `paused` state (BADGE-10) — pause is a user-initiated halt, distinct from being blocked on the user.
 - The `pending-attention` marker (HOOK-03b) forces the `blocked` state — Claude is waiting on the user; sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a fresh permission prompt is open.
+- The `drift.active` marker (HOOK-09) forces the `drifted` state (BADGE-11) — Claude's Bash subprocess is in a project different from the SessionStart anchor.
 
-When neither flag is set, BADGE-09 applies.
+When none of the three flags is set, BADGE-09 applies.
 
 **BADGE-10.** While the session is paused, the plugin shall set the badge color to the `paused` logical state — a de-emphasized color (e.g., gray) distinct from `ready` / `busy` / `blocked` — so a paused session is visually distinguishable from a session blocked on the user. The post-it overlay (OVERLAY-01) carries the note text; the badge color carries the at-a-glance "this session is parked" signal that is readable in Mission Control where the post-it is not. The `state → hex` mapping lives in implementation, consistent with BADGE-09.
+
+**BADGE-11.** While `drift.active` is set (HOOK-09), the plugin shall set the badge color to the `drifted` logical state — a hex outside the `ready` / `busy` / `blocked` traffic-light family (e.g., a cool blue) — so a session whose Bash has wandered into a different project reads as anomalous at a glance without competing with the green/orange/red status palette. The `state → hex` mapping lives in implementation, consistent with BADGE-09. The badge text additionally carries a parenthetical drift label via the `beacon_project_drift` user-var slot (see HOOK-09 / §6.6).
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -448,7 +451,7 @@ Action-chip color matches the data chip it acts on so each CTA visually ties to 
 
 **STATUS-BAR-03.** Action chips shall remain visible regardless of underlying state. Data chips other than the branch triple shall always render. The branch triple shall use value-based coloring (green / orange / dim gray) to communicate sync state at a glance. Empirical iTerm2 quirks that constrain the implementation (action chips ignoring `remove empty components`, coprocess actions not interpolating user vars, SwiftyString comparison expressions being unreliable) are captured in §6.10.
 
-**STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL, branch text + sync state (with derived per-state slots so the profile does not need conditional expressions), local cwd with `~`-substitution, and the resolved URL. The integration shall also write per-session handoff files for the `↖ web` and `↗ code` action buttons, since iTerm2 coprocess actions cannot interpolate user variables. The cwd handoff file is additionally refreshed by the plugin under HOOK-09 so Claude-side `cd`s are reflected without waiting for the user's next prompt. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet, the plugin, and the dynamic profile (see §6.5).
+**STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL, branch text + sync state (with derived per-state slots so the profile does not need conditional expressions), local cwd with `~`-substitution, and the resolved URL. The integration shall also write per-session handoff files for the `↖ web` and `↗ code` action buttons, since iTerm2 coprocess actions cannot interpolate user variables. During a Claude session, both the user vars and the handoff files are pinned to the SessionStart anchor (HOOK-08); they only follow the user's actual PWD between Claude sessions, when the interactive shell prompt is active. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet, the plugin, and the dynamic profile (see §6.5).
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
 
@@ -620,7 +623,7 @@ Python 3 script reacting to hooks, slash commands, and skill signals. Owns the C
 
 The plugin invokes the CLI via subprocess. It does **not** implement any iTerm2 escape sequence directly — that is exclusively the CLI's job.
 
-The plugin's `PostToolUse` handler for `Bash` (HOOK-08) republishes the shell-owned branch user vars; this duplicates logic in `shell/beacon.zsh` because the user's interactive shell `precmd` does not fire while Claude is running tools. The two sites are kept in sync; the contract is the `(display, state, indicator)` triplet the slots consume.
+The plugin's `SessionStart` handler (HOOK-08) publishes the full set of status-bar slots and writes the per-session action-button handoff files; the `PostToolUse` handler for `Bash` (HOOK-09) updates the badge-only drift slot. This duplicates project / branch / URL resolution from `shell/beacon.zsh` because the user's interactive shell `precmd` does not fire while Claude is running. The two sites are kept in sync; the contracts are the `(display, state, indicator)` triplet driving the branch slots and the project-name resolver mirrored from `_beacon_project_name`.
 
 ### 6.5 Shell integration: `shell/beacon.zsh`
 
@@ -639,6 +642,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | `beacon_branch_untracked` | `beacon_branch` when state is `untracked`, else empty | n/a |
 | `beacon_local_path` | cwd with `$HOME` substituted as `~` | always populated |
 | `beacon_url` | PROV-07 | when no provider returns a value |
+| `beacon_project_drift` | plugin-only (HOOK-09); empty or ` (<cwd basename>)` | no Claude session active, or Claude's cwd resolves to the anchor project |
 
 Per-session handoff files for the action buttons (see §6.10 caveat 6) live at `<DATA_DIR>/cache/url-$ITERM_SESSION_ID.txt` and `<DATA_DIR>/cache/cwd-$ITERM_SESSION_ID.txt` — `<DATA_DIR>` resolved per the convergence rule above so the shell, hooks, and slash commands all read and write the same files.
 
@@ -662,9 +666,11 @@ Idempotent via a sentinel variable. Empty values are allowed and clear the slot 
 
 The badge format (text template) is set per-session via the OSC `SetBadgeFormat` escape sequence:
 
+```text
+\(user.beacon_project)\(user.beacon_project_drift)
 ```
-\(user.beacon_project)
-```
+
+The drift slot is empty during interactive shell use and during Claude sessions whose Bash hasn't wandered, so the rendered badge is just the project. When HOOK-09 fires drift, the slot becomes ` (<cwd basename>)` and the badge reads e.g. `chris-peterson/beacon (ai-sdlc)`.
 
 Two writers set this same template:
 
@@ -692,6 +698,7 @@ apply(state):
     beacon-iterm badge-format <template>
   badge_hex = paused   if state.paused                              # BADGE-09a + BADGE-10
             else blocked if state.pending_attention                 # BADGE-09a precedence
+            else drifted if state.drift_active                      # BADGE-09a + BADGE-11
             else palette[STATUS_TO_BADGE_STATE[state.status]]       # BADGE-09 mapping
   if badge_hex changed:
     beacon-iterm badge-color <badge_hex>
@@ -722,7 +729,7 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 3. **Per-Pane Background Image** must be enabled in iTerm2 preferences for the post-it to scope to the pane rather than the window. `beacon install` sets this via `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
 4. **Prefs cache vs. on-disk plist.** While iTerm2 is running it holds its prefs in memory and rewrites the plist on quit, clobbering any `defaults write` that ran in between. Pref writes that need to survive an iTerm2 restart must therefore happen with iTerm2 quit. CMD-12 orchestrates this — currently via a detached helper that polls until iTerm2 exits, then re-invokes `beacon exclusive-configuration --yes` to perform the writes; quit is requested via `osascript`. The helper logs to a tempfile so a failed relaunch is debuggable.
 5. **Status bar action chips don't honor `remove empty components`.** Tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, (c) OSC 8 hyperlinks embedded in chip values — none toggle visibility cleanly. The status bar therefore keeps action chips always-visible and routes to a no-op when the underlying value is empty (STATUS-BAR-02 chip 1).
-6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `<DATA_DIR>/cache/`. The shell snippet writes both on every prompt; the plugin additionally refreshes the cwd file from PostToolUse for `Bash` (HOOK-09). Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
+6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `<DATA_DIR>/cache/`. The shell snippet writes both on every prompt; the plugin additionally writes both at SessionStart (HOOK-08) so a Claude session pins the buttons to its anchor cwd/url for the duration of the session. Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
 7. **SwiftyString comparison expressions are unreliable across iTerm2 versions.** The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` / `beacon_branch_untracked` triple is therefore pre-resolved in the shell rather than expressed as a profile-side conditional.
 8. **Dynamic profile filename.** `install` writes to `~/Library/Application Support/iTerm2/DynamicProfiles/beacon.json`. Filename is unconstrained by iTerm2; the directory is the contract.
 

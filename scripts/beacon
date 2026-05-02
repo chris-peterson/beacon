@@ -217,12 +217,15 @@ _beacon "$@"
 # Logical status states → badge color hex (no leading #). Logical names are
 # the contract (BADGE-09, BADGE-10); hex values are tunable without touching
 # call sites. `paused` is de-emphasized so a parked session reads distinct
-# from one blocked on the user (BADGE-10).
+# from one blocked on the user (BADGE-10). `drifted` sits outside the
+# traffic-light hue range so a session whose Bash has wandered into a
+# different project (HOOK-09) reads as anomalous at a glance.
 BADGE_COLOR_PALETTE = {
     "ready":   "00aa44",
     "busy":    "cc8800",
     "blocked": "cc2233",
     "paused":  "888888",
+    "drifted": "4488cc",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -231,8 +234,11 @@ STATUS_TO_BADGE_STATE = {
     "waiting": "blocked",
 }
 
-# Static badge format: project only (BADGE-03). Kept in sync with shell/beacon.zsh.
-BADGE_FORMAT = r"\(user.beacon_project)"
+# Static badge format. The drift slot is empty when Claude's current cwd
+# resolves to the same project as the SessionStart anchor; when it differs
+# the plugin writes ` (<basename>)` into it (HOOK-09). Both writers (this
+# constant and shell/beacon.zsh) must stay in sync.
+BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_project_drift)"
 
 
 def session_hash() -> str:
@@ -641,6 +647,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "status": status, "status_provider": p_status,
         "paused": _state_path("paused").exists(),
         "pending_attention": _state_path("pending-attention").exists(),
+        "drift_active": _state_path("drift.active").exists(),
     }
 
 
@@ -656,20 +663,22 @@ def _cli(*args, timeout: float = 5.0) -> None:
         pass
 
 
-# --- branch info (mirrors shell/beacon.zsh _beacon_branch_info) ---
+# --- session anchor + drift (mirrors shell/beacon.zsh _beacon_precmd) ---
 #
-# The shell snippet publishes branch user vars on every prompt redraw — fine
-# for human-driven git operations but blind to Claude's Bash tool, which runs
-# in a detached subprocess that never returns to the user's shell. The plugin
-# republishes from PostToolUse so a `git checkout` Claude runs is reflected
-# in the iTerm2 status bar without waiting for the next user prompt.
+# The navigational identity of a Claude session is the cwd Claude was invoked
+# with. SessionStart captures that as the anchor and publishes the full set
+# of status-bar slots (project, project_full, branch×5, local_path, url) plus
+# the per-session handoff files for the ↗ code / ↖ web buttons (HOOK-08).
+# Those slots are not refreshed mid-session — they represent *which* session
+# this is, not where Claude's current Bash subprocess happens to be.
 #
-# This duplicates logic already present in the shell snippet. Keep them in
-# sync — the contract is the (display, state, indicator) triplet that drives
-# user.beacon_branch* slots. URL republishing stays out of this hook (URL
-# resolution is heavier than needed for every Bash tool call); cwd is
-# refreshed separately by _publish_cwd_handoff (HOOK-09) since Claude
-# *does* change cwd via the Bash tool.
+# Drift is communicated separately on the badge alone (HOOK-09): on each
+# PostToolUse Bash, the plugin compares Claude's current cwd to the anchor;
+# when the project differs, it appends ` (<cwd basename>)` to the badge text
+# via `beacon_project_drift` and flips the badge color to `drifted`. This
+# duplicates project/branch/url resolution from shell/beacon.zsh — keep them
+# in sync; in interactive (non-Claude) sessions the shell publishes the same
+# slots on each prompt redraw and naturally tracks the user's actual PWD.
 
 def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
     """Return (display, state, indicator). Empty triplet outside a repo."""
@@ -720,29 +729,137 @@ def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
     return (display, state, indicator)
 
 
-def _publish_branch(cwd: Path) -> None:
-    """Push the five branch slots to iTerm2 via a single CLI invocation."""
-    display, state, _indicator = _detect_branch_info(cwd)
+def _project_root_at(cwd: Path) -> Path | None:
+    """Mirror shell's `_beacon_project_root`: return the nearest ancestor (or
+    cwd itself) holding a project marker, stopping at $HOME. Returns None
+    when no marker is found within the search range — distinct from
+    `find_project_root`, which falls back to cwd. Used by the anchor
+    publisher to match the shell's "blank when not in a project" semantics."""
+    home = Path.home().resolve()
+    p = cwd.resolve()
+    for d in (p, *p.parents):
+        # Out of search scope when d reaches or steps outside $HOME's subtree.
+        # Markers at or above $HOME (stray dotfiles `.git`, etc.) don't
+        # represent the user's "current project".
+        if d == home or home not in d.parents:
+            return None
+        for marker in PROJECT_MARKERS:
+            if (d / marker).exists():
+                return d
+    return None
+
+
+def _project_name_at(cwd: Path) -> str:
+    """Owner/repo form when in a project (preferring git remote, falling
+    back to root basename). Empty outside any recognized project."""
+    root = _project_root_at(cwd)
+    if not root:
+        return ""
+    name = p_git_remote(cwd)
+    if name:
+        return name
+    return root.name or ""
+
+
+def _project_full_at(cwd: Path) -> str:
+    """`host/owner/path/to/repo` form of the project's git remote, preserving
+    nested-group segments. Empty when there's no project or no remote.
+    Mirrors shell's `_beacon_project_full`."""
+    root = _project_root_at(cwd)
+    if not root:
+        return ""
+    out = subprocess.run(
+        ["git", "config", "remote.origin.url"],
+        cwd=root, capture_output=True, text=True, timeout=2,
+    )
+    if out.returncode != 0 or not out.stdout.strip():
+        return ""
+    url = out.stdout.strip()
+    if "://" in url:
+        path = url.split("://", 1)[1]
+        if "@" in path:
+            path = path.split("@", 1)[1]
+    elif ":" in url:
+        host_path = url.split("@", 1)[1] if "@" in url else url
+        host, _, p = host_path.partition(":")
+        path = f"{host}/{p}" if host and p else url
+    else:
+        path = url
+    path = path.rstrip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    return path
+
+
+def _local_path_at(cwd: Path) -> str:
+    """`~`-substituted display path. Mirrors shell's `_beacon_local_path`."""
+    home = str(Path.home())
+    s = str(cwd)
+    if s == home:
+        return "~"
+    if s.startswith(home + "/"):
+        return "~" + s[len(home):]
+    return s
+
+
+def _publish_anchor(cwd: Path) -> None:
+    """HOOK-08: pin the navigational identity of this Claude session.
+
+    Publishes every status-bar slot the shell's precmd would publish, plus
+    the action-button handoff files, in one CLI batch. Records the project
+    name as `anchor.project` so PostToolUse Bash can detect drift. Clears
+    any leftover `beacon_project_drift` and `drift.active` from a previous
+    session that reused this iTerm pane."""
+    project = _project_name_at(cwd)
+    project_full = _project_full_at(cwd)
+    display, state, _ind = _detect_branch_info(cwd)
+    local_path = _local_path_at(cwd)
+    url, _label = resolve_url(cwd)
+
     pairs = [
+        f"beacon_project={project}",
+        f"beacon_project_full={project_full}",
         f"beacon_branch={display}",
         f"beacon_branch_state={state}",
         f"beacon_branch_clean={display if state == 'clean' else ''}",
         f"beacon_branch_diverged={display if state == 'diverged' else ''}",
         f"beacon_branch_untracked={display if state == 'untracked' else ''}",
+        f"beacon_local_path={local_path}",
+        f"beacon_url={url}",
+        "beacon_project_drift=",
     ]
     _cli("uservar-batch", *pairs)
 
+    write_state("anchor.project", project)
+    remove_state("drift.active")
 
-def _publish_cwd_handoff(cwd_str: str) -> None:
-    """HOOK-09: refresh the per-session cwd handoff after a Claude `Bash`
-    call so the status bar `↗ code` button reflects Claude-side `cd`s.
-    Mirrors `_beacon_write_session_file` in shell/beacon.zsh — keep the
-    `cwd-${ITERM_SESSION_ID}.txt` filename pattern in sync."""
     iterm_id = os.environ.get("ITERM_SESSION_ID")
-    if not iterm_id:
+    if iterm_id:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (CACHE_DIR / f"cwd-{iterm_id}.txt").write_text(f"{cwd}\n")
+        (CACHE_DIR / f"url-{iterm_id}.txt").write_text(f"{url}\n")
+
+
+def _publish_drift(cwd: Path) -> None:
+    """HOOK-09: surface a one-line drift signal on the badge when Claude's
+    Bash subprocess steps into a different project than the SessionStart
+    anchor. Status-bar slots and handoff files stay anchored — the badge is
+    the only surface that reflects mid-session drift, via the
+    `beacon_project_drift` slot (parenthetical suffix) and the `drifted`
+    color state (BADGE-09a precedence: pause > pending_attention > drift >
+    status). Drift label is the cwd basename — short, unambiguous, and
+    visually distinct from the anchor's owner/repo form."""
+    anchor = read_state("anchor.project") or ""
+    current = _project_name_at(cwd)
+    if current == anchor:
+        if read_state("drift.active"):
+            _cli("uservar", "beacon_project_drift", "")
+            remove_state("drift.active")
         return
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    (CACHE_DIR / f"cwd-{iterm_id}.txt").write_text(f"{cwd_str}\n")
+    label = cwd.name or ""
+    suffix = f" ({label})" if label else ""
+    _cli("uservar", "beacon_project_drift", suffix)
+    write_state("drift.active", "1")
 
 
 # --- pane sizing for note overlay ---
@@ -993,19 +1110,26 @@ def ensure_per_pane_bg_image():
 # --- apply ---
 
 def _badge_color_for(state: dict) -> str:
-    """Resolve the badge color hex. Two flags take precedence over the
-    status mapping (BADGE-09a):
+    """Resolve the badge color hex. Three flags take precedence over the
+    status mapping (BADGE-09a). Precedence is paused > pending_attention >
+    drift > status — pause is the most explicit user intent, pending
+    attention demands action, drift is informational ("Claude has wandered")
+    and yields to anything more urgent.
     - `paused` → `paused` (BADGE-10): de-emphasized, distinct from waiting
       so a parked session doesn't compete for attention with one blocked
       on the user.
     - `pending_attention` → `blocked`: the sticky form of waiting that
       survives out-of-order PostToolUse delivery (a late PostToolUse for
       an earlier tool would otherwise overwrite the waiting signal set by
-      a fresh permission_prompt Notification for the next tool)."""
+      a fresh permission_prompt Notification for the next tool).
+    - `drift_active` → `drifted`: Claude's Bash subprocess is in a project
+      different from the SessionStart anchor (HOOK-09)."""
     if state.get("paused"):
         return BADGE_COLOR_PALETTE["paused"]
     if state.get("pending_attention"):
         return BADGE_COLOR_PALETTE["blocked"]
+    if state.get("drift_active"):
+        return BADGE_COLOR_PALETTE["drifted"]
     logical = STATUS_TO_BADGE_STATE.get(state["status"], "ready")
     return BADGE_COLOR_PALETTE[logical]
 
@@ -1053,6 +1177,7 @@ def apply(state: dict):
         "status": s, "status_provider": state["status_provider"],
         "paused": state["paused"],
         "pending_attention": state.get("pending_attention", False),
+        "drift_active": state.get("drift_active", False),
         "note_image": note_image,
         "badge_color": badge_hex,
     }
@@ -1472,7 +1597,11 @@ def cmd_hook(args):
     if claude_sid:
         write_state("claude_session_id", claude_sid)
 
-    if event == "UserPromptSubmit":
+    if event == "SessionStart":
+        cwd_str = payload.get("cwd") or os.getcwd()
+        _publish_anchor(Path(cwd_str))
+
+    elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
         if prompt_text and PAUSE_RE.match(prompt_text):
             # NL pause-intent: the prompt itself becomes the post-it note.
@@ -1532,15 +1661,14 @@ def cmd_hook(args):
         # clear pending-attention: a late PostToolUse arriving after a fresh
         # Notification must not undo the sticky waiting marker.
         write_state("signal.status", "working")
-        # Refresh shell-owned branch user vars after Bash tool runs — the
-        # user's interactive shell hasn't seen the prompt redraw, so a `git
-        # checkout` Claude ran would otherwise leave the status bar showing
-        # the old branch until the user submits a prompt themselves.
+        # Drift detection (HOOK-09): the badge gets a parenthetical hint and
+        # the `drifted` color when Claude's current cwd resolves to a project
+        # different from the SessionStart anchor. Status-bar slots and
+        # handoff files stay anchored — the badge alone reflects drift.
         tool = payload.get("tool_name") or payload.get("tool") or ""
         if tool == "Bash":
             cwd_str = payload.get("cwd") or os.getcwd()
-            _publish_branch(Path(cwd_str))
-            _publish_cwd_handoff(cwd_str)
+            _publish_drift(Path(cwd_str))
 
     render()
 
