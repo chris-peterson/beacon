@@ -7,6 +7,10 @@ description: Send stage signals to beacon (plan, review) when entering planning 
 
 beacon is a session-awareness tool that displays the current project, task, stage, and status on the iTerm2 terminal. It learns most signals automatically via hooks. Your job is to fill the gaps hooks cannot observe — nothing more.
 
+## Before first invocation in a session
+
+Compare `beacon --version` against the plugin version in `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. If they differ, surface a one-line note and offer `/beacon:beacon install` to refresh the shell wrapper. If `beacon` isn't on PATH, skip silently.
+
 ## When to invoke beacon
 
 **Plan mode entry.** When the conversation transitions to planning, architecting, or design — entering plan mode (Shift+Tab) is the canonical trigger because there is no hook event for it. Run:

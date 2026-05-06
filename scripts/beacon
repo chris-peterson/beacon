@@ -23,6 +23,12 @@ from pathlib import Path
 PLUGIN_ROOT = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parent)
 
 
+def _plugin_version() -> str:
+    """Read the plugin's version from .claude-plugin/plugin.json. Single source
+    of truth — never hardcode a version constant in code."""
+    return json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+
+
 def _default_data_dir() -> Path:
     """Match Claude Code's `<plugin>-<owner>` data-dir convention. Hooks
     receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash commands and
@@ -1677,6 +1683,8 @@ def cmd_hook(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
+    parser.add_argument("--version", "-v", action="version",
+                        version=f"beacon {_plugin_version()}")
     sub = parser.add_subparsers(dest="cmd")
 
     sub.add_parser("show", help="show resolved signal state")

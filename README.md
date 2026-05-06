@@ -105,12 +105,14 @@ Aliases are global (shared across all sessions) and persist across upgrades.
 
 ## Upgrade
 
-```text
-/plugin update beacon
-/beacon install
-```
+Third-party Claude Code marketplaces have auto-update **off by default**. Either:
 
-The second step is required because plugin upgrades change the version-pinned cache path. The installer detects the prior `source` line by sentinel and rewrites it to the new path; everything else is already idempotent.
+- **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
+- **Or update manually** with `claude plugin update beacon@chris-peterson`.
+
+**After every upgrade, re-run `/beacon:beacon install`.** Plugin upgrades change the version-pinned cache path; the installer detects the prior `source` line by sentinel and rewrites it to the new path. Everything else is already idempotent.
+
+Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
 ## Uninstall
 
