@@ -822,8 +822,15 @@ def _publish_anchor(cwd: Path) -> None:
     local_path = _local_path_at(cwd)
     url, _label = resolve_url(cwd)
 
+    # BADGE-04 + PROV-06: when SessionStart's cwd is outside any recognized
+    # project, fall back to the abbreviated cwd so the badge always carries
+    # spatial context. Without this, an empty `beacon_project` combined with
+    # a later drift hint would render as just `(<basename>)` — anomalous color
+    # with no anchor identity.
+    project_display = project or local_path
+
     pairs = [
-        f"beacon_project={project}",
+        f"beacon_project={project_display}",
         f"beacon_project_full={project_full}",
         f"beacon_branch={display}",
         f"beacon_branch_state={state}",
@@ -1626,7 +1633,11 @@ def cmd_hook(args):
 
     elif event == "Stop":
         if not payload.get("stop_hook_active"):
-            write_state("signal.status", "waiting")
+            # HOOK-02: a finished turn is calm, not blocking. Red is reserved
+            # for active Notification (permission/idle prompt) so glancing
+            # across many panes distinguishes calm sessions from sessions
+            # truly waiting on user input.
+            write_state("signal.status", "idle")
         # Turn ended: any pending permission/idle notification is no longer in flight.
         remove_state("pending-attention")
 

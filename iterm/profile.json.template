@@ -6,6 +6,7 @@
       "Dynamic Profile Parent Name": "Default",
       "Show Status Bar": true,
       "Use Separate Colors for Light and Dark Mode": false,
+      "Badge Font": "Menlo-Bold 10",
       "Tags": [
         "beacon"
       ],

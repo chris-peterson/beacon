@@ -68,7 +68,9 @@ _beacon_project_root() {
 
 _beacon_project_name() {
   local root
-  root="$(_beacon_project_root)" || { print -r -- ""; return }
+  # BADGE-04 + PROV-06: when not in a recognized project, fall back to the
+  # abbreviated cwd so the badge always carries spatial context (never empty).
+  root="$(_beacon_project_root)" || { _beacon_local_path; return }
 
   # Prefer git remote's namespace/repo form (e.g. "chris-peterson/beacon",
   # "dotnet/docs"). Intermediate subgroups in nested hosts are dropped.

@@ -43,9 +43,9 @@ Stage is **never demoted by hooks** — once `review` or `shipping`, a subsequen
 
 | Value | Meaning | Driven by |
 |:---|:---|:---|
-| `idle` | Not actively engaged (just opened, paused, or freshly resumed) | Default; pause sets it explicitly |
+| `idle` | Not actively engaged (turn just ended, just opened, paused, or freshly resumed) | Default; Hook Stop (turn finished, calm); pause sets it explicitly |
 | `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse (any tool); Hook PostToolUse (any tool) |
-| `waiting` | Claude is waiting on the user (highest user-attention priority) | Hook Stop (when `stop_hook_active` not set); Hook Notification (`idle_prompt` / `permission_prompt`) |
+| `waiting` | Claude is actively blocked on the user (permission/idle prompt — highest user-attention priority) | Hook Notification (`idle_prompt` / `permission_prompt`) |
 
 Both stage and status accept user override via `/beacon set <field> <value>` and revert to provider chain on `/beacon clear <field>`.
 
@@ -182,7 +182,7 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-01.** When the user submits a prompt, the plugin shall set `signal.status = working`.
 
-**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = waiting`.
+**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = idle`. Rationale: a finished turn is calm, not user-blocking. Reserving `waiting` (red) for actual permission/idle prompts (HOOK-03) makes red high-signal — "this pane needs an answer right now" — so a glance at many panes distinguishes calm sessions from sessions truly blocked on the user.
 
 **HOOK-03.** When Claude requests user attention (Notification hook with matcher `idle_prompt|permission_prompt`), the plugin shall set `signal.status = waiting`.
 

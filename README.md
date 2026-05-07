@@ -4,12 +4,12 @@ At-a-glance session awareness for Claude Code in iTerm2.
 
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
-- **Badge** (always on) — project name (e.g. `acme/widgets`, or `ac/auth-svc` after applying an alias) plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
+- **Badge** (always on) — project name (e.g. `acme/widgets`, or `ac/auth-svc` after applying an alias) plus a status-driven color: green when calm (turn finished or session fresh), amber while Claude is working a turn, red when Claude is actively blocked on you (permission/idle prompt), gray when paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention — red is high-signal, not background noise.
 - **Status bar** (in the beacon profile) — a symmetrical strip with remote-context flush left, branch centered, and local-context flush right: `↖ web · project │ branch │ cwd · ↗ code`. The branch chip is colored by remote-relative state — green `@ main` when synced, orange `↑3 feature` when ahead/behind, dim gray `topic` when local-only (no upstream pushed yet). The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
 
-- **Post-it overlay** — a yellow sticky-note bg image carrying your free-text note (`/beacon pause "leaving for lunch"`). Clears automatically when you send the next prompt. Distinguishes "paused" from "waiting" — both share the red badge color, but only pause paints the overlay.
+- **Post-it overlay** — a yellow sticky-note bg image carrying your free-text note (`/beacon pause "leaving for lunch"`). Clears automatically when you send the next prompt. Pause flips the badge to gray and pins the note text on the overlay; together they distinguish "parked" from "actively waiting on a prompt."
 
 beacon explicitly does **not** touch tab color, terminal background, foreground, window title, or cursor — those are Claude Code's domain or the user's profile. The badge color is the only signal-coloring surface beacon paints.
 
@@ -56,9 +56,9 @@ beacon <TAB>        # twelve+ subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the badge color flips to amber while Claude is processing, red when it stops waiting on you
+- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red only while Claude is actively blocked on you (permission/idle prompt)
 - stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
-- `/beacon pause "checking lunch options"` paints a yellow post-it (and the badge goes red); sending the next prompt clears both
+- `/beacon pause "checking lunch options"` paints a yellow post-it and flips the badge to gray; sending the next prompt clears both
 
 ## Usage
 
