@@ -19,11 +19,13 @@ if [[ ! -x "$_BEACON_ITERM" ]]; then
   return 1
 fi
 
-# Alias `beacon` to the plugin script so users have a short, completable
-# command. Tab completion installs to ~/.zsh/completions/_beacon via
-# `beacon completions zsh`.
+# Path to the plugin script — used by helpers below (resolve-url, data-dir).
+# The user-facing `beacon` command on PATH comes from a wrapper installed by
+# `beacon install-cli` to ~/.local/bin/beacon, NOT from a shell alias. The
+# wrapper is what the SessionStart freshness hook (hooks/cli-freshness.sh)
+# can see via `command -v beacon` from non-interactive shells; an alias
+# wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
-alias beacon="python3 $_BEACON_SCRIPT"
 
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path. These determine how soon a freshly-split pane stops

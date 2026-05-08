@@ -32,7 +32,7 @@ def _plugin_version() -> str:
 def _default_data_dir() -> Path:
     """Match Claude Code's `<plugin>-<owner>` data-dir convention. Hooks
     receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash commands and
-    the shell alias do not — without convergence those contexts would
+    the on-PATH wrapper do not — without convergence those contexts would
     write to a different directory than hooks read from, and state changes
     would be invisible across them. Cache installs parse the path; dev
     installs derive the owner from PLUGIN_ROOT's git remote."""
@@ -164,7 +164,8 @@ _beacon() {
     'render:re-render current state'
     'signal:write a non-override signal (stage|status)'
     'completions:install or print shell completions'
-    'install:run all install steps (shell, completions, profile)'
+    'install:run all install steps (shell, wrapper, completions, profile)'
+    'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'exclusive-configuration:orchestrate iTerm2 quit+relaunch to apply prefs that require iTerm2 to be quit'
     'copy-url:copy the resolved URL to the clipboard'
   )
@@ -210,6 +211,9 @@ _beacon() {
       ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
+      ;;
+    install-cli)
+      (( CURRENT == 3 )) && compadd -- --dir
       ;;
     exclusive-configuration)
       (( CURRENT == 3 )) && compadd -- --yes -y
@@ -1449,23 +1453,71 @@ def cmd_completions(args):
         print("restart your shell (or run 'exec zsh') to activate completions")
 
 
+def _path_contains(target_dir: Path) -> bool:
+    target = target_dir.resolve()
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if not entry:
+            continue
+        try:
+            if Path(entry).expanduser().resolve() == target:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _install_cli_wrapper(target_dir: Path | None = None) -> Path:
+    # Drops a wrapper at <target_dir>/beacon that execs the source script.
+    # The source path is hardcoded into the wrapper at install time — plugin
+    # upgrades don't auto-refresh it. The plugin's SessionStart hook
+    # (hooks/cli-freshness.sh) compares `beacon --version` against
+    # plugin.json#version and nudges the user to re-run install-cli on drift.
+    source = (PLUGIN_ROOT / "scripts" / "beacon").resolve()
+    target_dir = target_dir or (Path.home() / ".local" / "bin")
+    target = target_dir / "beacon"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    wrapper = f'#!/usr/bin/env bash\nexec python3 "{source}" "$@"\n'
+
+    if target.exists() and target.read_text() == wrapper:
+        print(f"  ✓ already installed: {target} -> {source}")
+    else:
+        target.write_text(wrapper)
+        target.chmod(0o755)
+        print(f"  ✓ wrote {target} -> {source}")
+
+    if not _path_contains(target_dir):
+        print(f"  ! {target_dir} is not on $PATH — add it to your shell rc")
+
+    return target
+
+
+def cmd_install_cli(args):
+    target_dir = Path(args.dir).expanduser() if args.dir else None
+    _install_cli_wrapper(target_dir)
+    _install_completions()
+
+
 def cmd_install(_args):
     print("beacon install")
     print("==============")
     print()
     deferred: list[str] = []
 
-    print("[1/6] shell integration")
+    print("[1/7] shell integration")
     _install_shell_source()
     print()
-    print("[2/6] tab completion")
+    print("[2/7] CLI wrapper on PATH")
+    _install_cli_wrapper()
+    print()
+    print("[3/7] tab completion")
     _install_completions()
     print()
-    print("[3/6] iTerm2 'separate background images per pane'")
+    print("[4/7] iTerm2 'separate background images per pane'")
     ensure_per_pane_bg_image()
     print("  ✓ defaults set (PerPaneBackgroundImage = true)")
     print()
-    print("[4/6] iTerm2 bg-image trust pre-approval")
+    print("[5/7] iTerm2 bg-image trust pre-approval")
     ok, added = _pre_approve_iterm_paths()
     if not ok:
         for line in (
@@ -1475,7 +1527,7 @@ def cmd_install(_args):
             "    iTerm2 prompts once per pool slot the first time it's used.",
         ):
             print(_color("33", line))
-        deferred.append("[4/6] bg-image trust pre-approval")
+        deferred.append("[5/7] bg-image trust pre-approval")
     elif added:
         print(f"  ✓ added {len(added)} entries to AlwaysAllowBackgroundImage:")
         for p in added:
@@ -1483,11 +1535,11 @@ def cmd_install(_args):
     else:
         print("  ✓ all bg-image paths already pre-approved")
     print()
-    print("[5/6] iTerm2 dynamic profile (status bar layout)")
+    print("[6/7] iTerm2 dynamic profile (status bar layout)")
     _, msg = install_dynamic_profile()
     print(f"  ✓ {msg}")
     print()
-    print("[6/6] iTerm2 default profile")
+    print("[7/7] iTerm2 default profile")
     if _is_beacon_already_default():
         print("  ✓ 'beacon' is already the default profile")
     else:
@@ -1496,7 +1548,7 @@ def cmd_install(_args):
             "    Set via: iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default",
         ):
             print(_color("33", line))
-        deferred.append("[6/6] default profile")
+        deferred.append("[7/7] default profile")
     print()
     if deferred:
         label = "deferred step" if len(deferred) == 1 else "deferred steps"
@@ -1735,7 +1787,12 @@ def main(argv=None):
     sp.add_argument("--print", dest="print_only", action="store_true",
                     help="print the script to stdout instead of installing")
 
-    sub.add_parser("install", help="run all install steps (shell, completions, profile)")
+    sub.add_parser("install", help="run all install steps (shell, wrapper, completions, profile)")
+
+    sp = sub.add_parser("install-cli",
+                        help="install or refresh the beacon wrapper at ~/.local/bin/beacon (+ completions)")
+    sp.add_argument("--dir", default=None,
+                    help="directory to install into (default: ~/.local/bin)")
 
     sp = sub.add_parser("exclusive-configuration",
                         help="orchestrate iTerm2 quit + relaunch to apply prefs that require iTerm2 to be quit (bg-image trust, default profile)")
@@ -1760,6 +1817,7 @@ def main(argv=None):
         "pause": cmd_pause, "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "signal": cmd_signal, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
+        "install-cli": cmd_install_cli,
         "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,

@@ -36,6 +36,7 @@ beacon ships as a Claude Code plugin plus a sourceable zsh snippet. The plugin o
 The first two commands install the Claude plugin (hooks, slash command, skill, scripts). `/beacon install` then bootstraps everything around it:
 
 - appends a `source` line to `~/.zshrc` (idempotent, marked with a sentinel so upgrades replace it in place)
+- drops a `beacon` wrapper at `~/.local/bin/beacon` so the CLI is on PATH for slash commands, skills, and your shell (the same pattern as tack/logbook — see `/beacon:beacon install-cli` to refresh after a plugin upgrade)
 - installs zsh tab completion to `~/.zsh/completions/_beacon` and inserts `fpath` before your existing `compinit`
 - enables iTerm2's *Separate background images per pane* default so the post-it scopes to the active pane
 - pre-approves the post-it bg-image paths in iTerm2's `AlwaysAllowBackgroundImage` (no trust prompts at runtime)
@@ -110,7 +111,7 @@ Third-party Claude Code marketplaces have auto-update **off by default**. Either
 - **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
 - **Or update manually** with `claude plugin update beacon@chris-peterson`.
 
-**After every upgrade, re-run `/beacon:beacon install`.** Plugin upgrades change the version-pinned cache path; the installer detects the prior `source` line by sentinel and rewrites it to the new path. Everything else is already idempotent.
+**After every upgrade, re-run `/beacon:beacon install` (or just `/beacon:beacon install-cli` if all you need is a fresh wrapper).** Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. The plugin's `SessionStart` hook compares `beacon --version` against the installed plugin version on every Claude Code session start and nudges you to refresh when they differ.
 
 Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 
@@ -127,7 +128,7 @@ fpath=(~/.zsh/completions $fpath)         # only if no other tool relies on it
 source ".../beacon/shell/beacon.zsh"  # beacon: project · branch · stage badging
 ```
 
-And `rm ~/.zsh/completions/_beacon`.
+And `rm ~/.zsh/completions/_beacon ~/.local/bin/beacon`.
 
 ## Develop / install from a clone
 

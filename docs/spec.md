@@ -271,6 +271,8 @@ Behavior:
 2. If iTerm2 is not running, the plugin shall apply each write conditionally (skip already-correct prefs) and relaunch iTerm2.
 3. If iTerm2 is running, the plugin shall confirm intent interactively (skippable with `--yes`), warn the user that all iTerm2 windows and panes will close, quit iTerm2, and apply the writes after iTerm2 has exited. The orchestration mechanism (detached helper, AppleScript quit, log path for post-mortem) is captured in §6.10.
 
+**CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
+
 ---
 
 ## 4. iTerm2 adapter requirements
@@ -367,7 +369,7 @@ flowchart LR
 
 **BADGE-06.** The shell integration shall be idempotent — sourcing it twice in the same shell shall not duplicate hooks or output.
 
-**BADGE-07.** The shell integration shall expose `beacon` as an alias to the plugin script so `beacon <subcommand>` works as an interactive command and so tab completion (loaded as `_beacon`) attaches to the right command name.
+**BADGE-07.** The plugin shall provide an `install-cli` subcommand that drops a `beacon` wrapper at `~/.local/bin/beacon` (or a user-supplied directory via `--dir`) so `beacon <subcommand>` works as an interactive command on PATH and so tab completion (loaded as `_beacon`) attaches to the right command name. The wrapper hardcodes a path to the source script at install time and is the single mechanism by which `beacon` appears on PATH; the shell integration does not define a `beacon` alias. Plugin upgrades do not auto-refresh the wrapper — see CMD-13 and Architecture Rule 11.
 
 **BADGE-08.** The shell integration shall expose `_beacon_resolve_url()` as a public zsh function implementing the PROV-07 chain. Users may redefine this function in their `.zshrc` (after sourcing `beacon.zsh`) to substitute non-tack URL providers (Linear, Jira, GitHub Issues, etc.) without forking beacon.
 
@@ -604,7 +606,7 @@ aliases.txt                   # ALIAS-01: <full>=<short> per line, host-shared
 
 Session hash is derived from `$ITERM_SESSION_ID` (stable for the lifetime of an iTerm tab). SHA-1 truncated to 12–16 chars is sufficient — collisions are not a security concern.
 
-State and cache live under `${CLAUDE_PLUGIN_DATA}` when set (Claude Code provides this for hook invocations) and otherwise under a path derived from `${CLAUDE_PLUGIN_ROOT}` to match Claude Code's `<plugin>-<owner>` data-dir convention. Falling back to env-only would scatter state across two directories — hooks see one, slash commands and the shell alias see another — so the plugin computes a single canonical path regardless of how it was invoked.
+State and cache live under `${CLAUDE_PLUGIN_DATA}` when set (Claude Code provides this for hook invocations) and otherwise under a path derived from `${CLAUDE_PLUGIN_ROOT}` to match Claude Code's `<plugin>-<owner>` data-dir convention. Falling back to env-only would scatter state across two directories — hooks see one, slash commands and the on-PATH wrapper see another — so the plugin computes a single canonical path regardless of how it was invoked.
 
 The shell side and the CLI are both stateless: each shell prompt recomputes project + branch and republishes via the CLI; each CLI invocation emits its escape sequence and exits.
 
@@ -765,7 +767,7 @@ beacon/
 ├── scripts/
 │   └── beacon                      # plugin entry: resolver + handlers
 └── shell/
-    └── beacon.zsh                  # zsh hooks + alias + tab-completion install target
+    └── beacon.zsh                  # zsh hooks (precmd/chpwd) for the project/branch/cwd/url uservars
 ```
 
 ### 7.2 Install model
@@ -773,10 +775,13 @@ beacon/
 Plugin install (via Claude marketplace) places the tree at `~/.claude/plugins/cache/<author>/beacon/<version>/`. The user then runs `/beacon install` once per machine. That command:
 
 1. Adds a `source "<plugin-root>/shell/beacon.zsh"` line to `.zshrc`, marked with a sentinel comment so future upgrades update the path in place.
-2. Writes `~/.zsh/completions/_beacon` and inserts `fpath=(~/.zsh/completions $fpath)` before the user's existing `compinit` (or appends `fpath` + `compinit` if neither is present).
-3. Sets `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
+2. Writes a `beacon` wrapper to `~/.local/bin/beacon` that execs the source script at the install-time path (CMD-13).
+3. Writes `~/.zsh/completions/_beacon` and inserts `fpath=(~/.zsh/completions $fpath)` before the user's existing `compinit` (or appends `fpath` + `compinit` if neither is present).
+4. Sets `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
 
 No iTerm2 profile is installed or modified. No user-default profile is changed.
+
+The wrapper at `~/.local/bin/beacon` does not auto-refresh on plugin upgrade. The plugin's `SessionStart` hook (`hooks/cli-freshness.sh`) detects drift between `beacon --version` and `plugin.json#version` and nudges the user to re-run `install-cli`.
 
 ## 8. Out of scope
 
