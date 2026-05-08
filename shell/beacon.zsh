@@ -33,12 +33,18 @@ typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 #
 # Clear inherited bg-image first (visible side effect users notice most).
 printf '\e]1337;SetBackgroundImageFile=\a'
-# Reset badge color to the profile default. iTerm2 badge color is sticky for
-# the lifetime of the session, so a pane split off a Claude-active pane (or a
-# fresh shell after Claude's last `Stop` set 'blocked' red) would otherwise
-# inherit an alarming color even though no Claude activity is happening here.
-# Claude's hooks repaint on the next turn.
-printf '\e]1337;SetColors=badge=default\a'
+# Set badge color to the calm `ready` state (THEME-02 / BADGE-12). iTerm2
+# badge color is sticky for the lifetime of the session, so a pane split off
+# a Claude-active pane would otherwise inherit an alarming color even though
+# no Claude activity is happening here. Painting `ready` (Dracula green)
+# explicitly also avoids the iTerm2 default badge color leaking through —
+# on some setups that's a muted red, which collides with the `blocked`
+# semantic. Claude's hooks repaint to `busy` / `blocked` on the next turn.
+# Hex must match BADGE_COLOR_PALETTE["ready"] in scripts/beacon — the shell
+# can't import the palette (would reintroduce python startup in the prompt
+# path), so this is the one acknowledged duplicate. Keep them aligned when
+# retuning.
+printf '\e]1337;SetColors=badge=50fa7b\a'
 # Badge format: project plus an empty drift slot the plugin fills when
 # Claude's Bash subprocess wanders into a different project (HOOK-09).
 # Stage/status/branch live in the status bar, not the badge.
@@ -75,7 +81,8 @@ _beacon_project_name() {
   root="$(_beacon_project_root)" || { _beacon_local_path; return }
 
   # Prefer git remote's namespace/repo form (e.g. "chris-peterson/beacon",
-  # "dotnet/docs"). Intermediate subgroups in nested hosts are dropped.
+  # "dotnet/docs"). Intermediate subgroups in nested hosts are elided as
+  # "<top>/.../<repo>" so the badge signals that the path was abbreviated.
   local url=""
   if [[ -d "$root/.git" || -f "$root/.git" ]]; then
     url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
@@ -100,8 +107,11 @@ _beacon_project_name() {
       if (( n == 1 )); then
         print -r -- "${parts[1]}"
         return
-      elif (( n >= 2 )); then
-        print -r -- "${parts[1]}/${parts[-1]}"
+      elif (( n == 2 )); then
+        print -r -- "${parts[1]}/${parts[2]}"
+        return
+      elif (( n >= 3 )); then
+        print -r -- "${parts[1]}/.../${parts[-1]}"
         return
       fi
     fi

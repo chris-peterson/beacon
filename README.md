@@ -4,7 +4,7 @@ At-a-glance session awareness for Claude Code in iTerm2.
 
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
-- **Badge** (always on) — project name (e.g. `acme/widgets`, or `ac/auth-svc` after applying an alias) plus a status-driven color: green when calm (turn finished or session fresh), amber while Claude is working a turn, red when Claude is actively blocked on you (permission/idle prompt), gray when paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention — red is high-signal, not background noise.
+- **Badge** (always on) — project name (e.g. `acme/widgets`) plus a status-driven color: green when calm (turn finished or session fresh), amber while Claude is working a turn, red when Claude is actively blocked on you (permission/idle prompt), gray when paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention — red is high-signal, not background noise.
 - **Status bar** (in the beacon profile) — a symmetrical strip with remote-context flush left, branch centered, and local-context flush right: `↖ web · project │ branch │ cwd · ↗ code`. The branch chip is colored by remote-relative state — green `@ main` when synced, orange `↑3 feature` when ahead/behind, dim gray `topic` when local-only (no upstream pushed yet). The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
@@ -73,9 +73,6 @@ Then run `claude` in that tab and type any prompt:
 /beacon clear stage                        # remove a single override
 /beacon clear                              # remove all overrides
 /beacon reset                              # clear all per-session state
-/beacon alias acmecorp ac                  # shorten a project segment
-/beacon alias                              # list aliases
-/beacon alias clear acmecorp               # remove one
 ```
 
 ### Shell command (outside Claude Code)
@@ -86,23 +83,9 @@ The same subcommands work at the shell with tab completion:
 beacon show
 beacon stage plan
 beacon pause "afk"
-beacon alias dotnet dn
 ```
 
 The skill bundled with the plugin tells Claude to set `stage plan` on plan-mode entry and `stage review` when you ask for a code review or QA pass — both are events hooks can't see. Hooks own `dev` (any Write/Edit), `shipping` (deploy commands), and all status transitions.
-
-### Project aliases
-
-Project names default to `<top-group>/<repo>` from the git remote (intermediate subgroups are dropped). For very long org names you can register a short form once:
-
-```bash
-beacon alias acmecorp ac
-# Project at git.example/acmecorp/platform/auth-svc.git
-#   PROV-01 drops 'platform' (intermediate subgroup):  acmecorp/auth-svc
-#   ALIAS-02 substitutes 'acmecorp' → 'ac':            ac/auth-svc
-```
-
-Aliases are global (shared across all sessions) and persist across upgrades.
 
 ## Upgrade
 

@@ -225,17 +225,18 @@ _beacon "$@"
 """
 
 # Logical status states → badge color hex (no leading #). Logical names are
-# the contract (BADGE-09, BADGE-10); hex values are tunable without touching
-# call sites. `paused` is de-emphasized so a parked session reads distinct
-# from one blocked on the user (BADGE-10). `drifted` sits outside the
-# traffic-light hue range so a session whose Bash has wandered into a
-# different project (HOOK-09) reads as anomalous at a glance.
+# the contract (BADGE-09, BADGE-10); hex values come from the Dracula palette
+# (THEME-01, THEME-02) and are tunable here without touching call sites.
+# `paused` is de-emphasized (Dracula comment) so a parked session reads
+# distinct from one blocked on the user (BADGE-10). `drifted` (Dracula cyan)
+# sits outside the traffic-light hue range so a session whose Bash has
+# wandered into a different project (HOOK-09) reads as anomalous at a glance.
 BADGE_COLOR_PALETTE = {
-    "ready":   "00aa44",
-    "busy":    "cc8800",
-    "blocked": "cc2233",
-    "paused":  "888888",
-    "drifted": "4488cc",
+    "ready":   "50fa7b",
+    "busy":    "ffb86c",
+    "blocked": "ff5555",
+    "paused":  "6272a4",
+    "drifted": "8be9fd",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -354,8 +355,9 @@ def p_package_name(cwd: Path):
 
 def p_git_remote(cwd: Path):
     """Resolve project name from git remote, preferring `<top>/<repo>` form
-    (e.g. `chris-peterson/beacon`, `dotnet/docs`). Intermediate subgroups
-    in nested-group hosts (GitLab) are dropped."""
+    (e.g. `chris-peterson/beacon`, `dotnet/docs`). When intermediate
+    subgroups exist (nested-group hosts like GitLab), they are elided as
+    `<top>/.../<repo>` so the badge signals that the path was abbreviated."""
     root = find_project_root(cwd)
     out = subprocess.run(
         ["git", "config", "remote.origin.url"],
@@ -384,7 +386,9 @@ def p_git_remote(cwd: Path):
         return None
     if len(parts) == 1:
         return parts[0]
-    return f"{parts[0]}/{parts[-1]}"
+    if len(parts) == 2:
+        return f"{parts[0]}/{parts[1]}"
+    return f"{parts[0]}/.../{parts[-1]}"
 
 
 def p_project_dir(cwd: Path):
@@ -533,7 +537,7 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     # 4. project URL
     url = _git_remote_url_normalized(cwd)
     if url:
-        # Label = project name from the existing project chain (PROV-01 + ALIAS)
+        # Label = project name from the existing project chain (PROV-01)
         label = (p_git_remote(cwd) or p_project_dir(cwd) or "")
         return url, label
 
@@ -628,7 +632,7 @@ def resolve(cwd: Path | None = None) -> dict:
         ("dir",        lambda: p_project_dir(cwd)),
     ])
     if not project:
-        project, p_proj = "?", "default"
+        project, p_proj = _local_path_at(cwd), "pwd"
 
     task, p_task = chain([
         ("override", lambda: p_override("task")),
@@ -860,12 +864,14 @@ def _publish_anchor(cwd: Path) -> None:
 def _publish_drift(cwd: Path) -> None:
     """HOOK-09: surface a one-line drift signal on the badge when Claude's
     Bash subprocess steps into a different project than the SessionStart
-    anchor. Status-bar slots and handoff files stay anchored — the badge is
-    the only surface that reflects mid-session drift, via the
-    `beacon_project_drift` slot (parenthetical suffix) and the `drifted`
-    color state (BADGE-09a precedence: pause > pending_attention > drift >
-    status). Drift label is the cwd basename — short, unambiguous, and
-    visually distinct from the anchor's owner/repo form."""
+    anchor. The anchor is the stable badge identity; drift is a transient
+    "currently at" annotation rendered as ` (@ <basename>)` — the leading
+    `@` cues that this is a temporary location Claude has wandered to, not
+    a permanent rename of the badge. Status-bar slots and handoff files
+    stay anchored — the badge is the only surface that reflects mid-session
+    drift, via the `beacon_project_drift` slot and the `drifted` color
+    state (BADGE-09a precedence: pause > pending_attention > drift >
+    status)."""
     anchor = read_state("anchor.project") or ""
     current = _project_name_at(cwd)
     if current == anchor:
@@ -874,7 +880,7 @@ def _publish_drift(cwd: Path) -> None:
             remove_state("drift.active")
         return
     label = cwd.name or ""
-    suffix = f" ({label})" if label else ""
+    suffix = f" (@ {label})" if label else ""
     _cli("uservar", "beacon_project_drift", suffix)
     write_state("drift.active", "1")
 

@@ -28,9 +28,9 @@
                 "maxwidth": 80,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.4,
-                  "Green Component": 0.7,
-                  "Blue Component": 1.0,
+                  "Red Component": 1.0,
+                  "Green Component": 0.4745,
+                  "Blue Component": 0.7765,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 },
@@ -62,9 +62,9 @@
                 "maxwidth": 360,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.5,
-                  "Green Component": 0.65,
-                  "Blue Component": 0.8,
+                  "Red Component": 0.3843,
+                  "Green Component": 0.4471,
+                  "Blue Component": 0.6431,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -104,9 +104,9 @@
                 "maxwidth": 240,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.4,
-                  "Green Component": 0.85,
-                  "Blue Component": 0.4,
+                  "Red Component": 0.3137,
+                  "Green Component": 0.9804,
+                  "Blue Component": 0.4824,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -131,8 +131,8 @@
                 "shared font": "",
                 "shared text color": {
                   "Red Component": 1.0,
-                  "Green Component": 0.65,
-                  "Blue Component": 0.2,
+                  "Green Component": 0.7216,
+                  "Blue Component": 0.4235,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -156,9 +156,9 @@
                 "maxwidth": 240,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.55,
-                  "Green Component": 0.55,
-                  "Blue Component": 0.55,
+                  "Red Component": 0.3843,
+                  "Green Component": 0.4471,
+                  "Blue Component": 0.6431,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -198,9 +198,9 @@
                 "maxwidth": 360,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.6,
-                  "Green Component": 0.45,
-                  "Blue Component": 0.7,
+                  "Red Component": 0.3843,
+                  "Green Component": 0.4471,
+                  "Blue Component": 0.6431,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
@@ -223,9 +223,9 @@
                 "maxwidth": 90,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.85,
-                  "Green Component": 0.55,
-                  "Blue Component": 1.0,
+                  "Red Component": 1.0,
+                  "Green Component": 0.4745,
+                  "Blue Component": 0.7765,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 },

@@ -54,7 +54,6 @@ At the shell:
 beacon show
 beacon stage plan
 beacon pause "afk"
-beacon alias dotnet dn
 ```
 
 > [!NOTE]

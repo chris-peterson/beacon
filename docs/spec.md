@@ -108,7 +108,6 @@ These requirements describe what beacon does conceptually. They would apply unch
 |:---|:---|
 | `RES`   | Signal resolution model |
 | `PROV`  | Provider chains |
-| `ALIAS` | Project name aliases (post-resolve substitution) |
 | `HOOK`  | Claude Code hook event handlers |
 | `OVR`   | User overrides (`set` / `clear`) |
 | `PAUSE` | Pause / resume semantics |
@@ -131,7 +130,9 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 ### 3.2 Provider chains (PROV)
 
-**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (top-level group + repo, dropping intermediate subgroups — e.g. `acme/widgets`, `bigcorp/docs`), project root directory name. See PROV-06 for the final pwd fallback when none of these provide a value, and ALIAS-02 for the post-resolve substitution applied to the chain's output.
+**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (top-level group + repo), project root directory name. See PROV-06 for the final pwd fallback when none of these provide a value, and PROV-01a for how nested-group remotes are abbreviated.
+
+**PROV-01a.** When the git remote provider yields a path with intermediate subgroups (nested-group hosts like GitLab, e.g. `acmecorp/platform/auth-svc`), the plugin shall render it as `<top>/.../<repo>` (e.g. `acmecorp/.../auth-svc`), so the badge signals that the path was abbreviated. Two-segment paths (`acme/widgets`) are unchanged; single-segment paths return the bare repo name.
 
 **PROV-02.** For `task`, the plugin shall consult providers in this order: user override, GitHub PR title (`gh pr view`), git branch name (when not in `{main, master, develop, trunk, HEAD}`).
 
@@ -149,7 +150,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 /tmp                          →  /tmp
 ```
 
-The fallback is not parenthesized — it appears as a real path so it reads naturally in the badge alongside actual project names. The PROV chain order is therefore: override → package manifest → git remote → project-root dir name → pwd fallback. The chain's output is subject to alias substitution (ALIAS-02) before being published.
+The fallback is not parenthesized — it appears as a real path so it reads naturally in the badge alongside actual project names. The PROV chain order is therefore: override → package manifest → git remote → project-root dir name → pwd fallback.
 
 **PROV-07.** For `url` (the "best URL relevant to this session"), the plugin shall consult providers in this order, returning the first non-empty value:
 
@@ -164,21 +165,7 @@ The fallback is not parenthesized — it appears as a real path so it reads natu
 
 The integration with `tack` is *soft*: beacon detects `tack` at runtime and uses it if present. There is no hard dependency, no shipped tack code in beacon. Users can replace step 2 with another provider (Linear, Jira, GitHub Issues, custom) by overriding the shell function `_beacon_resolve_url`.
 
-### 3.3 Project name aliases (ALIAS)
-
-Aliases let users shorten verbose group/repo names rendered into the badge and status bar. They apply *after* PROV-01 has produced a `<top-group>/<repo>` form, substituting per segment.
-
-**ALIAS-01.** The plugin shall maintain a persistent table of project aliases mapping full segment names to short forms, shared across all sessions on the host. Storage location and on-disk format are implementation details (see §6.2).
-
-**ALIAS-02.** When the project signal is resolved (PROV-01), both the plugin and the shell integration shall split the resolved value on `/` and substitute each segment that matches an alias key with its short form, then rejoin. Substitution applies *after* PROV-01's "drop intermediate subgroups" step. Example: with alias `acmecorp=ac` and a git remote of `https://git.example/acmecorp/platform/auth-svc.git`, the resolved project is `ac/auth-svc` (PROV-01 drops `platform`, ALIAS-02 swaps `acmecorp` for `ac`).
-
-**ALIAS-03.** When the user invokes `beacon alias <full> <short>`, the plugin shall add or update the mapping for `<full>`.
-
-**ALIAS-04.** When the user invokes `beacon alias` with no arguments, the plugin shall list all defined aliases (one `<full>=<short>` per line).
-
-**ALIAS-05.** When the user invokes `beacon alias clear <full>`, the plugin shall remove the mapping for `<full>`. When invoked as `beacon alias clear` with no `<full>`, the plugin shall remove all aliases.
-
-### 3.4 Hook handlers (HOOK)
+### 3.3 Hook handlers (HOOK)
 
 **HOOK-01.** When the user submits a prompt, the plugin shall set `signal.status = working`.
 
@@ -200,9 +187,9 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the five `beacon_branch*` slots, `beacon_local_path`, `beacon_url`) plus the per-session handoff files (`cwd-$ITERM_SESSION_ID.txt`, `url-$ITERM_SESSION_ID.txt`) that the `↗ code` and `↖ web` action buttons consume. The plugin shall additionally record the resolved project name as `anchor.project` per-session state. After SessionStart, these slots and files shall not be refreshed for the remainder of the session — the status bar represents the identity of the Claude session ("which session is this"), not the cwd of Claude's most recent Bash subprocess. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall compare the resolved project name of the payload's cwd against `anchor.project` (HOOK-08). When they differ, the plugin shall set `beacon_project_drift = " (<basename>)"` (where `<basename>` is the cwd's last path segment) and write the `drift.active` flag, so the badge text appends a parenthetical drift hint and the badge color flips to the `drifted` state (BADGE-09a / BADGE-11). When they match, the plugin shall clear `beacon_project_drift` and remove `drift.active`. Rationale: the user needs to know at a glance both *which* session this is (anchor — preserved on the status bar and the action buttons per HOOK-08) and *that* Claude has wandered (drift — surfaced on the badge alone, the only beacon surface readable in Mission Control). The cwd basename is short and visually distinct from the anchor's `owner/repo` form.
+**HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall compare the resolved project name of the payload's cwd against `anchor.project` (HOOK-08). When they differ, the plugin shall set `beacon_project_drift = " (@ <basename>)"` (where `<basename>` is the cwd's last path segment) and write the `drift.active` flag, so the badge text appends a `(@ <basename>)` suffix and the badge color flips to the `drifted` state (BADGE-09a / BADGE-11). When they match, the plugin shall clear `beacon_project_drift` and remove `drift.active`. Rationale: the user needs to know at a glance both *which* session this is (anchor — preserved on the status bar and the action buttons per HOOK-08) and *that* Claude has wandered (drift — surfaced on the badge alone, the only beacon surface readable in Mission Control). The anchor stays as the badge's stable identity; the `@`-prefixed suffix communicates "currently at" — a transient location Claude has stepped into and is expected to return from, not a permanent rename of the badge.
 
-### 3.5 User overrides (OVR)
+### 3.4 User overrides (OVR)
 
 **OVR-01.** When the user invokes `set <field> <value>`, the plugin shall persist the value as an override for that field. Valid fields: `project`, `task`, `stage`, `status`, `url`.
 
@@ -212,7 +199,7 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session and unwind any active pause — that is, remove the `paused` marker and the `note-image` reference. Rationale: the `paused` marker and `note-image` are direct corollaries of `pause` (PAUSE-01), so leaving them after a field-less `clear` would leave the post-it on screen with no overrides backing it. `clear <field>` remains overrides-only.
 
-### 3.6 Pause and resume (PAUSE)
+### 3.5 Pause and resume (PAUSE)
 
 **PAUSE-01.** When the user invokes `pause`, the plugin shall snapshot current resolved values for `project`, `task`, and `stage` into overrides, set `override.status = idle`, and write a `paused` marker.
 
@@ -228,7 +215,7 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **PAUSE-06.** When the user invokes `resume`, the plugin shall remove all overrides and the paused marker. The render adapter shall clear any pause-related visuals.
 
-### 3.7 Skill-driven signals (SKILL)
+### 3.6 Skill-driven signals (SKILL)
 
 **SKILL-01.** The plugin shall include a skill that instructs Claude to invoke `signal stage plan` when the conversation transitions to a planning/architecting phase that hooks cannot observe (e.g., entry to plan mode).
 
@@ -238,7 +225,9 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **SKILL-04.** The skill shall instruct Claude not to narrate its beacon invocations to the user.
 
-### 3.8 Slash command (CMD)
+**SKILL-05.** The skill shall, on first invocation per session, compare `beacon --version` against `<plugin-root>/.claude-plugin/plugin.json#version` and offer `/beacon:beacon install` (or equivalent) when they differ. This catches CLI-wrapper drift after a plugin upgrade — the same drift signal CMD-13 / Architecture Rule 11 cover from the hook side.
+
+### 3.7 Slash command (CMD)
 
 **CMD-01.** When the user invokes `show`, the plugin shall display each signal's current value, the provider that supplied it, and whether the session is paused.
 
@@ -258,7 +247,7 @@ Aliases let users shorten verbose group/repo names rendered into the badge and s
 
 **CMD-09.** When the user invokes `completions zsh`, the plugin shall install a tab-completion script such that `beacon <TAB>` works in a fresh zsh session. With `--print`, the plugin shall print the script to stdout instead of installing. Install location and `fpath` plumbing are implementation details (see §6.5).
 
-**CMD-11.** When the user invokes `beacon alias <full> <short>`, `beacon alias` (no args), or `beacon alias clear [<full>]`, the plugin shall apply ALIAS-03..05 and re-render so any in-flight session picks up the new alias table.
+**CMD-10.** When the user invokes `signal <field> <value>`, the plugin shall write a non-override signal for that field (distinct from `set` per OVR-01, which writes an override). Skill-driven invocations (SKILL-01..02) use this surface so that a skill-promoted stage does not survive `clear` of the user's own overrides.
 
 **CMD-12.** When the user invokes `exclusive-configuration`, the plugin shall apply iTerm2 prefs that require iTerm2 to be fully quit (because iTerm2 caches prefs in memory and overwrites the plist on quit). The covered prefs are:
 
@@ -272,6 +261,12 @@ Behavior:
 3. If iTerm2 is running, the plugin shall confirm intent interactively (skippable with `--yes`), warn the user that all iTerm2 windows and panes will close, quit iTerm2, and apply the writes after iTerm2 has exited. The orchestration mechanism (detached helper, AppleScript quit, log path for post-mortem) is captured in §6.10.
 
 **CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
+
+**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. This is the back-end for the `↖ web` action chip's coprocess (STATUS-BAR-02). When invoked as `open-url`, the plugin shall open the resolved `url` in the user's default browser. Both subcommands read from the per-session handoff files written by the shell integration (STATUS-BAR-05).
+
+**CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, paused, drift) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
+
+**CMD-16.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
 
 ---
 
@@ -334,9 +329,13 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-11.** When invoked as `beacon-iterm tab-color <hex|default>`, the CLI shall set the per-tab color via `OSC 1337 SetColors=tab=<hex>` (or `=default` to revert). The hex is 6 digits without a leading `#`. iTerm2 binds tab color to the tab containing the calling session; in multi-pane tabs the most-recent painter wins, which the user is expected to manage via a tabs-not-panes workflow (one Claude session per tab).
 
+**CLI-12.** When invoked as `beacon-iterm uservar-batch`, the CLI shall read newline-separated `<name>=<value>` pairs from stdin and publish each via the same OSC 1337 `SetUserVar` mechanism as CLI-03, in a single process invocation. This reduces flicker when SessionStart paints the full status-bar slot set (HOOK-08), where 10 sequential CLI invocations produced visible incremental redraws.
+
+**CLI-13.** When invoked as `beacon-iterm attention`, the CLI shall request iTerm2 dock attention via `OSC 1337 RequestAttention=once`. Used by the plugin when `signal.status = waiting` (HOOK-03) to bounce the dock icon for sessions blocked on the user.
+
 ### 4.3 Badge area (BADGE)
 
-The badge carries **just `<project>`** as its text — the most compact signal possible, visible in the corner of every pane regardless of profile. Project value is the post-alias-substitution form of PROV-01 (e.g. `acme/widgets`, or `ac/auth-svc` after applying alias `acmecorp=ac`).
+The badge carries **just `<project>`** as its text — the most compact signal possible, visible in the corner of every pane regardless of profile. Project value is PROV-01 (e.g. `acme/widgets`).
 
 Beyond text, the badge carries one additional signal: **color, driven by `status`** (BADGE-09). This is the highest-leverage surface for many-window awareness — the badge is the only beacon-painted element large enough to read in Mission Control / Exposé. Branch and richer context are surfaced in the status bar (§4.4) instead.
 
@@ -346,8 +345,7 @@ flowchart LR
     PROMPT([shell prompt redraws])
     PROMPT --> PRECMD[shell precmd hook]
     PRECMD --> RESOLVE[resolve project from cwd via PROV chain]
-    RESOLVE --> ALIAS[apply alias substitution per ALIAS-02]
-    ALIAS --> UV[beacon-iterm uservar beacon_project value]
+    RESOLVE --> UV[beacon-iterm uservar beacon_project value]
     UV --> ITERM[iTerm2 user var store]
     SOURCE([shell sources beacon.zsh once])
     SOURCE --> BFMT[beacon-iterm badge-format template]
@@ -359,7 +357,7 @@ flowchart LR
 
 **BADGE-01.** The plugin distribution shall include a sourceable shell integration (`shell/beacon.zsh`) that the user adds to `.zshrc`.
 
-**BADGE-02.** When the shell prompt redraws (precmd / chpwd), the integration shall invoke `beacon-iterm uservar beacon_project <value>` with the value derived per PROV-01 + ALIAS-02 from the current working directory.
+**BADGE-02.** When the shell prompt redraws (precmd / chpwd), the integration shall invoke `beacon-iterm uservar beacon_project <value>` with the value derived per PROV-01 from the current working directory.
 
 **BADGE-03.** The shell integration shall set the iTerm2 badge format on source so the badge renders the project user-var. The format string is an implementation detail; the user-observable contract is "the badge text equals the resolved project value" (BADGE-02 + BADGE-04).
 
@@ -394,6 +392,8 @@ When none of the three flags is set, BADGE-09 applies.
 **BADGE-10.** While the session is paused, the plugin shall set the badge color to the `paused` logical state — a de-emphasized color (e.g., gray) distinct from `ready` / `busy` / `blocked` — so a paused session is visually distinguishable from a session blocked on the user. The post-it overlay (OVERLAY-01) carries the note text; the badge color carries the at-a-glance "this session is parked" signal that is readable in Mission Control where the post-it is not. The `state → hex` mapping lives in implementation, consistent with BADGE-09.
 
 **BADGE-11.** While `drift.active` is set (HOOK-09), the plugin shall set the badge color to the `drifted` logical state — a hex outside the `ready` / `busy` / `blocked` traffic-light family (e.g., a cool blue) — so a session whose Bash has wandered into a different project reads as anomalous at a glance without competing with the green/orange/red status palette. The `state → hex` mapping lives in implementation, consistent with BADGE-09. The badge text additionally carries a parenthetical drift label via the `beacon_project_drift` user-var slot (see HOOK-09 / §6.6).
+
+**BADGE-12.** When the shell integration is sourced, it shall set the badge color to the `ready` logical state (THEME-02) so a fresh iTerm2 tab outside Claude Code shows the calm color from the first prompt. Painting `ready` explicitly avoids the iTerm2 default badge color leaking through (which on some setups is muted red, conflicting with the `blocked` semantic) and overrides any sticky color inherited from a parent pane that was previously active in Claude. Claude's hooks repaint to `busy` / `blocked` on the next turn.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -514,6 +514,38 @@ Tab color is *complementary* to the badge, not redundant: the badge is per-pane 
 
 **TAB-03.** beacon shall not infer or guarantee the per-pane semantics of tab color — iTerm2 binds tab color to the *tab*, not the pane, so multi-pane tabs will show the most-recent painter. The intended workflow is one Claude session per tab; users who split panes within a tab accept that the tab color reflects whichever pane painted last. This is a workflow constraint, not a bug to engineer around.
 
+### 4.8 Color theme (THEME)
+
+beacon's visible color values are drawn from the [Dracula palette](https://draculatheme.com/contribute). One palette across all surfaces — badge color, tab color, status-bar chip text, the docs-site favicon — keeps a glance across many panes coherent and the project's visual identity unified.
+
+Five hues do all the work: **green / orange / red** for the calm/working/blocked traffic light (BADGE-09); **comment** for de-emphasis; **pink** as the single "interactive" accent on action chips. **Cyan** is held in reserve and used only for the `drifted` state (BADGE-11) so the same hue never carries two semantics in the same eye-glance. Branch-state chips intentionally reuse the badge palette (green = clean, orange = diverged, comment = untracked) so the same color carries the same meaning across surfaces.
+
+**THEME-01.** All visible color values that beacon paints (badge color via BADGE-09..12, tab color via TAB-01, status-bar chip text via STATUS-BAR-02) shall be drawn from the Dracula palette. Each hue shall serve a single semantic role across surfaces — colors that signal state (green/orange/red/comment) shall not be reused as decorative chip identity, and the action-affordance hue (pink) shall not overlap with state hues. Hex values are tunable in one place per surface (`BADGE_COLOR_PALETTE` in the plugin script for badge/tab; the dynamic profile template for chip text); call sites speak in logical names so the palette can be retuned without touching call sites.
+
+**THEME-02.** The badge / tab palette maps logical states to Dracula hex:
+
+| State     | Hex       | Dracula name | When                                                               |
+|:----------|:----------|:-------------|:-------------------------------------------------------------------|
+| `ready`   | `#50fa7b` | green        | idle / calm — Stop hook, fresh session, shell-only tabs (BADGE-12) |
+| `busy`    | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
+| `blocked` | `#ff5555` | red          | waiting — permission/idle prompt (BADGE-09 / -10)                  |
+| `paused`  | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
+| `drifted` | `#8be9fd` | cyan         | Bash cwd ≠ anchor.project (BADGE-11 / HOOK-09)                     |
+
+**THEME-03.** The status-bar chip text colors map purpose to Dracula hex. Three roles, three hues — action chips share one accent; identity chips share the de-emphasized comment color; branch chips reuse the badge state palette:
+
+| Chip                      | Hex       | Role                                 |
+|:--------------------------|:----------|:-------------------------------------|
+| `↖ web` action            | `#ff79c6` | pink — action affordance             |
+| `↗ code` action           | `#ff79c6` | pink — action affordance             |
+| `beacon_project_full`     | `#6272a4` | comment — identity / label           |
+| `beacon_local_path`       | `#6272a4` | comment — identity / label           |
+| `beacon_branch_clean`     | `#50fa7b` | green — branch state (synced)        |
+| `beacon_branch_diverged`  | `#ffb86c` | orange — branch state (ahead/behind) |
+| `beacon_branch_untracked` | `#6272a4` | comment — branch state (no upstream) |
+
+The dynamic profile stores chip colors as RGB float components (sRGB). The hex values above are authoritative; the float forms in `iterm/profile.json.template` are derived from them.
+
 ---
 
 ## 5. Non-functional Requirements (NFR)
@@ -601,7 +633,6 @@ state/<session-hash>.pending-attention
 state/<session-hash>.note-image
 state/<session-hash>.resolved
 cache/note-NN.png             # bounded LRU pool, OVERLAY-03
-aliases.txt                   # ALIAS-01: <full>=<short> per line, host-shared
 ```
 
 Session hash is derived from `$ITERM_SESSION_ID` (stable for the lifetime of an iTerm tab). SHA-1 truncated to 12–16 chars is sufficient — collisions are not a security concern.
@@ -635,7 +666,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 
 | User var | Source | Empty when |
 |:---|:---|:---|
-| `beacon_project` | PROV-01 + ALIAS-02 | not in a recognized project (uses PROV-06 fallback instead) |
+| `beacon_project` | PROV-01 | not in a recognized project (uses PROV-06 fallback instead) |
 | `beacon_project_full` | full git remote URL (host/owner/repo) | not in a recognized project |
 | `beacon_branch` | branch text with sigil/indicator (canonical) | not in a repo |
 | `beacon_branch_state` | `clean` / `diverged` / `untracked` | not in a repo |
