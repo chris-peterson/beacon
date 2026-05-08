@@ -887,13 +887,13 @@ def _publish_drift(cwd: Path) -> None:
     """HOOK-09: surface a one-line drift signal on the badge when Claude's
     Bash subprocess steps into a different project than the SessionStart
     anchor. The anchor is the stable badge identity; drift is a transient
-    "currently at" annotation rendered as ` (@ <basename>)` — the leading
-    `@` cues that this is a temporary location Claude has wandered to, not
-    a permanent rename of the badge. Status-bar slots and handoff files
-    stay anchored — the badge is the only surface that reflects mid-session
-    drift, via the `beacon_project_drift` slot and the `drifted` color
-    state (BADGE-09a precedence: pause > pending_attention > drift >
-    status)."""
+    "currently at" annotation appended as `:<basename>` so the eye scans
+    `<anchor>:<drift>` like a path — anchor on the left stays put across
+    panes, drift on the right is the wandering tail. Status-bar slots and
+    handoff files stay anchored — the badge is the only surface that
+    reflects mid-session drift, via the `beacon_project_drift` slot and
+    the `drifted` color state (BADGE-09a precedence: pause >
+    pending_attention > drift > status)."""
     anchor = read_state("anchor.project") or ""
     current = _project_name_at(cwd)
     if current == anchor:
@@ -902,7 +902,7 @@ def _publish_drift(cwd: Path) -> None:
             remove_state("drift.active")
         return
     label = cwd.name or ""
-    suffix = f" (@ {label})" if label else ""
+    suffix = f":{label}" if label else ""
     _cli("uservar", "beacon_project_drift", suffix)
     write_state("drift.active", "1")
 
