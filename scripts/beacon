@@ -118,6 +118,26 @@ DEPLOY_RE = re.compile(
     r"|\bheroku\b[^|;&]*\bmaster\b"
 )
 
+# Slash commands that should reset stale per-session state when invoked
+# mid-session. `/recipe` re-bootstraps a session from scratch (it loads a
+# playbook), so signals from the prior task — pending attention, an old
+# stage, lingering overrides — would otherwise contaminate the new context.
+# SessionStart already covers fresh-launch and `/clear`; this catches the
+# in-session commands Claude Code does not surface as a hook event.
+FRESH_START_COMMANDS = ("recipe",)
+FRESH_START_RE = re.compile(
+    r"^\s*/(?:" + "|".join(FRESH_START_COMMANDS) + r")\b",
+    re.IGNORECASE,
+)
+
+# Last-assistant-text idle pattern. When pending-attention or signal.status
+# = waiting would render the badge red but the transcript shows Claude's
+# most recent reply was an idle "Ready..." (final, awaiting-user message),
+# the markers are stale (the prior Stop hook never fired or arrived after
+# the next session reused the pane). The heuristic forgives the missing
+# Stop and clears them.
+IDLE_LOOK_RE = re.compile(r"^\s*ready\b", re.IGNORECASE)
+
 PAUSE_RE = re.compile(
     r"^\s*(?:"
     r"(?:afk|brb|bbiab)(?:\s|$)"
@@ -624,6 +644,8 @@ def chain(providers):
 
 def resolve(cwd: Path | None = None) -> dict:
     cwd = cwd or Path.cwd()
+
+    _recover_stale_red()
 
     project, p_proj = chain([
         ("override",   lambda: p_override("project")),
@@ -1279,6 +1301,15 @@ def cmd_clear(args):
         # with no overrides backing it.
         remove_state("paused")
         remove_state("note-image")
+        # Also drop any sticky red markers — `clear` is the user saying
+        # "return this pane to calm defaults". Stale `pending-attention`
+        # and `signal.status=waiting` from a prior tenant or a missed Stop
+        # hook (HOOK-03b's natural clears didn't fire) belong in the same
+        # set of transient state to wipe. If the session is genuinely
+        # blocked, the next Notification re-asserts both.
+        remove_state("pending-attention")
+        if read_state("signal.status") == "waiting":
+            remove_state("signal.status")
     render()
 
 
@@ -1316,6 +1347,88 @@ def cmd_resume(_args):
     # sessions or future pauses may reuse the slot. Just forget our reference.
     remove_state("note-image")
     render()
+
+
+def _last_assistant_text() -> str | None:
+    """Tail of the most recent assistant message text in this session's
+    transcript. Returns None when no transcript is known or no assistant
+    text exists yet. The transcript is JSONL — one entry per line, each a
+    Claude Code conversation event. Assistant entries carry message.content
+    as either a string or a list of content blocks; we want the trailing
+    text block of the last assistant entry that has any text (skipping
+    pure tool_use turns)."""
+    path = read_state("transcript_path")
+    if not path:
+        return None
+    p = Path(path)
+    if not p.is_file():
+        return None
+    try:
+        last_text = None
+        with p.open() as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except Exception:
+                    continue
+                if obj.get("type") != "assistant":
+                    continue
+                content = (obj.get("message") or {}).get("content")
+                if isinstance(content, str):
+                    if content.strip():
+                        last_text = content
+                elif isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            t = (block.get("text") or "").strip()
+                            if t:
+                                last_text = t
+        return last_text
+    except Exception:
+        return None
+
+
+def _looks_idle(text: str | None) -> bool:
+    if not text:
+        return False
+    head = text.lstrip().splitlines()[0] if text.strip() else ""
+    return bool(IDLE_LOOK_RE.match(head))
+
+
+def _recover_stale_red() -> None:
+    """Stop / PreToolUse / UserPromptSubmit are responsible for clearing
+    pending-attention and signal.status=waiting (HOOK-03b). When one of
+    those hooks didn't fire — typically because the prior Claude session
+    was killed mid-permission-prompt — the markers outlive the actual
+    blocked state. Peek at the transcript: if the last assistant message
+    reads as idle ("Ready..."), drop the stale markers so resolve() and
+    apply() don't render red against a session that's actually idle."""
+    if not (_state_path("pending-attention").exists()
+            or read_state("signal.status") == "waiting"):
+        return
+    if not _looks_idle(_last_assistant_text()):
+        return
+    remove_state("pending-attention")
+    if read_state("signal.status") == "waiting":
+        remove_state("signal.status")
+
+
+def _wipe_session_for_fresh_start() -> None:
+    """Targeted state wipe so a freshly-started Claude (or `/recipe`,
+    `/clear`) in a reused iTerm pane doesn't inherit signals from a prior
+    tenant. Keeps `claude_session_id` (just written by the caller) and
+    leaves `anchor.project` / `drift.active` for `_publish_anchor` to
+    repopulate."""
+    for f in VALID_FIELDS:
+        remove_state(f"override.{f}")
+    remove_state("signal.status")
+    remove_state("signal.stage")
+    remove_state("pending-attention")
+    remove_state("paused")
+    remove_state("note-image")
 
 
 def cmd_reset(_args):
@@ -1667,9 +1780,21 @@ def cmd_hook(args):
     claude_sid = payload.get("session_id") or ""
     if claude_sid:
         write_state("claude_session_id", claude_sid)
+    transcript_path = payload.get("transcript_path") or ""
+    if transcript_path:
+        write_state("transcript_path", transcript_path)
 
     if event == "SessionStart":
         cwd_str = payload.get("cwd") or os.getcwd()
+        # State files key on ITERM_SESSION_ID, which is the iTerm pane and
+        # outlives any single Claude session. A fresh `claude` invocation
+        # (source=startup) or `/clear` (source=clear) in a pane that hosted
+        # a prior session would otherwise inherit that session's stale
+        # `signal.status=waiting` / `pending-attention` and render red. A
+        # resumed session (source=resume) continues prior state by design.
+        source = (payload.get("source") or "").lower()
+        if source != "resume":
+            _wipe_session_for_fresh_start()
         _publish_anchor(Path(cwd_str))
 
     elif event == "UserPromptSubmit":
@@ -1679,7 +1804,12 @@ def cmd_hook(args):
             # Don't touch signal.status — _apply_pause writes override.status=idle.
             _apply_pause(prompt_text)
         else:
-            if _state_path("paused").exists():
+            if prompt_text and FRESH_START_RE.match(prompt_text):
+                # In-session commands like /recipe re-bootstrap context;
+                # treat them like SessionStart non-resume and drop stale
+                # signals before the prompt lands.
+                _wipe_session_for_fresh_start()
+            elif _state_path("paused").exists():
                 remove_state("paused")
                 remove_state("override.status")
                 # Forget the reference to the note pool slot — don't delete the
