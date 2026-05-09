@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0
+
+### Features
+- The status bar's project chip now collapses known forge hosts: `github.com/owner/repo` shows as `gh:owner/repo`, GitLab as `gl:`, Bitbucket as `bb:`. Unknown hosts pass through as `host/owner/repo`.
+- When tack is tracking a deliverable for the current branch (or you've set a URL override pointing at a forge issue/PR/MR), the project chip appends `#42` for issues/PRs or `!17` for GitLab merge requests, e.g. `gh:chris-peterson/beacon#42`. The chip answers "what am I working on", not just "what repo am I in."
+- Status bar reshaped: `↖ web · project │ branch · ↗ code`. The branch chip now sits next to the `↗ code` action so each end pairs an action with the data it acts on. The cwd chip is gone — the project chip now carries the spatial-context job alone.
+- Badge renders the full nested-group path. `acmecorp/platform/auth-svc` shows in full instead of being collapsed to `acmecorp/.../auth-svc`. With the cwd chip gone, the badge owns spatial context and doesn't need to truncate.
+- Branch chip drops the leading `@` sigil on the synced state — color (green / orange / dim gray) already carries the synced / diverged / untracked signal, and the bare name reads cleaner. Diverged (`↑3 main`) and untracked are unchanged.
+- Drift hint format simplified from ` (@ <basename>)` to `:<basename>`, e.g. `chris-peterson/beacon:ai-sdlc`. The colon separator reads as a path tail and keeps the anchor in the same spatial column when scanning panes vertically.
+
+### Fixes
+- Badge sizing now uses iTerm2's Badge Max Width / Max Height knobs rather than a font-size suffix — more consistent across panes of different sizes.
+
+### Other
+- The docsify homepage (`docs/README.md`) gained a "Tack integration (optional)" section describing the soft dependency on tack and the `_beacon_resolve_url()` override hook for users wanting Linear / Jira / GitHub Issues / a custom provider.
+- Root `README.md` trimmed to maintainer-focused content (clone-from-source, dependencies, repo layout, architecture). End-user install / verify / usage / upgrade / uninstall now live only on the docs site.
+- Spec dropped PROV-01a (the nested-group abbreviation rule); PROV-01 now specifies the full `owner/.../repo` path.
+
 ## 0.8.0
 
 ### Features
