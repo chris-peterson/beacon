@@ -6,7 +6,11 @@
       "Dynamic Profile Parent Name": "Default",
       "Show Status Bar": true,
       "Use Separate Colors for Light and Dark Mode": false,
-      "Badge Font": "Menlo-Bold 10",
+      "Badge Font": "Futura",
+      "Badge Max Width": 0.7,
+      "Badge Max Height": 0.1,
+      "Badge Right Margin": 30,
+      "Badge Top Margin": 0,
       "Tags": [
         "beacon"
       ],
