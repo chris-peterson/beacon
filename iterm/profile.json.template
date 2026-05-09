@@ -7,9 +7,9 @@
       "Show Status Bar": true,
       "Use Separate Colors for Light and Dark Mode": false,
       "Badge Font": "Futura",
-      "Badge Max Width": 0.7,
-      "Badge Max Height": 0.1,
-      "Badge Right Margin": 30,
+      "Badge Max Width": 0.75,
+      "Badge Max Height": 0.05,
+      "Badge Right Margin": 50,
       "Badge Top Margin": 0,
       "Tags": [
         "beacon"
