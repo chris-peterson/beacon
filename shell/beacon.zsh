@@ -80,9 +80,10 @@ _beacon_project_name() {
   # abbreviated cwd so the badge always carries spatial context (never empty).
   root="$(_beacon_project_root)" || { _beacon_local_path; return }
 
-  # Prefer git remote's namespace/repo form (e.g. "chris-peterson/beacon",
-  # "dotnet/docs"). Intermediate subgroups in nested hosts are elided as
-  # "<top>/.../<repo>" so the badge signals that the path was abbreviated.
+  # Git remote's full owner/path/repo form, preserving nested-group segments
+  # (e.g. "chris-peterson/beacon", "acmecorp/platform/auth-svc"). The badge
+  # font/width handles visual truncation if the path is long; we don't
+  # pre-abbreviate here.
   local url=""
   if [[ -d "$root/.git" || -f "$root/.git" ]]; then
     url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
@@ -99,21 +100,9 @@ _beacon_project_name() {
     fi
     path="${path%/}"
     path="${path%.git}"
-
     if [[ -n "$path" ]]; then
-      local -a parts
-      parts=("${(@s:/:)path}")
-      local n=${#parts}
-      if (( n == 1 )); then
-        print -r -- "${parts[1]}"
-        return
-      elif (( n == 2 )); then
-        print -r -- "${parts[1]}/${parts[2]}"
-        return
-      elif (( n >= 3 )); then
-        print -r -- "${parts[1]}/.../${parts[-1]}"
-        return
-      fi
+      print -r -- "$path"
+      return
     fi
   fi
 
@@ -122,13 +111,13 @@ _beacon_project_name() {
 }
 
 # Outputs three lines: display, state, indicator.
-#   display   — sigil + branch name. Sigil reflects state, displayed to the
-#               left so the eye can scan a column of branches and spot
-#               divergent ones without re-parsing each name. Examples:
-#                 "@ main"         (clean — synced with upstream)
+#   display   — branch name, prefixed with an ahead/behind indicator only
+#               when diverged so the eye can scan a column of branches and
+#               spot divergent ones without re-parsing each name. Examples:
+#                 "main"           (clean — synced with upstream)
 #                 "↑3 feature"     (3 ahead)
 #                 "↑3↓1 feature"   (3 ahead, 1 behind)
-#                 "topic"          (untracked — no sigil; color carries the signal)
+#                 "topic"          (untracked — color carries the signal)
 #   state     — "clean" (synced with upstream), "diverged" (ahead/behind), or
 #               "untracked" (no upstream set — local-only branch)
 #   indicator — "" | "↑N" | "↓N" | "↑N↓M"
@@ -150,10 +139,7 @@ _beacon_branch_info() {
     fi
   fi
   local display="$name"
-  case "$state" in
-    clean)    display="@ ${name}" ;;
-    diverged) display="${ind} ${name}" ;;
-  esac
+  [[ "$state" == "diverged" ]] && display="${ind} ${name}"
   print -r -- "$display"
   print -r -- "$state"
   print -r -- "$ind"
@@ -164,8 +150,10 @@ _beacon_local_path() {
   print -r -- "${PWD/#$HOME/~}"
 }
 
-# Full project path (host/owner/repo), or empty when not in a recognized
-# git project. Used by the status bar's project_full chip.
+# Abbreviated remote identity (e.g. `gh:owner/repo`), or empty when not in a
+# recognized git project. Used by the status bar's project_full chip. Known
+# forge hosts collapse to a 2-letter prefix; unknown hosts pass through as
+# `host/owner/repo`. Mirrors python's `_project_full_at` / `_abbrev_remote_host`.
 _beacon_project_full() {
   local root
   root="$(_beacon_project_root)" || { print -r -- ""; return }
@@ -190,6 +178,11 @@ _beacon_project_full() {
   fi
   path="${path%/}"
   path="${path%.git}"
+  case "$path" in
+    github.com/*)    path="gh:${path#github.com/}"    ;;
+    gitlab.com/*)    path="gl:${path#gitlab.com/}"    ;;
+    bitbucket.org/*) path="bb:${path#bitbucket.org/}" ;;
+  esac
   print -r -- "$path"
 }
 
@@ -200,6 +193,26 @@ _beacon_project_full() {
 # Output format: "<url>\t<label>\n" (TAB-separated).
 _beacon_resolve_url() {
   python3 "$_BEACON_SCRIPT" resolve-url 2>/dev/null
+}
+
+# Suffix derived from a forge issue/PR/MR URL: `#42` for issues/PRs, `!17`
+# for GitLab MRs. Empty when the URL isn't a recognized deliverable. Used
+# to contextualize the project_full chip when PROV-07 returns a deliverable
+# URL. Mirrors python's `_deliverable_suffix`. GitLab patterns come first
+# because their `/-/issues/` and `/-/merge_requests/` paths contain the
+# literal substring `/issues/` that the generic GitHub patterns would also
+# match — we want the GitLab sigil (`!` for MRs) to win on GitLab URLs.
+_beacon_deliverable_suffix() {
+  emulate -L zsh
+  local url="$1"
+  local sigil="" id=""
+  case "$url" in
+    *"/-/merge_requests/"*) sigil="!"; id="${${url##*"/-/merge_requests/"}%%[!0-9]*}" ;;
+    *"/-/issues/"*)         sigil="#"; id="${${url##*"/-/issues/"}%%[!0-9]*}" ;;
+    *"/pull/"*)             sigil="#"; id="${${url##*"/pull/"}%%[!0-9]*}" ;;
+    *"/issues/"*)           sigil="#"; id="${${url##*"/issues/"}%%[!0-9]*}" ;;
+  esac
+  [[ -n "$id" ]] && print -r -- "${sigil}${id}"
 }
 
 # Track last-published values so we only emit on change. The sentinel ensures
@@ -214,7 +227,9 @@ typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
+typeset -g _BEACON_LAST_URL_SIGNAL='__unset__'
 typeset -g _BEACON_LAST_URL='__unset__'
+typeset -g _BEACON_RESOLVED_URL=''
 
 # Per-session file handoff for status-bar action buttons. Action enum 35
 # doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
@@ -239,12 +254,6 @@ _beacon_precmd() {
   if [[ "$p" != "$_BEACON_LAST_PROJECT" ]]; then
     "$_BEACON_ITERM" uservar beacon_project "$p"
     _BEACON_LAST_PROJECT="$p"
-  fi
-
-  local pf="$(_beacon_project_full)"
-  if [[ "$pf" != "$_BEACON_LAST_PROJECT_FULL" ]]; then
-    "$_BEACON_ITERM" uservar beacon_project_full "$pf"
-    _BEACON_LAST_PROJECT_FULL="$pf"
   fi
 
   local -a binfo
@@ -278,21 +287,34 @@ _beacon_precmd() {
 
   local lp="$(_beacon_local_path)"
   if [[ "$lp" != "$_BEACON_LAST_LOCAL_PATH" ]]; then
-    "$_BEACON_ITERM" uservar beacon_local_path "$lp"
     _beacon_write_session_file cwd "$PWD"
     _BEACON_LAST_LOCAL_PATH="$lp"
   fi
 
   # URL resolution is heavier (python startup + possible tack subprocess).
   # Only re-resolve when cwd or branch changed; otherwise the cached URL is
-  # still valid.
+  # still valid. Resolving here (before project_full publish) lets the chip
+  # contextualize itself with the deliverable suffix via _beacon_deliverable_suffix.
   local url_signal="${lp}@${b}"
-  if [[ "$url_signal" != "$_BEACON_LAST_URL" ]]; then
+  if [[ "$url_signal" != "$_BEACON_LAST_URL_SIGNAL" ]]; then
     local raw="$(_beacon_resolve_url)"
-    local url="${raw%%	*}"
+    _BEACON_RESOLVED_URL="${raw%%	*}"
+    _BEACON_LAST_URL_SIGNAL="$url_signal"
+  fi
+  local url="$_BEACON_RESOLVED_URL"
+
+  local pf_base="$(_beacon_project_full)"
+  local pf="$pf_base"
+  [[ -n "$pf_base" ]] && pf="${pf_base}$(_beacon_deliverable_suffix "$url")"
+  if [[ "$pf" != "$_BEACON_LAST_PROJECT_FULL" ]]; then
+    "$_BEACON_ITERM" uservar beacon_project_full "$pf"
+    _BEACON_LAST_PROJECT_FULL="$pf"
+  fi
+
+  if [[ "$url" != "$_BEACON_LAST_URL" ]]; then
     "$_BEACON_ITERM" uservar beacon_url "$url"
     _beacon_write_session_file url "$url"
-    _BEACON_LAST_URL="$url_signal"
+    _BEACON_LAST_URL="$url"
   fi
 }
 
@@ -307,6 +329,7 @@ _beacon_chpwd() {
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'
   _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
+  _BEACON_LAST_URL_SIGNAL='__unset__'
   _BEACON_LAST_URL='__unset__'
   _beacon_precmd
 }

@@ -130,9 +130,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 ### 3.2 Provider chains (PROV)
 
-**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (top-level group + repo), project root directory name. See PROV-06 for the final pwd fallback when none of these provide a value, and PROV-01a for how nested-group remotes are abbreviated.
-
-**PROV-01a.** When the git remote provider yields a path with intermediate subgroups (nested-group hosts like GitLab, e.g. `acmecorp/platform/auth-svc`), the plugin shall render it as `<top>/.../<repo>` (e.g. `acmecorp/.../auth-svc`), so the badge signals that the path was abbreviated. Two-segment paths (`acme/widgets`) are unchanged; single-segment paths return the bare repo name.
+**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (full `owner/.../repo` path, preserving any nested-group segments — the badge font/max-width handles visual truncation if the path is long; the plugin does not pre-abbreviate), project root directory name. See PROV-06 for the final pwd fallback when none of these provide a value.
 
 **PROV-02.** For `task`, the plugin shall consult providers in this order: user override, GitHub PR title (`gh pr view`), git branch name (when not in `{main, master, develop, trunk, HEAD}`).
 
@@ -185,7 +183,7 @@ The integration with `tack` is *soft*: beacon detects `tack` at runtime and uses
 
 **HOOK-07.** When Claude invokes `Bash` with a command that publishes or deploys to a remote (e.g. push to a release branch, `npm publish`, container registry push, IaC apply, hosted-platform deploy), the plugin shall set `signal.stage = shipping`. The exact pattern set is a tunable implementation list maintained alongside the hook handler.
 
-**HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the five `beacon_branch*` slots, `beacon_local_path`, `beacon_url`) plus the per-session handoff files (`cwd-$ITERM_SESSION_ID.txt`, `url-$ITERM_SESSION_ID.txt`) that the `↗ code` and `↖ web` action buttons consume. The plugin shall additionally record the resolved project name as `anchor.project` per-session state. After SessionStart, these slots and files shall not be refreshed for the remainder of the session — the status bar represents the identity of the Claude session ("which session is this"), not the cwd of Claude's most recent Bash subprocess. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
+**HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the five `beacon_branch*` slots, `beacon_url`) plus the per-session handoff files (`cwd-$ITERM_SESSION_ID.txt`, `url-$ITERM_SESSION_ID.txt`) that the `↗ code` and `↖ web` action buttons consume. The plugin shall additionally record the resolved project name as `anchor.project` per-session state. After SessionStart, these slots and files shall not be refreshed for the remainder of the session — the status bar represents the identity of the Claude session ("which session is this"), not the cwd of Claude's most recent Bash subprocess. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
 **HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `signal.stage`, `pending-attention`, `paused`, and `note-image`. Rationale: per-session state files key on `ITERM_SESSION_ID`, which is the iTerm pane and outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
 
@@ -403,7 +401,7 @@ When none of the three flags is set, BADGE-09 applies.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
-The status bar carries **a fixed-layout strip of values and actions** that complement the badge: full project URL (identification), branch, local cwd, plus action buttons to navigate (`↖ web`) and open the cwd in an editor (`↗ code`). It is delivered via a beacon-managed dynamic profile that the user opts into.
+The status bar carries **a fixed-layout strip of values and actions** that complement the badge: an abbreviated project URL (identification) and the branch, paired with action buttons to navigate (`↖ web`) and open the cwd in an editor (`↗ code`). It is delivered via a beacon-managed dynamic profile that the user opts into.
 
 Layout is fixed (no dynamic show/hide based on values). Chip text is rendered in the profile's default text color — kind-based per-chip palettes were tried and dropped because, with positions fixed, the colors became decorative rather than informative. Value-based coloring (e.g. status chip turns red when waiting) requires a custom Python component and is out of scope; the badge color (BADGE-09) covers the same need.
 
@@ -414,15 +412,13 @@ flowchart TB
     PROMPT --> PRECMD[shell precmd]
     PRECMD --> S1[uservar beacon_project_full]
     PRECMD --> S2[uservar beacon_branch]
-    PRECMD --> S3[uservar beacon_local_path]
     PRECMD --> SF1[file url-SESSION.txt]
     PRECMD --> SF2[file cwd-SESSION.txt]
     INSTALL([beacon install])
     INSTALL --> PROFILE[Dynamic profile written with status bar layout]
-    PROFILE --> CHIPS[Fixed sequence left to right: project_full go arrow branch spring local_path code export]
+    PROFILE --> CHIPS[Fixed sequence left to right: web arrow project_full spring branch code arrow]
     S1 --> STORE[iTerm2 user var store]
     S2 --> STORE
-    S3 --> STORE
     STORE --> CHIPS
     CHIPS --> RENDER2[Status bar renders chips above pane]
     CLICK_GO([user clicks ↗ go])
@@ -441,21 +437,19 @@ The `install` command shall **not** make the beacon profile iTerm2's default aut
 1. The manual click path: *iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default*.
 2. A pointer to the dedicated subcommand `beacon exclusive-configuration` (CMD-12) which orchestrates the quit + relaunch.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **remote-context cluster** (`↖ web` action + project path) flush left, the **branch** centered between two springs, and the **local-context cluster** (local path + `↗ code` action) flush right — a symmetrical layout where a glance can land on the side that matches the question being asked.
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **`↖ web` action + project identity** flush left and the **branch + `↗ code` action** flush right, with a single spring absorbing the slack between them — each end pairs an action chip with the data chip it acts on.
 
 Chip-by-chip behavior:
 
 1. **`↖ web` action button** — link-blue. Always visible. Clicking shall navigate to the URL resolved for the session (PROV-07); when no URL has been resolved, clicking shall navigate to a generic search-engine landing page so the click is never a no-op.
-2. **Full project path** — full remote project URL (e.g. `git.example/acme/widgets`), rendered in a dimmer link-blue so the action chip reads as the bright control and the path reads as its target. Identification only — not clickable.
-3. **Spring (left)** — pushes the remote cluster to the left edge.
-4. **Branch (synced)** — branch name with leading `@` sigil ("at the expected commit"), rendered in green. Visible only when the local branch is synced with its upstream.
+2. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in a dimmer link-blue so the action chip reads as the bright control and the identity reads as its target. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved `↖ web` URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable.
+3. **Spring** — pushes the trailing branch + `↗ code` cluster to the right edge.
+4. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
 5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
 6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
-7. **Spring (right)** — pushes the local cluster to the right edge.
-8. **Local path** — current working directory with `$HOME` substituted as `~`, rendered in a dimmer magenta to match the adjacent `↗ code` action.
-9. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
+7. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
 
-Action-chip color matches the data chip it acts on so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
+Action-chip color matches the data cluster it anchors so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
 
 **STATUS-BAR-03.** Action chips shall remain visible regardless of underlying state. Data chips other than the branch triple shall always render. The branch triple shall use value-based coloring (green / orange / dim gray) to communicate sync state at a glance. Empirical iTerm2 quirks that constrain the implementation (action chips ignoring `remove empty components`, coprocess actions not interpolating user vars, SwiftyString comparison expressions being unreliable) are captured in §6.10.
 
@@ -545,7 +539,6 @@ Five hues do all the work: **green / orange / red** for the calm/working/blocked
 | `↖ web` action            | `#ff79c6` | pink — action affordance             |
 | `↗ code` action           | `#ff79c6` | pink — action affordance             |
 | `beacon_project_full`     | `#6272a4` | comment — identity / label           |
-| `beacon_local_path`       | `#6272a4` | comment — identity / label           |
 | `beacon_branch_clean`     | `#50fa7b` | green — branch state (synced)        |
 | `beacon_branch_diverged`  | `#ffb86c` | orange — branch state (ahead/behind) |
 | `beacon_branch_untracked` | `#6272a4` | comment — branch state (no upstream) |
@@ -673,13 +666,12 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | User var | Source | Empty when |
 |:---|:---|:---|
 | `beacon_project` | PROV-01 | not in a recognized project (uses PROV-06 fallback instead) |
-| `beacon_project_full` | full git remote URL (host/owner/repo) | not in a recognized project |
-| `beacon_branch` | branch text with sigil/indicator (canonical) | not in a repo |
+| `beacon_project_full` | abbreviated remote identity, `<forge>:<owner>/<repo>` for known forges else `host/owner/repo`; appends `#<n>` (issue/PR) or `!<n>` (GitLab MR) when PROV-07 returns a deliverable URL | not in a recognized project |
+| `beacon_branch` | branch name, prefixed with the ahead/behind indicator only when diverged | not in a repo |
 | `beacon_branch_state` | `clean` / `diverged` / `untracked` | not in a repo |
 | `beacon_branch_clean` | `beacon_branch` when state is `clean`, else empty | n/a |
 | `beacon_branch_diverged` | `beacon_branch` when state is `diverged`, else empty | n/a |
 | `beacon_branch_untracked` | `beacon_branch` when state is `untracked`, else empty | n/a |
-| `beacon_local_path` | cwd with `$HOME` substituted as `~` | always populated |
 | `beacon_url` | PROV-07 | when no provider returns a value |
 | `beacon_project_drift` | plugin-only (HOOK-09); empty or `:<cwd basename>` | no Claude session active, or Claude's cwd resolves to the anchor project |
 

@@ -2,116 +2,9 @@
 
 At-a-glance session awareness for Claude Code in iTerm2.
 
-beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
+**[Read the docs](https://chris-peterson.github.io/beacon/)** for install, usage, and the full behavioral spec.
 
-- **Badge** (always on) — project name (e.g. `acme/widgets`) plus a status-driven color: green when calm (turn finished or session fresh), amber while Claude is working a turn, red when Claude is actively blocked on you (permission/idle prompt), gray when paused. The badge is large enough to read in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention — red is high-signal, not background noise.
-- **Status bar** (in the beacon profile) — a symmetrical strip with remote-context flush left, branch centered, and local-context flush right: `↖ web · project │ branch │ cwd · ↗ code`. The branch chip is colored by remote-relative state — green `@ main` when synced, orange `↑3 feature` when ahead/behind, dim gray `topic` when local-only (no upstream pushed yet). The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, otherwise a branch URL or the project URL); the `↗ code` button opens the cwd in VS Code.
-
-Plus a third surface only during pause:
-
-- **Post-it overlay** — a yellow sticky-note bg image carrying your free-text note (`/beacon pause "leaving for lunch"`). Clears automatically when you send the next prompt. Pause flips the badge to gray and pins the note text on the overlay; together they distinguish "parked" from "actively waiting on a prompt."
-
-beacon explicitly does **not** touch tab color, terminal background, foreground, window title, or cursor — those are Claude Code's domain or the user's profile. The badge color is the only signal-coloring surface beacon paints.
-
-beacon ships as a Claude Code plugin plus a sourceable zsh snippet. The plugin owns `stage` (workflow phase: `plan`/`dev`/`review`/`shipping`) and `status` (activity: `idle`/`working`/`waiting`); the shell owns `project`, `branch`, and the local cwd. They write to disjoint iTerm2 user-variable slots and never fight.
-
-### Stage vs status
-
-| | Stage | Status |
-|:---|:---|:---|
-| Question | What kind of work? | What's happening right now? |
-| Pace | Minutes-to-hours | Sub-second-to-seconds |
-| Driven by | Skill (`plan`, `review`) + hooks (`dev`, `shipping`) + override | Hooks (`working`, `waiting`) + override |
-
----
-
-## Install
-
-```text
-/plugin marketplace add chris-peterson/claude-marketplace
-/plugin install beacon@chris-peterson/claude-marketplace
-/beacon install
-```
-
-The first two commands install the Claude plugin (hooks, slash command, skill, scripts). `/beacon install` then bootstraps everything around it:
-
-- appends a `source` line to `~/.zshrc` (idempotent, marked with a sentinel so upgrades replace it in place)
-- drops a `beacon` wrapper at `~/.local/bin/beacon` so the CLI is on PATH for slash commands, skills, and your shell (the same pattern as tack/logbook — see `/beacon:beacon install-cli` to refresh after a plugin upgrade)
-- installs zsh tab completion to `~/.zsh/completions/_beacon` and inserts `fpath` before your existing `compinit`
-- enables iTerm2's *Separate background images per pane* default so the post-it scopes to the active pane
-- pre-approves the post-it bg-image paths in iTerm2's `AlwaysAllowBackgroundImage` (no trust prompts at runtime)
-- writes a beacon dynamic profile with the fixed-layout status bar
-
-The badge works in any iTerm2 profile. The **status bar** shows up only when you switch to the *Claude Code - Beacon* profile (Profiles menu → "Claude Code - Beacon"); set it as default if you want it everywhere.
-
-After install, open a fresh iTerm2 tab (`⌘T`). The badge should immediately show your current project name; switch to the beacon profile to see the full chip row.
-
-## Verify
-
-In a fresh tab:
-
-```bash
-beacon show         # resolved project / task / stage / status with providers
-beacon <TAB>        # twelve+ subcommands with descriptions
-```
-
-Then run `claude` in that tab and type any prompt:
-
-- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red only while Claude is actively blocked on you (permission/idle prompt)
-- stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
-- `/beacon pause "checking lunch options"` paints a yellow post-it and flips the badge to gray; sending the next prompt clears both
-
-## Usage
-
-### Slash command (inside Claude Code)
-
-```text
-/beacon                                    # show resolved state (default)
-/beacon pause "leaving for lunch"
-/beacon resume
-/beacon set stage review                   # explicit override
-/beacon clear stage                        # remove a single override
-/beacon clear                              # remove all overrides
-/beacon reset                              # clear all per-session state
-```
-
-### Shell command (outside Claude Code)
-
-The same subcommands work at the shell with tab completion:
-
-```bash
-beacon show
-beacon stage plan
-beacon pause "afk"
-```
-
-The skill bundled with the plugin tells Claude to set `stage plan` on plan-mode entry and `stage review` when you ask for a code review or QA pass — both are events hooks can't see. Hooks own `dev` (any Write/Edit), `shipping` (deploy commands), and all status transitions.
-
-## Upgrade
-
-Third-party Claude Code marketplaces have auto-update **off by default**. Either:
-
-- **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
-- **Or update manually** with `claude plugin update beacon@chris-peterson`.
-
-**After every upgrade, re-run `/beacon:beacon install` (or just `/beacon:beacon install-cli` if all you need is a fresh wrapper).** Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. The plugin's `SessionStart` hook compares `beacon --version` against the installed plugin version on every Claude Code session start and nudges you to refresh when they differ.
-
-Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
-
-## Uninstall
-
-```text
-/plugin uninstall beacon
-```
-
-To fully clean up the shell side, also delete these from `~/.zshrc`:
-
-```zsh
-fpath=(~/.zsh/completions $fpath)         # only if no other tool relies on it
-source ".../beacon/shell/beacon.zsh"  # beacon: project · branch · stage badging
-```
-
-And `rm ~/.zsh/completions/_beacon ~/.local/bin/beacon`.
+This README covers working *on* beacon. To install or use the released plugin, follow the docs site.
 
 ## Develop / install from a clone
 
@@ -124,17 +17,36 @@ python3 ~/src/beacon/scripts/beacon install
 
 This wires up the shell side just like `/beacon install`, but pointed at your clone. To get the plugin side (slash command, hooks, skill) loaded into Claude Code, use the marketplace install path — `claude --plugin-dir` may not register hooks reliably across versions.
 
-## Design
+## Dependencies
 
-Requirements (EARS) and architecture in [docs/spec.md](docs/spec.md). beacon ships as three deliverables:
+- macOS with iTerm2 — the only adapter today; spec §4 is iTerm2-specific.
+- zsh — the shell snippet relies on zsh-only features.
+- Python 3 — the plugin script runs via the system `python3`.
+
+## Repository layout
+
+| Path | What |
+|:---|:---|
+| `bin/beacon-iterm` | Stateless CLI that translates subcommands to iTerm2 OSC sequences (D2) |
+| `scripts/beacon` | Plugin script — hook handlers, COR resolver, slash command, install (D3) |
+| `shell/beacon.zsh` | Sourceable zsh snippet — refreshes project / branch / cwd / URL on every prompt |
+| `hooks/`, `commands/`, `skills/` | Claude Code plugin glue |
+| `iterm/profile.json.template` | Beacon dynamic profile, including the status-bar layout |
+| `docs/` | Docsify site sources; `spec.md` is the EARS-style behavioral spec (D1) |
+
+## Architecture
+
+beacon ships as three deliverables with a hard boundary between them:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | This specification | `docs/spec.md` |
-| D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
+| D1 | Behavioral spec | [docs/spec.md](docs/spec.md) |
+| D2 | `beacon-iterm` CLI | Stateless OSC-emitter executable |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 
-D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, etc.) or driver plugins.
+D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, a web dashboard) or driver plugins.
+
+The behavioral contract for hooks vs shell is documented in [`CLAUDE.md`](CLAUDE.md): the plugin owns `stage`/`status` and writes to its user-var slots; the shell owns `project`/`branch`/`cwd`/`url` and writes to disjoint slots; the CLI is unaware of either.
 
 ## License
 

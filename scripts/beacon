@@ -374,10 +374,9 @@ def p_package_name(cwd: Path):
 
 
 def p_git_remote(cwd: Path):
-    """Resolve project name from git remote, preferring `<top>/<repo>` form
-    (e.g. `chris-peterson/beacon`, `dotnet/docs`). When intermediate
-    subgroups exist (nested-group hosts like GitLab), they are elided as
-    `<top>/.../<repo>` so the badge signals that the path was abbreviated."""
+    """Full `owner/.../repo` path from git remote (e.g. `chris-peterson/beacon`,
+    `acmecorp/platform/auth-svc`), preserving any nested-group segments.
+    Returns None when not in a git repo or no origin is configured."""
     root = find_project_root(cwd)
     out = subprocess.run(
         ["git", "config", "remote.origin.url"],
@@ -402,13 +401,7 @@ def p_git_remote(cwd: Path):
     if path.endswith(".git"):
         path = path[:-4]
     parts = [p for p in path.split("/") if p]
-    if not parts:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    if len(parts) == 2:
-        return f"{parts[0]}/{parts[1]}"
-    return f"{parts[0]}/.../{parts[-1]}"
+    return "/".join(parts) if parts else None
 
 
 def p_project_dir(cwd: Path):
@@ -703,7 +696,7 @@ def _cli(*args, timeout: float = 5.0) -> None:
 #
 # The navigational identity of a Claude session is the cwd Claude was invoked
 # with. SessionStart captures that as the anchor and publishes the full set
-# of status-bar slots (project, project_full, branch×5, local_path, url) plus
+# of status-bar slots (project, project_full, branch×5, url) plus
 # the per-session handoff files for the ↗ code / ↖ web buttons (HOOK-08).
 # Those slots are not refreshed mid-session — they represent *which* session
 # this is, not where Claude's current Bash subprocess happens to be.
@@ -756,12 +749,7 @@ def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
     except Exception:
         pass
 
-    if state == "clean":
-        display = f"@ {name}"
-    elif state == "diverged":
-        display = f"{indicator} {name}"
-    else:
-        display = name
+    display = f"{indicator} {name}" if state == "diverged" else name
     return (display, state, indicator)
 
 
@@ -797,10 +785,50 @@ def _project_name_at(cwd: Path) -> str:
     return root.name or ""
 
 
+_REMOTE_HOST_ABBREV = {
+    "github.com": "gh",
+    "gitlab.com": "gl",
+    "bitbucket.org": "bb",
+}
+
+
+def _abbrev_remote_host(host_path: str) -> str:
+    """`github.com/owner/repo` → `gh:owner/repo` for known forges; pass-through otherwise."""
+    host, sep, rest = host_path.partition("/")
+    if not sep:
+        return host_path
+    abbrev = _REMOTE_HOST_ABBREV.get(host)
+    return f"{abbrev}:{rest}" if abbrev else host_path
+
+
+# GitLab patterns appear first because their `/-/issues/` and `/-/merge_requests/`
+# paths contain a literal `/issues/` substring that the GitHub patterns would
+# also match — we want the GitLab sigil (`!` for MRs) to win on GitLab URLs.
+_DELIVERABLE_PATTERNS = (
+    (re.compile(r"/-/merge_requests/(\d+)"), "!"),
+    (re.compile(r"/-/issues/(\d+)"),         "#"),
+    (re.compile(r"/pull/(\d+)"),             "#"),
+    (re.compile(r"/issues/(\d+)"),           "#"),
+)
+
+
+def _deliverable_suffix(url: str) -> str:
+    """`#42` for issues/PRs, `!17` for GitLab MRs. Empty when the URL doesn't
+    point at a forge issue/PR/MR. Used to contextualize the project_full chip
+    when PROV-07 returns a deliverable URL (tack, user override) — bare repo
+    or branch-tree URLs leave the chip showing only the project identity."""
+    if not url:
+        return ""
+    for pat, sigil in _DELIVERABLE_PATTERNS:
+        m = pat.search(url)
+        if m:
+            return f"{sigil}{m.group(1)}"
+    return ""
+
+
 def _project_full_at(cwd: Path) -> str:
-    """`host/owner/path/to/repo` form of the project's git remote, preserving
-    nested-group segments. Empty when there's no project or no remote.
-    Mirrors shell's `_beacon_project_full`."""
+    """Abbreviated remote identity, e.g. `gh:owner/repo`. Empty when there's
+    no project or no remote. Mirrors shell's `_beacon_project_full`."""
     root = _project_root_at(cwd)
     if not root:
         return ""
@@ -824,7 +852,7 @@ def _project_full_at(cwd: Path) -> str:
     path = path.rstrip("/")
     if path.endswith(".git"):
         path = path[:-4]
-    return path
+    return _abbrev_remote_host(path)
 
 
 def _local_path_at(cwd: Path) -> str:
@@ -852,6 +880,9 @@ def _publish_anchor(cwd: Path) -> None:
     local_path = _local_path_at(cwd)
     url, _label = resolve_url(cwd)
 
+    if project_full:
+        project_full = f"{project_full}{_deliverable_suffix(url)}"
+
     # BADGE-04 + PROV-06: when SessionStart's cwd is outside any recognized
     # project, fall back to the abbreviated cwd so the badge always carries
     # spatial context. Without this, an empty `beacon_project` combined with
@@ -867,7 +898,6 @@ def _publish_anchor(cwd: Path) -> None:
         f"beacon_branch_clean={display if state == 'clean' else ''}",
         f"beacon_branch_diverged={display if state == 'diverged' else ''}",
         f"beacon_branch_untracked={display if state == 'untracked' else ''}",
-        f"beacon_local_path={local_path}",
         f"beacon_url={url}",
         "beacon_project_drift=",
     ]
