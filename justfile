@@ -8,3 +8,7 @@ docs:
 # launch an interactive Claude Code session with the local plugin loaded
 try:
     claude --plugin-dir .
+
+# run the python test suite (stdlib unittest, no external deps)
+test:
+    python3 -m unittest discover -s tests -v

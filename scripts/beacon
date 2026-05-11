@@ -926,6 +926,18 @@ def _publish_drift(cwd: Path) -> None:
     pending_attention > drift > status)."""
     anchor = read_state("anchor.project") or ""
     current = _project_name_at(cwd)
+    # HOOK-09a: adopt the current observation as the anchor when none is
+    # recorded yet. Without this, a session whose SessionStart didn't fire
+    # (orphaned pane, manually cleared state, race on first hook) would have
+    # an empty anchor and the bare comparison `"" != "<current>"` would
+    # re-append `:<basename>` on every PostToolUse Bash — the runaway-drift
+    # trap. Drift is only meaningful relative to an established anchor.
+    if not anchor and current:
+        write_state("anchor.project", current)
+        if read_state("drift.active"):
+            _cli("uservar", "beacon_project_drift", "")
+            remove_state("drift.active")
+        return
     if current == anchor:
         if read_state("drift.active"):
             _cli("uservar", "beacon_project_drift", "")
@@ -1232,6 +1244,20 @@ def apply(state: dict):
     if prev_badge_hex != badge_hex:
         _cli("badge-color", badge_hex)
         _cli("tab-color", badge_hex)
+
+    # Badge text follows resolved project (BADGE-13). Republish whenever the
+    # resolved value changes — `set project` / `clear project` / any provider
+    # update — so the badge tracks `beacon show`. Skip on first render of a
+    # session: _publish_anchor (HOOK-08) already painted the SessionStart
+    # value, and `prev` empty means no state change has occurred yet.
+    project_text = state["project"]
+    if prev and prev.get("project") != project_text:
+        _cli("uservar", "beacon_project", project_text)
+        # A project change makes any active drift annotation stale — the
+        # `:<basename>` suffix was relative to the prior badge text.
+        if read_state("drift.active"):
+            _cli("uservar", "beacon_project_drift", "")
+            remove_state("drift.active")
 
     # Background image: only for the post-it overlay.
     note_image = state.get("note_image")

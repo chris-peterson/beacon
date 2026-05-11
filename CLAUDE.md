@@ -74,5 +74,6 @@ iTerm2 caches its plist in memory while running and writes it back on quit. Any 
 | Apply prefs needing iTerm2 quit (default profile, bg-image trust) | `python3 scripts/beacon exclusive-configuration` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
+| Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |
 
-There is no test suite yet. Verify behavior by sourcing the shell snippet, running the CLI, and visually confirming in iTerm2.
+The test suite under `tests/` covers plugin-side behavior (apply/render emit decisions, drift detection, override propagation). Surface verification (the actual badge / status bar / overlay rendering in iTerm2) still requires sourcing the shell snippet and looking.

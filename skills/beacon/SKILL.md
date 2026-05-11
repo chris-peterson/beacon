@@ -11,6 +11,19 @@ beacon is a session-awareness tool that displays the current project, task, stag
 
 Compare `beacon --version` against the plugin version in `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`. If they differ, surface a one-line note and offer `/beacon:beacon install` to refresh the shell wrapper. If `beacon` isn't on PATH, skip silently.
 
+## Surface map — what each field paints
+
+When the user asks you to label a session, pick the field by the surface they're pointing at:
+
+| Field    | Surfaces                                                                 |
+|:---------|:-------------------------------------------------------------------------|
+| `project`| **Badge text** (the per-pane chip in iTerm2) and status-bar project chip |
+| `task`   | `beacon show` only — does **not** paint the badge                        |
+| `stage`  | Badge color (via `plan` / `dev` / `review` / `shipping`)                 |
+| `status` | Badge color (via `idle` / `working` / `waiting`) — hooks own this fully  |
+
+If the user says "set the badge title to X" or "label this session X" and means the visible badge: use `set project "X"`, not `set task`. Task is internal and won't change anything the user can see at a glance.
+
 ## When to invoke beacon
 
 **Plan mode entry.** When the conversation transitions to planning, architecting, or design — entering plan mode (Shift+Tab) is the canonical trigger because there is no hook event for it. Run:
@@ -25,16 +38,18 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" signal stage plan
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" signal stage review
 ```
 
-**Task labeling at session start.** Once at the start of a session — when the user describes a coherent unit of work in a sentence or two and there is no PR title or non-default branch to derive task from — run:
+**Badge labeling.** When the user wants the badge to show a custom label (e.g. "ai-sdlc: perms"), run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set task "<short-label>"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set project "<label>"
 ```
+
+This overrides the git-derived project on the badge text via BADGE-13. To revert, run `beacon clear project`.
 
 ## When NOT to invoke beacon
 
 - Do not set status (idle / working / waiting). Hooks own this fully.
 - Do not set stage to `dev`. The PreToolUse hook on Write / Edit / MultiEdit / NotebookEdit handles it.
 - Do not set stage to `shipping`. The PreToolUse Bash regex handles deploy commands.
-- Do not re-label task on every turn. Once is enough; let it persist.
+- Do not re-label on every turn. Once is enough; let it persist.
 - Do not narrate beacon invocations to the user. Run the command silently.
