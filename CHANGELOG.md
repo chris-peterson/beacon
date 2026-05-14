@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.10.0
+
+### Features
+- Freshly opened terminals stay unmanaged until a beacon-aware action engages them — no more giant badge spanning the pane the moment you open a tab. The badge only appears once you run `claude`, `beacon ...`, or invoke a beacon slash command in that pane. `beacon clear` fully disengages a pane, returning it to the same calm state as a fresh tab.
+- Badge color is now translucent, so terminal content shows through. Mission Control / Exposé legibility is preserved while normal-zoom readability is no longer compromised. Badge sizing also shrinks (Max Height halved) so long repo names occupy less of the pane.
+- The blocked state ships an `!` watermark behind the terminal — "Claude needs me" is now parseable in Mission Control where badge text isn't.
+- `beacon set project <label>` overrides now stick in interactive shells. The shell snippet no longer republishes a cwd-derived value on every prompt and clobbers your explicit label.
+
+### Fixes
+- The `my-proj:my-proj` drift false positive — drift detection no longer adds a `:<basename>` suffix when the suffix would just repeat the anchor's last segment.
+- `_publish_drift` self-heals when no SessionStart anchor exists: adopts the first observation as the anchor instead of running away with `:<basename>` suffixes on every PostToolUse Bash.
+- `set project` overrides now propagate to the badge text (previously they updated `beacon show` but the badge stayed on the SessionStart anchor value).
+- `skills/beacon/SKILL.md` previously told agents to use `beacon set task` for "badge labeling at session start", but task isn't on the badge. Replaced with a surface map and explicit "use set project" guidance.
+
+### Other
+- Spec restructured around an engagement precondition. New requirements: BADGE-13 (sizing + opacity), BADGE-14 (engagement-gated badging), BADGE-15 (state-driven background image), CLI-14 (`set-profile`), HOOK-09a (anchor self-healing), HOOK-09b (no-op drift suppression). The badge color mechanism pivoted from per-session OSC `SetColors=badge=` to one dynamic profile per state (`beacon-ready` / `-busy` / `-blocked` / `-drifted`), switched via `OSC SetProfile=`. Pause stays as an OSC overlay since its image is per-note.
+- `iterm/images/blocked.png` bundled with the plugin.
+- 22 unit tests (11 new this release) covering profile switching, OSC overlay for pause, engagement marker, first-render publish, and drift no-op condition.
+
+### Migration
+- Run `python3 scripts/beacon install` after upgrading — the new state profiles need to land in `~/Library/Application Support/iTerm2/DynamicProfiles/`.
+- If you previously had `beacon-flicker-test.json` from manual testing in your DynamicProfiles dir, remove it.
+
 ## 0.9.0
 
 ### Features
