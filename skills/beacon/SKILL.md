@@ -44,7 +44,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" signal stage review
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set project "<label>"
 ```
 
-This overrides the git-derived project on the badge text via BADGE-13. To revert, run `beacon clear project`.
+This overrides the git-derived project on the badge text via BADGE-12. To revert, run `beacon clear project`.
 
 ## When NOT to invoke beacon
 

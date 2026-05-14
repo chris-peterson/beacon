@@ -1,0 +1,24 @@
+{
+  "Profiles": [
+    {
+      "Name": "beacon-busy",
+      "Guid": "ec2933e2-0e56-4d96-9a63-245d5ec70002",
+      "Dynamic Profile Parent Name": "beacon",
+      "Tags": ["beacon", "beacon-state"],
+      "Badge Color": {
+        "Color Space": "sRGB",
+        "Alpha Component": 0.45,
+        "Red Component":   1.000,
+        "Green Component": 0.722,
+        "Blue Component":  0.424
+      },
+      "Tab Color": {
+        "Color Space": "sRGB",
+        "Alpha Component": 1.0,
+        "Red Component":   1.000,
+        "Green Component": 0.722,
+        "Blue Component":  0.424
+      }
+    }
+  ]
+}

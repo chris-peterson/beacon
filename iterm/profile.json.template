@@ -7,8 +7,9 @@
       "Show Status Bar": true,
       "Use Separate Colors for Light and Dark Mode": false,
       "Badge Font": "Futura",
+      "Badge Text": "\\(user.beacon_project)\\(user.beacon_project_drift)",
       "Badge Max Width": 0.90,
-      "Badge Max Height": 0.08,
+      "Badge Max Height": 0.04,
       "Badge Right Margin": 12,
       "Badge Top Margin": 0,
       "Tags": [

@@ -193,6 +193,8 @@ The integration with `tack` is *soft*: beacon detects `tack` at runtime and uses
 
 **HOOK-09.** When Claude's `Bash` tool returns (PostToolUse), the plugin shall compare the resolved project name of the payload's cwd against `anchor.project` (HOOK-08). When they differ, the plugin shall set `beacon_project_drift = ":<basename>"` (where `<basename>` is the cwd's last path segment) and write the `drift.active` flag, so the badge text appends a `:<basename>` suffix and the badge color flips to the `drifted` state (BADGE-09a / BADGE-11). When they match, the plugin shall clear `beacon_project_drift` and remove `drift.active`. Rationale: the user needs to know at a glance both *which* session this is (anchor — preserved on the status bar and the action buttons per HOOK-08) and *that* Claude has wandered (drift — surfaced on the badge alone, the only beacon surface readable in Mission Control). The anchor stays as the badge's stable identity on the left; the appended `:<basename>` communicates "currently at" — a transient tail Claude has stepped into and is expected to return from, not a permanent rename of the badge. The path-like `<anchor>:<drift>` shape lets the eye scan a column of panes for the anchor without the drift tail moving the spatial reference point.
 
+**HOOK-09b.** The plugin shall suppress the drift annotation when the proposed suffix `<basename>` equals the last path segment of `anchor.project` — the suffix would just repeat the anchor (e.g., anchor `my-proj`, cwd basename `my-proj` from a separately-located project of the same name) and carry no spatial information. In that case the plugin shall clear `beacon_project_drift` and remove `drift.active` rather than emitting a no-op annotation that would read `my-proj:my-proj`.
+
 **HOOK-09a.** When PostToolUse Bash fires and `anchor.project` is unset (e.g., SessionStart did not fire for this pane, or its state was cleared without re-anchoring), the plugin shall adopt the current observed project as the anchor and emit no drift annotation. Rationale: drift is only meaningful relative to an established anchor; without HOOK-09a, the bare comparison `"" != "<current>"` causes every subsequent Bash invocation to re-append `:<basename>` — the runaway-drift trap. Adopting the first observation closes the gap when HOOK-08 didn't run, at the cost of the first Bash in such a session not surfacing drift even if the cwd had legitimately wandered (a non-issue in practice — sessions almost always start in the intended project).
 
 ### 3.4 User overrides (OVR)
@@ -302,10 +304,10 @@ beacon writes to **exactly four surfaces** of an iTerm2 window. Every other surf
 
 | Area | Section | Namespace | Purpose | Mechanism |
 |:---|:---|:---|:---|:---|
-| Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color | OSC `SetBadgeFormat` + `SetUserVar` + `SetColors=badge=` |
+| Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color | OSC `SetBadgeFormat` + `SetUserVar` for text; one dynamic profile per status (`SetProfile=`) for color + alpha + optional state image. Paused state overlays via OSC `SetColors=badge=` |
 | Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + cross-session actions (`go`, `code`, `export`) | Dynamic profile + `SetUserVar` + Action component |
-| Background image | §4.5 | `OVERLAY` | Post-it overlay during pause | OSC `SetBackgroundImageFile` |
-| Tab color | §4.8 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | OSC `SetColors=tab=` |
+| Background image | §4.5 | `OVERLAY` | Post-it overlay during pause | OSC `SetBackgroundImageFile` (overlays the profile's static state image, if any) |
+| Tab color | §4.7 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | Per-status dynamic profile carries `Tab Color`; paused state overlays via OSC `SetColors=tab=` |
 
 beacon shall **not** write to: terminal background color, terminal foreground color, window title, tab title, cursor color/shape. These are Claude Code's domain (window title) or the user's profile (terminal colors, cursor). Badge and tab color are the only signal-coloring surfaces beacon paints — both carry the same logical traffic-light state on different scopes (badge is per-pane, visible inside the pane and in Mission Control; tab color is per-tab, visible in the tab strip when many tabs are open).
 
@@ -339,11 +341,15 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-13.** When invoked as `beacon-iterm attention`, the CLI shall request iTerm2 dock attention via `OSC 1337 RequestAttention=once`. Used by the plugin when `signal.status = waiting` (HOOK-03) to bounce the dock icon for sessions blocked on the user.
 
+**CLI-14.** When invoked as `beacon-iterm set-profile <name>`, the CLI shall switch the current session's profile via `OSC 1337 SetProfile=<name>`. The named profile must exist in iTerm2's DynamicProfiles directory; iTerm2 silently ignores unknown names, which the plugin treats as a fatal install-time misconfiguration rather than a runtime error. A profile switch atomically applies the new profile's `Badge Color` (with alpha), `Tab Color`, and `Background Image Location` — and atomically wipes any prior session-specific OSC overrides for those keys. This atomic wipe-and-apply is the mechanism behind RENDER-04's resume-from-pause cleanup.
+
 ### 4.3 Badge area (BADGE)
 
 The badge carries **just `<project>`** as its text — the most compact signal possible, visible in the corner of every pane regardless of profile. Project value is PROV-01 (e.g. `acme/widgets`).
 
 Beyond text, the badge carries one additional signal: **color, driven by `status`** (BADGE-09). This is the highest-leverage surface for many-window awareness — the badge is the only beacon-painted element large enough to read in Mission Control / Exposé. Branch and richer context are surfaced in the status bar (§4.4) instead.
+
+The whole section is gated on **engagement** (BADGE-14): a pane that has never been the subject of a beacon-aware action shows no badge at all, so a freshly-opened terminal looks like an unmanaged terminal. All requirements below describing badge painting, color, and text apply only once the pane has engaged.
 
 ```mermaid
 %%{ init: { 'look': 'handDrawn' } }%%
@@ -363,7 +369,7 @@ flowchart LR
 
 **BADGE-01.** The plugin distribution shall include a sourceable shell integration (`shell/beacon.zsh`) that the user adds to `.zshrc`.
 
-**BADGE-02.** When the shell prompt redraws (precmd / chpwd), the integration shall invoke `beacon-iterm uservar beacon_project <value>` with the value derived per PROV-01 from the current working directory.
+**BADGE-02.** The plugin shall be the sole writer of `beacon_project`. The shell integration shall not publish `beacon_project` from precmd or chpwd — the badge text follows intentional signals (user overrides via `set project`, SessionStart anchor via HOOK-08) rather than the user's current working directory. The status-bar user-vars (branch, project_full, url) remain cwd-driven and continue to be published by the shell integration on every prompt — the status bar is a different surface with a different contract.
 
 **BADGE-03.** The shell integration shall set the iTerm2 badge format on source so the badge renders the project user-var. The format string is an implementation detail; the user-observable contract is "the badge text equals the resolved project value" (BADGE-02 + BADGE-04).
 
@@ -399,9 +405,13 @@ When none of the three flags is set, BADGE-09 applies.
 
 **BADGE-11.** While `drift.active` is set (HOOK-09), the plugin shall set the badge color to the `drifted` logical state — a hex outside the `ready` / `busy` / `blocked` traffic-light family (e.g., a cool blue) — so a session whose Bash has wandered into a different project reads as anomalous at a glance without competing with the green/orange/red status palette. The `state → hex` mapping lives in implementation, consistent with BADGE-09. The badge text additionally carries a `:<basename>` drift tail via the `beacon_project_drift` user-var slot (see HOOK-09 / §6.6).
 
-**BADGE-12.** When the shell integration is sourced, it shall set the badge color to the `ready` logical state (THEME-02) so a fresh iTerm2 tab outside Claude Code shows the calm color from the first prompt. Painting `ready` explicitly avoids the iTerm2 default badge color leaking through (which on some setups is muted red, conflicting with the `blocked` semantic) and overrides any sticky color inherited from a parent pane that was previously active in Claude. Claude's hooks repaint to `busy` / `blocked` on the next turn.
+**BADGE-12.** When the resolved `project` value changes between render passes — whether driven by `set project` / `clear project` (OVR-01 / OVR-03), or by any provider re-evaluation — the plugin shall republish `beacon_project` so the badge text tracks the value reported by `show` (CMD-01). On the same render pass, any active drift annotation shall be cleared (`beacon_project_drift` emptied, `drift.active` removed), because the prior `:<basename>` suffix was anchored to the prior badge text. Rationale: HOOK-08 paints `beacon_project` once at SessionStart; without BADGE-12, subsequent overrides land in state and `show` reports them but the iTerm badge silently keeps the SessionStart value, diverging from `show`.
 
-**BADGE-13.** When the resolved `project` value changes between render passes — whether driven by `set project` / `clear project` (OVR-01 / OVR-03), or by any provider re-evaluation — the plugin shall republish `beacon_project` so the badge text tracks the value reported by `show` (CMD-01). On the same render pass, any active drift annotation shall be cleared (`beacon_project_drift` emptied, `drift.active` removed), because the prior `:<basename>` suffix was anchored to the prior badge text. Rationale: HOOK-08 paints `beacon_project` once at SessionStart; without BADGE-13, subsequent overrides land in state and `show` reports them but the iTerm badge silently keeps the SessionStart value, diverging from `show`.
+**BADGE-13.** The plugin shall render the badge such that it remains legible when the pane is shrunk to Mission Control / Exposé thumbnail size while not occluding the terminal content beneath it at normal zoom. The plugin shall achieve this through a combination of sizing constraints on the badge's bounding box and partial transparency on the badge color; specific values (height fraction, alpha) are tunable in implementation.
+
+**BADGE-14.** While no beacon-aware action has occurred in a pane, the plugin shall leave the badge unpainted in that pane. A beacon-aware action is any of: a Claude Code hook invocation, a `/beacon` slash command, or a direct `beacon` CLI invocation in that pane. When `beacon clear` is invoked, the plugin shall return the badge to its unpainted state, requiring a subsequent beacon-aware action to re-engage.
+
+**BADGE-15.** A status logical state may carry a **static state image** painted as the pane's background, visible behind terminal content as a watermark. The mapping `state → image` is implementation-tunable; at minimum, the `blocked` state shall carry an attention-grabbing watermark (e.g. an `!` glyph) since "Claude is waiting for me" is the at-a-glance signal most worth amplifying in Mission Control. States without a configured image render no watermark. Paused state's image (the post-it card, OVERLAY-01) is dynamic and takes precedence: while paused, the post-it overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -463,7 +473,12 @@ Action-chip color matches the data cluster it anchors so each CTA visually ties 
 
 ### 4.5 Background image area (OVERLAY)
 
-The background image is **only** set during a paused session — to render the post-it card. Otherwise it is unset. This keeps the surface free for users' own iTerm2 customization outside of pause moments.
+The background image carries two distinct workloads:
+
+1. **Static state images (BADGE-15)** — painted by the active status profile (`blocked.png`, etc.). They live in the profile's `Background Image Location` key and switch atomically when the plugin invokes `set-profile` (CLI-14).
+2. **Dynamic post-it overlay** — painted only during pause, set per-session via OSC `SetBackgroundImageFile` (CLI-04). The post-it carries the user's note text and is rendered into a bounded image pool (OVERLAY-03).
+
+The OSC overlay layers over whichever static state image is currently active, displacing it for the pane's lifetime until cleared. Resuming from pause invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and reveals the new status profile's static image (if any).
 
 ```mermaid
 %%{ init: { 'look': 'handDrawn' } }%%
@@ -486,13 +501,13 @@ flowchart LR
     CLEAR3 --> HIDE
 ```
 
-**OVERLAY-01.** When `pause` is invoked with a note (PAUSE-03), the plugin shall invoke `beacon-iterm note <text>` to render and paint the post-it card. The post-it shall contain only the note text — no project icon.
+**OVERLAY-01.** When `pause` is invoked with a note (PAUSE-03), the plugin shall invoke `beacon-iterm note <text>` to render and paint the post-it card. The post-it shall contain only the note text — no project icon. The post-it is painted via OSC `SetBackgroundImageFile` so it overlays the active status profile's static state image (BADGE-15) without modifying any profile. On resume, the plugin invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and restores the new status profile's static image; the plugin shall not emit an explicit `bg-image clear`.
 
-**OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's post-it does not carry over into a fresh split.
+**OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's post-it does not carry over into a fresh split. This applies only to OSC-level overlays — static state images live in their respective dynamic profiles and are not subject to inheritance.
 
 **OVERLAY-03.** The plugin shall render note images into a bounded pool of stable cache paths using LRU rotation, avoiding overwrite of slots currently referenced by another session's `note-image` state. Pool files persist across resume/reset. Pool size is a tunable implementation constant; reusing a fixed pool of paths keeps iTerm2's bg-image trust prompt (OVERLAY-04) tractable — every paint hits an already-approved path.
 
-**OVERLAY-04.** The `install` command shall pre-approve the pool paths (OVERLAY-03) and the empty-path sentinel (which the shell integration sends per OVERLAY-02) in iTerm2's `AlwaysAllowBackgroundImage` array, so `SetBackgroundImageFile` never triggers a trust prompt. When iTerm2 is running at install time, the writes are deferred — iTerm2 caches prefs in memory and would overwrite the plist on quit — and the user is told to quit iTerm2 and re-run.
+**OVERLAY-04.** The `install` command shall pre-approve the pool paths (OVERLAY-03), the empty-path sentinel (which the shell integration sends per OVERLAY-02), and any static state image paths referenced by status profiles (BADGE-15, e.g. `blocked.png`) in iTerm2's `AlwaysAllowBackgroundImage` array, so neither `SetBackgroundImageFile` nor a state profile loading its image triggers a trust prompt. When iTerm2 is running at install time, the writes are deferred — iTerm2 caches prefs in memory and would overwrite the plist on quit — and the user is told to quit iTerm2 and re-run.
 
 ### 4.6 Render orchestration (RENDER)
 
@@ -504,7 +519,11 @@ These requirements describe **when** the plugin invokes the CLI and **with what*
 
 **RENDER-03.** The plugin shall write a snapshot of the last-rendered resolved state including provenance, for debugging.
 
-**RENDER-04.** The plugin shall invoke `beacon-iterm bg-image` only when entering or leaving the paused state — never for `idle` / `working` / `waiting` transitions.
+**RENDER-04.** Status transitions use two distinct mechanisms depending on whether paused is involved:
+
+- **Transitions among `ready` / `busy` / `blocked` / `drifted`** — the plugin shall invoke `set-profile` (CLI-14) with the matching profile name. The profile switch atomically updates badge color, tab color, and the static state image (BADGE-15). No `badge-color`, `tab-color`, or `bg-image` calls are emitted.
+- **Entering paused** — the plugin shall not switch profiles. It overlays the active profile via OSC: `badge-color` (CLI-10) to the paused hex, `tab-color` (CLI-11) to the paused hex, and `note` (CLI-05) for the post-it.
+- **Leaving paused** — the plugin shall invoke `set-profile` with the new status's profile. The atomic profile switch (CLI-14) wipes all session-specific OSC overrides — badge color, tab color, and background image — so no separate cleanup calls are emitted.
 
 ### 4.7 Tab color (TAB)
 
@@ -512,7 +531,7 @@ The tab color is the second signal-coloring surface beacon paints, mirroring the
 
 Tab color is *complementary* to the badge, not redundant: the badge is per-pane and visible inside the pane (and in Mission Control); tab color is per-tab and visible only in the tab strip. The two together cover both glance-modes (focused window with many tabs, vs. zoomed-out Mission Control across many windows). They share the same logical state (`ready` / `busy` / `blocked`) and hex palette so there is no second source of truth to keep in sync.
 
-**TAB-01.** The plugin shall set the tab color via `beacon-iterm tab-color` (CLI-11) on every status change, mirroring the same logical color state used by BADGE-09 (`ready` / `busy` / `blocked` → palette hex). The same call site that emits `badge-color` shall emit `tab-color` with the same value, so the two surfaces never diverge.
+**TAB-01.** The tab color shall mirror the same logical color state used by BADGE-09 (`ready` / `busy` / `blocked` → palette hex), so the badge and tab strip never diverge. For non-paused states this is delivered by the status profile's `Tab Color` key, applied atomically with badge color via `set-profile` (CLI-14, per RENDER-04). For paused state, the plugin emits `tab-color` (CLI-11) as an OSC overlay alongside the paused badge color, matching the OSC-overlay model OVERLAY-01 uses for the post-it.
 
 **TAB-02.** When the resolved session is cleared (CMD-06 reset, or `beacon-iterm clear`), the tab color shall revert to `default` so the user's profile colors take over again.
 
@@ -524,13 +543,13 @@ beacon's visible color values are drawn from the [Dracula palette](https://dracu
 
 Five hues do all the work: **green / orange / red** for the calm/working/blocked traffic light (BADGE-09); **comment** for de-emphasis; **pink** as the single "interactive" accent on action chips. **Cyan** is held in reserve and used only for the `drifted` state (BADGE-11) so the same hue never carries two semantics in the same eye-glance. Branch-state chips intentionally reuse the badge palette (green = clean, orange = diverged, comment = untracked) so the same color carries the same meaning across surfaces.
 
-**THEME-01.** All visible color values that beacon paints (badge color via BADGE-09..12, tab color via TAB-01, status-bar chip text via STATUS-BAR-02) shall be drawn from the Dracula palette. Each hue shall serve a single semantic role across surfaces — colors that signal state (green/orange/red/comment) shall not be reused as decorative chip identity, and the action-affordance hue (pink) shall not overlap with state hues. Hex values are tunable in one place per surface (`BADGE_COLOR_PALETTE` in the plugin script for badge/tab; the dynamic profile template for chip text); call sites speak in logical names so the palette can be retuned without touching call sites.
+**THEME-01.** All visible color values that beacon paints (badge color via BADGE-09..11, tab color via TAB-01, status-bar chip text via STATUS-BAR-02) shall be drawn from the Dracula palette. Each hue shall serve a single semantic role across surfaces — colors that signal state (green/orange/red/comment) shall not be reused as decorative chip identity, and the action-affordance hue (pink) shall not overlap with state hues. Hex values are tunable in one place per surface (`BADGE_COLOR_PALETTE` in the plugin script for badge/tab; the dynamic profile template for chip text); call sites speak in logical names so the palette can be retuned without touching call sites.
 
 **THEME-02.** The badge / tab palette maps logical states to Dracula hex:
 
 | State     | Hex       | Dracula name | When                                                               |
 |:----------|:----------|:-------------|:-------------------------------------------------------------------|
-| `ready`   | `#50fa7b` | green        | idle / calm — Stop hook, fresh session, shell-only tabs (BADGE-12) |
+| `ready`   | `#50fa7b` | green        | idle / calm — Stop hook, fresh session                             |
 | `busy`    | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
 | `blocked` | `#ff5555` | red          | waiting — permission/idle prompt (BADGE-09 / -10)                  |
 | `paused`  | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
@@ -547,7 +566,7 @@ Five hues do all the work: **green / orange / red** for the calm/working/blocked
 | `beacon_branch_diverged`  | `#ffb86c` | orange — branch state (ahead/behind) |
 | `beacon_branch_untracked` | `#6272a4` | comment — branch state (no upstream) |
 
-The dynamic profile stores chip colors as RGB float components (sRGB). The hex values above are authoritative; the float forms in `iterm/profile.json.template` are derived from them.
+The base dynamic profile stores chip colors as RGB float components (sRGB). State profiles inherit these chip colors via `Dynamic Profile Parent Name`, so the status bar reads identically across all state profiles. The hex values above are authoritative; the float forms in `iterm/profile.json.template` are derived from them.
 
 ---
 
@@ -618,8 +637,8 @@ The dynamic profile stores chip colors as RGB float components (sRGB). The hex v
 ┌──────────────────────────────────────────────────────────┐
 │  beacon-iterm CLI (the only writer to iTerm2)            │
 │  ├─ uservar     ├─ badge-format ├─ badge-color          │
-│  ├─ attention   ├─ bg-image     ├─ note                 │
-│  └─ clear                                                │
+│  ├─ tab-color   ├─ set-profile  ├─ bg-image             │
+│  ├─ note        ├─ attention    └─ clear                 │
 └──────────────────────────────────────────────────────────┘
                          │
                          ▼
@@ -648,7 +667,7 @@ The shell side and the CLI are both stateless: each shell prompt recomputes proj
 
 A single Python 3 script with subcommand dispatch. Dependencies:
 
-- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `attention`, `bg-image`, `clear`.
+- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `tab-color`, `set-profile`, `attention`, `bg-image`, `clear`.
 - **Pillow** required for `note` (post-it composition). When missing, `note` exits non-zero with `"Pillow required for note composition; install via 'pip install Pillow'"`.
 
 All subcommands open `/dev/tty` lazily, write the escape sequence, flush, and close. No persistent process, no shared state.
@@ -697,9 +716,9 @@ add-zsh-hook chpwd  _beacon_chpwd
 
 Idempotent via a sentinel variable. Empty values are allowed and clear the slot (BADGE-06).
 
-### 6.6 Badge format and color
+### 6.6 Badge format, color, and state profiles
 
-The badge format (text template) is set per-session via the OSC `SetBadgeFormat` escape sequence:
+**Text** is delivered per-session via OSC `SetBadgeFormat`:
 
 ```text
 \(user.beacon_project)\(user.beacon_project_drift)
@@ -707,16 +726,29 @@ The badge format (text template) is set per-session via the OSC `SetBadgeFormat`
 
 The drift slot is empty during interactive shell use and during Claude sessions whose Bash hasn't wandered, so the rendered badge is just the project. When HOOK-09 fires drift, the slot becomes `:<cwd basename>` and the badge reads e.g. `chris-peterson/beacon:ai-sdlc`.
 
-Two writers set this same template:
+Two writers set this format:
 
 - **Shell integration** sets it once on source (interactive zsh sessions).
 - **Plugin** sets it on the first render of each session (covers non-zsh, ssh, and edge cases where the shell snippet didn't run before Claude Code started).
 
-Once the format is set on a session, iTerm2 re-evaluates it whenever the referenced `user.*` variable changes, so subsequent project updates flow in automatically.
+Once set, iTerm2 re-evaluates the format whenever a referenced `user.*` variable changes, so subsequent project updates flow in automatically.
 
-Badge **color** is owned by the plugin and updated on every status change via `beacon-iterm badge-color <hex>` (BADGE-09). The plugin maintains a small dict mapping logical states (`ready` / `busy` / `blocked`) to hex values, so the palette can be tuned without touching call sites.
+**Color, alpha, sizing, and the static state image** are delivered via **a family of dynamic profiles** — one per non-paused logical state (`ready` / `busy` / `blocked` / `drifted`). All state profiles inherit from a shared base `beacon` profile via `Dynamic Profile Parent Name`, so they share the status-bar layout (STATUS-BAR-02), badge sizing (BADGE-13), font, and margins. Each state profile overrides only the values that vary by state:
 
-Neither writer modifies any iTerm2 profile — both work via per-session OSC sequences, so the format and color apply in any profile.
+| Profile | Badge Color (alpha) | Tab Color | Background Image |
+|:---|:---|:---|:---|
+| `beacon-ready` | green (translucent) | green | none |
+| `beacon-busy` | orange (translucent) | orange | none |
+| `beacon-blocked` | red (translucent) | red | `blocked.png` watermark |
+| `beacon-drifted` | cyan (translucent) | cyan | none |
+
+State transitions among these four states fire `OSC 1337 SetProfile=<name>` (CLI-14, RENDER-04), which iTerm2 applies atomically — badge color, tab color, and static state image swap in one operation with no flicker (verified empirically). The atomicity is load-bearing: it lets the plugin avoid orchestrating sequential OSC writes that would race.
+
+The base `beacon` profile is the only profile beacon's `install` step makes default in iTerm2. State profiles are switched into per session by the plugin; they never appear as iTerm2's default.
+
+**Paused state is exempt.** Pause's image is per-note (dynamic text rendered into a PNG, OVERLAY-01), which can't be baked into a single profile JSON. Instead, pause overlays whatever profile is currently active via OSC: `badge-color`, `tab-color`, and `note`. On resume, the plugin calls `set-profile` with the new status's profile; iTerm2 atomically wipes all OSC-set session-specific values and applies the new profile's values, so no explicit OSC cleanup is needed.
+
+**Engagement gating (BADGE-14)** sits orthogonal to this: an unengaged pane uses the base `beacon` profile (iTerm2's default), publishes no `user.beacon_project` user var, and so renders an empty badge. The first beacon-aware action both populates the user var (badge text appears) and fires `set-profile` to a status-specific profile (badge color / image appear). `beacon clear` reverses both: it clears the user var and switches back to the base `beacon` profile.
 
 ### 6.7 Render flow (plugin)
 
@@ -729,25 +761,28 @@ resolve()  → state{value, provider}
   ↓
 apply(state):
   load prev resolved snapshot (or empty on first render)
+  place engagement marker for this pane                        # BADGE-14
   if first render of this session:
     beacon-iterm badge-format <template>
-  badge_hex = paused   if state.paused                              # BADGE-09a + BADGE-10
-            else blocked if state.pending_attention                 # BADGE-09a precedence
-            else drifted if state.drift_active                      # BADGE-09a + BADGE-11
-            else palette[STATUS_TO_BADGE_STATE[state.status]]       # BADGE-09 mapping
-  if badge_hex changed:
-    beacon-iterm badge-color <badge_hex>
-    beacon-iterm tab-color   <badge_hex>     # TAB-01 mirrors badge
-  if paused with note and note image is new:
-    beacon-iterm bg-image <path>
-  elif resuming from pause:
-    beacon-iterm bg-image clear
+  logical_state = paused   if state.paused                     # BADGE-09a + BADGE-10
+                else blocked if state.pending_attention        # BADGE-09a precedence
+                else drifted if state.drift_active             # BADGE-09a + BADGE-11
+                else STATUS_TO_BADGE_STATE[state.status]       # BADGE-09 mapping
+  if logical_state changed:
+    if logical_state == paused:
+      beacon-iterm badge-color <paused_hex>                    # OSC overlay
+      beacon-iterm tab-color   <paused_hex>                    # OSC overlay
+      if note is new:
+        beacon-iterm note <text>                               # OSC overlay
+    else:
+      beacon-iterm set-profile beacon-<logical_state>          # atomic profile swap
+                                                                # — wipes any prior OSC overlays
   if status transitioned to waiting:
     beacon-iterm attention
 write state/<sid>.resolved (provenance snapshot)
 ```
 
-Diff-against-previous keeps the per-render escape-sequence count low — typical mid-session render emits zero or one CLI call.
+Diff-against-previous keeps the per-render escape-sequence count low — typical mid-session render emits zero or one CLI call. Resume-from-pause is a single `set-profile` (it carries the overlay wipe).
 
 ### 6.8 Skill
 
@@ -766,7 +801,9 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 5. **Status bar action chips don't honor `remove empty components`.** Tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, (c) OSC 8 hyperlinks embedded in chip values — none toggle visibility cleanly. The status bar therefore keeps action chips always-visible and routes to a no-op when the underlying value is empty (STATUS-BAR-02 chip 1).
 6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `<DATA_DIR>/cache/`. The shell snippet writes both on every prompt; the plugin additionally writes both at SessionStart (HOOK-08) so a Claude session pins the buttons to its anchor cwd/url for the duration of the session. Coprocess commands also run under iTerm2's `/bin/sh` (no inherited interactive `PATH`), so the `code` action prepends `/opt/homebrew/bin:/usr/local/bin` to its `PATH`.
 7. **SwiftyString comparison expressions are unreliable across iTerm2 versions.** The mutually-exclusive `beacon_branch_clean` / `beacon_branch_diverged` / `beacon_branch_untracked` triple is therefore pre-resolved in the shell rather than expressed as a profile-side conditional.
-8. **Dynamic profile filename.** `install` writes to `~/Library/Application Support/iTerm2/DynamicProfiles/beacon.json`. Filename is unconstrained by iTerm2; the directory is the contract.
+8. **Dynamic profile filenames.** `install` writes one base profile and N state profiles into `~/Library/Application Support/iTerm2/DynamicProfiles/`. Filenames are unconstrained by iTerm2; the directory is the contract, and profile *names* (not filenames) are the OSC contract for `SetProfile=` (CLI-14).
+
+9. **Profile switch wipes session OSC overrides.** `OSC 1337 SetProfile=` atomically applies the new profile's color and background-image keys *and* clears any session-specific OSC overrides for those same keys (verified empirically: an OSC-set background image was wiped by the first `SetProfile=` switch). This includes `SetBadgeFormat` — the session-OSC badge format is wiped on profile switch, so the format must live in the profile JSON's `Badge Text` key to survive the swap. State profiles inherit it from the base `beacon` profile via `Dynamic Profile Parent Name`. The plugin relies on the wipe for resume-from-pause cleanup (RENDER-04, OVERLAY-01).
 
 ---
 

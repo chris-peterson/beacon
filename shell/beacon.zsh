@@ -31,23 +31,15 @@ typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 # in the hot path. These determine how soon a freshly-split pane stops
 # showing the parent's post-it.
 #
-# Clear inherited bg-image first (visible side effect users notice most).
+# Clear inherited bg-image (OVERLAY-02): freshly-split panes inherit the
+# parent's session OSC overrides, including any post-it. The clear is
+# harmless when no overlay exists, and necessary when one does.
 printf '\e]1337;SetBackgroundImageFile=\a'
-# Set badge color to the calm `ready` state (THEME-02 / BADGE-12). iTerm2
-# badge color is sticky for the lifetime of the session, so a pane split off
-# a Claude-active pane would otherwise inherit an alarming color even though
-# no Claude activity is happening here. Painting `ready` (Dracula green)
-# explicitly also avoids the iTerm2 default badge color leaking through —
-# on some setups that's a muted red, which collides with the `blocked`
-# semantic. Claude's hooks repaint to `busy` / `blocked` on the next turn.
-# Hex must match BADGE_COLOR_PALETTE["ready"] in scripts/beacon — the shell
-# can't import the palette (would reintroduce python startup in the prompt
-# path), so this is the one acknowledged duplicate. Keep them aligned when
-# retuning.
-printf '\e]1337;SetColors=badge=50fa7b\a'
 # Badge format: project plus an empty drift slot the plugin fills when
-# Claude's Bash subprocess wanders into a different project (HOOK-09).
-# Stage/status/branch live in the status bar, not the badge.
+# Claude's Bash subprocess wanders into a different project (HOOK-09). The
+# badge renders only after engagement (BADGE-14) populates beacon_project;
+# until then both user vars are empty and the format evaluates to nothing,
+# so a fresh terminal shows no badge.
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)\(user.beacon_project_drift)' | base64)"
 # Clear any stale drift suffix inherited from a previous Claude session in
@@ -72,42 +64,6 @@ _beacon_project_root() {
     dir="${dir:h}"
   done
   return 1
-}
-
-_beacon_project_name() {
-  local root
-  # BADGE-04 + PROV-06: when not in a recognized project, fall back to the
-  # abbreviated cwd so the badge always carries spatial context (never empty).
-  root="$(_beacon_project_root)" || { _beacon_local_path; return }
-
-  # Git remote's full owner/path/repo form, preserving nested-group segments
-  # (e.g. "chris-peterson/beacon", "acmecorp/platform/auth-svc"). The badge
-  # font/width handles visual truncation if the path is long; we don't
-  # pre-abbreviate here.
-  local url=""
-  if [[ -d "$root/.git" || -f "$root/.git" ]]; then
-    url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
-  fi
-
-  if [[ -n "$url" ]]; then
-    local path="$url"
-    if [[ "$path" == *"://"* ]]; then
-      path="${path#*://}"
-      path="${path#*/}"
-    elif [[ "$path" == *":"* ]]; then
-      # ssh form: git@host:owner/repo.git
-      path="${path#*:}"
-    fi
-    path="${path%/}"
-    path="${path%.git}"
-    if [[ -n "$path" ]]; then
-      print -r -- "$path"
-      return
-    fi
-  fi
-
-  # Fallback: project root basename
-  print -r -- "${root:t}"
 }
 
 # Outputs three lines: display, state, indicator.
@@ -219,7 +175,6 @@ _beacon_deliverable_suffix() {
 # the first publish always fires — including when the resolved value is empty
 # (e.g. shell starts in a non-project directory). Without this, an empty
 # resolved value would match the initial empty state and we'd skip the publish.
-typeset -g _BEACON_LAST_PROJECT='__unset__'
 typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
@@ -250,11 +205,12 @@ _beacon_write_session_file() {
 }
 
 _beacon_precmd() {
-  local p="$(_beacon_project_name)"
-  if [[ "$p" != "$_BEACON_LAST_PROJECT" ]]; then
-    "$_BEACON_ITERM" uservar beacon_project "$p"
-    _BEACON_LAST_PROJECT="$p"
-  fi
+  # BADGE-02: the plugin is the sole writer of `beacon_project`. The shell
+  # snippet deliberately does NOT publish it from precmd — the badge text
+  # follows intentional signals (overrides, SessionStart anchor) rather
+  # than every `cd`. Status-bar user-vars (branch, project_full, url)
+  # below are still published because the status bar IS meant to track
+  # cwd — different surface, different contract.
 
   local -a binfo
   binfo=("${(@f)$(_beacon_branch_info)}")
@@ -321,7 +277,6 @@ _beacon_precmd() {
 _beacon_chpwd() {
   # Force re-publish on directory change — branch may have changed even if
   # project is the same, and project may have changed entirely.
-  _BEACON_LAST_PROJECT='__unset__'
   _BEACON_LAST_PROJECT_FULL='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'

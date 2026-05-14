@@ -913,6 +913,15 @@ def _publish_anchor(cwd: Path) -> None:
         (CACHE_DIR / f"url-{iterm_id}.txt").write_text(f"{url}\n")
 
 
+def _clear_drift_annotation() -> None:
+    """Clear an active drift annotation. Called from every site that
+    resolves drift (anchor adoption, anchor match, same-basename
+    suppression, project change, full clear)."""
+    if read_state("drift.active"):
+        _cli("uservar", "beacon_project_drift", "")
+        remove_state("drift.active")
+
+
 def _publish_drift(cwd: Path) -> None:
     """HOOK-09: surface a one-line drift signal on the badge when Claude's
     Bash subprocess steps into a different project than the SessionStart
@@ -934,16 +943,22 @@ def _publish_drift(cwd: Path) -> None:
     # trap. Drift is only meaningful relative to an established anchor.
     if not anchor and current:
         write_state("anchor.project", current)
-        if read_state("drift.active"):
-            _cli("uservar", "beacon_project_drift", "")
-            remove_state("drift.active")
+        _clear_drift_annotation()
         return
     if current == anchor:
-        if read_state("drift.active"):
-            _cli("uservar", "beacon_project_drift", "")
-            remove_state("drift.active")
+        _clear_drift_annotation()
         return
     label = cwd.name or ""
+    # HOOK-09b: suppress the drift annotation when the suffix would just
+    # repeat the anchor's last segment (e.g. anchor=`my-proj`, cwd basename
+    # also `my-proj` from a separately-located project of the same name).
+    # The badge would otherwise read `my-proj:my-proj` — meaningless noise
+    # that conveys no spatial information. The user can still see the
+    # actual cwd via the status bar; the badge stays clean.
+    anchor_tail = anchor.rsplit("/", 1)[-1] if anchor else ""
+    if label and label == anchor_tail:
+        _clear_drift_annotation()
+        return
     suffix = f":{label}" if label else ""
     _cli("uservar", "beacon_project_drift", suffix)
     write_state("drift.active", "1")
@@ -1063,13 +1078,15 @@ def _is_iterm_running() -> bool:
 
 
 def _bg_paths_needing_approval() -> list[str]:
-    """Pool slots + empty-string sentinel not yet in iTerm2's
-    AlwaysAllowBackgroundImage. Empty list ⇒ already fully approved.
+    """Pool slots, empty-string sentinel, and static state images
+    (BADGE-15) not yet in iTerm2's AlwaysAllowBackgroundImage. Empty
+    list ⇒ already fully approved.
 
     Match by quoted entry to avoid substring false-matches (e.g. `note-01`
     matching `note-010` in some hypothetical future)."""
     paths = ["", *(str(CACHE_DIR / f"note-{i:02d}.png")
-                   for i in range(1, NOTE_POOL_SIZE + 1))]
+                   for i in range(1, NOTE_POOL_SIZE + 1)),
+             *(str(p) for p in STATE_IMAGE_PATHS.values())]
     try:
         out = subprocess.run(
             ["defaults", "read", "com.googlecode.iterm2",
@@ -1113,36 +1130,72 @@ def _pre_approve_iterm_paths() -> tuple[bool, list[str]]:
 
 BEACON_PROFILE_GUID = "ec2933e2-0e56-4d96-9a63-245d5ec7c527"
 
+# Non-paused logical states (BADGE-09 / -09a) each map to a dynamic profile.
+# Paused is exempt — pause is an OSC overlay (RENDER-04, §6.6) on top of
+# whichever profile is currently active.
+PROFILE_STATES = ("ready", "busy", "blocked", "drifted")
+
+# Static state images (BADGE-15). The blocked state ships a translucent `!`
+# watermark — "Claude needs me" is the at-a-glance signal most worth amplifying
+# in Mission Control. Other states ship no image (None) for now.
+STATE_IMAGE_PATHS = {
+    "blocked": PLUGIN_ROOT / "iterm" / "images" / "blocked.png",
+}
+
 
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the beacon dynamic profile (with status bar layout) to iTerm2's
-    DynamicProfiles directory. iTerm2 watches the directory and reloads on
-    change without restart.
+    """Write the base beacon profile and the four per-status state profiles
+    (BADGE-09: ready/busy/drifted/blocked) into iTerm2's DynamicProfiles
+    directory. iTerm2 watches the directory and reloads on change without
+    restart.
 
-    Substitutes `__BEACON_SCRIPT__` (script path for non-interactive
-    coprocess shells, which can't see the user's `beacon` alias) and
-    `__BEACON_CACHE_DIR__` (so the `↖ web` and `↗ code` action shells
-    don't have to derive it themselves).
+    Each profile is written from a `.template` in `iterm/`, with these
+    substitutions:
+      __BEACON_SCRIPT__       — script path for non-interactive coprocess
+                                shells that can't see the user's `beacon`
+                                alias (base profile only).
+      __BEACON_CACHE_DIR__    — so the `↖ web` and `↗ code` action shells
+                                don't have to derive it themselves (base
+                                profile only).
+      __BEACON_BLOCKED_IMAGE__ — absolute path to the blocked watermark PNG
+                                (BADGE-15; blocked profile only).
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk
     with its own formatting and any GUI-edited values, so a "content
     matches" short-circuit silently lets stale state win.
     """
-    template = PLUGIN_ROOT / "iterm" / "profile.json.template"
-    if not template.is_file():
-        return False, f"profile template not found: {template}"
     target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
-    target = target_dir / "beacon.json"
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
-    content = (template.read_text()
-               .replace("__BEACON_SCRIPT__", beacon_script)
-               .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR)))
+    blocked_image = str(STATE_IMAGE_PATHS["blocked"])
+
+    plans: list[tuple[Path, Path]] = [
+        (PLUGIN_ROOT / "iterm" / "profile.json.template", target_dir / "beacon.json"),
+    ]
+    for state in PROFILE_STATES:
+        plans.append((
+            PLUGIN_ROOT / "iterm" / f"profile-{state}.json.template",
+            target_dir / f"beacon-{state}.json",
+        ))
+
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
-        target.write_text(content)
     except OSError as e:
-        return False, f"failed to write {target}: {e}"
-    return True, f"wrote {target}"
+        return False, f"failed to create {target_dir}: {e}"
+
+    written: list[Path] = []
+    for template, target in plans:
+        if not template.is_file():
+            return False, f"profile template not found: {template}"
+        content = (template.read_text()
+                   .replace("__BEACON_SCRIPT__", beacon_script)
+                   .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR))
+                   .replace("__BEACON_BLOCKED_IMAGE__", blocked_image))
+        try:
+            target.write_text(content)
+            written.append(target)
+        except OSError as e:
+            return False, f"failed to write {target}: {e}"
+    return True, f"wrote {len(written)} profile files to {target_dir}"
 
 
 def _is_beacon_already_default() -> bool:
@@ -1196,29 +1249,56 @@ def ensure_per_pane_bg_image():
 
 # --- apply ---
 
-def _badge_color_for(state: dict) -> str:
-    """Resolve the badge color hex. Three flags take precedence over the
-    status mapping (BADGE-09a). Precedence is paused > pending_attention >
-    drift > status — pause is the most explicit user intent, pending
-    attention demands action, drift is informational ("Claude has wandered")
-    and yields to anything more urgent.
-    - `paused` → `paused` (BADGE-10): de-emphasized, distinct from waiting
-      so a parked session doesn't compete for attention with one blocked
-      on the user.
+def _engagement_marker_path() -> Path | None:
+    """BADGE-14: per-pane marker. Keyed by raw ITERM_SESSION_ID — not the
+    session hash — so the shell snippet can probe existence with a plain
+    `[[ -e ... ]]` test, no SHA-1 in the prompt hot path."""
+    iterm_id = os.environ.get("ITERM_SESSION_ID")
+    if not iterm_id:
+        return None
+    return CACHE_DIR / f"engaged-{iterm_id}"
+
+
+def place_engagement_marker() -> None:
+    p = _engagement_marker_path()
+    if not p:
+        return
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.touch(exist_ok=True)
+    except OSError:
+        pass
+
+
+def remove_engagement_marker() -> None:
+    p = _engagement_marker_path()
+    if not p:
+        return
+    try:
+        p.unlink()
+    except (FileNotFoundError, OSError):
+        pass
+
+
+def _logical_state_for(state: dict) -> str:
+    """Resolve the logical color state per BADGE-09a precedence:
+    paused > pending_attention > drift > status — pause is the most
+    explicit user intent, pending attention demands action, drift is
+    informational and yields to anything more urgent.
+
+    - `paused` (BADGE-10): de-emphasized, distinct from waiting so a
+      parked session doesn't compete with one blocked on the user.
     - `pending_attention` → `blocked`: the sticky form of waiting that
-      survives out-of-order PostToolUse delivery (a late PostToolUse for
-      an earlier tool would otherwise overwrite the waiting signal set by
-      a fresh permission_prompt Notification for the next tool).
-    - `drift_active` → `drifted`: Claude's Bash subprocess is in a project
-      different from the SessionStart anchor (HOOK-09)."""
+      survives out-of-order PostToolUse delivery.
+    - `drift_active` → `drifted`: Bash subprocess in a project different
+      from the SessionStart anchor (HOOK-09)."""
     if state.get("paused"):
-        return BADGE_COLOR_PALETTE["paused"]
+        return "paused"
     if state.get("pending_attention"):
-        return BADGE_COLOR_PALETTE["blocked"]
+        return "blocked"
     if state.get("drift_active"):
-        return BADGE_COLOR_PALETTE["drifted"]
-    logical = STATUS_TO_BADGE_STATE.get(state["status"], "ready")
-    return BADGE_COLOR_PALETTE[logical]
+        return "drifted"
+    return STATUS_TO_BADGE_STATE.get(state["status"], "ready")
 
 
 def apply(state: dict):
@@ -1226,46 +1306,42 @@ def apply(state: dict):
 
     prev = read_state_json("resolved", {})
     prev_status = prev.get("status")
-    prev_paused = prev.get("paused", False)
-    prev_note_image = prev.get("note_image")
 
-    # First render of this session: set the badge format. The shell snippet
-    # also does this on source — this is the backup for non-zsh / remote
-    # shell scenarios where shell/beacon.zsh hasn't run.
+    # BADGE-14: marker presence is the shell snippet's engagement gate.
+    place_engagement_marker()
+
+    # Backup for non-zsh / remote shells where shell/beacon.zsh hasn't run.
     if not prev:
         _cli("badge-format", BADGE_FORMAT)
 
-    # Badge color reflects status (BADGE-09). Recompute on any change to
-    # status or paused flag. Tab color mirrors badge color (TAB-01) — same
-    # logical state, painted on a second surface so a glance at the tab strip
-    # carries the traffic-light without focusing each pane.
-    badge_hex = _badge_color_for(state)
-    prev_badge_hex = prev.get("badge_color", "")
-    if prev_badge_hex != badge_hex:
-        _cli("badge-color", badge_hex)
-        _cli("tab-color", badge_hex)
-
-    # Badge text follows resolved project (BADGE-13). Republish whenever the
-    # resolved value changes — `set project` / `clear project` / any provider
-    # update — so the badge tracks `beacon show`. Skip on first render of a
-    # session: _publish_anchor (HOOK-08) already painted the SessionStart
-    # value, and `prev` empty means no state change has occurred yet.
-    project_text = state["project"]
-    if prev and prev.get("project") != project_text:
-        _cli("uservar", "beacon_project", project_text)
-        # A project change makes any active drift annotation stale — the
-        # `:<basename>` suffix was relative to the prior badge text.
-        if read_state("drift.active"):
-            _cli("uservar", "beacon_project_drift", "")
-            remove_state("drift.active")
-
-    # Background image: only for the post-it overlay.
+    # BADGE-09 + -09a. Non-paused → SetProfile= (atomic color/tab/bg swap).
+    # Paused → OSC overlay on top of whichever profile is active, since the
+    # note image is per-note and can't live in a static profile (OVERLAY-01).
+    logical = _logical_state_for(state)
+    prev_logical = prev.get("logical_state")
     note_image = state.get("note_image")
-    if state["paused"] and note_image:
-        if note_image != prev_note_image:
-            _cli("bg-image", note_image)
-    elif prev_paused or prev_note_image:
-        _cli("bg-image", "clear")
+    prev_note_image = prev.get("note_image")
+
+    if logical != prev_logical:
+        if logical == "paused":
+            paused_hex = BADGE_COLOR_PALETTE["paused"]
+            _cli("badge-color", paused_hex)
+            _cli("tab-color", paused_hex)
+            if note_image:
+                _cli("bg-image", note_image)
+        else:
+            _cli("set-profile", f"beacon-{logical}")
+    elif logical == "paused" and note_image and note_image != prev_note_image:
+        _cli("bg-image", note_image)
+
+    # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
+    # must publish or CLI engagement leaves the badge empty (the shell no
+    # longer republishes from cwd). SessionStart's _publish_anchor also
+    # publishes; the duplicate is harmless.
+    project_text = state["project"]
+    if prev.get("project") != project_text:
+        _cli("uservar", "beacon_project", project_text)
+        _clear_drift_annotation()
 
     # Dock attention: only on transition into waiting.
     if s == "waiting" and prev_status != "waiting":
@@ -1280,7 +1356,7 @@ def apply(state: dict):
         "pending_attention": state.get("pending_attention", False),
         "drift_active": state.get("drift_active", False),
         "note_image": note_image,
-        "badge_color": badge_hex,
+        "logical_state": logical,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
 
@@ -1348,25 +1424,25 @@ def cmd_project(args):
 def cmd_clear(args):
     if args.field:
         remove_state(f"override.{args.field}")
-    else:
-        for f in VALID_FIELDS:
-            remove_state(f"override.{f}")
-        # Clearing all overrides also unwinds pause: the paused marker and
-        # the note-image reference are direct corollaries of `pause`, so
-        # leaving them after a `clear` would leave the post-it on screen
-        # with no overrides backing it.
-        remove_state("paused")
-        remove_state("note-image")
-        # Also drop any sticky red markers — `clear` is the user saying
-        # "return this pane to calm defaults". Stale `pending-attention`
-        # and `signal.status=waiting` from a prior tenant or a missed Stop
-        # hook (HOOK-03b's natural clears didn't fire) belong in the same
-        # set of transient state to wipe. If the session is genuinely
-        # blocked, the next Notification re-asserts both.
-        remove_state("pending-attention")
-        if read_state("signal.status") == "waiting":
-            remove_state("signal.status")
-    render()
+        render()
+        return
+
+    # Full clear (BADGE-14 disengagement). Skipping render() at the end is
+    # deliberate — render() would re-place the engagement marker.
+    for f in VALID_FIELDS:
+        remove_state(f"override.{f}")
+    remove_state("paused")
+    remove_state("note-image")
+    # Drop any sticky red markers — if the session is genuinely blocked,
+    # the next Notification re-asserts both.
+    remove_state("pending-attention")
+    if read_state("signal.status") == "waiting":
+        remove_state("signal.status")
+    remove_engagement_marker()
+    remove_state("resolved")
+    _clear_drift_annotation()
+    _cli("uservar", "beacon_project", "")
+    _cli("set-profile", "beacon")
 
 
 def _apply_pause(note: str) -> None:
