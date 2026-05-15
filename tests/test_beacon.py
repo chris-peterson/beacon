@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -402,6 +403,85 @@ class EngagementMarker(BeaconTest):
             marker.exists(),
             "per-field clear must NOT disengage — engagement persists across overrides",
         )
+
+
+class ResolveUrlForgeFallback(BeaconTest):
+    """When tack has no link for the current branch but a forge knows of an
+    MR/PR for that branch, resolve_url prefers the forge URL over the branch
+    tree fallback. Without this step the chip never lands on an MR/Issue when
+    the user hasn't populated tack manually."""
+
+    def _patch_chain(self, branch: str, remote_url: str, fake_run, which=None):
+        """Common patches: no override, no tack, fixed branch + remote, all
+        subprocess calls routed through fake_run. `which` defaults to "gh and
+        glab present"; pass `lambda _: False` to simulate neither installed."""
+        if which is None:
+            which = lambda x: f"/usr/local/bin/{x}" if x in ("gh", "glab") else None
+        return [
+            mock.patch.object(self.beacon, "p_override", return_value=""),
+            mock.patch.object(self.beacon, "_tack_url_for", return_value=("", "")),
+            mock.patch.object(self.beacon, "p_branch", return_value=branch),
+            mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                              return_value=remote_url),
+            mock.patch.object(self.beacon, "_which", side_effect=which),
+            mock.patch("subprocess.run", side_effect=fake_run),
+        ]
+
+    def test_returns_gh_pr_url_when_tack_empty_and_pr_exists(self):
+        pr_url = "https://github.com/chris-peterson/beacon/pull/42"
+        gh_out = f'[{{"url":"{pr_url}","number":42,"title":"chip best url"}}]\n'
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["gh", "pr"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=gh_out, stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+
+        patches = self._patch_chain(
+            "chip-best-url", "https://github.com/chris-peterson/beacon", fake_run,
+        )
+        for p in patches: p.start()
+        try:
+            url, _ = self.beacon.resolve_url(Path("/tmp/fake"))
+        finally:
+            for p in patches: p.stop()
+
+        self.assertEqual(url, pr_url)
+
+    def test_returns_glab_mr_url_on_gitlab_remote(self):
+        mr_url = "https://gitlab.example.com/team/repo/-/merge_requests/17"
+        glab_out = f'[{{"web_url":"{mr_url}","iid":17,"title":"some MR"}}]\n'
+
+        def fake_run(cmd, *args, **kwargs):
+            if cmd[:2] == ["glab", "mr"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=glab_out, stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+
+        patches = self._patch_chain(
+            "feature-x", "https://gitlab.example.com/team/repo", fake_run,
+        )
+        for p in patches: p.start()
+        try:
+            url, _ = self.beacon.resolve_url(Path("/tmp/fake"))
+        finally:
+            for p in patches: p.stop()
+
+        self.assertEqual(url, mr_url)
+
+    def test_falls_through_to_branch_url_when_forge_tool_missing(self):
+        def fake_run(cmd, *args, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, stdout="[]", stderr="")
+
+        patches = self._patch_chain(
+            "chip-best-url", "https://github.com/chris-peterson/beacon",
+            fake_run, which=lambda _: False,
+        )
+        for p in patches: p.start()
+        try:
+            url, _ = self.beacon.resolve_url(Path("/tmp/fake"))
+        finally:
+            for p in patches: p.stop()
+
+        self.assertEqual(url, "https://github.com/chris-peterson/beacon/tree/chip-best-url")
 
 
 def _base_state() -> dict:

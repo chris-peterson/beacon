@@ -5,7 +5,7 @@ At-a-glance session awareness for Claude Code in iTerm2.
 beacon shows what each Claude Code session is doing without you having to focus on it. Two surfaces in every iTerm2 pane:
 
 - **Badge** (always on) — project name plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge stays readable in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
-- **Status bar** (in the beacon profile) — a fixed-layout strip with `↖ web` + project identity flush left, branch + `↗ code` flush right: `↖ web · project │ branch · ↗ code`. The project chip abbreviates known forge hosts (`gh:acme/widgets`, `gl:acmecorp/platform/auth-svc`) and appends `#42` / `!17` when the resolved URL points at a deliverable. The `↖ web` button opens the resolved URL (a CR/PR/issue if [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch — see [Tack integration](#tack-integration-optional) — otherwise a branch URL or the project URL); the `↗ code` button opens the cwd in VS Code.
+- **Status bar** (in the beacon profile) — a fixed-layout strip with `↖ web` + project identity flush left, branch + `↗ code` flush right: `↖ web · project │ branch · ↗ code`. The project chip abbreviates known forge hosts (`gh:acme/widgets`, `gl:acmecorp/platform/auth-svc`) and appends `#42` / `!17` when the resolved URL points at a deliverable. The `↖ web` button opens the resolved URL — a CR/PR/issue when [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, or when `gh`/`glab` finds an open PR/MR for the current branch (see [Tack integration](#tack-integration-optional)) — otherwise a branch URL or the project URL; the `↗ code` button opens the cwd in VS Code.
 
 Plus a third surface only during pause:
 
@@ -81,9 +81,9 @@ beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), 
 - The `↖ web` button opens it instead of the bare project URL.
 - The project chip appends `#42` (issue/PR) or `!17` (GitLab MR) when the URL is a forge deliverable — `gh:owner/repo#42` instead of just `gh:owner/repo`.
 
-The dependency is **soft**: if tack isn't installed (or has nothing for the current branch), beacon falls through to a branch URL or the bare project URL. No configuration either way.
+The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly — `gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts — and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-Prefer Linear, Jira, GitHub Issues, or a custom provider? Override `_beacon_resolve_url()` in your `.zshrc` after sourcing `beacon.zsh`. The function returns a `<url>\t<label>` line and slots into PROV-07 step 2; see [PROV-07](/spec) and [BADGE-08](/spec) for the full contract.
+Prefer Linear, Jira, GitHub Issues, or a custom provider? Override `_beacon_resolve_url()` in your `.zshrc` after sourcing `beacon.zsh`. The function returns a `<url>\t<label>` line and slots into PROV-07; see [PROV-07](/spec) and [BADGE-08](/spec) for the full contract.
 
 ## Upgrade
 

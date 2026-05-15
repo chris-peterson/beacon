@@ -157,11 +157,12 @@ The fallback is not parenthesized — it appears as a real path so it reads natu
    a. The route's first `status: in_progress` tack's `deliverable.url`
    b. The route's most-recently-updated `status: done` tack's `deliverable.url`
    c. The first `link.url` on any tack
-3. **Branch URL** — derived from the git remote: `<remote>/tree/<branch>` for GitHub-like, `<remote>/-/tree/<branch>` for GitLab-like (only when not on a default branch)
-4. **Project URL** — bare git remote URL (e.g. `https://git.example/acme/widgets`)
-5. **Empty** — when none of the above produces a value
+3. **Forge probe** — when the git remote is on a recognized forge and the matching CLI is on `$PATH`, query the forge for an open PR/MR whose source branch matches the current branch: `gh pr list --head <branch>` for github hosts, `glab mr list --source-branch <branch>` for gitlab hosts. Returns the first match. Probes are silent on missing tool, unrecognized host, or failure
+4. **Branch URL** — derived from the git remote: `<remote>/tree/<branch>` for GitHub-like, `<remote>/-/tree/<branch>` for GitLab-like (only when not on a default branch)
+5. **Project URL** — bare git remote URL (e.g. `https://git.example/acme/widgets`)
+6. **Empty** — when none of the above produces a value
 
-The integration with `tack` is *soft*: beacon detects `tack` at runtime and uses it if present. There is no hard dependency, no shipped tack code in beacon. Users can replace step 2 with another provider (Linear, Jira, GitHub Issues, custom) by overriding the shell function `_beacon_resolve_url`.
+The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each at runtime and uses it if present. There is no hard dependency, no shipped tool code in beacon. Users can replace step 2 or step 3 with another provider (Linear, Jira, GitHub Issues, custom) by overriding the shell function `_beacon_resolve_url`.
 
 ### 3.3 Hook handlers (HOOK)
 

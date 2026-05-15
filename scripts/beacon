@@ -466,29 +466,26 @@ def _git_remote_url_normalized(cwd: Path) -> str:
     return url.rstrip("/")
 
 
-def _branch_url(cwd: Path) -> tuple[str, str]:
+def _remote_host(remote_url: str) -> str:
+    """Lowercased host portion of a normalized https remote, or empty."""
+    if "://" not in remote_url:
+        return ""
+    return remote_url.split("://", 1)[1].split("/", 1)[0].lower()
+
+
+def _branch_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     """Return (url, branch) for the current non-default branch's tree, or empty."""
-    branch = p_branch(cwd)
-    if not branch:
+    if not branch or not remote:
         return "", ""
-    base = _git_remote_url_normalized(cwd)
-    if not base:
-        return "", ""
-    host = ""
-    if "://" in base:
-        host = base.split("://", 1)[1].split("/", 1)[0].lower()
     # GitLab uses /-/tree/<branch>; GitHub and most others use /tree/<branch>.
-    sep = "/-/tree/" if "gitlab" in host else "/tree/"
-    return f"{base}{sep}{branch}", branch
+    sep = "/-/tree/" if "gitlab" in _remote_host(remote) else "/tree/"
+    return f"{remote}{sep}{branch}", branch
 
 
-def _tack_url_for(cwd: Path) -> tuple[str, str]:
+def _tack_url_for(cwd: Path, branch: str) -> tuple[str, str]:
     """Look up tack route by branch slug; return first useful URL via the
     in_progress-deliverable → done-deliverable → first-link sub-chain."""
-    if not _which("tack"):
-        return "", ""
-    branch = p_branch(cwd)
-    if not branch:
+    if not _which("tack") or not branch:
         return "", ""
     try:
         r = subprocess.run(["tack", "list", "--json"],
@@ -496,7 +493,7 @@ def _tack_url_for(cwd: Path) -> tuple[str, str]:
         if r.returncode != 0:
             return "", ""
         routes = json.loads(r.stdout)
-    except Exception:
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
         return "", ""
 
     route = next((r for r in routes if r.get("slug") == branch), None)
@@ -528,33 +525,87 @@ def _tack_url_for(cwd: Path) -> tuple[str, str]:
     return "", ""
 
 
+_FORGE_PROBES = {
+    "github": {
+        "cli": "gh",
+        "argv": lambda b: ["gh", "pr", "list", "--head", b,
+                           "--json", "url,number,title", "--limit", "1"],
+        "url_key": "url",
+        "label": lambda d: d.get("title") or f"#{d.get('number','')}",
+    },
+    "gitlab": {
+        "cli": "glab",
+        "argv": lambda b: ["glab", "mr", "list", "--source-branch", b,
+                           "--output", "json", "--per-page", "1"],
+        "url_key": "web_url",
+        "label": lambda d: d.get("title") or f"!{d.get('iid','')}",
+    },
+}
+
+
+def _forge_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
+    """Probe the forge for an open PR/MR matching the current branch. Returns
+    empty when the host isn't recognized, the matching CLI isn't installed,
+    or the call fails. Exceptions are swallowed because this runs on every
+    branch change — a hiccup must not crash the chain or block the shell."""
+    if not branch or not remote:
+        return "", ""
+    host = _remote_host(remote)
+    probe = next((p for tag, p in _FORGE_PROBES.items() if tag in host), None)
+    if not probe or not _which(probe["cli"]):
+        return "", ""
+    try:
+        r = subprocess.run(
+            probe["argv"](branch),
+            cwd=str(cwd), capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return "", ""
+        items = json.loads(r.stdout)
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+        return "", ""
+    if not items:
+        return "", ""
+    item = items[0]
+    return item.get(probe["url_key"], ""), probe["label"](item)
+
+
 def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     """Implements PROV-07. Returns (url, label)."""
     cwd = cwd or Path.cwd()
 
-    # 1. user override
+    # 1. user override (short-circuits before any git work)
     o = p_override("url")
     if o:
         return o, o[:30]
 
+    # Resolve branch and remote once; reused by every subsequent provider.
+    # Either may be empty (default branch / no `origin`); helpers handle that.
+    branch = p_branch(cwd)
+    remote = _git_remote_url_normalized(cwd)
+
     # 2. tack-derived
-    url, label = _tack_url_for(cwd)
+    url, label = _tack_url_for(cwd, branch)
     if url:
         return url, label
 
-    # 3. branch URL
-    url, label = _branch_url(cwd)
+    # 3. forge probe — cached by the shell's `cwd@branch` signal, so this
+    # fires once per branch change, not per prompt.
+    url, label = _forge_url(cwd, branch, remote)
     if url:
         return url, label
 
-    # 4. project URL
-    url = _git_remote_url_normalized(cwd)
+    # 4. branch URL
+    url, label = _branch_url(cwd, branch, remote)
     if url:
-        # Label = project name from the existing project chain (PROV-01)
-        label = (p_git_remote(cwd) or p_project_dir(cwd) or "")
         return url, label
 
-    # 5. empty
+    # 5. project URL
+    if remote:
+        label = p_git_remote(cwd) or p_project_dir(cwd) or ""
+        return remote, label
+
+    # 6. empty
     return "", ""
 
 

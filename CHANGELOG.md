@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- The URL chain now probes `gh` (github hosts) or `glab` (gitlab hosts) for an open PR/MR on the current branch when tack has no link for it. The `↖ web` button lands on your MR/PR even when you haven't run `tack link add` — the common workflow gap. Soft integration: missing CLI or unrecognized forge host skips silently to the existing branch / project fallbacks.
+
 ## 0.10.0
 
 ### Features
