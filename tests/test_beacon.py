@@ -79,7 +79,7 @@ class BeaconTest(unittest.TestCase):
 
 class ApplyRepublishesBadgeText(BeaconTest):
     """BADGE-12: apply() must republish beacon_project when the resolved
-    project value changes, and clear any stale drift suffix on that pass."""
+    project value changes."""
 
     def test_change_emits_uservar(self):
         self.beacon.apply({
@@ -109,20 +109,6 @@ class ApplyRepublishesBadgeText(BeaconTest):
             [("uservar", "beacon_project", "acme/widget")],
             "First render must publish beacon_project — plugin is sole writer",
         )
-
-    def test_drift_cleared_on_project_change(self):
-        # Establish drift state from a prior pass
-        self.beacon.apply({**_base_state(), "project": "acme/widget"})
-        self.beacon.write_state("drift.active", "1")
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "project": "custom-label"})
-
-        self.assertIn(
-            ("uservar", "beacon_project_drift", ""), self.cli_calls,
-            "Project change must clear beacon_project_drift",
-        )
-        self.assertFalse(self.beacon._state_path("drift.active").exists())
 
     def test_task_only_change_emits_beacon_task_not_beacon_project(self):
         self.beacon.apply({**_base_state(), "project": "acme/widget"})
@@ -222,99 +208,9 @@ class CmdSetPropagatesToBadge(BeaconTest):
         )
 
 
-class DriftSelfHealing(BeaconTest):
-    """HOOK-09a: missing anchor must be adopted, not treated as drift."""
-
-    def test_adopts_anchor_when_none_set(self):
-        # No anchor.project on disk; _publish_drift should write it and
-        # emit no suffix.
-        self.beacon._publish_drift(self.data_dir)
-
-        self.assertEqual(
-            self.beacon.read_state("anchor.project"), "acme/widget",
-            "Anchor should be auto-established on first observation",
-        )
-        self.assertEqual(
-            _uservar_emits(self.cli_calls, "beacon_project_drift"), [],
-            "Anchor adoption must not emit a drift suffix",
-        )
-
-    def test_matching_anchor_clears_active_drift(self):
-        self.beacon.write_state("anchor.project", "acme/widget")
-        self.beacon.write_state("drift.active", "1")
-
-        self.beacon._publish_drift(self.data_dir)
-
-        self.assertIn(
-            ("uservar", "beacon_project_drift", ""), self.cli_calls,
-            "Matching project must clear an active drift suffix",
-        )
-        self.assertFalse(self.beacon._state_path("drift.active").exists())
-
-    def test_mismatch_emits_suffix(self):
-        self.beacon.write_state("anchor.project", "other/repo")
-
-        # cwd basename determines the suffix label
-        target = self.data_dir / "wandered-in"
-        target.mkdir()
-        self.beacon._publish_drift(target)
-
-        emits = _uservar_emits(self.cli_calls, "beacon_project_drift")
-        self.assertEqual(emits, [("uservar", "beacon_project_drift", ":wandered-in")])
-        self.assertTrue(self.beacon._state_path("drift.active").exists())
-
-    def test_no_project_no_action(self):
-        # When the cwd has no project identity at all, _publish_drift should
-        # be inert — neither adopt nor emit. (Mirrors a cwd outside any repo.)
-        with mock.patch.object(self.beacon, "_project_name_at", return_value=""):
-            self.beacon._publish_drift(self.data_dir)
-
-        self.assertIsNone(self.beacon.read_state("anchor.project"))
-        self.assertEqual(_uservar_emits(self.cli_calls, "beacon_project_drift"), [])
-
-    def test_suffix_matching_anchor_tail_is_suppressed(self):
-        # HOOK-09b: anchor=`my-proj`, current cwd resolves to a different
-        # project name (so the names disagree → drift fires by the old rule)
-        # but the cwd basename happens to also be `my-proj`. The suffix
-        # would read `my-proj:my-proj` — meaningless. Suppress it.
-        self.beacon.write_state("anchor.project", "my-proj")
-        target = self.data_dir / "my-proj"
-        target.mkdir()
-        with mock.patch.object(self.beacon, "_project_name_at",
-                                return_value="other/my-proj"):
-            self.beacon._publish_drift(target)
-
-        suffix_emits = _uservar_emits(self.cli_calls, "beacon_project_drift")
-        # Either no emit at all, or an explicit clear — both are acceptable;
-        # the contract is "no `:my-proj` annotation".
-        for call in suffix_emits:
-            self.assertEqual(
-                call[2], "",
-                "Suffix matching the anchor's last segment must be suppressed",
-            )
-        self.assertFalse(self.beacon._state_path("drift.active").exists())
-
-    def test_anchor_with_slash_compares_by_tail(self):
-        # Anchor `owner/my-proj`; cwd basename `my-proj`. Tail of anchor is
-        # `my-proj` — same as the basename, so the suffix is suppressed.
-        self.beacon.write_state("anchor.project", "owner/my-proj")
-        target = self.data_dir / "my-proj"
-        target.mkdir()
-        with mock.patch.object(self.beacon, "_project_name_at",
-                                return_value="other-resolver-output"):
-            self.beacon._publish_drift(target)
-
-        suffix_emits = [c for c in _uservar_emits(self.cli_calls, "beacon_project_drift")
-                        if c[2]]
-        self.assertEqual(
-            suffix_emits, [],
-            "Anchor tail match (owner/my-proj → my-proj) must suppress the suffix",
-        )
-
-
 class ApplyEmitsProfileSwitch(BeaconTest):
-    """BADGE-09 + RENDER-04: status transitions among ready/busy/blocked/drifted
-    are delivered via `set-profile beacon-<state>`, never via the per-session
+    """BADGE-09 + RENDER-04: status transitions among ready/busy/blocked are
+    delivered via `set-profile beacon-<state>`, never via the per-session
     badge-color/tab-color OSC pair (those are reserved for paused — the only
     state that overlays rather than switches)."""
 
@@ -353,17 +249,6 @@ class ApplyEmitsProfileSwitch(BeaconTest):
             set_profile_calls, [],
             "Identical state must not re-emit set-profile",
         )
-
-    def test_drift_emits_drifted_profile(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({
-            **_base_state(), "status": "working", "drift_active": True,
-        })
-
-        self.assertIn(("set-profile", "beacon-drifted"), self.cli_calls)
-
 
 class PausedUsesOSCOverlay(BeaconTest):
     """BADGE-10 + RENDER-04 + §6.6: paused state is exempt from profile
@@ -566,7 +451,6 @@ def _base_state() -> dict:
         "status": "idle", "status_provider": "default",
         "paused": False,
         "pending_attention": False,
-        "drift_active": False,
         "note_image": None,
     }
 
