@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+### Breaking Changes
+- The drift detection feature is removed. The badge no longer appends a `:<basename>` suffix when Claude's Bash subprocess wanders out of the SessionStart anchor, and there is no longer a separate cyan "drifted" badge color or `beacon-drifted` dynamic profile. In practice, the feature was firing on cases the suppression logic was supposed to catch (e.g. badges reading `chris-peterson/beacon:beacon` or `cpeterson/ai-sdlc:ai-sdlc`), and the cost of fixing it didn't justify the at-a-glance signal it was meant to provide.
+
+### Migration
+- Run `python3 scripts/beacon install` after upgrading. The install step rewrites the dynamic profile JSONs (three states now: ready / busy / blocked) and deletes the leftover `beacon-drifted.json` from `~/Library/Application Support/iTerm2/DynamicProfiles/` so it stops showing up in the iTerm2 profile picker.
+- The `beacon_project_drift` iTerm user variable is no longer published. If you reference it in a custom iTerm profile or status-bar configuration, remove the reference.
+
 ## 0.12.0
 
 ### Features
