@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.0
+
+### Features
+- The badge now shows the resolved task as a `: <task>` suffix after the project (e.g. `beacon: render-on-badge`). When no task is set, the badge shows project alone — the slot self-collapses. Previously, `beacon set task` only updated `beacon show`; the visible badge stayed on project alone, leaving users without an at-a-glance signal of *what* they're working on within a given project.
+
+### Migration
+- Run `python3 scripts/beacon install` after upgrading to land the new dynamic profile JSON with the updated badge format. Existing iTerm panes pick up the format hot from the dynamic-profile reload; new panes pick it up via the refreshed shell snippet.
+
 ## 0.11.0
 
 ### Features
