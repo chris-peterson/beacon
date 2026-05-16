@@ -35,13 +35,14 @@ typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 # parent's session OSC overrides, including any post-it. The clear is
 # harmless when no overlay exists, and necessary when one does.
 printf '\e]1337;SetBackgroundImageFile=\a'
-# Badge format: project plus an empty drift slot the plugin fills when
-# Claude's Bash subprocess wanders into a different project (HOOK-09). The
-# badge renders only after engagement (BADGE-14) populates beacon_project;
-# until then both user vars are empty and the format evaluates to nothing,
-# so a fresh terminal shows no badge.
+# Badge format: project + optional task suffix + optional drift suffix. Both
+# trailing slots self-collapse when empty (beacon_task carries ": <task>",
+# beacon_project_drift carries ":<basename>"). The badge renders only after
+# engagement (BADGE-14) populates beacon_project; until then all three user
+# vars are empty and the format evaluates to nothing, so a fresh terminal
+# shows no badge.
 printf '\e]1337;SetBadgeFormat=%s\a' \
-  "$(printf '%s' '\(user.beacon_project)\(user.beacon_project_drift)' | base64)"
+  "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)\(user.beacon_project_drift)' | base64)"
 # Clear any stale drift suffix inherited from a previous Claude session in
 # this iTerm pane — the user is back at the shell, so by definition there's
 # no drift. The plugin re-establishes the slot on next SessionStart.

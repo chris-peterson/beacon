@@ -265,11 +265,13 @@ STATUS_TO_BADGE_STATE = {
     "waiting": "blocked",
 }
 
-# Static badge format. The drift slot is empty when Claude's current cwd
-# resolves to the same project as the SessionStart anchor; when it differs
-# the plugin writes ` (<basename>)` into it (HOOK-09). Both writers (this
-# constant and shell/beacon.zsh) must stay in sync.
-BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_project_drift)"
+# Static badge format. Each slot self-collapses when empty so the badge
+# stays clean across permutations:
+#   - beacon_task carries ": <task>" when set, "" when absent (BADGE-03)
+#   - beacon_project_drift carries ":<basename>" when Claude's Bash strays
+#     into a different project (HOOK-09), "" when anchored
+# Both writers (this constant and shell/beacon.zsh) must stay in sync.
+BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)\(user.beacon_project_drift)"
 
 
 def session_hash() -> str:
@@ -951,6 +953,7 @@ def _publish_anchor(cwd: Path) -> None:
         f"beacon_branch_untracked={display if state == 'untracked' else ''}",
         f"beacon_url={url}",
         "beacon_project_drift=",
+        "beacon_task=",
     ]
     _cli("uservar-batch", *pairs)
 
@@ -1394,6 +1397,13 @@ def apply(state: dict):
         _cli("uservar", "beacon_project", project_text)
         _clear_drift_annotation()
 
+    # BADGE-03: the user-var value carries its own ": " separator so an
+    # empty task collapses the slot without leaving a trailing colon on
+    # the badge — mirrors the drift slot's self-collapsing pattern (HOOK-09).
+    task_text = state["task"]
+    if prev.get("task") != task_text:
+        _cli("uservar", "beacon_task", f": {task_text}" if task_text else "")
+
     # Dock attention: only on transition into waiting.
     if s == "waiting" and prev_status != "waiting":
         _cli("attention")
@@ -1493,6 +1503,7 @@ def cmd_clear(args):
     remove_state("resolved")
     _clear_drift_annotation()
     _cli("uservar", "beacon_project", "")
+    _cli("uservar", "beacon_task", "")
     _cli("set-profile", "beacon")
 
 

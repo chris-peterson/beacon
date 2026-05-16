@@ -17,12 +17,12 @@ When the user asks you to label a session, pick the field by the surface they're
 
 | Field    | Surfaces                                                                 |
 |:---------|:-------------------------------------------------------------------------|
-| `project`| **Badge text** (the per-pane chip in iTerm2) and status-bar project chip |
-| `task`   | `beacon show` only — does **not** paint the badge                        |
+| `project`| **Badge text** — leading chip (the per-pane label in iTerm2) and status-bar project chip |
+| `task`   | **Badge text** — `: <task>` suffix after project, and `beacon show`      |
 | `stage`  | Badge color (via `plan` / `dev` / `review` / `shipping`)                 |
 | `status` | Badge color (via `idle` / `working` / `waiting`) — hooks own this fully  |
 
-If the user says "set the badge title to X" or "label this session X" and means the visible badge: use `set project "X"`, not `set task`. Task is internal and won't change anything the user can see at a glance.
+The badge reads `project: task` when both are set, just `project` when task is absent. If the user says "label this session X" without distinguishing the project from the unit of work, set `project` — it's the leading, stable identifier. Reserve `task` for the specific work-in-progress within that project.
 
 ## When to invoke beacon
 
@@ -38,13 +38,22 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" signal stage plan
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" signal stage review
 ```
 
-**Badge labeling.** When the user wants the badge to show a custom label (e.g. "ai-sdlc: perms"), run:
+**Badge labeling.** When the user wants the badge to show a custom project label, run:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set project "<label>"
 ```
 
 This overrides the git-derived project on the badge text via BADGE-12. To revert, run `beacon clear project`.
+
+For the unit of work *within* the project (e.g. `ai-sdlc: perms` reads as project `ai-sdlc`, task `perms`), set the two fields separately:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set project "ai-sdlc"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set task "perms"
+```
+
+The plugin renders both on the badge (BADGE-03). Clear individually with `beacon clear project` / `beacon clear task`.
 
 ## When NOT to invoke beacon
 

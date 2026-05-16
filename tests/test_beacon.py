@@ -124,7 +124,7 @@ class ApplyRepublishesBadgeText(BeaconTest):
         )
         self.assertFalse(self.beacon._state_path("drift.active").exists())
 
-    def test_task_only_change_does_not_touch_badge(self):
+    def test_task_only_change_emits_beacon_task_not_beacon_project(self):
         self.beacon.apply({**_base_state(), "project": "acme/widget"})
         self.cli_calls.clear()
 
@@ -135,6 +135,46 @@ class ApplyRepublishesBadgeText(BeaconTest):
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"), [],
             "Task change must not republish beacon_project",
+        )
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", ": different")],
+            "Task change must publish beacon_task with leading ': ' separator",
+        )
+
+    def test_first_render_emits_empty_beacon_task_when_task_absent(self):
+        self.beacon.apply({**_base_state(), "project": "acme/widget"})
+
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", "")],
+            "First render with no task must emit empty beacon_task so the slot "
+            "collapses cleanly in the badge format",
+        )
+
+    def test_first_render_emits_beacon_task_when_task_present(self):
+        self.beacon.apply({
+            **_base_state(), "project": "acme/widget", "task": "my work",
+        })
+
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", ": my work")],
+        )
+
+    def test_unchanged_task_does_not_republish_beacon_task(self):
+        self.beacon.apply({
+            **_base_state(), "project": "acme/widget", "task": "stable",
+        })
+        self.cli_calls.clear()
+
+        self.beacon.apply({
+            **_base_state(), "project": "acme/widget", "task": "stable",
+        })
+
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"), [],
+            "Identical resolved task must not re-emit",
         )
 
 
@@ -164,7 +204,7 @@ class CmdSetPropagatesToBadge(BeaconTest):
         emits = _uservar_emits(self.cli_calls, "beacon_project")
         self.assertEqual(emits, [("uservar", "beacon_project", "acme/widget")])
 
-    def test_set_task_does_not_touch_badge(self):
+    def test_set_task_emits_beacon_task_not_beacon_project(self):
         self.beacon.render()
         self.cli_calls.clear()
 
@@ -173,7 +213,12 @@ class CmdSetPropagatesToBadge(BeaconTest):
 
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"), [],
-            "set task must not touch beacon_project (task isn't on the badge)",
+            "set task must not republish beacon_project — only the task slot moved",
+        )
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", ": my-task")],
+            "set task must publish beacon_task so the badge shows the new value",
         )
 
 
@@ -391,6 +436,9 @@ class EngagementMarker(BeaconTest):
                       "clear (no field) must return to the base profile")
         self.assertIn(("uservar", "beacon_project", ""), self.cli_calls,
                       "clear (no field) must empty the badge text")
+        self.assertIn(("uservar", "beacon_task", ""), self.cli_calls,
+                      "clear (no field) must empty the task slot so a stale "
+                      "task doesn't linger on the badge after disengagement")
 
     def test_clear_with_field_keeps_engagement(self):
         self.beacon.apply({**_base_state(), "status": "working"})
@@ -482,6 +530,31 @@ class ResolveUrlForgeFallback(BeaconTest):
             for p in patches: p.stop()
 
         self.assertEqual(url, "https://github.com/chris-peterson/beacon/tree/chip-best-url")
+
+
+class BadgeFormatReferencesTaskSlot(BeaconTest):
+    """BADGE-03: the badge text must reflect the resolved task value, not just
+    the project. The format string is the contract between the plugin (writer
+    of beacon_task) and iTerm2 (renderer of the slot)."""
+
+    def test_badge_format_includes_beacon_task(self):
+        self.assertIn(
+            r"\(user.beacon_task)", self.beacon.BADGE_FORMAT,
+            "BADGE_FORMAT must reference user.beacon_task so the slot lands "
+            "on the badge",
+        )
+
+    def test_profile_template_badge_text_matches_badge_format(self):
+        # The dynamic profile's "Badge Text" is the canonical badge format
+        # iTerm uses while the beacon profile is active. It must stay in sync
+        # with BADGE_FORMAT — a drift here means OSC SetBadgeFormat writes get
+        # overridden whenever the plugin switches profiles (BADGE-09).
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        self.assertIn(
+            r"\(user.beacon_task)", template,
+            'profile.json.template "Badge Text" must reference user.beacon_task '
+            "to match BADGE_FORMAT",
+        )
 
 
 def _base_state() -> dict:
