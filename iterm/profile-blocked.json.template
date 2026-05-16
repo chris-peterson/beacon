@@ -7,7 +7,7 @@
       "Tags": ["beacon", "beacon-state"],
       "Badge Color": {
         "Color Space": "sRGB",
-        "Alpha Component": 0.45,
+        "Alpha Component": 0.75,
         "Red Component":   1.000,
         "Green Component": 0.333,
         "Blue Component":  0.333
