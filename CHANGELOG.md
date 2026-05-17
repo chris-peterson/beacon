@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.0
+
+### Features
+- Badge labels are now shorter and consistent. Previously, projects with a `name` field in `package.json` / `Cargo.toml` / `pyproject.toml` showed the short name (`beacon`, `tack`) while everything else showed the full owner/repo path (`chris-peterson/beacon`). The badge now always renders the repo basename. The owner-bearing identity is still available as the `gh:owner/repo` status-bar chip for disambiguation; with `beacon set project <label>` available for custom overrides, the short form is the better default for the badge.
+
+### Fixes
+- The red `!` blocked-state badge no longer fires during background work. Previously, beacon caught both `idle_prompt` and `permission_prompt` Notifications. But Claude Code emits `idle_prompt` whenever the agent is idle — including while a `run_in_background` Bash is still in flight (e.g. `/wip`'s background refresh phase), even though no permission dialog is open. The matcher is now narrowed to `permission_prompt`, so red `!` reliably means "a permission dialog needs your answer."
+
+### Other
+- Spec entries PROV-01 and §6.2's badge-render example synced to match the new basename behavior.
+
 ## 0.13.0
 
 ### Breaking Changes
