@@ -370,9 +370,11 @@ def p_package_name(cwd: Path):
 
 
 def p_git_remote(cwd: Path):
-    """Full `owner/.../repo` path from git remote (e.g. `chris-peterson/beacon`,
-    `acmecorp/platform/auth-svc`), preserving any nested-group segments.
-    Returns None when not in a git repo or no origin is configured."""
+    """Repo basename from git remote (e.g. `beacon`, `auth-svc`) — the last
+    path segment of the remote URL, dropping owner/group prefixes. The full
+    owner-bearing identity lives in `_project_full_at` (status-bar chip);
+    the badge wants a short, scannable label. Returns None when not in a
+    git repo or no origin is configured."""
     root = find_project_root(cwd)
     out = subprocess.run(
         ["git", "config", "remote.origin.url"],
@@ -397,7 +399,7 @@ def p_git_remote(cwd: Path):
     if path.endswith(".git"):
         path = path[:-4]
     parts = [p for p in path.split("/") if p]
-    return "/".join(parts) if parts else None
+    return parts[-1] if parts else None
 
 
 def p_project_dir(cwd: Path):
