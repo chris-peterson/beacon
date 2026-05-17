@@ -45,7 +45,7 @@ Stage is **never demoted by hooks** — once `review` or `shipping`, a subsequen
 |:---|:---|:---|
 | `idle` | Not actively engaged (turn just ended, just opened, paused, or freshly resumed) | Default; Hook Stop (turn finished, calm); pause sets it explicitly |
 | `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse (any tool); Hook PostToolUse (any tool) |
-| `waiting` | Claude is actively blocked on the user (permission/idle prompt — highest user-attention priority) | Hook Notification (`idle_prompt` / `permission_prompt`) |
+| `waiting` | Claude is actively blocked on the user (permission prompt — highest user-attention priority) | Hook Notification (`permission_prompt`) |
 
 Both stage and status accept user override via `/beacon set <field> <value>` and revert to provider chain on `/beacon clear <field>`.
 
@@ -168,9 +168,9 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-01.** When the user submits a prompt, the plugin shall set `signal.status = working`.
 
-**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = idle`. Rationale: a finished turn is calm, not user-blocking. Reserving `waiting` (red) for actual permission/idle prompts (HOOK-03) makes red high-signal — "this pane needs an answer right now" — so a glance at many panes distinguishes calm sessions from sessions truly blocked on the user.
+**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = idle`. Rationale: a finished turn is calm, not user-blocking. Reserving `waiting` (red) for actual permission prompts (HOOK-03) makes red high-signal — "this pane needs an answer right now" — so a glance at many panes distinguishes calm sessions from sessions truly blocked on the user.
 
-**HOOK-03.** When Claude requests user attention (Notification hook with matcher `idle_prompt|permission_prompt`), the plugin shall set `signal.status = waiting`.
+**HOOK-03.** When Claude requests user attention (Notification hook with matcher `permission_prompt`), the plugin shall set `signal.status = waiting`. Rationale: `idle_prompt` is explicitly excluded — Claude Code fires it whenever the agent is idle (including while a `run_in_background` tool is still in flight, after the turn's Stop event has landed). Treating that as "waiting on user" paints the badge red while the user is in fact waiting on a background job; reserving red for permission dialogs keeps the signal meaningful.
 
 **HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn so the badge does not remain red for the rest of the turn while Claude is actively running tools and thinking. The pause flag still wins via the precedence rule in BADGE-09a, so a paused session is unaffected.
 
@@ -543,7 +543,7 @@ Four hues do all the work: **green / orange / red** for the calm/working/blocked
 |:----------|:----------|:-------------|:-------------------------------------------------------------------|
 | `ready`   | `#50fa7b` | green        | idle / calm — Stop hook, fresh session                             |
 | `busy`    | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
-| `blocked` | `#ff5555` | red          | waiting — permission/idle prompt (BADGE-09 / -10)                  |
+| `blocked` | `#ff5555` | red          | waiting — permission prompt (BADGE-09 / -10)                       |
 | `paused`  | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
 
 **THEME-03.** The status-bar chip text colors map purpose to Dracula hex. Three roles, three hues — action chips share one accent; identity chips share the de-emphasized comment color; branch chips reuse the badge state palette:

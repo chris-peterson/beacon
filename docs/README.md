@@ -37,7 +37,7 @@ beacon <TAB>        # subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red only while Claude is actively blocked on you (permission/idle prompt)
+- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red only while Claude is actively blocked on you (permission prompt)
 - stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
 - `/beacon pause "checking lunch options"` paints a yellow post-it and flips the badge to gray; sending the next prompt clears both
 
