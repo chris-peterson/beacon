@@ -130,7 +130,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 ### 3.2 Provider chains (PROV)
 
-**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (full `owner/.../repo` path, preserving any nested-group segments — the badge font/max-width handles visual truncation if the path is long; the plugin does not pre-abbreviate), project root directory name. See PROV-06 for the final pwd fallback when none of these provide a value.
+**PROV-01.** For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (repo basename — the last path segment of the remote URL), project root directory name. The badge wants a short, scannable label; the owner-bearing identity is exposed separately via the `project_full` status-bar chip. See PROV-06 for the final pwd fallback when none of these provide a value.
 
 **PROV-02.** For `task`, the plugin shall consult providers in this order: user override, GitHub PR title (`gh pr view`), git branch name (when not in `{main, master, develop, trunk, HEAD}`).
 
@@ -715,7 +715,7 @@ Idempotent via a sentinel variable. Empty values are allowed and clear the slot 
 \(user.beacon_project)\(user.beacon_task)
 ```
 
-The task slot is empty when no task is resolved (RES-05), so the rendered badge is just the project. When a task is set, the slot becomes `: <task>` and the badge reads e.g. `chris-peterson/beacon: render-on-badge`.
+The task slot is empty when no task is resolved (RES-05), so the rendered badge is just the project. When a task is set, the slot becomes `: <task>` and the badge reads e.g. `beacon: render-on-badge`.
 
 Two writers set this format:
 
