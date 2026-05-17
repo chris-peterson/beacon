@@ -718,6 +718,7 @@ def resolve(cwd: Path | None = None) -> dict:
     if not status:
         status, p_status = "idle", "default"
 
+    pending_attention_type = (read_state("pending-attention") or "").strip() or None
     return {
         "project": project, "project_provider": p_proj,
         "task": task, "task_provider": p_task,
@@ -725,6 +726,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "status": status, "status_provider": p_status,
         "paused": _state_path("paused").exists(),
         "pending_attention": _state_path("pending-attention").exists(),
+        "pending_attention_type": pending_attention_type,
     }
 
 
@@ -1116,32 +1118,42 @@ BEACON_PROFILE_GUID = "ec2933e2-0e56-4d96-9a63-245d5ec7c527"
 
 # Non-paused logical states (BADGE-09 / -09a) each map to a dynamic profile.
 # Paused is exempt — pause is an OSC overlay (RENDER-04, §6.6) on top of
-# whichever profile is currently active.
-PROFILE_STATES = ("ready", "busy", "blocked")
+# whichever profile is currently active. `blocked` and `blocked-idle` share
+# the red palette but ship distinct watermarks (`!` vs `?`) so a scan across
+# panes can separate "permission needed now" from softer idle prompts.
+PROFILE_STATES = ("ready", "busy", "blocked", "blocked-idle")
 
 # Static state images (BADGE-15). The blocked state ships a translucent `!`
-# watermark — "Claude needs me" is the at-a-glance signal most worth amplifying
-# in Mission Control. Other states ship no image (None) for now.
+# watermark for permission prompts — the highest-urgency case where Claude
+# is gated on a human answer. The blocked-idle state ships a `?` for the
+# softer idle_prompt case (often a false positive while a background tool
+# is in flight). Other states ship no image (None) for now.
 STATE_IMAGE_PATHS = {
-    "blocked": PLUGIN_ROOT / "iterm" / "images" / "blocked.png",
+    "blocked":      PLUGIN_ROOT / "iterm" / "images" / "blocked.png",
+    "blocked-idle": PLUGIN_ROOT / "iterm" / "images" / "blocked-idle.png",
 }
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the base beacon profile and the three per-status state profiles
-    (BADGE-09: ready/busy/blocked) into iTerm2's DynamicProfiles directory.
-    iTerm2 watches the directory and reloads on change without restart.
+    """Write the base beacon profile and the per-status state profiles
+    (BADGE-09: ready/busy/blocked/blocked-idle) into iTerm2's DynamicProfiles
+    directory. iTerm2 watches the directory and reloads on change without
+    restart.
 
     Each profile is written from a `.template` in `iterm/`, with these
     substitutions:
-      __BEACON_SCRIPT__       — script path for non-interactive coprocess
-                                shells that can't see the user's `beacon`
-                                alias (base profile only).
-      __BEACON_CACHE_DIR__    — so the `↖ web` and `↗ code` action shells
-                                don't have to derive it themselves (base
-                                profile only).
-      __BEACON_BLOCKED_IMAGE__ — absolute path to the blocked watermark PNG
-                                (BADGE-15; blocked profile only).
+      __BEACON_SCRIPT__            — script path for non-interactive coprocess
+                                     shells that can't see the user's `beacon`
+                                     alias (base profile only).
+      __BEACON_CACHE_DIR__         — so the `↖ web` and `↗ code` action shells
+                                     don't have to derive it themselves (base
+                                     profile only).
+      __BEACON_BLOCKED_IMAGE__     — absolute path to the `!` watermark PNG
+                                     for permission prompts (BADGE-15;
+                                     blocked profile only).
+      __BEACON_BLOCKED_IDLE_IMAGE__ — absolute path to the `?` watermark PNG
+                                     for idle prompts (BADGE-15; blocked-idle
+                                     profile only).
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk
     with its own formatting and any GUI-edited values, so a "content
@@ -1150,6 +1162,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
     target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
     blocked_image = str(STATE_IMAGE_PATHS["blocked"])
+    blocked_idle_image = str(STATE_IMAGE_PATHS["blocked-idle"])
 
     plans: list[tuple[Path, Path]] = [
         (PLUGIN_ROOT / "iterm" / "profile.json.template", target_dir / "beacon.json"),
@@ -1172,7 +1185,8 @@ def install_dynamic_profile() -> tuple[bool, str]:
         content = (template.read_text()
                    .replace("__BEACON_SCRIPT__", beacon_script)
                    .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR))
-                   .replace("__BEACON_BLOCKED_IMAGE__", blocked_image))
+                   .replace("__BEACON_BLOCKED_IMAGE__", blocked_image)
+                   .replace("__BEACON_BLOCKED_IDLE_IMAGE__", blocked_idle_image))
         try:
             target.write_text(content)
             written.append(target)
@@ -1282,12 +1296,14 @@ def _logical_state_for(state: dict) -> str:
 
     - `paused` (BADGE-10): de-emphasized, distinct from waiting so a
       parked session doesn't compete with one blocked on the user.
-    - `pending_attention` → `blocked`: the sticky form of waiting that
-      survives out-of-order PostToolUse delivery."""
+    - `pending_attention` → `blocked` (`!` watermark) for permission prompts,
+      `blocked-idle` (`?`) for idle prompts. Both share the red palette but
+      ship distinct glyphs so a scan separates "must answer now" from
+      softer idle signals (often spurious during background tools)."""
     if state.get("paused"):
         return "paused"
     if state.get("pending_attention"):
-        return "blocked"
+        return "blocked-idle" if state.get("pending_attention_type") == "idle" else "blocked"
     return STATUS_TO_BADGE_STATE.get(state["status"], "ready")
 
 
@@ -1350,6 +1366,7 @@ def apply(state: dict):
         "status": s, "status_provider": state["status_provider"],
         "paused": state["paused"],
         "pending_attention": state.get("pending_attention", False),
+        "pending_attention_type": state.get("pending_attention_type"),
         "note_image": note_image,
         "logical_state": logical,
     }
@@ -1958,7 +1975,10 @@ def cmd_hook(args):
         write_state("signal.status", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
-        write_state("pending-attention", "1")
+        # The stored value carries the prompt type so the renderer picks the
+        # right watermark (BADGE-15): `permission` → `!`, `idle` → `?`.
+        attention_type = getattr(args, "type", None) or "permission"
+        write_state("pending-attention", attention_type)
 
     elif event == "PreToolUse":
         # Tool activity means the agent is working, not waiting. This
@@ -2034,6 +2054,8 @@ def main(argv=None):
 
     sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
     sp.add_argument("event")
+    sp.add_argument("--type", choices=["permission", "idle"], default=None,
+                    help="Notification prompt subtype (set per-matcher in hooks.json)")
 
     sp = sub.add_parser("completions", help="install or print shell completions")
     sp.add_argument("shell", choices=["zsh"], nargs="?", default="zsh")

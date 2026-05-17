@@ -1,0 +1,27 @@
+{
+  "Profiles": [
+    {
+      "Name": "beacon-blocked-idle",
+      "Guid": "ec2933e2-0e56-4d96-9a63-245d5ec70004",
+      "Dynamic Profile Parent Name": "beacon",
+      "Tags": ["beacon", "beacon-state"],
+      "Badge Color": {
+        "Color Space": "sRGB",
+        "Alpha Component": 0.75,
+        "Red Component":   1.000,
+        "Green Component": 0.333,
+        "Blue Component":  0.333
+      },
+      "Tab Color": {
+        "Color Space": "sRGB",
+        "Alpha Component": 1.0,
+        "Red Component":   1.000,
+        "Green Component": 0.333,
+        "Blue Component":  0.333
+      },
+      "Background Image Location": "__BEACON_BLOCKED_IDLE_IMAGE__",
+      "Background Image Mode": 2,
+      "Blend": 0.20
+    }
+  ]
+}

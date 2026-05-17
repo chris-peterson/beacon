@@ -45,7 +45,7 @@ Stage is **never demoted by hooks** — once `review` or `shipping`, a subsequen
 |:---|:---|:---|
 | `idle` | Not actively engaged (turn just ended, just opened, paused, or freshly resumed) | Default; Hook Stop (turn finished, calm); pause sets it explicitly |
 | `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse (any tool); Hook PostToolUse (any tool) |
-| `waiting` | Claude is actively blocked on the user (permission prompt — highest user-attention priority) | Hook Notification (`permission_prompt`) |
+| `waiting` | Claude is actively blocked on the user (permission/idle prompt — highest user-attention priority) | Hook Notification (`idle_prompt` / `permission_prompt`) |
 
 Both stage and status accept user override via `/beacon set <field> <value>` and revert to provider chain on `/beacon clear <field>`.
 
@@ -168,13 +168,13 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-01.** When the user submits a prompt, the plugin shall set `signal.status = working`.
 
-**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = idle`. Rationale: a finished turn is calm, not user-blocking. Reserving `waiting` (red) for actual permission prompts (HOOK-03) makes red high-signal — "this pane needs an answer right now" — so a glance at many panes distinguishes calm sessions from sessions truly blocked on the user.
+**HOOK-02.** When Claude finishes a turn (Stop hook fires) and `stop_hook_active` is not set, the plugin shall set `signal.status = idle`. Rationale: a finished turn is calm, not user-blocking. Reserving `waiting` (red) for actual permission/idle prompts (HOOK-03) makes red high-signal — "this pane needs an answer right now" — so a glance at many panes distinguishes calm sessions from sessions truly blocked on the user.
 
-**HOOK-03.** When Claude requests user attention (Notification hook with matcher `permission_prompt`), the plugin shall set `signal.status = waiting`. Rationale: `idle_prompt` is explicitly excluded — Claude Code fires it whenever the agent is idle (including while a `run_in_background` tool is still in flight, after the turn's Stop event has landed). Treating that as "waiting on user" paints the badge red while the user is in fact waiting on a background job; reserving red for permission dialogs keeps the signal meaningful.
+**HOOK-03.** When Claude requests user attention (Notification hook with matchers `permission_prompt` and `idle_prompt`, configured as separate matcher entries), the plugin shall set `signal.status = waiting` and record the prompt subtype (`permission` or `idle`) so BADGE-15 can render the right watermark. The two prompt kinds carry different urgency: `permission_prompt` is hard-blocking (Claude cannot proceed without an answer); `idle_prompt` is softer and often a false positive — Claude Code fires it whenever the agent is idle, including while a `run_in_background` tool is still in flight after the turn's Stop event. Both still produce a red badge; the watermark distinguishes them.
 
 **HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn so the badge does not remain red for the rest of the turn while Claude is actively running tools and thinking. The pause flag still wins via the precedence rule in BADGE-09a, so a paused session is unaffected.
 
-**HOOK-03b.** When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pending-attention` marker that survives subsequent PostToolUse `working` writes. The marker shall be cleared when the next tool actually starts (PreToolUse), when the user submits a prompt (UserPromptSubmit), or when the turn ends (Stop). While the marker is set, the resolved badge shall reflect the `blocked` color state regardless of `signal.status` (BADGE-09a). Rationale: hook delivery is not strictly ordered, so a late PostToolUse for an earlier tool may arrive after a fresh permission-prompt Notification for a new tool; without the sticky marker, the badge would briefly flip back to `busy` while the user is in fact still blocked.
+**HOOK-03b.** When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pending-attention` marker whose value records the prompt subtype (`permission` or `idle`). The marker survives subsequent PostToolUse `working` writes and shall be cleared when the next tool actually starts (PreToolUse), when the user submits a prompt (UserPromptSubmit), or when the turn ends (Stop). While the marker is set, the resolved badge shall reflect the `blocked` color state regardless of `signal.status` (BADGE-09a) and shall pick the matching watermark per BADGE-15. Rationale: hook delivery is not strictly ordered, so a late PostToolUse for an earlier tool may arrive after a fresh permission-prompt Notification for a new tool; without the sticky marker, the badge would briefly flip back to `busy` while the user is in fact still blocked.
 
 **HOOK-04.** When Claude invokes any of `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, the plugin shall promote `signal.stage = dev` only if the current stage is `plan`, `none`, or unset.
 
@@ -386,12 +386,12 @@ flowchart LR
 | `working` | `busy` | Claude is processing; don't interrupt |
 | `waiting` | `blocked` | Claude needs the user (highest attention) |
 
-The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked`) are the contract.
+The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked` / `blocked-idle`) are the contract. The `blocked-idle` state is reserved for idle-prompt subtype waiting (BADGE-15 / HOOK-03b) and shares `blocked`'s red hex; it differs only in its watermark.
 
 **BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying `signal.status`. Precedence is `paused` > `pending-attention` — pause is the most explicit user intent; pending attention demands action:
 
 - The `paused` marker (PAUSE-01) forces the `paused` state (BADGE-10) — pause is a user-initiated halt, distinct from being blocked on the user.
-- The `pending-attention` marker (HOOK-03b) forces the `blocked` state — Claude is waiting on the user; sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a fresh permission prompt is open.
+- The `pending-attention` marker (HOOK-03b) forces the `blocked` state when the recorded subtype is `permission` and `blocked-idle` when the subtype is `idle`. Both are sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a prompt is still open.
 
 When neither flag is set, BADGE-09 applies.
 
@@ -403,7 +403,12 @@ When neither flag is set, BADGE-09 applies.
 
 **BADGE-14.** While no beacon-aware action has occurred in a pane, the plugin shall leave the badge unpainted in that pane. A beacon-aware action is any of: a Claude Code hook invocation, a `/beacon` slash command, or a direct `beacon` CLI invocation in that pane. When `beacon clear` is invoked, the plugin shall return the badge to its unpainted state, requiring a subsequent beacon-aware action to re-engage.
 
-**BADGE-15.** A status logical state may carry a **static state image** painted as the pane's background, visible behind terminal content as a watermark. The mapping `state → image` is implementation-tunable; at minimum, the `blocked` state shall carry an attention-grabbing watermark (e.g. an `!` glyph) since "Claude is waiting for me" is the at-a-glance signal most worth amplifying in Mission Control. States without a configured image render no watermark. Paused state's image (the post-it card, OVERLAY-01) is dynamic and takes precedence: while paused, the post-it overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
+**BADGE-15.** A status logical state may carry a **static state image** painted as the pane's background, visible behind terminal content as a watermark. The mapping `state → image` is implementation-tunable. At minimum:
+
+- `blocked` shall carry an `!` watermark — the hard-blocking case (permission prompt) where Claude cannot proceed without a human answer.
+- `blocked-idle` shall carry a `?` watermark — the softer case (idle prompt) that is often a spurious "Claude is idle" signal during background work.
+
+States without a configured image render no watermark. Paused state's image (the post-it card, OVERLAY-01) is dynamic and takes precedence: while paused, the post-it overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -513,7 +518,7 @@ These requirements describe **when** the plugin invokes the CLI and **with what*
 
 **RENDER-04.** Status transitions use two distinct mechanisms depending on whether paused is involved:
 
-- **Transitions among `ready` / `busy` / `blocked`** — the plugin shall invoke `set-profile` (CLI-14) with the matching profile name. The profile switch atomically updates badge color, tab color, and the static state image (BADGE-15). No `badge-color`, `tab-color`, or `bg-image` calls are emitted.
+- **Transitions among `ready` / `busy` / `blocked` / `blocked-idle`** — the plugin shall invoke `set-profile` (CLI-14) with the matching profile name. The profile switch atomically updates badge color, tab color, and the static state image (BADGE-15). No `badge-color`, `tab-color`, or `bg-image` calls are emitted.
 - **Entering paused** — the plugin shall not switch profiles. It overlays the active profile via OSC: `badge-color` (CLI-10) to the paused hex, `tab-color` (CLI-11) to the paused hex, and `note` (CLI-05) for the post-it.
 - **Leaving paused** — the plugin shall invoke `set-profile` with the new status's profile. The atomic profile switch (CLI-14) wipes all session-specific OSC overrides — badge color, tab color, and background image — so no separate cleanup calls are emitted.
 
@@ -539,12 +544,13 @@ Four hues do all the work: **green / orange / red** for the calm/working/blocked
 
 **THEME-02.** The badge / tab palette maps logical states to Dracula hex:
 
-| State     | Hex       | Dracula name | When                                                               |
-|:----------|:----------|:-------------|:-------------------------------------------------------------------|
-| `ready`   | `#50fa7b` | green        | idle / calm — Stop hook, fresh session                             |
-| `busy`    | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
-| `blocked` | `#ff5555` | red          | waiting — permission prompt (BADGE-09 / -10)                       |
-| `paused`  | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
+| State          | Hex       | Dracula name | When                                                               |
+|:---------------|:----------|:-------------|:-------------------------------------------------------------------|
+| `ready`        | `#50fa7b` | green        | idle / calm — Stop hook, fresh session                             |
+| `busy`         | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
+| `blocked`      | `#ff5555` | red          | waiting — permission prompt; `!` watermark (BADGE-09 / -15)        |
+| `blocked-idle` | `#ff5555` | red          | waiting — idle prompt; `?` watermark (BADGE-09 / -15)              |
+| `paused`       | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
 
 **THEME-03.** The status-bar chip text colors map purpose to Dracula hex. Three roles, three hues — action chips share one accent; identity chips share the de-emphasized comment color; branch chips reuse the badge state palette:
 
@@ -724,15 +730,16 @@ Two writers set this format:
 
 Once set, iTerm2 re-evaluates the format whenever a referenced `user.*` variable changes, so subsequent project updates flow in automatically.
 
-**Color, alpha, sizing, and the static state image** are delivered via **a family of dynamic profiles** — one per non-paused logical state (`ready` / `busy` / `blocked`). All state profiles inherit from a shared base `beacon` profile via `Dynamic Profile Parent Name`, so they share the status-bar layout (STATUS-BAR-02), badge sizing (BADGE-13), font, and margins. Each state profile overrides only the values that vary by state:
+**Color, alpha, sizing, and the static state image** are delivered via **a family of dynamic profiles** — one per non-paused logical state (`ready` / `busy` / `blocked` / `blocked-idle`). All state profiles inherit from a shared base `beacon` profile via `Dynamic Profile Parent Name`, so they share the status-bar layout (STATUS-BAR-02), badge sizing (BADGE-13), font, and margins. Each state profile overrides only the values that vary by state:
 
-| Profile | Badge Color (alpha) | Tab Color | Background Image |
-|:---|:---|:---|:---|
-| `beacon-ready` | green (translucent) | green | none |
-| `beacon-busy` | orange (translucent) | orange | none |
-| `beacon-blocked` | red (translucent) | red | `blocked.png` watermark |
+| Profile               | Badge Color (alpha) | Tab Color | Background Image           |
+|:----------------------|:--------------------|:----------|:---------------------------|
+| `beacon-ready`        | green (translucent) | green     | none                       |
+| `beacon-busy`         | orange (translucent)| orange    | none                       |
+| `beacon-blocked`      | red (translucent)   | red       | `blocked.png` (`!`)        |
+| `beacon-blocked-idle` | red (translucent)   | red       | `blocked-idle.png` (`?`)   |
 
-State transitions among these three states fire `OSC 1337 SetProfile=<name>` (CLI-14, RENDER-04), which iTerm2 applies atomically — badge color, tab color, and static state image swap in one operation with no flicker (verified empirically). The atomicity is load-bearing: it lets the plugin avoid orchestrating sequential OSC writes that would race.
+State transitions among these profiles fire `OSC 1337 SetProfile=<name>` (CLI-14, RENDER-04), which iTerm2 applies atomically — badge color, tab color, and static state image swap in one operation with no flicker (verified empirically). The atomicity is load-bearing: it lets the plugin avoid orchestrating sequential OSC writes that would race.
 
 The base `beacon` profile is the only profile beacon's `install` step makes default in iTerm2. State profiles are switched into per session by the plugin; they never appear as iTerm2's default.
 
@@ -754,9 +761,10 @@ apply(state):
   place engagement marker for this pane                        # BADGE-14
   if first render of this session:
     beacon-iterm badge-format <template>
-  logical_state = paused   if state.paused                     # BADGE-09a + BADGE-10
-                else blocked if state.pending_attention        # BADGE-09a precedence
-                else STATUS_TO_BADGE_STATE[state.status]       # BADGE-09 mapping
+  logical_state = paused       if state.paused                              # BADGE-09a + BADGE-10
+                else blocked-idle if pending_attention == "idle"             # BADGE-09a + BADGE-15
+                else blocked     if state.pending_attention                  # BADGE-09a precedence
+                else STATUS_TO_BADGE_STATE[state.status]                     # BADGE-09 mapping
   if logical_state changed:
     if logical_state == paused:
       beacon-iterm badge-color <paused_hex>                    # OSC overlay

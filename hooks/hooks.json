@@ -40,7 +40,16 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --type permission"
+          }
+        ]
+      },
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --type idle"
           }
         ]
       }

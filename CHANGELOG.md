@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.0
+
+### Features
+- The red blocked-state badge now distinguishes two prompt kinds via watermark: `!` for a permission prompt (Claude is hard-blocked on a human answer) and `?` for an idle prompt (softer — often spurious during background tools). Both still paint the badge red; the watermark lets a scan across panes separate "must answer now" from "might want to look."
+
+### Fixes
+- Idle prompts again paint the badge red. 0.14.0 narrowed the Notification matcher to `permission_prompt` only to suppress false positives during `run_in_background` work — but `permission_prompt` alone fires rarely enough that the red state was effectively gone. The matcher is back to catching both, with the `?` vs `!` watermark carrying the urgency distinction instead.
+
+### Migration
+- Run `python3 scripts/beacon install` after upgrading to land the new `beacon-blocked-idle` dynamic profile and its `?` watermark image.
+
 ## 0.14.0
 
 ### Features

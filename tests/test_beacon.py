@@ -250,6 +250,65 @@ class ApplyEmitsProfileSwitch(BeaconTest):
             "Identical state must not re-emit set-profile",
         )
 
+class PendingAttentionPicksWatermarkProfile(BeaconTest):
+    """BADGE-09a + BADGE-15: the pending-attention marker forces the blocked
+    color state, and the recorded subtype picks the watermark — `permission`
+    routes to `beacon-blocked` (`!`), `idle` routes to `beacon-blocked-idle`
+    (`?`). Both keep the red palette; only the watermark differs."""
+
+    def test_permission_subtype_emits_blocked_profile(self):
+        self.beacon.apply({
+            **_base_state(),
+            "status": "waiting",
+            "pending_attention": True,
+            "pending_attention_type": "permission",
+        })
+        self.assertIn(("set-profile", "beacon-blocked"), self.cli_calls)
+        self.assertNotIn(("set-profile", "beacon-blocked-idle"), self.cli_calls)
+
+    def test_idle_subtype_emits_blocked_idle_profile(self):
+        self.beacon.apply({
+            **_base_state(),
+            "status": "waiting",
+            "pending_attention": True,
+            "pending_attention_type": "idle",
+        })
+        self.assertIn(("set-profile", "beacon-blocked-idle"), self.cli_calls)
+        self.assertNotIn(("set-profile", "beacon-blocked"), self.cli_calls)
+
+    def test_missing_subtype_defaults_to_blocked(self):
+        # Defensive: a pending-attention marker without an explicit subtype
+        # falls back to the permission watermark (the highest-urgency case).
+        self.beacon.apply({
+            **_base_state(),
+            "status": "waiting",
+            "pending_attention": True,
+            "pending_attention_type": None,
+        })
+        self.assertIn(("set-profile", "beacon-blocked"), self.cli_calls)
+
+    def test_subtype_transition_emits_new_profile(self):
+        self.beacon.apply({
+            **_base_state(),
+            "status": "waiting",
+            "pending_attention": True,
+            "pending_attention_type": "idle",
+        })
+        self.cli_calls.clear()
+
+        self.beacon.apply({
+            **_base_state(),
+            "status": "waiting",
+            "pending_attention": True,
+            "pending_attention_type": "permission",
+        })
+
+        self.assertIn(
+            ("set-profile", "beacon-blocked"), self.cli_calls,
+            "Idle → permission must re-emit set-profile so the watermark swaps",
+        )
+
+
 class PausedUsesOSCOverlay(BeaconTest):
     """BADGE-10 + RENDER-04 + §6.6: paused state is exempt from profile
     switching. The plugin overlays badge-color, tab-color, and note image
