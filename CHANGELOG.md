@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.2
+
+### Fixes
+- Clicking the `↗ code` status-bar chip no longer leaks VS Code's "To read from stdin, append '-'" hint into the active pane (which previously landed in Claude's prompt input). The chip now opens the cwd via macOS `open -a "Visual Studio Code"` instead of the `code` CLI.
+
 ## 0.15.1
 
 ### Fixes

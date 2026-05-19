@@ -1,6 +1,6 @@
 {
   "name": "beacon",
-  "version": "0.15.1",
+  "version": "0.15.2",
   "description": "At-a-glance session awareness for Claude Code in iTerm2.",
   "keywords": ["iterm2", "macos", "workflow", "session-management"],
   "license": "MIT"
