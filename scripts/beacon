@@ -911,27 +911,26 @@ def _local_path_at(cwd: Path) -> str:
     return s
 
 
-def _publish_anchor(cwd: Path) -> None:
-    """HOOK-08: pin the navigational identity of this Claude session.
+_LAST_CHIP_PAIRS: tuple[str, ...] | None = None
 
-    Publishes every status-bar slot the shell's precmd would publish, plus
-    the action-button handoff files, in one CLI batch."""
-    project = _project_name_at(cwd)
+
+def _publish_chips(cwd: Path) -> None:
+    """Refresh status-bar chips (project_full, branch*, url) + action-button
+    handoff files from `cwd`. Does NOT touch beacon_project / beacon_task —
+    those are owned by the engagement renderer.
+
+    Called whenever the shell's precmd can't (mid-session, between turns) so
+    chips reflect branch creation / tack-context changes that happened while
+    the shell was blocked on Claude."""
+    global _LAST_CHIP_PAIRS
     project_full = _project_full_at(cwd)
     display, state, _ind = _detect_branch_info(cwd)
-    local_path = _local_path_at(cwd)
     url, _label = resolve_url(cwd)
 
     if project_full:
         project_full = f"{project_full}{_deliverable_suffix(url)}"
 
-    # BADGE-04 + PROV-06: when SessionStart's cwd is outside any recognized
-    # project, fall back to the abbreviated cwd so the badge always carries
-    # spatial context.
-    project_display = project or local_path
-
-    pairs = [
-        f"beacon_project={project_display}",
+    pairs = (
         f"beacon_project_full={project_full}",
         f"beacon_branch={display}",
         f"beacon_branch_state={state}",
@@ -939,8 +938,13 @@ def _publish_anchor(cwd: Path) -> None:
         f"beacon_branch_diverged={display if state == 'diverged' else ''}",
         f"beacon_branch_untracked={display if state == 'untracked' else ''}",
         f"beacon_url={url}",
-        "beacon_task=",
-    ]
+    )
+    # Last-value gate (mirrors shell's precmd sentinels per CLAUDE.md hot
+    # path policy): Stop fires once per turn, but most turns don't change
+    # branch/url. Skip the CLI spawn + file writes when nothing differs.
+    if pairs == _LAST_CHIP_PAIRS:
+        return
+    _LAST_CHIP_PAIRS = pairs
     _cli("uservar-batch", *pairs)
 
     iterm_id = os.environ.get("ITERM_SESSION_ID")
@@ -948,6 +952,23 @@ def _publish_anchor(cwd: Path) -> None:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         (CACHE_DIR / f"cwd-{iterm_id}.txt").write_text(f"{cwd}\n")
         (CACHE_DIR / f"url-{iterm_id}.txt").write_text(f"{url}\n")
+
+
+def _publish_anchor(cwd: Path) -> None:
+    """HOOK-08: pin the navigational identity of this Claude session.
+
+    SessionStart-only: publishes chips via `_publish_chips`, then anchors
+    `beacon_project` (badge text fallback) and clears `beacon_task` so a
+    fresh session starts from a known state."""
+    _publish_chips(cwd)
+
+    project = _project_name_at(cwd)
+    local_path = _local_path_at(cwd)
+    # BADGE-04 + PROV-06: when SessionStart's cwd is outside any recognized
+    # project, fall back to the abbreviated cwd so the badge always carries
+    # spatial context.
+    project_display = project or local_path
+    _cli("uservar-batch", f"beacon_project={project_display}", "beacon_task=")
 
 
 # --- pane sizing for note overlay ---
@@ -1970,6 +1991,12 @@ def cmd_hook(args):
             write_state("signal.status", "idle")
         # Turn ended: any pending permission/idle notification is no longer in flight.
         remove_state("pending-attention")
+        # Refresh chips that may have drifted during the turn (branch the
+        # agent created, tack context the user set). The shell's precmd
+        # can't run while Claude holds the prompt, so the plugin covers
+        # the gap once per turn.
+        cwd_str = payload.get("cwd") or os.getcwd()
+        _publish_chips(Path(cwd_str))
 
     elif event == "Notification":
         write_state("signal.status", "waiting")
