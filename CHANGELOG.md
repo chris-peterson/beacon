@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.1
+
+### Fixes
+- Branch and URL status-bar chips now refresh during a Claude session. Previously, the chips were painted once at SessionStart and stayed frozen for the rest of the session — so a branch the agent created mid-turn, or a tack deliverable pinned mid-session, was invisible until you returned to a shell prompt. The plugin now re-resolves the chip slots from the session's anchor cwd at the end of each turn.
+
 ## 0.15.0
 
 ### Features
