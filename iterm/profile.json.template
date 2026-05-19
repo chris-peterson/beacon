@@ -196,7 +196,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↗ code",
-                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" code \"$cwd\"",
+                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && open -a \"Visual Studio Code\" \"$cwd\"",
                   "action": 35,
                   "version": 2
                 }
