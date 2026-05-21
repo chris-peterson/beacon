@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.16.0
+
+### Features
+- The pause overlay is now a left-anchored Dracula marginalia card — uppercase `PAUSED` label in pink, timestamp, short editorial rule, and your note body in foreground type — replacing the centered yellow post-it. The right side of the pane stays transparent so terminal content reads when you return.
+- `/beacon pause "<note>"` no longer co-opts the badge's task slot. The note carries recall context for the overlay only; the badge's task slot keeps whatever PAUSE-01 snapshotted (PR title, branch, override). Long notes that previously overflowed the badge now stay where they belong.
+- The pane's visible viewport is cleared before the overlay paints, so TUI content (Claude Code's chips, input, transcript) stops fighting the card for legibility. Scrollback is preserved — scroll up to see pre-pause history.
+
+### Other
+- New CLI subcommand `beacon-iterm clear-screen` (CLI-15) emits the CSI `2J` + `H` escapes used by the pause render path.
+- Spec/doc sweep: "post-it overlay" → "pause overlay" / "marginalia card" across CLAUDE.md, STATUS.md, docs, shell snippet.
+
+### Migration
+- Run `python3 scripts/beacon install` after upgrading to land the `Blend: 1.0` setting on the base profile. Without it, the new card renders diluted against the terminal bg.
+
 ## 0.15.2
 
 ### Fixes
