@@ -9,8 +9,9 @@ Stateless CLI. Subcommands paint one surface each:
   set-profile  — switch the session's dynamic profile (SetProfile=)
   attention    — request dock attention once
   bg-image     — set the per-session background image
-  note         — compose a post-it card and paint it as bg-image
+  note         — compose a pause overlay (marginalia card) and paint it as bg-image
   clear        — restore all surfaces to profile defaults
+  clear-screen — clear the visible terminal viewport (scrollback preserved)
 """
 from __future__ import annotations
 
@@ -195,6 +196,19 @@ def cmd_clear(_args):
     _osc("1337;SetBackgroundImageFile=")
 
 
+def cmd_clear_screen(_args):
+    # CSI 2J clears the visible viewport; CSI H homes the cursor. Scrollback
+    # is intentionally preserved so the user can scroll up to see the
+    # pre-pause history when they come back. Used by the pause render path
+    # so the marginalia card overlay isn't fighting terminal text on top of
+    # it — iTerm2 bg images render *behind* text, and active TUI content
+    # (Claude Code's chips, input box, transcript) otherwise overlays the
+    # card region and obliterates legibility.
+    f = _tty()
+    f.write("\x1b[2J\x1b[H")
+    f.flush()
+
+
 def _detect_pane_pixels(default=(1440, 1080)) -> tuple[int, int]:
     cols = lines = 0
     try:
@@ -264,13 +278,16 @@ def main(argv=None):
     sp.add_argument("path")
     sp.set_defaults(func=cmd_bg_image)
 
-    sp = sub.add_parser("note", help="compose a post-it and paint as bg image")
+    sp = sub.add_parser("note", help="compose a pause overlay and paint as bg image")
     sp.add_argument("text")
     sp.add_argument("--out")
     sp.set_defaults(func=cmd_note)
 
     sp = sub.add_parser("clear", help="restore all surfaces to profile defaults")
     sp.set_defaults(func=cmd_clear)
+
+    sp = sub.add_parser("clear-screen", help="clear visible terminal viewport (scrollback preserved)")
+    sp.set_defaults(func=cmd_clear_screen)
 
     args = p.parse_args(argv)
     args.func(args)

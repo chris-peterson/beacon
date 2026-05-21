@@ -29,10 +29,10 @@ typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path. These determine how soon a freshly-split pane stops
-# showing the parent's post-it.
+# showing the parent's pause overlay.
 #
 # Clear inherited bg-image (OVERLAY-02): freshly-split panes inherit the
-# parent's session OSC overrides, including any post-it. The clear is
+# parent's session OSC overrides, including any pause overlay. The clear is
 # harmless when no overlay exists, and necessary when one does.
 printf '\e]1337;SetBackgroundImageFile=\a'
 # Badge format: project + optional task suffix. The task slot self-collapses

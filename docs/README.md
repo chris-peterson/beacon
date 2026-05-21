@@ -9,7 +9,7 @@ beacon shows what each Claude Code session is doing without you having to focus 
 
 Plus a third surface only during pause:
 
-- **Post-it overlay** — a yellow sticky-note bg image carrying your free-text note (`/beacon pause "leaving for lunch"`). Distinguishes paused from waiting — both share the red badge color, but only pause paints the overlay.
+- **Pause overlay** — a Dracula-themed marginalia card pinned to the left edge of the pane, carrying your free-text note (`/beacon pause "leaving for lunch"`). The badge color flips to a de-emphasized gray; together they distinguish paused from waiting (red).
 
 > [!TIP]
 > Read the full behavioral spec on the [Specification](/spec) page.
@@ -22,7 +22,7 @@ Plus a third surface only during pause:
 /beacon install
 ```
 
-The first two commands install the Claude plugin (hooks, slash command, skill, scripts). `/beacon install` then bootstraps everything around it: shell `source` line, zsh tab completion, the iTerm2 dynamic profile, `PerPaneBackgroundImage`, and post-it bg-image trust pre-approval.
+The first two commands install the Claude plugin (hooks, slash command, skill, scripts). `/beacon install` then bootstraps everything around it: shell `source` line, zsh tab completion, the iTerm2 dynamic profile, `PerPaneBackgroundImage`, and pause-overlay bg-image trust pre-approval.
 
 Some prefs (default profile, bg-image trust pre-approval) only stick when iTerm2 is fully quit. If `install` reports those steps as DEFERRED, run `beacon exclusive-configuration` — it confirms before quitting iTerm2, applies the writes, and relaunches.
 
@@ -39,7 +39,7 @@ Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red with a `!` watermark when Claude is hard-blocked on a permission prompt, or red with a `?` for the softer idle prompt
 - stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
-- `/beacon pause "checking lunch options"` paints a yellow post-it and flips the badge to gray; sending the next prompt clears both
+- `/beacon pause "checking lunch options"` flips the badge to gray and pins a marginalia card to the left edge of the pane carrying the note; sending the next prompt clears both
 
 ## Stage vs status
 

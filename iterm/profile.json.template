@@ -6,6 +6,7 @@
       "Dynamic Profile Parent Name": "Default",
       "Show Status Bar": true,
       "Use Separate Colors for Light and Dark Mode": false,
+      "Blend": 1.0,
       "Badge Font": "Futura",
       "Badge Text": "\\(user.beacon_project)\\(user.beacon_task)",
       "Badge Max Width": 0.90,

@@ -1016,7 +1016,7 @@ def _next_note_slot() -> Path:
     Avoid slots currently referenced by any active `note-image` state file —
     including our own session's current slot. iTerm2 caches the background
     image by path, so a second pause that landed on our previous slot would
-    leave the prior post-it on screen even though the file was overwritten.
+    leave the prior overlay on screen even though the file was overwritten.
     Picking a different slot every pause forces a path change that iTerm2
     actually refreshes on. If every slot is in use (very unlikely with
     N=8), fall back to LRU and accept the race.
@@ -1044,9 +1044,9 @@ def _next_note_slot() -> Path:
 
 
 def render_note_card(text: str) -> str | None:
-    """Compose the post-it via beacon-iterm note --out, returning the path on
-    success. Slot selected by LRU rotation across the fixed pool so iTerm2's
-    trust prompt only fires N times ever."""
+    """Compose the pause overlay via beacon-iterm note --out, returning the
+    path on success. Slot selected by LRU rotation across the fixed pool so
+    iTerm2's trust prompt only fires N times ever."""
     out = _next_note_slot()
     cmd = ["python3", str(BEACON_ITERM), "note", text, "--out", str(out)]
     try:
@@ -1252,7 +1252,7 @@ def _write_default_profile_now() -> None:
 
 def ensure_per_pane_bg_image():
     """Force iTerm2 to scope SetBackgroundImageFile to the pane, not the window.
-    Required for the post-it overlay to appear only in the paused pane."""
+    Required for the pause overlay to appear only in the paused pane."""
     try:
         out = subprocess.run(
             ["defaults", "read", "com.googlecode.iterm2", "PerPaneBackgroundImage"],
@@ -1356,10 +1356,18 @@ def apply(state: dict):
             _cli("tab-color", paused_hex)
             if note_image:
                 _cli("bg-image", note_image)
+                # iTerm2 bg images render *behind* terminal text, so an
+                # active TUI (Claude Code's chips, input box, transcript)
+                # overlays the marginalia card and obliterates legibility.
+                # Clearing the visible viewport gives the card a clean
+                # canvas; scrollback is preserved so the user can still
+                # scroll up to see pre-pause history.
+                _cli("clear-screen")
         else:
             _cli("set-profile", f"beacon-{logical}")
     elif logical == "paused" and note_image and note_image != prev_note_image:
         _cli("bg-image", note_image)
+        _cli("clear-screen")
 
     # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
     # must publish or CLI engagement leaves the badge empty (the shell no
@@ -1480,8 +1488,12 @@ def cmd_clear(args):
 
 def _apply_pause(note: str) -> None:
     """Snapshot resolved values into overrides, mark paused, and (when a note
-    is given) render the post-it card. Shared between the explicit `pause`
-    subcommand and the UserPromptSubmit NL pause-intent path."""
+    is given) render the pause overlay. Shared between the explicit `pause`
+    subcommand and the UserPromptSubmit NL pause-intent path.
+
+    PAUSE-02: the note feeds the visual overlay only. The badge's task slot
+    keeps whatever PAUSE-01 just snapshotted from the resolved task — notes
+    are recall context (typically a sentence), not a badge label."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
     state = resolve()
@@ -1491,7 +1503,6 @@ def _apply_pause(note: str) -> None:
     write_state("override.status", "idle")
     write_state("paused", "1")
     if note:
-        write_state("override.task", note)
         ensure_initialized()
         path = render_note_card(note)
         if path:
@@ -1963,7 +1974,7 @@ def cmd_hook(args):
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
         if prompt_text and PAUSE_RE.match(prompt_text):
-            # NL pause-intent: the prompt itself becomes the post-it note.
+            # NL pause-intent: the prompt itself becomes the overlay note.
             # Don't touch signal.status — _apply_pause writes override.status=idle.
             _apply_pause(prompt_text)
         else:

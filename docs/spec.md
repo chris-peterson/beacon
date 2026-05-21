@@ -71,7 +71,7 @@ A surface where signal state becomes visible. Render targets are pluggable; the 
 Three components write to iTerm2:
 
 - **CLI** (`beacon-iterm`) — a stateless executable that translates simple commands into iTerm2 escape sequences and writes them to `/dev/tty`. Knows nothing about signals, sessions, or projects. The only writer that touches iTerm2 directly.
-- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks, slash commands, and skill signals. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `stage`, `status`, the post-it overlay, and dock attention.
+- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks, slash commands, and skill signals. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `stage`, `status`, the pause overlay, and dock attention.
 - **Shell integration** — a sourceable zsh snippet shipped with the plugin. Owns `project` and `branch`, refreshed on every prompt. Calls the CLI directly to publish user vars; never goes through the plugin.
 
 The plugin and shell write to disjoint user-var slots, so neither overwrites the other. The badge format (set once on the iTerm2 profile) consumes all four slots and re-evaluates whenever any var changes.
@@ -202,15 +202,15 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **OVR-03.** When the user invokes `clear <field>`, the plugin shall remove only that field's override.
 
-**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session, unwind any active pause (remove the `paused` marker and the `note-image` reference), and drop sticky red markers (`pending-attention` and `signal.status` if equal to `waiting`). Rationale: `clear` is the user saying "return this pane to calm defaults"; the paused marker, note-image, pending-attention, and a stuck `waiting` signal all belong in that set of transient state to wipe. Leaving `paused`/`note-image` would keep the post-it on screen with no overrides backing it; leaving `pending-attention`/`signal.status=waiting` would keep the badge red on a session the user has just told us is calm. If the session is genuinely blocked, the next Notification re-asserts both. `clear <field>` remains overrides-only.
+**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session, unwind any active pause (remove the `paused` marker and the `note-image` reference), and drop sticky red markers (`pending-attention` and `signal.status` if equal to `waiting`). Rationale: `clear` is the user saying "return this pane to calm defaults"; the paused marker, note-image, pending-attention, and a stuck `waiting` signal all belong in that set of transient state to wipe. Leaving `paused`/`note-image` would keep the pause overlay on screen with no overrides backing it; leaving `pending-attention`/`signal.status=waiting` would keep the badge red on a session the user has just told us is calm. If the session is genuinely blocked, the next Notification re-asserts both. `clear <field>` remains overrides-only.
 
 ### 3.5 Pause and resume (PAUSE)
 
 **PAUSE-01.** When the user invokes `pause`, the plugin shall snapshot current resolved values for `project`, `task`, and `stage` into overrides, set `override.status = idle`, and write a `paused` marker.
 
-**PAUSE-02.** When `pause` is invoked with a note argument, the plugin shall use the note as the `task` override.
+**PAUSE-02.** The note argument to `pause` shall feed only the visual overlay (PAUSE-03). It shall not write a `task` override, and the badge's task slot shall continue to reflect whatever value PAUSE-01 snapshotted from the resolved task at pause time. Rationale: notes carry recall context and are typically a sentence or longer; reusing them as the task signal overflows the badge (the task slot is meant to be a short scannable label). Users who also want a short label on the paused badge can set one explicitly via `set task <label>` either before or after invoking `pause`.
 
-**PAUSE-03.** When `pause` is invoked with a note argument and the render target supports rich graphics, the plugin shall produce a visual note overlay (e.g. a post-it card) carrying the note text. Adapter-specific overlay behaviors are in §4.4.
+**PAUSE-03.** When `pause` is invoked with a note argument and the render target supports rich graphics, the plugin shall produce a visual note overlay carrying the note text in a form suited to recall context (i.e. legible enough to read a sentence or two from outside the pane, and not destructive to the underlying terminal content when the user returns). Adapter-specific overlay behaviors are in §4.5.
 
 **PAUSE-04.** When the user submits a prompt and the session is paused, the plugin shall remove the paused marker and `override.status` before processing the prompt's hook signal. The render adapter shall clear any pause-related visuals.
 
@@ -292,7 +292,7 @@ beacon writes to **exactly four surfaces** of an iTerm2 window. Every other surf
 │                                       │ + color││   text + status-driven color
 │                                       └────────┘│
 │   ┌──────────────┐                              │
-│   │  post-it     │ ← §4.5 background image      │
+│   │  pause card  │ ← §4.5 background image      │
 │   │  (only       │   (only when paused)         │
 │   │   on pause)  │                              │
 │   └──────────────┘                              │
@@ -303,7 +303,7 @@ beacon writes to **exactly four surfaces** of an iTerm2 window. Every other surf
 |:---|:---|:---|:---|:---|
 | Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color | OSC `SetBadgeFormat` + `SetUserVar` for text; one dynamic profile per status (`SetProfile=`) for color + alpha + optional state image. Paused state overlays via OSC `SetColors=badge=` |
 | Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + cross-session actions (`go`, `code`, `export`) | Dynamic profile + `SetUserVar` + Action component |
-| Background image | §4.5 | `OVERLAY` | Post-it overlay during pause | OSC `SetBackgroundImageFile` (overlays the profile's static state image, if any) |
+| Background image | §4.5 | `OVERLAY` | Pause overlay (marginalia card) | OSC `SetBackgroundImageFile` (overlays the profile's static state image, if any) |
 | Tab color | §4.7 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | Per-status dynamic profile carries `Tab Color`; paused state overlays via OSC `SetColors=tab=` |
 
 beacon shall **not** write to: terminal background color, terminal foreground color, window title, tab title, cursor color/shape. These are Claude Code's domain (window title) or the user's profile (terminal colors, cursor). Badge and tab color are the only signal-coloring surfaces beacon paints — both carry the same logical traffic-light state on different scopes (badge is per-pane, visible inside the pane and in Mission Control; tab color is per-tab, visible in the tab strip when many tabs are open).
@@ -320,7 +320,7 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-04.** When invoked as `beacon-iterm bg-image <path>`, the CLI shall set the per-session background image via `OSC 1337 SetBackgroundImageFile=<base64(path)>`. When invoked as `beacon-iterm bg-image clear`, the CLI shall clear the per-session image.
 
-**CLI-05.** When invoked as `beacon-iterm note <text> [--out <path>]`, the CLI shall compose a post-it-style note image containing `<text>`, save it (to `<path>` if provided, else a tempfile), and set it as the per-session background image.
+**CLI-05.** When invoked as `beacon-iterm note <text> [--out <path>]`, the CLI shall compose a pause-overlay image (a left-anchored marginalia card carrying `<text>`, per OVERLAY-01), save it (to `<path>` if provided, else a tempfile), and set it as the per-session background image.
 
 **CLI-06.** When invoked as `beacon-iterm badge-format <template>`, the CLI shall set the per-session badge format via `OSC 1337 SetBadgeFormat=<base64(template)>`. The template may reference user variables as `\(user.foo)`; iTerm2 re-evaluates the template whenever any referenced variable changes.
 
@@ -339,6 +339,8 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 **CLI-13.** When invoked as `beacon-iterm attention`, the CLI shall request iTerm2 dock attention via `OSC 1337 RequestAttention=once`. Used by the plugin when `signal.status = waiting` (HOOK-03) to bounce the dock icon for sessions blocked on the user.
 
 **CLI-14.** When invoked as `beacon-iterm set-profile <name>`, the CLI shall switch the current session's profile via `OSC 1337 SetProfile=<name>`. The named profile must exist in iTerm2's DynamicProfiles directory; iTerm2 silently ignores unknown names, which the plugin treats as a fatal install-time misconfiguration rather than a runtime error. A profile switch atomically applies the new profile's `Badge Color` (with alpha), `Tab Color`, and `Background Image Location` — and atomically wipes any prior session-specific OSC overrides for those keys. This atomic wipe-and-apply is the mechanism behind RENDER-04's resume-from-pause cleanup.
+
+**CLI-15.** When invoked as `beacon-iterm clear-screen`, the CLI shall emit ANSI CSI `2J` (erase visible viewport) followed by CSI `H` (cursor home) to `/dev/tty`. Scrollback is intentionally preserved — the user can scroll up to see pre-clear history. Used by the pause render path (OVERLAY-01) so the marginalia card overlay paints onto a blank canvas instead of competing with TUI text rendered on top of it (iTerm2 bg images render *behind* terminal text).
 
 ### 4.3 Badge area (BADGE)
 
@@ -397,7 +399,7 @@ The mapping `state → hex` lives in implementation, not this spec, so the palet
 
 When neither flag is set, BADGE-09 applies.
 
-**BADGE-10.** While the session is paused, the plugin shall set the badge color to the `paused` logical state — a de-emphasized color (e.g., gray) distinct from `ready` / `busy` / `blocked` — so a paused session is visually distinguishable from a session blocked on the user. The post-it overlay (OVERLAY-01) carries the note text; the badge color carries the at-a-glance "this session is parked" signal that is readable in Mission Control where the post-it is not. The `state → hex` mapping lives in implementation, consistent with BADGE-09.
+**BADGE-10.** While the session is paused, the plugin shall set the badge color to the `paused` logical state — a de-emphasized color (e.g., gray) distinct from `ready` / `busy` / `blocked` — so a paused session is visually distinguishable from a session blocked on the user. The pause overlay (OVERLAY-01) carries the note text; the badge color carries the at-a-glance "this session is parked" signal that is readable in Mission Control where the overlay's text is not. The `state → hex` mapping lives in implementation, consistent with BADGE-09.
 
 **BADGE-12.** When the resolved `project` value changes between render passes — whether driven by `set project` / `clear project` (OVR-01 / OVR-03), or by any provider re-evaluation — the plugin shall republish `beacon_project` so the badge text tracks the value reported by `show` (CMD-01). Rationale: HOOK-08 paints `beacon_project` once at SessionStart; without BADGE-12, subsequent overrides land in state and `show` reports them but the iTerm badge silently keeps the SessionStart value, diverging from `show`.
 
@@ -410,7 +412,7 @@ When neither flag is set, BADGE-09 applies.
 - `blocked` shall carry an `!` watermark — the hard-blocking case (permission prompt) where Claude cannot proceed without a human answer.
 - `blocked-idle` shall carry a `?` watermark — the softer case (idle prompt) that is often a spurious "Claude is idle" signal during background work.
 
-States without a configured image render no watermark. Paused state's image (the post-it card, OVERLAY-01) is dynamic and takes precedence: while paused, the post-it overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
+States without a configured image render no watermark. Paused state's image (the marginalia card, OVERLAY-01) is dynamic and takes precedence: while paused, the card overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -475,7 +477,7 @@ Action-chip color matches the data cluster it anchors so each CTA visually ties 
 The background image carries two distinct workloads:
 
 1. **Static state images (BADGE-15)** — painted by the active status profile (`blocked.png`, etc.). They live in the profile's `Background Image Location` key and switch atomically when the plugin invokes `set-profile` (CLI-14).
-2. **Dynamic post-it overlay** — painted only during pause, set per-session via OSC `SetBackgroundImageFile` (CLI-04). The post-it carries the user's note text and is rendered into a bounded image pool (OVERLAY-03).
+2. **Dynamic pause overlay** — painted only during pause, set per-session via OSC `SetBackgroundImageFile` (CLI-04). The overlay carries the user's note text and is rendered into a bounded image pool (OVERLAY-03).
 
 The OSC overlay layers over whichever static state image is currently active, displacing it for the pane's lifetime until cleared. Resuming from pause invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and reveals the new status profile's static image (if any).
 
@@ -500,9 +502,9 @@ flowchart LR
     CLEAR3 --> HIDE
 ```
 
-**OVERLAY-01.** When `pause` is invoked with a note (PAUSE-03), the plugin shall invoke `beacon-iterm note <text>` to render and paint the post-it card. The post-it shall contain only the note text — no project icon. The post-it is painted via OSC `SetBackgroundImageFile` so it overlays the active status profile's static state image (BADGE-15) without modifying any profile. On resume, the plugin invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and restores the new status profile's static image; the plugin shall not emit an explicit `bg-image clear`.
+**OVERLAY-01.** When `pause` is invoked with a note (PAUSE-03), the plugin shall invoke `beacon-iterm note <text>` to render and paint the pause overlay. The overlay shall lay out as a left-anchored marginalia card on an otherwise transparent canvas: a vertical lifted-dark Dracula panel pinned to the left side of the pane, with a vertical accent stripe in the action-affordance hue (pink, THEME-03) running the card's full height; the card carries an uppercase `PAUSED` label in pink, a comment-colored timestamp on the same baseline, a short editorial separator rule, and the note body in Dracula foreground at a size that reads a sentence or two from a half-focused pane. The remainder of the canvas stays transparent. The overlay is painted via OSC `SetBackgroundImageFile` so it layers over the active status profile's static state image (BADGE-15) without modifying any profile. **After the paint, the plugin shall invoke `clear-screen` (CLI-15)** to wipe the visible TUI text from on top of the overlay — iTerm2 bg images render *behind* terminal content, so an active TUI (Claude Code's chips, input box, transcript) otherwise overlays the card and obliterates legibility; scrollback is preserved so the user can scroll up to recover pre-pause history. On resume, the plugin invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and restores the new status profile's static image; the plugin shall not emit an explicit `bg-image clear`. The TUI re-renders its own contents on the next event tick (typically the user's resume prompt), so no explicit redraw is required on the resume path.
 
-**OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's post-it does not carry over into a fresh split. This applies only to OSC-level overlays — static state images live in their respective dynamic profiles and are not subject to inheritance.
+**OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's overlay does not carry over into a fresh split. This applies only to OSC-level overlays — static state images live in their respective dynamic profiles and are not subject to inheritance.
 
 **OVERLAY-03.** The plugin shall render note images into a bounded pool of stable cache paths using LRU rotation, avoiding overwrite of slots currently referenced by another session's `note-image` state. Pool files persist across resume/reset. Pool size is a tunable implementation constant; reusing a fixed pool of paths keeps iTerm2's bg-image trust prompt (OVERLAY-04) tractable — every paint hits an already-approved path.
 
@@ -521,7 +523,7 @@ These requirements describe **when** the plugin invokes the CLI and **with what*
 **RENDER-04.** Status transitions use two distinct mechanisms depending on whether paused is involved:
 
 - **Transitions among `ready` / `busy` / `blocked` / `blocked-idle`** — the plugin shall invoke `set-profile` (CLI-14) with the matching profile name. The profile switch atomically updates badge color, tab color, and the static state image (BADGE-15). No `badge-color`, `tab-color`, or `bg-image` calls are emitted.
-- **Entering paused** — the plugin shall not switch profiles. It overlays the active profile via OSC: `badge-color` (CLI-10) to the paused hex, `tab-color` (CLI-11) to the paused hex, and `note` (CLI-05) for the post-it.
+- **Entering paused** — the plugin shall not switch profiles. It overlays the active profile via OSC: `badge-color` (CLI-10) to the paused hex, `tab-color` (CLI-11) to the paused hex, and `note` (CLI-05) for the marginalia card.
 - **Leaving paused** — the plugin shall invoke `set-profile` with the new status's profile. The atomic profile switch (CLI-14) wipes all session-specific OSC overrides — badge color, tab color, and background image — so no separate cleanup calls are emitted.
 
 ### 4.7 Tab color (TAB)
@@ -530,7 +532,7 @@ The tab color is the second signal-coloring surface beacon paints, mirroring the
 
 Tab color is *complementary* to the badge, not redundant: the badge is per-pane and visible inside the pane (and in Mission Control); tab color is per-tab and visible only in the tab strip. The two together cover both glance-modes (focused window with many tabs, vs. zoomed-out Mission Control across many windows). They share the same logical state (`ready` / `busy` / `blocked`) and hex palette so there is no second source of truth to keep in sync.
 
-**TAB-01.** The tab color shall mirror the same logical color state used by BADGE-09 (`ready` / `busy` / `blocked` → palette hex), so the badge and tab strip never diverge. For non-paused states this is delivered by the status profile's `Tab Color` key, applied atomically with badge color via `set-profile` (CLI-14, per RENDER-04). For paused state, the plugin emits `tab-color` (CLI-11) as an OSC overlay alongside the paused badge color, matching the OSC-overlay model OVERLAY-01 uses for the post-it.
+**TAB-01.** The tab color shall mirror the same logical color state used by BADGE-09 (`ready` / `busy` / `blocked` → palette hex), so the badge and tab strip never diverge. For non-paused states this is delivered by the status profile's `Tab Color` key, applied atomically with badge color via `set-profile` (CLI-14, per RENDER-04). For paused state, the plugin emits `tab-color` (CLI-11) as an OSC overlay alongside the paused badge color, matching the OSC-overlay model OVERLAY-01 uses for the marginalia card.
 
 **TAB-02.** When the resolved session is cleared (CMD-06 reset, or `beacon-iterm clear`), the tab color shall revert to `default` so the user's profile colors take over again.
 
@@ -575,7 +577,7 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 
 **NFR-01.** Hook handlers shall complete within 250 ms in the common case so as not to perceptibly delay Claude Code interactions.
 
-**NFR-02.** The post-it note image shall be cached and regenerated only when its inputs (note text, pane dimensions) change.
+**NFR-02.** The pause overlay image shall be cached and regenerated only when its inputs (note text, pane dimensions) change.
 
 **NFR-03.** The shell integration shall add no perceptible latency to prompt redraw — the per-prompt cost shall be dominated by a single `git` invocation when in a repository, and zero `git` work when not.
 
@@ -585,7 +587,7 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 
 **NFR-05.** A provider that throws an exception shall not block other providers in the chain.
 
-**NFR-06.** When an optional dependency is missing, the plugin shall degrade gracefully — text-only signals continue to work; only the post-it visual is skipped (CLI's `note` subcommand may report "Pillow not available" and exit non-zero, which the plugin tolerates).
+**NFR-06.** When an optional dependency is missing, the plugin shall degrade gracefully — text-only signals continue to work; only the pause overlay is skipped (CLI's `note` subcommand may report "Pillow not available" and exit non-zero, which the plugin tolerates).
 
 **NFR-07.** The plugin shall function in directories that are not inside any recognized project (no git, no manifest).
 
@@ -637,7 +639,8 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 │  beacon-iterm CLI (the only writer to iTerm2)            │
 │  ├─ uservar     ├─ badge-format ├─ badge-color          │
 │  ├─ tab-color   ├─ set-profile  ├─ bg-image             │
-│  ├─ note        ├─ attention    └─ clear                 │
+│  ├─ note        ├─ attention    ├─ clear                 │
+│  └─ clear-screen                                         │
 └──────────────────────────────────────────────────────────┘
                          │
                          ▼
@@ -666,8 +669,8 @@ The shell side and the CLI are both stateless: each shell prompt recomputes proj
 
 A single Python 3 script with subcommand dispatch. Dependencies:
 
-- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `tab-color`, `set-profile`, `attention`, `bg-image`, `clear`.
-- **Pillow** required for `note` (post-it composition). When missing, `note` exits non-zero with `"Pillow required for note composition; install via 'pip install Pillow'"`.
+- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `tab-color`, `set-profile`, `attention`, `bg-image`, `clear`, `clear-screen`.
+- **Pillow** required for `note` (pause overlay composition). When missing, `note` exits non-zero with `"Pillow required for note composition; install via 'pip install Pillow'"`.
 
 All subcommands open `/dev/tty` lazily, write the escape sequence, flush, and close. No persistent process, no shared state.
 
@@ -732,7 +735,7 @@ Two writers set this format:
 
 Once set, iTerm2 re-evaluates the format whenever a referenced `user.*` variable changes, so subsequent project updates flow in automatically.
 
-**Color, alpha, sizing, and the static state image** are delivered via **a family of dynamic profiles** — one per non-paused logical state (`ready` / `busy` / `blocked` / `blocked-idle`). All state profiles inherit from a shared base `beacon` profile via `Dynamic Profile Parent Name`, so they share the status-bar layout (STATUS-BAR-02), badge sizing (BADGE-13), font, and margins. Each state profile overrides only the values that vary by state:
+**Color, alpha, sizing, and the static state image** are delivered via **a family of dynamic profiles** — one per non-paused logical state (`ready` / `busy` / `blocked` / `blocked-idle`). All state profiles inherit from a shared base `beacon` profile via `Dynamic Profile Parent Name`, so they share the status-bar layout (STATUS-BAR-02), badge sizing (BADGE-13), font, and margins. The base profile also sets `Blend: 1.0` so that bg images — whether the pause overlay (OVERLAY-01) or static state images (BADGE-15) — render at their composed colors without being mixed with the profile's bg color. Blocked profiles override `Blend` back down to a low value to keep the `!` / `?` watermarks as a quiet backdrop behind active terminal content. Each state profile overrides only the values that vary by state:
 
 | Profile               | Badge Color (alpha) | Tab Color | Background Image           |
 |:----------------------|:--------------------|:----------|:---------------------------|
@@ -773,6 +776,10 @@ apply(state):
       beacon-iterm tab-color   <paused_hex>                    # OSC overlay
       if note is new:
         beacon-iterm note <text>                               # OSC overlay
+        beacon-iterm clear-screen                              # OVERLAY-01:
+                                                                # CSI 2J + H so
+                                                                # the card has a
+                                                                # clean canvas
     else:
       beacon-iterm set-profile beacon-<logical_state>          # atomic profile swap
                                                                 # — wipes any prior OSC overlays
@@ -795,7 +802,7 @@ A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
 
 1. **Escape sequences require `/dev/tty`** when invoked from non-TTY contexts.
 2. **One-time iTerm2 permission prompt** for control codes and background image setting on first use of each.
-3. **Per-Pane Background Image** must be enabled in iTerm2 preferences for the post-it to scope to the pane rather than the window. `beacon install` sets this via `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
+3. **Per-Pane Background Image** must be enabled in iTerm2 preferences for the pause overlay to scope to the pane rather than the window. `beacon install` sets this via `defaults write com.googlecode.iterm2 PerPaneBackgroundImage -bool true`.
 4. **Prefs cache vs. on-disk plist.** While iTerm2 is running it holds its prefs in memory and rewrites the plist on quit, clobbering any `defaults write` that ran in between. Pref writes that need to survive an iTerm2 restart must therefore happen with iTerm2 quit. CMD-12 orchestrates this — currently via a detached helper that polls until iTerm2 exits, then re-invokes `beacon exclusive-configuration --yes` to perform the writes; quit is requested via `osascript`. The helper logs to a tempfile so a failed relaunch is debuggable.
 5. **Status bar action chips don't honor `remove empty components`.** Tried (a) Swifty conditional titles, (b) shell-precomputed glyph user vars, (c) OSC 8 hyperlinks embedded in chip values — none toggle visibility cleanly. The status bar therefore keeps action chips always-visible and routes to a no-op when the underlying value is empty (STATUS-BAR-02 chip 1).
 6. **Status bar coprocess actions don't interpolate `\(user.*)`.** The `↖ web` and `↗ code` buttons therefore read per-session handoff files (`url-$ITERM_SESSION_ID.txt`, `cwd-$ITERM_SESSION_ID.txt`) under `<DATA_DIR>/cache/`. The shell snippet writes both on every prompt; the plugin additionally writes both at SessionStart (HOOK-08) and refreshes them on each Stop (HOOK-08b) so the buttons track narrowings of the session anchor (new branch, pinned tack URL). Both buttons launch via macOS `open` (`open "$url"` and `open -a "Visual Studio Code" "$cwd"`) so the action shell's missing interactive `PATH` is moot.
@@ -823,7 +830,7 @@ beacon/
 │   └── favicon.svg
 ├── bin/
 │   ├── beacon-iterm                # D2 — CLI executable
-│   └── _compose.py                 # post-it Pillow composition library
+│   └── _compose.py                 # pause overlay (marginalia card) Pillow composition library
 ├── .claude-plugin/                 # D3 begins
 │   └── plugin.json
 ├── hooks/

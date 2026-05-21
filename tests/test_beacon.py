@@ -327,6 +327,15 @@ class PausedUsesOSCOverlay(BeaconTest):
         self.assertIn(("badge-color", paused_hex), self.cli_calls)
         self.assertIn(("tab-color", paused_hex), self.cli_calls)
         self.assertIn(("bg-image", "/tmp/note.png"), self.cli_calls)
+        # OVERLAY-01: the viewport is cleared after the bg-image paint so
+        # the marginalia card has a clean canvas instead of fighting the
+        # active TUI's overlaid text.
+        self.assertIn(("clear-screen",), self.cli_calls)
+        bg_idx = self.cli_calls.index(("bg-image", "/tmp/note.png"))
+        clear_idx = self.cli_calls.index(("clear-screen",))
+        self.assertLess(bg_idx, clear_idx,
+                        "clear-screen must follow bg-image so the image is in place "
+                        "before the viewport is wiped")
         for call in self.cli_calls:
             self.assertNotEqual(
                 call[0], "set-profile",

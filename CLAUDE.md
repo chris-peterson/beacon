@@ -4,7 +4,7 @@ Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](
 
 ## What beacon is
 
-A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state on iTerm2 surfaces (badge, status bar, post-it overlay during pause) so the user can scan many concurrent panes without focusing each one.
+A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state on iTerm2 surfaces (badge, status bar, pause overlay) so the user can scan many concurrent panes without focusing each one.
 
 ## Three deliverables, hard boundaries
 
@@ -30,7 +30,7 @@ Per docs/spec.md §4.1 — these and only these:
 
 - **Badge** — text (project) + color (status-driven traffic light: ready / busy / blocked)
 - **Status bar** — the beacon dynamic profile only (never the user's profile)
-- **Background image** — only during pause, for the post-it overlay
+- **Background image** — only during pause, for the marginalia-card overlay
 - **Tab color** — mirrors the badge color (same logical state) on the tab strip; intended for tabs-not-panes workflows
 
 beacon does **not** paint: terminal bg/fg, window title, tab title, cursor color/shape. These belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice.
