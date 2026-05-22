@@ -22,12 +22,12 @@ The 2026-05-14 spec change restructured §4.3 BADGE around an **engagement** pre
 | PROV-07 | 1 | Partial | `tack find <pwd>` fallback still missing — slug-match only |
 | HOOK-01..09 (incl. -03a, -03b, -09b) | 12 | All Covered | HOOK-09b added 2026-05-14 — suppress drift suffix when it would repeat the anchor's tail |
 | OVR-01..04 | 4 | All Covered | |
-| PAUSE-01..06 (incl. -04a) | 7 | All Covered | NL pause-intent regex covers a superset of the spec's examples |
-| SKILL-01..05 | 5 | All Covered | SKILL-05 added 2026-05-08 |
-| CMD-01..16 (gap at 11) | 15 | All Covered | CMD-10 / CMD-14 / CMD-15 / CMD-16 added 2026-05-08; CMD-11 removed with ALIAS |
+| STATE-01..07 (incl. -04a) | 8 | All Covered | Renamed from PAUSE namespace 2026-05-22; pause is now `status = paused`; descriptions on any user-set status |
+| SKILL-01..03 | 3 | All Covered | Stage-signaling SKILL-01/-02 deleted 2026-05-22 with stage; remaining numbers are convention + CLI-freshness |
+| CMD-01..16 (gap at 10, 11) | 14 | All Covered | CMD-04 now also accepts `status <value> [description]`; CMD-10 (`signal`) removed 2026-05-22 with stage |
 | CLI-01..15 | 15 | All Covered | CLI-14 (`set-profile`) added 2026-05-14; CLI-15 (`clear-screen`) added 2026-05-21 |
 | BADGE-01..15 (incl. -09a) | 16 | All Covered | 2026-05-14 restructured §4.3 (old BADGE-12 deleted, BADGE-13 → BADGE-12), pivoted to profile-per-state mechanism, added BADGE-15 (state-driven bg image, blocked = `!`) |
-| OVERLAY-01..04 | 4 | All Covered | OVERLAY-01 / OVERLAY-04 amended 2026-05-14 (overlay layers over static state image; install pre-approves state image paths); OVERLAY-01 amended 2026-05-21 (post-it → left-anchored marginalia card) |
+| OVERLAY-01..04 | 4 | All Covered | OVERLAY-01 / OVERLAY-04 amended 2026-05-14 (overlay layers over static state image; install pre-approves state image paths); OVERLAY-01 amended 2026-05-21..22 (post-it → right-anchored marginalia card; multi-line first-line-as-heading; `*` bold / `_` italic inline markers); OVERLAY-01 generalized 2026-05-22 from paused-only to any status with a description |
 | RENDER-01..04 | 4 | All Covered | RENDER-04 amended 2026-05-14 (pause vs status mechanism split) |
 | TAB-01..03 | 3 | All Covered | TAB-01 amended 2026-05-14 (profile-driven for non-paused, OSC overlay during pause) |
 | THEME-01..03 | 3 | All Covered | New 2026-05-08 — Dracula palette adopted across badge, tab, status-bar chips |

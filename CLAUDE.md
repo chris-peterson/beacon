@@ -30,10 +30,12 @@ Per docs/spec.md §4.1 — these and only these:
 
 - **Badge** — text (project) + color (status-driven traffic light: ready / busy / blocked)
 - **Status bar** — the beacon dynamic profile only (never the user's profile)
-- **Background image** — only during pause, for the marginalia-card overlay
+- **Background image** — the marginalia card overlay, painted whenever the session has a non-empty `description` (any user-set status, not just paused)
 - **Tab color** — mirrors the badge color (same logical state) on the tab strip; intended for tabs-not-panes workflows
 
 beacon does **not** paint: terminal bg/fg, window title, tab title, cursor color/shape. These belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice.
+
+beacon profiles also explicitly **disable** iTerm2's notification-center delivery (`BM Growl: false`) and terminal-generated alerts (`Send Terminal Generated Alerts: false`). Claude Code triggers these on permission prompts and idle prompts, but beacon already surfaces both via badge color + watermark + dock attention — duplicate notifications add no signal and can transiently overlay the badge.
 
 ## Logical states are the contract
 
@@ -43,7 +45,7 @@ Status maps to a logical color state (`ready` / `busy` / `blocked`) which then m
 
 `DATA_DIR` resolves to `$CLAUDE_PLUGIN_DATA` when set (Claude Code provides it for hook invocations). For slash commands and the `~/.local/bin/beacon` wrapper the env var is unset, so the script derives the same path from `CLAUDE_PLUGIN_ROOT` matching Claude Code's `<plugin>-<owner>` convention (e.g. `~/.claude/plugins/data/beacon-chris-peterson/`). All three invocation contexts must land on the same dir or hooks see no state to act on.
 
-- Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `paused`, `pending-attention` (sticky permission marker), `note-image`, `override.*`, `signal.*`, `resolved`, `claude_session_id`.
+- Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `description` (user-supplied marginalia text), `note-image` (rendered PNG path), `pending-attention` (sticky permission marker), `override.*`, `signal.status`, `resolved`, `claude_session_id`.
 - Note image pool (LRU, fixed N=8): `<DATA_DIR>/cache/note-NN.png`
 - Per-session shell handoff files (read by status-bar action buttons): `<DATA_DIR>/cache/{url,cwd}-$ITERM_SESSION_ID.txt`
 

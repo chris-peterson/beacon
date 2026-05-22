@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """beacon — at-a-glance session awareness for Claude Code in iTerm2.
 
-Resolves four signals (project, task, stage, status) via chain-of-responsibility
+Resolves three signals (project, task, status) via chain-of-responsibility
 providers, then invokes bin/beacon-iterm to surface results. The CLI is the
-only writer to iTerm2.
+only writer to iTerm2. Status carries an optional free-text description
+(the "marginalia overlay" body) the user can attach via `status <value>
+[<description>]`; `pause [<note>]` is a synonym for `status paused [<note>]`.
 """
 from __future__ import annotations
 
@@ -104,26 +106,13 @@ DEFAULT_BRANCHES = {"main", "master", "develop", "trunk", "HEAD"}
 PROJECT_MARKERS = [".git", "package.json", "Cargo.toml", "pyproject.toml",
                    "go.mod", ".hg", "pom.xml", "Gemfile"]
 
-DEPLOY_RE = re.compile(
-    r"git\s+push\s+(?:[^|;&]*\s)?(?:origin\s+)?(?:HEAD:)?(?:main|master|production|release)\b"
-    r"|git\s+push\s+--tags\b"
-    r"|\b(?:npm|yarn|pnpm)\s+publish\b"
-    r"|\bcargo\s+publish\b"
-    r"|\bdocker\s+push\b"
-    r"|\bterraform\s+apply\b"
-    r"|\bkubectl\s+apply\b"
-    r"|\bgh\s+release\s+create\b"
-    r"|\bflyctl\s+deploy\b"
-    r"|\bvercel\s+deploy\b|\bvercel\s+--prod\b"
-    r"|\bheroku\b[^|;&]*\bmaster\b"
-)
-
 # Slash commands that should reset stale per-session state when invoked
 # mid-session. `/recipe` re-bootstraps a session from scratch (it loads a
-# playbook), so signals from the prior task — pending attention, an old
-# stage, lingering overrides — would otherwise contaminate the new context.
-# SessionStart already covers fresh-launch and `/clear`; this catches the
-# in-session commands Claude Code does not surface as a hook event.
+# playbook), so signals from the prior task — pending attention, a stale
+# user-set status, lingering overrides — would otherwise contaminate the
+# new context. SessionStart already covers fresh-launch and `/clear`; this
+# catches the in-session commands Claude Code does not surface as a hook
+# event.
 FRESH_START_COMMANDS = ("recipe",)
 FRESH_START_RE = re.compile(
     r"^\s*/(?:" + "|".join(FRESH_START_COMMANDS) + r")\b",
@@ -159,30 +148,27 @@ PAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 
-VALID_STAGES = {"plan", "dev", "review", "shipping", "none"}
-VALID_STATUSES = {"idle", "working", "waiting"}
-VALID_FIELDS = ("project", "task", "stage", "status", "url")
+VALID_STATUSES = {"idle", "working", "waiting", "paused"}
+VALID_FIELDS = ("project", "task", "status", "url")
 
 # Shell-native completion script — installed by `beacon completions zsh`.
 ZSH_COMPLETION = r"""#compdef beacon
 
-_beacon_stages() { compadd plan dev review shipping none }
-_beacon_statuses() { compadd idle working waiting }
-_beacon_fields()   { compadd project task stage status url }
+_beacon_statuses() { compadd idle working waiting paused }
+_beacon_fields()   { compadd project task status url }
 
 _beacon() {
   local -a commands=(
     'show:show resolved signals'
-    'set:set an override (project|task|stage|status)'
+    'set:set an override (project|task|status)'
     'task:set task override'
-    'stage:set stage override'
+    'status:set status override with optional description'
     'project:set project override'
     'clear:clear one or all overrides'
-    'pause:pause and snapshot state (optional note)'
-    'resume:resume from pause'
+    'pause:set status=paused with optional description'
+    'resume:clear all overrides (full reset to provider chain)'
     'reset:clear all per-session state'
     'render:re-render current state'
-    'signal:write a non-override signal (stage|status)'
     'completions:install or print shell completions'
     'install:run all install steps (shell, wrapper, completions, profile)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
@@ -202,32 +188,24 @@ _beacon() {
         3) _beacon_fields ;;
         4)
           case "${words[3]}" in
-            stage)  _beacon_stages   ;;
             status) _beacon_statuses ;;
             *)      _message 'value' ;;
           esac
           ;;
       esac
       ;;
-    stage)  (( CURRENT == 3 )) && _beacon_stages ;;
-    status) (( CURRENT == 3 )) && _beacon_statuses ;;
+    status)
+      case "$CURRENT" in
+        3) _beacon_statuses ;;
+        4) _message 'description (optional)' ;;
+      esac
+      ;;
     task|project) (( CURRENT == 3 )) && _message 'value' ;;
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    signal)
-      case "$CURRENT" in
-        3) compadd stage status ;;
-        4)
-          case "${words[3]}" in
-            stage)  _beacon_stages   ;;
-            status) _beacon_statuses ;;
-          esac
-          ;;
-      esac
-      ;;
     pause)
-      (( CURRENT == 3 )) && _message 'note text'
+      (( CURRENT == 3 )) && _message 'description (optional)'
       ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
@@ -260,6 +238,7 @@ STATUS_TO_BADGE_STATE = {
     "idle":    "ready",
     "working": "busy",
     "waiting": "blocked",
+    "paused":  "paused",
 }
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
@@ -662,8 +641,8 @@ def cmd_json(_args):
     payload = {
         "project": state["project"],
         "branch": p_branch(cwd) or "",
-        "stage": state["stage"],
         "status": state["status"],
+        "description": state.get("description", ""),
         "url": url,
         "cwd": cwd_str,
         "claude_session": claude_sid,
@@ -704,13 +683,6 @@ def resolve(cwd: Path | None = None) -> dict:
         ("branch",   lambda: p_branch(cwd)),
     ])
 
-    stage, p_stage = chain([
-        ("override", lambda: p_override("stage")),
-        ("signal",   lambda: p_signal("stage")),
-    ])
-    if not stage:
-        stage, p_stage = "none", "default"
-
     status, p_status = chain([
         ("override", lambda: p_override("status")),
         ("signal",   lambda: p_signal("status")),
@@ -719,12 +691,12 @@ def resolve(cwd: Path | None = None) -> dict:
         status, p_status = "idle", "default"
 
     pending_attention_type = (read_state("pending-attention") or "").strip() or None
+    description = (read_state("description") or "").strip()
     return {
         "project": project, "project_provider": p_proj,
         "task": task, "task_provider": p_task,
-        "stage": stage, "stage_provider": p_stage,
         "status": status, "status_provider": p_status,
-        "paused": _state_path("paused").exists(),
+        "description": description,
         "pending_attention": _state_path("pending-attention").exists(),
         "pending_attention_type": pending_attention_type,
     }
@@ -1043,12 +1015,12 @@ def _next_note_slot() -> Path:
     return min(free or slots, key=mtime)
 
 
-def render_note_card(text: str) -> str | None:
-    """Compose the pause overlay via beacon-iterm note --out, returning the
-    path on success. Slot selected by LRU rotation across the fixed pool so
-    iTerm2's trust prompt only fires N times ever."""
+def render_note_card(label: str, text: str) -> str | None:
+    """Compose the marginalia overlay via beacon-iterm note --out, returning
+    the path on success. Slot selected by LRU rotation across the fixed
+    pool so iTerm2's trust prompt only fires N times ever."""
     out = _next_note_slot()
-    cmd = ["python3", str(BEACON_ITERM), "note", text, "--out", str(out)]
+    cmd = ["python3", str(BEACON_ITERM), "note", label, text, "--out", str(out)]
     try:
         subprocess.run(cmd, capture_output=True, timeout=15, check=False)
     except Exception:
@@ -1311,9 +1283,9 @@ def remove_engagement_marker() -> None:
 
 def _logical_state_for(state: dict) -> str:
     """Resolve the logical color state per BADGE-09a precedence:
-    paused > pending_attention > status — pause is the most explicit user
-    intent, pending attention demands action, status reflects what hooks
-    have observed.
+    `status == paused` > `pending_attention` > `status` — pause is the
+    most explicit user intent, pending attention demands action, status
+    reflects what hooks have observed.
 
     - `paused` (BADGE-10): de-emphasized, distinct from waiting so a
       parked session doesn't compete with one blocked on the user.
@@ -1321,7 +1293,7 @@ def _logical_state_for(state: dict) -> str:
       `blocked-idle` (`?`) for idle prompts. Both share the red palette but
       ship distinct glyphs so a scan separates "must answer now" from
       softer idle signals (often spurious during background tools)."""
-    if state.get("paused"):
+    if state.get("status") == "paused":
         return "paused"
     if state.get("pending_attention"):
         return "blocked-idle" if state.get("pending_attention_type") == "idle" else "blocked"
@@ -1341,33 +1313,35 @@ def apply(state: dict):
     if not prev:
         _cli("badge-format", BADGE_FORMAT)
 
-    # BADGE-09 + -09a. Non-paused → SetProfile= (atomic color/tab/bg swap).
-    # Paused → OSC overlay on top of whichever profile is active, since the
-    # note image is per-note and can't live in a static profile (OVERLAY-01).
+    # BADGE-09 + -09a. With no description, the logical state owns the
+    # color/tab/bg-image swap via SetProfile (atomic). With a description,
+    # we paint the marginalia overlay on top of the active profile via
+    # OSC: per-note bg image can't live in a static profile (OVERLAY-01).
     logical = _logical_state_for(state)
     prev_logical = prev.get("logical_state")
     note_image = state.get("note_image")
     prev_note_image = prev.get("note_image")
+    has_overlay = bool(state.get("description")) and bool(note_image)
+    prev_has_overlay = bool(prev.get("description")) and bool(prev_note_image)
 
-    if logical != prev_logical:
-        if logical == "paused":
-            paused_hex = BADGE_COLOR_PALETTE["paused"]
-            _cli("badge-color", paused_hex)
-            _cli("tab-color", paused_hex)
-            if note_image:
-                _cli("bg-image", note_image)
-                # iTerm2 bg images render *behind* terminal text, so an
-                # active TUI (Claude Code's chips, input box, transcript)
-                # overlays the marginalia card and obliterates legibility.
-                # Clearing the visible viewport gives the card a clean
-                # canvas; scrollback is preserved so the user can still
-                # scroll up to see pre-pause history.
-                _cli("clear-screen")
-        else:
-            _cli("set-profile", f"beacon-{logical}")
-    elif logical == "paused" and note_image and note_image != prev_note_image:
-        _cli("bg-image", note_image)
-        _cli("clear-screen")
+    if has_overlay:
+        # Marginalia overlay path: OSC on top of the active profile.
+        if logical != prev_logical or not prev_has_overlay:
+            hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["paused"])
+            _cli("badge-color", hex_color)
+            _cli("tab-color", hex_color)
+        if note_image != prev_note_image or not prev_has_overlay:
+            _cli("bg-image", note_image)
+            # iTerm2 bg images render *behind* terminal text. Clearing the
+            # visible viewport gives the card a clean canvas; scrollback is
+            # preserved so the user can still scroll back to pre-overlay
+            # history.
+            _cli("clear-screen")
+    elif logical != prev_logical or prev_has_overlay:
+        # Profile path: atomic SetProfile wipes any prior OSC overrides
+        # (color, tab, bg image), so coming back from an overlay needs no
+        # explicit cleanup.
+        _cli("set-profile", f"beacon-{logical}")
 
     # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
     # must publish or CLI engagement leaves the badge empty (the shell no
@@ -1391,9 +1365,8 @@ def apply(state: dict):
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
         "task": state["task"], "task_provider": state["task_provider"],
-        "stage": state["stage"], "stage_provider": state["stage_provider"],
         "status": s, "status_provider": state["status_provider"],
-        "paused": state["paused"],
+        "description": state.get("description", ""),
         "pending_attention": state.get("pending_attention", False),
         "pending_attention_type": state.get("pending_attention_type"),
         "note_image": note_image,
@@ -1405,7 +1378,7 @@ def apply(state: dict):
 def render():
     ensure_initialized()
     state = resolve()
-    if state["paused"]:
+    if state.get("description"):
         state["note_image"] = read_state("note-image")
     apply(state)
 
@@ -1415,13 +1388,13 @@ def render():
 def cmd_show(_args):
     state = resolve()
     rows = []
-    for field in ("project", "task", "stage", "status"):
+    for field in ("project", "task", "status"):
         value = state[field]
         provider = state[f"{field}_provider"]
         if value and provider and provider != "default":
             rows.append((field, value, provider))
-    if state["paused"]:
-        rows.append(("paused", "yes", None))
+    if state.get("description"):
+        rows.append(("description", state["description"], None))
     if state.get("pending_attention"):
         rows.append(("attention", "pending", None))
     if not rows:
@@ -1429,31 +1402,30 @@ def cmd_show(_args):
     width = max(len(v) for _, v, _ in rows)
     for field, value, provider in rows:
         suffix = f"  ({provider})" if provider else ""
-        print(f"{field+':':<9} {value:<{width}}{suffix}")
+        print(f"{field+':':<12} {value:<{width}}{suffix}")
 
 
 def _set_field(field: str, value: str):
     if field not in VALID_FIELDS:
         sys.exit(f"unknown field: {field}")
-    if field == "stage" and value not in VALID_STAGES:
-        sys.exit(f"invalid stage: {value} (allowed: {sorted(VALID_STAGES)})")
     if field == "status" and value not in VALID_STATUSES:
         sys.exit(f"invalid status: {value} (allowed: {sorted(VALID_STATUSES)})")
     write_state(f"override.{field}", value)
 
 
 def cmd_set(args):
-    _set_field(args.field, " ".join(args.value))
+    field = args.field
+    _set_field(field, " ".join(args.value))
+    if field == "status":
+        # `set status <value>` is the orthogonal-field form. It carries no
+        # description argument, so any previously-set description belongs
+        # to an earlier status and is no longer relevant — drop it.
+        _clear_description()
     render()
 
 
 def cmd_task(args):
     _set_field("task", " ".join(args.value))
-    render()
-
-
-def cmd_stage(args):
-    _set_field("stage", " ".join(args.value))
     render()
 
 
@@ -1465,6 +1437,8 @@ def cmd_project(args):
 def cmd_clear(args):
     if args.field:
         remove_state(f"override.{args.field}")
+        if args.field == "status":
+            _clear_description()
         render()
         return
 
@@ -1472,8 +1446,7 @@ def cmd_clear(args):
     # deliberate — render() would re-place the engagement marker.
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
-    remove_state("paused")
-    remove_state("note-image")
+    _clear_description()
     # Drop any sticky red markers — if the session is genuinely blocked,
     # the next Notification re-asserts both.
     remove_state("pending-attention")
@@ -1486,42 +1459,65 @@ def cmd_clear(args):
     _cli("set-profile", "beacon")
 
 
-def _apply_pause(note: str) -> None:
-    """Snapshot resolved values into overrides, mark paused, and (when a note
-    is given) render the pause overlay. Shared between the explicit `pause`
-    subcommand and the UserPromptSubmit NL pause-intent path.
+def _clear_description() -> None:
+    """Drop the description text and the rendered note-image reference. The
+    image file itself is part of the LRU pool (OVERLAY-03) and shared across
+    sessions; leave it on disk so iTerm2's bg-image trust prompt doesn't
+    re-fire on the next paint."""
+    remove_state("description")
+    remove_state("note-image")
 
-    PAUSE-02: the note feeds the visual overlay only. The badge's task slot
-    keeps whatever PAUSE-01 just snapshotted from the resolved task — notes
-    are recall context (typically a sentence), not a badge label."""
-    for f in VALID_FIELDS:
-        remove_state(f"override.{f}")
-    state = resolve()
-    for field in ("project", "task", "stage"):
-        if state[f"{field}_provider"] != "default" and state[field]:
-            write_state(f"override.{field}", state[field])
-    write_state("override.status", "idle")
-    write_state("paused", "1")
-    if note:
+
+def _label_for_status(status: str) -> str:
+    """Uppercase status label for the marginalia card header. The compose
+    layer renders this as the `PAUSED` / `WAITING` / `WORKING` / `IDLE`
+    chip in pink at the top of the card."""
+    return (status or "paused").upper()
+
+
+def _apply_status(value: str, description: str) -> None:
+    """Set `override.status = value` and the optional description. For
+    `paused`, snapshot the current resolved project + task so the badge
+    keeps its identity while the session is parked (STATE-03). For other
+    values (e.g. `waiting "bg refresh"`), don't snapshot — the user is
+    labeling current state, not parking.
+
+    Renders the marginalia card if a description was provided."""
+    if value == "paused":
+        # Drop any prior overrides on project/task so we re-snapshot from
+        # the resolved (live) values rather than stale entries.
+        remove_state("override.project")
+        remove_state("override.task")
+        state = resolve()
+        for field in ("project", "task"):
+            if state[f"{field}_provider"] != "default" and state[field]:
+                write_state(f"override.{field}", state[field])
+    write_state("override.status", value)
+    _clear_description()
+    if description:
+        write_state("description", description)
         ensure_initialized()
-        path = render_note_card(note)
+        path = render_note_card(_label_for_status(value), description)
         if path:
             write_state("note-image", path)
 
 
+def cmd_status(args):
+    description = " ".join(args.description).strip() if args.description else ""
+    _apply_status(args.value, description)
+    render()
+
+
 def cmd_pause(args):
     note = " ".join(args.note).strip() if args.note else ""
-    _apply_pause(note)
+    _apply_status("paused", note)
     render()
 
 
 def cmd_resume(_args):
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
-    remove_state("paused")
-    # Don't unlink the note image — it's part of the LRU pool and other
-    # sessions or future pauses may reuse the slot. Just forget our reference.
-    remove_state("note-image")
+    _clear_description()
     render()
 
 
@@ -1599,10 +1595,8 @@ def _wipe_session_for_fresh_start() -> None:
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
     remove_state("signal.status")
-    remove_state("signal.stage")
     remove_state("pending-attention")
-    remove_state("paused")
-    remove_state("note-image")
+    _clear_description()
 
 
 def cmd_reset(_args):
@@ -1618,19 +1612,6 @@ def cmd_reset(_args):
 
 
 def cmd_render(_args):
-    render()
-
-
-def cmd_signal(args):
-    field = args.field
-    if field not in {"stage", "status"}:
-        sys.exit(f"can't signal field: {field} (only stage|status)")
-    value = " ".join(args.value)
-    if field == "stage" and value not in VALID_STAGES:
-        sys.exit(f"invalid stage: {value}")
-    if field == "status" and value not in VALID_STATUSES:
-        sys.exit(f"invalid status: {value}")
-    write_state(f"signal.{field}", value)
     render()
 
 
@@ -1691,7 +1672,7 @@ def _install_completions(print_only: bool = False) -> None:
         print(f"  ✓ appended fpath + compinit to {zshrc}")
 
 
-_SHELL_SENTINEL = "# beacon: project · branch · stage badging"
+_SHELL_SENTINEL = "# beacon: project · branch · status badging"
 
 
 def _install_shell_source() -> None:
@@ -1974,21 +1955,22 @@ def cmd_hook(args):
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
         if prompt_text and PAUSE_RE.match(prompt_text):
-            # NL pause-intent: the prompt itself becomes the overlay note.
-            # Don't touch signal.status — _apply_pause writes override.status=idle.
-            _apply_pause(prompt_text)
+            # NL pause-intent: the prompt itself becomes the description.
+            # Don't touch signal.status — _apply_status writes override.status=paused.
+            _apply_status("paused", prompt_text)
         else:
             if prompt_text and FRESH_START_RE.match(prompt_text):
                 # In-session commands like /recipe re-bootstrap context;
                 # treat them like SessionStart non-resume and drop stale
                 # signals before the prompt lands.
                 _wipe_session_for_fresh_start()
-            elif _state_path("paused").exists():
-                remove_state("paused")
+            elif read_state("override.status") == "paused":
+                # STATE-04 auto-resume: a returning prompt clears the paused
+                # override and its description. Other user-set statuses
+                # (waiting "bg refresh") are deliberate labels and survive
+                # prompt submission.
                 remove_state("override.status")
-                # Forget the reference to the note pool slot — don't delete the
-                # file (other paused sessions may reference it; preserves trust).
-                remove_state("note-image")
+                _clear_description()
             write_state("signal.status", "working")
         # The user just submitted, so any pending Notification is resolved.
         remove_state("pending-attention")
@@ -2027,20 +2009,6 @@ def cmd_hook(args):
         # PreToolUse fires when a tool is starting — past any permission gate.
         # Clear the sticky marker so the badge can flip back to working.
         remove_state("pending-attention")
-        tool = payload.get("tool_name") or payload.get("tool") or ""
-        tool_input = payload.get("tool_input") or {}
-        if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
-            current = (read_state("override.stage")
-                       or read_state("signal.stage")
-                       or "none")
-            if current in ("plan", "none"):
-                write_state("signal.stage", "dev")
-        elif tool == "Bash":
-            command = (tool_input.get("command") or "")
-            if DEPLOY_RE.search(command):
-                write_state("signal.stage", "shipping")
-        elif tool == "ExitPlanMode":
-            write_state("signal.stage", "dev")
 
     elif event == "PostToolUse":
         # Re-assert working between tool calls — a tool just returned and the
@@ -2070,8 +2038,12 @@ def main(argv=None):
     sp = sub.add_parser("task", help="set task override")
     sp.add_argument("value", nargs="+")
 
-    sp = sub.add_parser("stage", help="set stage override")
-    sp.add_argument("value", nargs="+")
+    sp = sub.add_parser(
+        "status",
+        help="set status override with optional description",
+    )
+    sp.add_argument("value", choices=sorted(VALID_STATUSES))
+    sp.add_argument("description", nargs="*")
 
     sp = sub.add_parser("project", help="set project override")
     sp.add_argument("value", nargs="+")
@@ -2079,16 +2051,12 @@ def main(argv=None):
     sp = sub.add_parser("clear", help="clear overrides")
     sp.add_argument("field", nargs="?", choices=list(VALID_FIELDS))
 
-    sp = sub.add_parser("pause", help="pause and snapshot state")
+    sp = sub.add_parser("pause", help="set status=paused with optional description")
     sp.add_argument("note", nargs="*")
 
-    sub.add_parser("resume", help="resume from pause")
+    sub.add_parser("resume", help="clear all overrides (full reset to provider chain)")
     sub.add_parser("reset", help="clear all session state")
     sub.add_parser("render", help="re-render current state")
-
-    sp = sub.add_parser("signal", help="write a non-override signal (used by skills)")
-    sp.add_argument("field", choices=["stage", "status"])
-    sp.add_argument("value", nargs="+")
 
     sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
     sp.add_argument("event")
@@ -2126,9 +2094,9 @@ def main(argv=None):
 
     handlers = {
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
-        "stage": cmd_stage, "project": cmd_project, "clear": cmd_clear,
+        "status": cmd_status, "project": cmd_project, "clear": cmd_clear,
         "pause": cmd_pause, "resume": cmd_resume, "reset": cmd_reset,
-        "render": cmd_render, "signal": cmd_signal, "hook": cmd_hook,
+        "render": cmd_render, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
         "exclusive-configuration": cmd_exclusive_configuration,

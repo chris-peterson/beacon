@@ -9,7 +9,7 @@ beacon shows what each Claude Code session is doing without you having to focus 
 
 Plus a third surface only during pause:
 
-- **Pause overlay** — a Dracula-themed marginalia card pinned to the left edge of the pane, carrying your free-text note (`/beacon pause "leaving for lunch"`). The badge color flips to a de-emphasized gray; together they distinguish paused from waiting (red).
+- **Pause overlay** — a Dracula-themed marginalia card anchored to the right edge of the pane, carrying your free-text note (`/beacon pause "leaving for lunch"`). Multi-line notes treat the first line as a heading; `*` toggles bold and `_` toggles italic (any quantity of marker works). The badge color flips to a de-emphasized gray; together they distinguish paused from waiting (red).
 
 > [!TIP]
 > Read the full behavioral spec on the [Specification](/spec) page.
@@ -31,25 +31,15 @@ Some prefs (default profile, bg-image trust pre-approval) only stick when iTerm2
 In a fresh tab:
 
 ```bash
-beacon show         # resolved project / task / stage / status with providers
+beacon show         # resolved project / task / status (with description if set)
 beacon <TAB>        # subcommands with descriptions
 ```
 
 Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red with a `!` watermark when Claude is hard-blocked on a permission prompt, or red with a `?` for the softer idle prompt
-- stage transitions (`dev` on any Write/Edit, `plan` on plan-mode entry, `review`, `shipping` on deploy commands) are tracked internally and surfaced in `beacon show`
-- `/beacon pause "checking lunch options"` flips the badge to gray and pins a marginalia card to the left edge of the pane carrying the note; sending the next prompt clears both
-
-## Stage vs status
-
-| | Stage | Status |
-|:---|:---|:---|
-| Question | What kind of work? | What's happening right now? |
-| Pace | Minutes-to-hours | Sub-second-to-seconds |
-| Driven by | Skill (`plan`, `review`) + hooks (`dev`, `shipping`) + override | Hooks (`working`, `waiting`) + override |
-
-Status drives the badge color; stage shows up in `beacon show` for cross-session handoff.
+- `/beacon pause "checking lunch options"` flips the badge to gray and pins a marginalia card to the right edge of the pane carrying the note; sending the next prompt clears both
+- `/beacon status waiting "bg refresh ~30 min"` flips the badge to red and pins the same marginalia card with your description — useful when *you* are waiting on something async, not Claude
 
 ## Usage
 
@@ -57,22 +47,19 @@ Inside Claude Code:
 
 ```text
 /beacon                                    # show resolved state (default)
-/beacon pause "leaving for lunch"
-/beacon resume
-/beacon set stage review                   # explicit override
-/beacon clear stage                        # remove a single override
+/beacon status waiting "bg refresh"        # set status with a description
+/beacon pause "leaving for lunch"          # shorthand for `status paused …`
+/beacon resume                             # clear all overrides + description
+/beacon clear status                       # clear just the status override
 ```
 
 At the shell:
 
 ```bash
 beacon show
-beacon stage plan
+beacon status paused "afk"
 beacon pause "afk"
 ```
-
-> [!NOTE]
-> The skill bundled with the plugin tells Claude to set `stage plan` on plan-mode entry and `stage review` when you ask for code review — both are events hooks can't see. Hooks own `dev`, `shipping`, and all status transitions.
 
 ## Tack integration (optional)
 
@@ -106,7 +93,7 @@ To fully clean up the shell side, also delete these from `~/.zshrc`:
 
 ```zsh
 fpath=(~/.zsh/completions $fpath)         # only if no other tool relies on it
-source ".../beacon/shell/beacon.zsh"      # beacon: project · branch · stage badging
+source ".../beacon/shell/beacon.zsh"      # beacon: project · branch · status badging
 ```
 
 And `rm ~/.zsh/completions/_beacon ~/.local/bin/beacon`.

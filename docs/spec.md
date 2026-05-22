@@ -1,6 +1,6 @@
 # beacon — Specification
 
-At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and lifecycle state (what stage, what status) on a render target the user can scan without focusing — terminal background, badge, color, dock.
+At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and what's happening right now (status, with an optional user-supplied description) on a render target the user can scan without focusing — terminal background, badge, color, dock.
 
 This document specifies requirements in [EARS](https://alistairmavin.com/ears/) form and outlines the first implementation: a CLI plus a Claude Code plugin targeting iTerm2 on macOS with zsh.
 
@@ -14,73 +14,46 @@ A single Claude Code instance running in a terminal window or pane. Sessions are
 
 ### 1.2 Signals
 
-Each session has four signals that together describe it. Signals are orthogonal — each varies independently of the others.
+Each session has three signals that together describe it. Signals are orthogonal — each varies independently of the others.
 
 | Signal  | Cardinality | Purpose                                          |
 |---------|-------------|--------------------------------------------------|
 | project | 1           | Identifies *which codebase* this session is in   |
 | task    | 0..1        | Identifies *what unit of work* this session is on |
-| stage   | 1           | Identifies *what phase* the work is in           |
-| status  | 1           | Identifies *what's happening right now*          |
+| status  | 1 (+ optional description) | Identifies *what's happening right now* |
 
-### 1.3 Stage values
+### 1.3 Status values
 
-**Stage = workflow phase / intent.** What kind of work is this session doing? Slow-changing, lasts minutes-to-hours, driven by *what the user is doing strategically*. Default `none`.
-
-| Value | Meaning | Driven by |
-|:---|:---|:---|
-| `none` | Unknown / not yet labeled | Default; no signal received |
-| `plan` | Architecting, designing, exploring options | Skill: Claude detects entry to plan mode (Shift+Tab) |
-| `dev` | Writing or editing code | Hook PreToolUse: `Write` / `Edit` / `MultiEdit` / `NotebookEdit` (only if current is `plan`/`none`/unset); ExitPlanMode |
-| `review` | Reading, auditing, QA work | Skill: Claude detects user requesting code review / inspection |
-| `shipping` | Deploying, releasing | Hook PreToolUse: `Bash` matching deploy regex (`git push origin main`, `npm publish`, `terraform apply`, `gh release create`, etc.) |
-
-Stage is **never demoted by hooks** — once `review` or `shipping`, a subsequent `Write` doesn't roll back to `dev`. Only an explicit user action (`/beacon set stage <x>`, `/beacon clear stage`, `/beacon resume`) reverses stage.
-
-### 1.4 Status values
-
-**Status = activity right now.** Is Claude processing, waiting on input, or sitting? Fast-changing, flips multiple times per turn, driven entirely by *what is currently happening*. Default `idle`.
+**Status = what's happening right now.** Driven primarily by hooks (Claude activity) and secondarily by user overrides. Default `idle`.
 
 | Value | Meaning | Driven by |
 |:---|:---|:---|
-| `idle` | Not actively engaged (turn just ended, just opened, paused, or freshly resumed) | Default; Hook Stop (turn finished, calm); pause sets it explicitly |
-| `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse (any tool); Hook PostToolUse (any tool) |
+| `idle` | Not actively engaged (turn just ended, just opened, freshly resumed) | Default; Hook Stop (turn finished, calm) |
+| `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse / PostToolUse (any tool) |
 | `waiting` | Claude is actively blocked on the user (permission/idle prompt — highest user-attention priority) | Hook Notification (`idle_prompt` / `permission_prompt`) |
+| `paused` | User has parked the session | `/beacon pause` or `/beacon status paused` |
 
-Both stage and status accept user override via `/beacon set <field> <value>` and revert to provider chain on `/beacon clear <field>`.
+Status accepts a user override via `/beacon status <value> [<description>]` (or `/beacon set status <value>`) and reverts to the provider chain on `/beacon clear status`. The optional description is a free-text note that feeds the marginalia overlay (OVERLAY-01); it lets the user attach recall context to any user-set status (e.g. `status waiting "bg data refresh ~30 min"`), not just `paused`.
 
-### 1.5 Stage vs status at a glance
-
-Both are signals; they answer different questions about the same session:
-
-| | Stage | Status |
-|:---|:---|:---|
-| **Question** | What *kind* of work? | What's happening *right now*? |
-| **Cardinality** | 5 values | 3 values |
-| **Pace** | Minutes to hours | Sub-second to seconds |
-| **Drivers** | Skill (plan, review) + Hooks (dev, shipping) + override | Hooks (working, waiting) + override |
-| **Per-session lifecycle** | Roughly monotonic (plan → dev → review → shipping) | Cycles continuously (idle ↔ working ↔ waiting) |
-| **Dropouts** | Demotion blocked (HOOK-05) | Free to flip in any direction |
-
-### 1.6 Render target
+### 1.4 Render target
 
 A surface where signal state becomes visible. Render targets are pluggable; the first implementation targets iTerm2 on macOS. Other plausible targets: tmux status line, menubar app, Stream Deck, web dashboard.
 
-### 1.7 Render collaborators
+### 1.5 Render collaborators
 
 Three components write to iTerm2:
 
 - **CLI** (`beacon-iterm`) — a stateless executable that translates simple commands into iTerm2 escape sequences and writes them to `/dev/tty`. Knows nothing about signals, sessions, or projects. The only writer that touches iTerm2 directly.
-- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks, slash commands, and skill signals. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `stage`, `status`, the pause overlay, and dock attention.
+- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks and slash commands. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `status`, the status description, the marginalia overlay, and dock attention.
 - **Shell integration** — a sourceable zsh snippet shipped with the plugin. Owns `project` and `branch`, refreshed on every prompt. Calls the CLI directly to publish user vars; never goes through the plugin.
 
-The plugin and shell write to disjoint user-var slots, so neither overwrites the other. The badge format (set once on the iTerm2 profile) consumes all four slots and re-evaluates whenever any var changes.
+The plugin and shell write to disjoint user-var slots, so neither overwrites the other. The badge format (set once on the iTerm2 profile) consumes the relevant slots and re-evaluates whenever any var changes.
 
-### 1.8 Provider
+### 1.6 Provider
 
 A function that attempts to derive a signal value from some source (file, environment, command output, user override). Each signal is resolved by walking a list of providers in priority order.
 
-### 1.9 Chain of responsibility
+### 1.7 Chain of responsibility
 
 For each signal, a list of named providers is consulted in order. The first provider that returns a non-empty value wins. The provenance (which provider supplied the value) is recorded for debugging.
 
@@ -110,8 +83,8 @@ These requirements describe what beacon does conceptually. They would apply unch
 | `PROV`  | Provider chains |
 | `HOOK`  | Claude Code hook event handlers |
 | `OVR`   | User overrides (`set` / `clear`) |
-| `PAUSE` | Pause / resume semantics |
-| `SKILL` | Skill-driven stage signals |
+| `STATE` | User-set status, pause / resume semantics |
+| `SKILL` | Skill responsibilities (CLI freshness) |
 | `CMD`   | Slash command surface |
 
 ### 3.1 Signal resolution (RES)
@@ -120,13 +93,11 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 **RES-02.** The plugin shall record the name of the provider that supplied each resolved value.
 
-**RES-03.** When no provider returns a value for `stage`, the plugin shall use `none`.
+**RES-03.** When no provider returns a value for `status`, the plugin shall use `idle`.
 
-**RES-04.** When no provider returns a value for `status`, the plugin shall use `idle`.
+**RES-04.** When no provider returns a value for `task`, the plugin shall treat task as absent (omit from displays).
 
-**RES-05.** When no provider returns a value for `task`, the plugin shall treat task as absent (omit from displays).
-
-**RES-06.** When no provider returns a value for `project`, the plugin shall use a non-empty placeholder so downstream rendering does not fail.
+**RES-05.** When no provider returns a value for `project`, the plugin shall use a non-empty placeholder so downstream rendering does not fail.
 
 ### 3.2 Provider chains (PROV)
 
@@ -134,9 +105,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 
 **PROV-02.** For `task`, the plugin shall consult providers in this order: user override, GitHub PR title (`gh pr view`), git branch name (when not in `{main, master, develop, trunk, HEAD}`).
 
-**PROV-03.** For `stage`, the plugin shall consult providers in this order: user override, hook signal, default (`none`).
-
-**PROV-04.** For `status`, the plugin shall consult providers in this order: user override, hook signal, default (`idle`).
+**PROV-03.** For `status`, the plugin shall consult providers in this order: user override, hook signal, default (`idle`). When the user override is `status paused [description]`, the description is persisted alongside the override and feeds the marginalia overlay (OVERLAY-01); user-set descriptions on non-paused statuses (e.g. `status waiting "bg refresh"`) follow the same path.
 
 **PROV-05.** When detecting project root, the plugin shall walk parent directories looking for any of `.git`, `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `.hg`, `pom.xml`, `Gemfile`, stopping at `$HOME`. The first directory containing any marker (and within `$HOME`) is the project root.
 
@@ -172,21 +141,13 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-03.** When Claude requests user attention (Notification hook with matchers `permission_prompt` and `idle_prompt`, configured as separate matcher entries), the plugin shall set `signal.status = waiting` and record the prompt subtype (`permission` or `idle`) so BADGE-15 can render the right watermark. The two prompt kinds carry different urgency: `permission_prompt` is hard-blocking (Claude cannot proceed without an answer); `idle_prompt` is softer and often a false positive — Claude Code fires it whenever the agent is idle, including while a `run_in_background` tool is still in flight after the turn's Stop event. Both still produce a red badge; the watermark distinguishes them.
 
-**HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn so the badge does not remain red for the rest of the turn while Claude is actively running tools and thinking. The pause flag still wins via the precedence rule in BADGE-09a, so a paused session is unaffected.
+**HOOK-03a.** When any tool is about to run (PreToolUse) or has just returned (PostToolUse), the plugin shall set `signal.status = working`. This re-asserts working state mid-turn so the badge does not remain red for the rest of the turn while Claude is actively running tools and thinking. A user-set status override (including `status paused`) wins per OVR-02, so an explicitly-parked session is unaffected.
 
 **HOOK-03b.** When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pending-attention` marker whose value records the prompt subtype (`permission` or `idle`). The marker survives subsequent PostToolUse `working` writes and shall be cleared when the next tool actually starts (PreToolUse), when the user submits a prompt (UserPromptSubmit), or when the turn ends (Stop). While the marker is set, the resolved badge shall reflect the `blocked` color state regardless of `signal.status` (BADGE-09a) and shall pick the matching watermark per BADGE-15. Rationale: hook delivery is not strictly ordered, so a late PostToolUse for an earlier tool may arrive after a fresh permission-prompt Notification for a new tool; without the sticky marker, the badge would briefly flip back to `busy` while the user is in fact still blocked.
 
-**HOOK-04.** When Claude invokes any of `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, the plugin shall promote `signal.stage = dev` only if the current stage is `plan`, `none`, or unset.
-
-**HOOK-05.** Write-tool invocation shall never demote stage from `review` or `shipping`.
-
-**HOOK-06.** When Claude exits plan mode (PreToolUse for the `ExitPlanMode` tool), the plugin shall set `signal.stage = dev`.
-
-**HOOK-07.** When Claude invokes `Bash` with a command that publishes or deploys to a remote (e.g. push to a release branch, `npm publish`, container registry push, IaC apply, hosted-platform deploy), the plugin shall set `signal.stage = shipping`. The exact pattern set is a tunable implementation list maintained alongside the hook handler.
-
 **HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the five `beacon_branch*` slots, `beacon_url`) plus the per-session handoff files (`cwd-$ITERM_SESSION_ID.txt`, `url-$ITERM_SESSION_ID.txt`) that the `↗ code` and `↖ web` action buttons consume. The plugin shall additionally record the resolved project name as `anchor.project` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `signal.stage`, `pending-attention`, `paused`, and `note-image`. Rationale: per-session state files key on `ITERM_SESSION_ID`, which is the iTerm pane and outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
+**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `description`, and `note-image`. Rationale: per-session state files key on `ITERM_SESSION_ID`, which is the iTerm pane and outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
 
 **HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_full`, the five `beacon_branch*` slots, `beacon_url`) and the per-session handoff files from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
 
@@ -196,53 +157,53 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 ### 3.4 User overrides (OVR)
 
-**OVR-01.** When the user invokes `set <field> <value>`, the plugin shall persist the value as an override for that field. Valid fields: `project`, `task`, `stage`, `status`, `url`.
+**OVR-01.** When the user invokes `set <field> <value>`, the plugin shall persist the value as an override for that field. Valid fields: `project`, `task`, `status`, `url`.
 
 **OVR-02.** A user override shall always win over auto-detected values for the same signal.
 
-**OVR-03.** When the user invokes `clear <field>`, the plugin shall remove only that field's override.
+**OVR-03.** When the user invokes `clear <field>`, the plugin shall remove only that field's override. Clearing `status` also removes the user-set description (STATE-02).
 
-**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session, unwind any active pause (remove the `paused` marker and the `note-image` reference), and drop sticky red markers (`pending-attention` and `signal.status` if equal to `waiting`). Rationale: `clear` is the user saying "return this pane to calm defaults"; the paused marker, note-image, pending-attention, and a stuck `waiting` signal all belong in that set of transient state to wipe. Leaving `paused`/`note-image` would keep the pause overlay on screen with no overrides backing it; leaving `pending-attention`/`signal.status=waiting` would keep the badge red on a session the user has just told us is calm. If the session is genuinely blocked, the next Notification re-asserts both. `clear <field>` remains overrides-only.
+**OVR-04.** When the user invokes `clear` with no field, the plugin shall remove all overrides for the session, remove the description and `note-image` reference, and drop sticky red markers (`pending-attention` and `signal.status` if equal to `waiting`). Rationale: `clear` is the user saying "return this pane to calm defaults"; the description, note-image, pending-attention, and a stuck `waiting` signal all belong in that set of transient state to wipe. Leaving the description / `note-image` would keep the marginalia overlay on screen with no override backing it; leaving `pending-attention`/`signal.status=waiting` would keep the badge red on a session the user has just told us is calm. If the session is genuinely blocked, the next Notification re-asserts both. `clear <field>` remains overrides-only.
 
-### 3.5 Pause and resume (PAUSE)
+### 3.5 User-set status (STATE)
 
-**PAUSE-01.** When the user invokes `pause`, the plugin shall snapshot current resolved values for `project`, `task`, and `stage` into overrides, set `override.status = idle`, and write a `paused` marker.
+Pause is no longer a separate concept; it is one possible status value (`paused`) the user can set, alongside `idle`, `working`, and `waiting`. Any user-set status accepts an optional description that feeds the marginalia overlay (OVERLAY-01). Skill plan/review signaling is gone with stage (see §3.6 for what remains of SKILL).
 
-**PAUSE-02.** The note argument to `pause` shall feed only the visual overlay (PAUSE-03). It shall not write a `task` override, and the badge's task slot shall continue to reflect whatever value PAUSE-01 snapshotted from the resolved task at pause time. Rationale: notes carry recall context and are typically a sentence or longer; reusing them as the task signal overflows the badge (the task slot is meant to be a short scannable label). Users who also want a short label on the paused badge can set one explicitly via `set task <label>` either before or after invoking `pause`.
+**STATE-01.** When the user invokes `status <value> [<description>]`, the plugin shall persist `<value>` as `override.status` and `<description>` (if any) as the session's description. `<value>` must be one of `idle`, `working`, `waiting`, `paused`.
 
-**PAUSE-03.** When `pause` is invoked with a note argument and the render target supports rich graphics, the plugin shall produce a visual note overlay carrying the note text in a form suited to recall context (i.e. legible enough to read a sentence or two from outside the pane, and not destructive to the underlying terminal content when the user returns). Adapter-specific overlay behaviors are in §4.5.
+**STATE-02.** When the description is non-empty and the render target supports rich graphics, the plugin shall produce the marginalia overlay carrying the description text in a form suited to recall context (legible from outside the pane, not destructive to the underlying terminal content when the user returns). Adapter-specific overlay behaviors are in §4.5. The description shall not write a `task` override; the badge's task slot keeps whatever it had. Rationale: descriptions carry recall context and are typically a sentence or longer; reusing them as the task signal overflows the badge.
 
-**PAUSE-04.** When the user submits a prompt and the session is paused, the plugin shall remove the paused marker and `override.status` before processing the prompt's hook signal. The render adapter shall clear any pause-related visuals.
+**STATE-03.** When the user sets `status paused`, the plugin shall snapshot the current resolved `project` and `task` into overrides so the badge keeps its identity while the session is parked.
 
-**PAUSE-04a.** When the user submits a prompt whose text matches a pause-intent pattern (e.g. "stepping away", "brb", "break 'til 4", "pause until …"), the plugin shall apply PAUSE-01..03 with the full prompt text as the note, instead of clearing the paused marker. The prompt itself is not suppressed — it still flows through to Claude. The intent of this rule is to let users announce a pause in natural language without having to remember the explicit `pause` subcommand.
+**STATE-04.** When the user submits a prompt and `override.status` is `paused`, the plugin shall remove the status override and description before processing the prompt's hook signal. The render adapter shall clear the marginalia overlay. Other user-set status overrides (e.g. `status waiting "bg refresh"`) are not auto-cleared on prompt submission — only `paused` is. Rationale: pause means "I'm stepping away"; a returning prompt is the natural resume signal. Other user-set statuses are deliberate labels the user expects to persist until they explicitly clear them.
 
-**PAUSE-05.** Auto-resume (PAUSE-04) shall preserve `task` and `stage` overrides set by the pause.
+**STATE-04a.** When the user submits a prompt whose text matches a pause-intent pattern (e.g. "stepping away", "brb", "break 'til 4", "pause until …"), the plugin shall apply STATE-01..03 with `status paused` and the full prompt text as the description, instead of clearing the paused override. The prompt itself is not suppressed — it still flows through to Claude. Rationale: lets users announce a pause in natural language without remembering the explicit `pause` subcommand.
 
-**PAUSE-06.** When the user invokes `resume`, the plugin shall remove all overrides and the paused marker. The render adapter shall clear any pause-related visuals.
+**STATE-05.** Auto-resume (STATE-04) shall preserve `task` and `project` overrides set by STATE-03.
 
-### 3.6 Skill-driven signals (SKILL)
+**STATE-06.** When the user invokes `resume`, the plugin shall remove all overrides and the description. The render adapter shall clear the marginalia overlay.
 
-**SKILL-01.** The plugin shall include a skill that instructs Claude to invoke `signal stage plan` when the conversation transitions to a planning/architecting phase that hooks cannot observe (e.g., entry to plan mode).
+**STATE-07.** `pause [<note>]` shall be a synonym for `status paused [<note>]`. `resume` (STATE-06) is the natural inverse for both surfaces.
 
-**SKILL-02.** The skill shall instruct Claude to invoke `signal stage review` when the user requests inspection, code review, or QA work that hooks cannot reliably distinguish from `dev`.
+### 3.6 Skill responsibilities (SKILL)
 
-**SKILL-03.** The skill shall instruct Claude not to invoke beacon for signals already covered by hooks (status, dev/shipping stages).
+**SKILL-01.** The skill shall instruct Claude not to invoke beacon for signals already covered by hooks (status transitions during a turn).
 
-**SKILL-04.** The skill shall instruct Claude not to narrate its beacon invocations to the user.
+**SKILL-02.** The skill shall instruct Claude not to narrate its beacon invocations to the user.
 
-**SKILL-05.** The skill shall, on first invocation per session, compare `beacon --version` against `<plugin-root>/.claude-plugin/plugin.json#version` and offer `/beacon:beacon install` (or equivalent) when they differ. This catches CLI-wrapper drift after a plugin upgrade — the same drift signal CMD-13 / Architecture Rule 11 cover from the hook side.
+**SKILL-03.** The skill shall, on first invocation per session, compare `beacon --version` against `<plugin-root>/.claude-plugin/plugin.json#version` and offer `/beacon:beacon install` (or equivalent) when they differ. This catches CLI-wrapper drift after a plugin upgrade — the same drift signal CMD-13 / Architecture Rule 11 cover from the hook side.
 
 ### 3.7 Slash command (CMD)
 
-**CMD-01.** When the user invokes `show`, the plugin shall display each signal's current value, the provider that supplied it, and whether the session is paused.
+**CMD-01.** When the user invokes `show`, the plugin shall display each signal's current value, the provider that supplied it, and the description (if set).
 
 **CMD-02.** When the user invokes `set <field> <value>`, the plugin shall apply OVR-01 and re-render.
 
 **CMD-03.** When the user invokes `clear [<field>]`, the plugin shall apply OVR-03 or OVR-04 and re-render.
 
-**CMD-04.** When the user invokes `pause [<note>]`, the plugin shall apply PAUSE-01..03 and re-render.
+**CMD-04.** When the user invokes `status <value> [<description>]`, the plugin shall apply STATE-01..03 (the project/task snapshot in STATE-03 fires only for `paused`) and re-render. When the user invokes `pause [<note>]`, the plugin shall treat it as `status paused [<note>]` per STATE-07.
 
-**CMD-05.** When the user invokes `resume`, the plugin shall apply PAUSE-06 and re-render.
+**CMD-05.** When the user invokes `resume`, the plugin shall apply STATE-06 and re-render.
 
 **CMD-06.** When the user invokes `reset`, the plugin shall remove all per-session state and clear all render-adapter surfaces.
 
@@ -251,8 +212,6 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 **CMD-08.** When the user invokes `install`, the plugin shall perform every bootstrap step the active render adapter can complete without an iTerm2 restart, print one line per step, and emit a deferred-action notice for any steps it cannot complete in-place (see CMD-12). The adapter's specific step list is captured in the adapter section — for iTerm2, see STATUS-BAR-01 and OVERLAY-04.
 
 **CMD-09.** When the user invokes `completions zsh`, the plugin shall install a tab-completion script such that `beacon <TAB>` works in a fresh zsh session. With `--print`, the plugin shall print the script to stdout instead of installing. Install location and `fpath` plumbing are implementation details (see §6.5).
-
-**CMD-10.** When the user invokes `signal <field> <value>`, the plugin shall write a non-override signal for that field (distinct from `set` per OVR-01, which writes an override). Skill-driven invocations (SKILL-01..02) use this surface so that a skill-promoted stage does not survive `clear` of the user's own overrides.
 
 **CMD-12.** When the user invokes `exclusive-configuration`, the plugin shall apply iTerm2 prefs that require iTerm2 to be fully quit (because iTerm2 caches prefs in memory and overwrites the plist on quit). The covered prefs are:
 
@@ -269,7 +228,7 @@ Behavior:
 
 **CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. This is the back-end for the `↖ web` action chip's coprocess (STATUS-BAR-02). When invoked as `open-url`, the plugin shall open the resolved `url` in the user's default browser. Both subcommands read from the per-session handoff files written by the shell integration (STATUS-BAR-05).
 
-**CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, paused) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
+**CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, description) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
 
 **CMD-16.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
 
@@ -288,14 +247,13 @@ beacon writes to **exactly four surfaces** of an iTerm2 window. Every other surf
 │ STATUS BAR  ↖ web · project   branch   cwd ↗    │ ← §4.4 fixed layout, two springs
 ├─────────────────────────────────────────────────┤
 │                                       ┌────────┐│
-│   pane content (terminal output)      │ project││ ← §4.3 badge
-│                                       │ + color││   text + status-driven color
-│                                       └────────┘│
-│   ┌──────────────┐                              │
-│   │  pause card  │ ← §4.5 background image      │
-│   │  (only       │   (only when paused)         │
-│   │   on pause)  │                              │
-│   └──────────────┘                              │
+│   pane content                        │ project││ ← §4.3 badge
+│                                       └────────┘│   in top-right corner
+│                                 ╭─────────────╮ │
+│                                 │█ PAUSED ·   │ │
+│                                 │█             │ │ ← §4.5 background image
+│                                 │█ description │ │   (when status has
+│                                 ╰─────────────╯ │    a description)
 └─────────────────────────────────────────────────┘
 ```
 
@@ -320,7 +278,7 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-04.** When invoked as `beacon-iterm bg-image <path>`, the CLI shall set the per-session background image via `OSC 1337 SetBackgroundImageFile=<base64(path)>`. When invoked as `beacon-iterm bg-image clear`, the CLI shall clear the per-session image.
 
-**CLI-05.** When invoked as `beacon-iterm note <text> [--out <path>]`, the CLI shall compose a pause-overlay image (a left-anchored marginalia card carrying `<text>`, per OVERLAY-01), save it (to `<path>` if provided, else a tempfile), and set it as the per-session background image.
+**CLI-05.** When invoked as `beacon-iterm note <label> <text> [--out <path>]`, the CLI shall compose a marginalia overlay image (a right-anchored card carrying `<text>` under the uppercase status `<label>` per OVERLAY-01), save it (to `<path>` if provided, else a tempfile), and set it as the per-session background image. The `<text>` accepts a small markdown subset (first line of a multi-line note is the heading; `*`-runs toggle bold, `_`-runs toggle italic); the renderer is the single source of truth for which markers it honors.
 
 **CLI-06.** When invoked as `beacon-iterm badge-format <template>`, the CLI shall set the per-session badge format via `OSC 1337 SetBadgeFormat=<base64(template)>`. The template may reference user variables as `\(user.foo)`; iTerm2 re-evaluates the template whenever any referenced variable changes.
 
@@ -392,9 +350,9 @@ flowchart LR
 
 The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked` / `blocked-idle`) are the contract. The `blocked-idle` state is reserved for idle-prompt subtype waiting (BADGE-15 / HOOK-03b) and shares `blocked`'s red hex; it differs only in its watermark.
 
-**BADGE-09a.** Two flags take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying `signal.status`. Precedence is `paused` > `pending-attention` — pause is the most explicit user intent; pending attention demands action:
+**BADGE-09a.** Two conditions take precedence over the BADGE-09 mapping and force a fixed color state regardless of the underlying provider chain. Precedence is `status=paused` (when set via override) > `pending-attention` — pause is the most explicit user intent; pending attention demands action:
 
-- The `paused` marker (PAUSE-01) forces the `paused` state (BADGE-10) — pause is a user-initiated halt, distinct from being blocked on the user.
+- `override.status = paused` (STATE-01) forces the `paused` state (BADGE-10) — pause is a user-initiated halt, distinct from being blocked on the user.
 - The `pending-attention` marker (HOOK-03b) forces the `blocked` state when the recorded subtype is `permission` and `blocked-idle` when the subtype is `idle`. Both are sticky over the BADGE-09 mapping so a stray PostToolUse from an earlier tool can't repaint the badge `busy` while a prompt is still open.
 
 When neither flag is set, BADGE-09 applies.
@@ -412,7 +370,7 @@ When neither flag is set, BADGE-09 applies.
 - `blocked` shall carry an `!` watermark — the hard-blocking case (permission prompt) where Claude cannot proceed without a human answer.
 - `blocked-idle` shall carry a `?` watermark — the softer case (idle prompt) that is often a spurious "Claude is idle" signal during background work.
 
-States without a configured image render no watermark. Paused state's image (the marginalia card, OVERLAY-01) is dynamic and takes precedence: while paused, the card overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume.
+States without a configured image render no watermark. The marginalia card (OVERLAY-01) is dynamic and takes precedence whenever the session has a non-empty description: the card overlays whatever static state image the underlying status would otherwise show, and is cleared automatically on resume / `clear`.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
@@ -502,7 +460,7 @@ flowchart LR
     CLEAR3 --> HIDE
 ```
 
-**OVERLAY-01.** When `pause` is invoked with a note (PAUSE-03), the plugin shall invoke `beacon-iterm note <text>` to render and paint the pause overlay. The overlay shall lay out as a left-anchored marginalia card on an otherwise transparent canvas: a vertical lifted-dark Dracula panel pinned to the left side of the pane, with a vertical accent stripe in the action-affordance hue (pink, THEME-03) running the card's full height; the card carries an uppercase `PAUSED` label in pink, a comment-colored timestamp on the same baseline, a short editorial separator rule, and the note body in Dracula foreground at a size that reads a sentence or two from a half-focused pane. The remainder of the canvas stays transparent. The overlay is painted via OSC `SetBackgroundImageFile` so it layers over the active status profile's static state image (BADGE-15) without modifying any profile. **After the paint, the plugin shall invoke `clear-screen` (CLI-15)** to wipe the visible TUI text from on top of the overlay — iTerm2 bg images render *behind* terminal content, so an active TUI (Claude Code's chips, input box, transcript) otherwise overlays the card and obliterates legibility; scrollback is preserved so the user can scroll up to recover pre-pause history. On resume, the plugin invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and restores the new status profile's static image; the plugin shall not emit an explicit `bg-image clear`. The TUI re-renders its own contents on the next event tick (typically the user's resume prompt), so no explicit redraw is required on the resume path.
+**OVERLAY-01.** When a session has a non-empty description (STATE-02 — set by `status <value> [<description>]`, `pause [<note>]`, or the natural-language pause-intent path), the plugin shall invoke `beacon-iterm note <text>` to render and paint the marginalia overlay. The overlay shall lay out as a right-anchored card with a small top inset so it clears the iTerm2 status bar (the bg image fills the entire pane region, so a flush-top card visually merges with the status bar above it). The card is a lifted-dark Dracula panel with a vertical accent stripe in the action-affordance hue (pink, THEME-03) running the card's full height on its inner (left) edge — separating the card from the body content of the pane. The badge sits in its profile-configured top-right corner, above the card. The card carries an uppercase status label (`PAUSED` / `WAITING` / etc.) in pink, a comment-colored timestamp on the same baseline, an optional bold subhead, and the description body in Dracula foreground at a size that reads a sentence or two from a half-focused pane. The description text supports a small markdown subset: a multi-line note treats the first non-empty line as the subhead and the remaining lines as the body; within heading and body, any run of `*` chars toggles bold and any run of `_` chars toggles italic — quantity within a run is irrelevant (`*x*` and `**x**` both render the same), and markers compose (`*_x_*` → bold italic). Default body weight is medium. The remainder of the canvas stays transparent. The overlay is painted via OSC `SetBackgroundImageFile` so it layers over the active status profile's static state image (BADGE-15) without modifying any profile. **After the paint, the plugin shall invoke `clear-screen` (CLI-15)** to wipe the visible TUI text from on top of the overlay — iTerm2 bg images render *behind* terminal content, so an active TUI (Claude Code's chips, input box, transcript) otherwise overlays the card and obliterates legibility; scrollback is preserved so the user can scroll up to recover pre-overlay history. When the description is cleared (resume, `clear`, or a fresh prompt that auto-resumes a paused session), the plugin invokes `set-profile` (CLI-14) which atomically wipes the OSC overlay and restores the new status profile's static image; the plugin shall not emit an explicit `bg-image clear`.
 
 **OVERLAY-02.** On source, the shell integration shall discard any background image inherited from a parent pane (iTerm2's `PerPaneBackgroundImage` setting prevents drift between panes once they diverge but does not clear the inherited image when a pane is created via split). The user-visible effect is that a paused pane's overlay does not carry over into a fresh split. This applies only to OSC-level overlays — static state images live in their respective dynamic profiles and are not subject to inheritance.
 
@@ -554,7 +512,7 @@ Four hues do all the work: **green / orange / red** for the calm/working/blocked
 | `busy`         | `#ffb86c` | orange       | working — UserPromptSubmit, Pre/PostToolUse                        |
 | `blocked`      | `#ff5555` | red          | waiting — permission prompt; `!` watermark (BADGE-09 / -15)        |
 | `blocked-idle` | `#ff5555` | red          | waiting — idle prompt; `?` watermark (BADGE-09 / -15)              |
-| `paused`       | `#6272a4` | comment      | pause flag (de-emphasized; BADGE-10)                               |
+| `paused`       | `#6272a4` | comment      | `override.status = paused` (de-emphasized; BADGE-10)               |
 
 **THEME-03.** The status-bar chip text colors map purpose to Dracula hex. Three roles, three hues — action chips share one accent; identity chips share the de-emphasized comment color; branch chips reuse the badge state palette:
 
@@ -622,9 +580,8 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 ┌────────────────────────┐  ┌────────────────────────────┐
 │  Plugin state          │  │  (shell — stateless;       │
 │  ├─ override.{...}     │  │   recomputes per prompt)   │
-│  ├─ signal.{stage,     │  └────────────────────────────┘
-│  │           status}   │              │
-│  ├─ paused             │              │
+│  ├─ signal.status      │  └────────────────────────────┘
+│  ├─ description        │              │
 │  └─ note-image         │              │
 └────────────────────────┘              │
             │                           │
@@ -650,9 +607,9 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 ### 6.2 State storage (plugin only)
 
 ```
-state/<session-hash>.override.{project,task,stage,status}
-state/<session-hash>.signal.{stage,status}
-state/<session-hash>.paused
+state/<session-hash>.override.{project,task,status,url}
+state/<session-hash>.signal.status
+state/<session-hash>.description
 state/<session-hash>.pending-attention
 state/<session-hash>.note-image
 state/<session-hash>.resolved
@@ -766,20 +723,16 @@ apply(state):
   place engagement marker for this pane                        # BADGE-14
   if first render of this session:
     beacon-iterm badge-format <template>
-  logical_state = paused       if state.paused                              # BADGE-09a + BADGE-10
+  logical_state = paused       if state.status == "paused"                 # BADGE-09a + BADGE-10
                 else blocked-idle if pending_attention == "idle"             # BADGE-09a + BADGE-15
                 else blocked     if state.pending_attention                  # BADGE-09a precedence
                 else STATUS_TO_BADGE_STATE[state.status]                     # BADGE-09 mapping
-  if logical_state changed:
-    if logical_state == paused:
-      beacon-iterm badge-color <paused_hex>                    # OSC overlay
-      beacon-iterm tab-color   <paused_hex>                    # OSC overlay
-      if note is new:
-        beacon-iterm note <text>                               # OSC overlay
-        beacon-iterm clear-screen                              # OVERLAY-01:
-                                                                # CSI 2J + H so
-                                                                # the card has a
-                                                                # clean canvas
+  if logical_state changed or description changed:
+    if state.description is non-empty:
+      beacon-iterm badge-color <logical_state_hex>             # OSC overlay (keeps the
+      beacon-iterm tab-color   <logical_state_hex>             # marginalia card readable
+      beacon-iterm note <label> <description>                  # OSC overlay
+      beacon-iterm clear-screen                                # OVERLAY-01: CSI 2J + H
     else:
       beacon-iterm set-profile beacon-<logical_state>          # atomic profile swap
                                                                 # — wipes any prior OSC overlays
@@ -792,7 +745,7 @@ Diff-against-previous keeps the per-render escape-sequence count low — typical
 
 ### 6.8 Skill
 
-A skill at `skills/beacon/SKILL.md` instructs Claude to invoke beacon only as a backstop where hooks cannot observe a transition. See SKILL-01 .. SKILL-04.
+A skill at `skills/beacon/SKILL.md` covers CLI-wrapper freshness (SKILL-03) and conventions (SKILL-01, -02). It carries no stage-signaling responsibility — that surface is gone with stage.
 
 ### 6.9 Slash command
 
@@ -865,7 +818,7 @@ The wrapper at `~/.local/bin/beacon` does not auto-refresh on plugin upgrade. Th
 - Shell adapters other than zsh (bash, fish) — same architectural posture.
 - Drivers other than Claude Code (other agents, CI hooks) — the CLI is usable from any caller, but only the Claude Code plugin ships in v1.
 - Cross-machine session sync.
-- Historical state browsing (timeline of stages, time-on-task).
+- Historical state browsing (timeline of status transitions, time-on-task).
 - Mobile / remote notifications.
 - Integration with external task systems (Linear, Jira) as a `task` provider.
 - Stage transitions driven by file-content analysis.

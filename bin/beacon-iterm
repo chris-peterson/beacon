@@ -9,7 +9,7 @@ Stateless CLI. Subcommands paint one surface each:
   set-profile  — switch the session's dynamic profile (SetProfile=)
   attention    — request dock attention once
   bg-image     — set the per-session background image
-  note         — compose a pause overlay (marginalia card) and paint it as bg-image
+  note         — compose a marginalia overlay (status label + description) and paint it as bg-image
   clear        — restore all surfaces to profile defaults
   clear-screen — clear the visible terminal viewport (scrollback preserved)
 """
@@ -186,7 +186,7 @@ def cmd_note(args):
         os.close(fd)
         out = Path(tmp)
     cw, ch = _detect_pane_pixels()
-    compose_note(args.text, out, w=cw, h=ch)
+    compose_note(args.label, args.text, out, w=cw, h=ch)
     _osc(f"1337;SetBackgroundImageFile={_b64(str(out))}")
 
 
@@ -278,8 +278,9 @@ def main(argv=None):
     sp.add_argument("path")
     sp.set_defaults(func=cmd_bg_image)
 
-    sp = sub.add_parser("note", help="compose a pause overlay and paint as bg image")
-    sp.add_argument("text")
+    sp = sub.add_parser("note", help="compose a marginalia overlay and paint as bg image")
+    sp.add_argument("label", help="uppercase status label (e.g. PAUSED, WAITING)")
+    sp.add_argument("text", help="description body")
     sp.add_argument("--out")
     sp.set_defaults(func=cmd_note)
 

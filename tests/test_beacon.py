@@ -309,17 +309,19 @@ class PendingAttentionPicksWatermarkProfile(BeaconTest):
         )
 
 
-class PausedUsesOSCOverlay(BeaconTest):
-    """BADGE-10 + RENDER-04 + §6.6: paused state is exempt from profile
-    switching. The plugin overlays badge-color, tab-color, and note image
-    via OSC on top of whatever profile is currently active."""
+class DescriptionOverlay(BeaconTest):
+    """OVERLAY-01 + RENDER-04: a non-empty description triggers the OSC
+    marginalia overlay (badge-color, tab-color, bg-image + clear-screen)
+    on top of whatever profile is active. Clearing the description goes
+    back to the profile-driven path."""
 
-    def test_entering_pause_emits_osc_overlay(self):
+    def test_paused_with_description_emits_osc_overlay(self):
         self.beacon.apply({**_base_state(), "status": "working"})
         self.cli_calls.clear()
 
         self.beacon.apply({
-            **_base_state(), "status": "idle", "paused": True,
+            **_base_state(), "status": "paused",
+            "description": "leaving for lunch",
             "note_image": "/tmp/note.png",
         })
 
@@ -339,19 +341,38 @@ class PausedUsesOSCOverlay(BeaconTest):
         for call in self.cli_calls:
             self.assertNotEqual(
                 call[0], "set-profile",
-                "Entering pause must not switch profiles — overlay only",
+                "Entering an overlay must not switch profiles — OSC only",
             )
 
-    def test_leaving_pause_emits_set_profile_only(self):
-        # The set-profile call atomically wipes the OSC overlay; no
-        # explicit `bg-image clear` should be needed.
+    def test_waiting_with_description_uses_blocked_hex(self):
+        # `status waiting "bg refresh"` reuses the blocked palette so the
+        # at-a-glance color signal still says "this session is parked on
+        # something" — the description carries the why.
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+
         self.beacon.apply({
-            **_base_state(), "status": "working", "paused": True,
+            **_base_state(), "status": "waiting",
+            "description": "bg refresh ~30 min",
+            "note_image": "/tmp/note.png",
+        })
+
+        blocked_hex = self.beacon.BADGE_COLOR_PALETTE["blocked"]
+        self.assertIn(("badge-color", blocked_hex), self.cli_calls)
+        self.assertIn(("tab-color", blocked_hex), self.cli_calls)
+        self.assertIn(("bg-image", "/tmp/note.png"), self.cli_calls)
+
+    def test_clearing_description_emits_set_profile_only(self):
+        # set-profile atomically wipes the OSC overlay; no explicit
+        # `bg-image clear` should be needed.
+        self.beacon.apply({
+            **_base_state(), "status": "paused",
+            "description": "leaving",
             "note_image": "/tmp/note.png",
         })
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "working", "paused": False})
+        self.beacon.apply({**_base_state(), "status": "working"})
 
         self.assertIn(("set-profile", "beacon-busy"), self.cli_calls)
         bg_clears = [c for c in self.cli_calls
@@ -515,9 +536,8 @@ def _base_state() -> dict:
     return {
         "project": "acme/widget", "project_provider": "git-remote",
         "task": "", "task_provider": "default",
-        "stage": "none", "stage_provider": "default",
         "status": "idle", "status_provider": "default",
-        "paused": False,
+        "description": "",
         "pending_attention": False,
         "note_image": None,
     }
