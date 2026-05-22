@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.17.0
+
+### Breaking Changes
+- The `stage` signal is gone. `beacon stage …`, `beacon set stage …`, `beacon signal stage …`, and `beacon clear stage` no longer exist and fail with an argparse error. Stage never had a render surface (it only appeared in `beacon show`); folding the visible behaviors into `status` simplified the model.
+- The `signal` subcommand is removed — it existed solely to feed `stage` from the skill. The skill no longer signals stage transitions on plan-mode entry or code-review requests.
+- `beacon-iterm note` now requires a label: `note <label> <text>` (the uppercase status — `PAUSED`, `WAITING`, etc.). Direct callers must update; the plugin's internal callers are updated in this release.
+
+### Features
+- `status` accepts a free-text description that drives a marginalia card on the right edge of the pane: `beacon status waiting "bg data refresh ~30 min"` parks the card with that note while the badge flips to red. Useful for "I'm waiting on something async, not Claude."
+- `paused` is now a fourth `status` value. The marginalia card renders for any user-set status with a description, not just paused; the card label tracks the live status (`PAUSED`, `WAITING`, …).
+- `pause [<note>]` stays as shorthand for `status paused [<note>]` — muscle memory unaffected. Auto-resume on prompt submission fires only for `paused`; other user-set statuses survive the next turn.
+
+### Other
+- iTerm2 notification-center delivery and terminal-generated alerts are disabled on the beacon profile (`BM Growl: false`, `Send Terminal Generated Alerts: false`). They duplicated the badge color signal and could transiently overlay the badge.
+- Spec rewrite: §1.3 (stage values) and §1.5 (stage vs status) deleted; §3.5 PAUSE renamed to STATE covering user-set status + description. `CMD-10` (`signal`) gone; `STATE-*` IDs replace `PAUSE-*`.
+- Hook handlers no longer promote stage on `Write` / `Edit` / `Bash` / `ExitPlanMode`. The deploy regex is gone.
+
+### Migration
+- Re-run `python3 scripts/beacon install` after upgrading. The profile template gained `BM Growl: false` and `Send Terminal Generated Alerts: false` — without re-install the existing profile still fires Claude Code's permission/idle alerts as duplicate notifications.
+- If any external scripts call `beacon stage …`, `beacon signal stage …`, or `beacon-iterm note <text>` (the single-arg form), update them. The arg surface changed.
+
 ## 0.16.0
 
 ### Features
