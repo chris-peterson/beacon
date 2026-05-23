@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.18.0
+
+### Features
+- Overlay descriptions now support bulleted lists (`* item` per line) and strikethrough (`~text~`), in addition to the existing `*bold*` and `_italic_` markers.
+
+### Fixes
+- Strikethrough renders as a single continuous line across struck words instead of one segment per word — no more visible gaps or wobble.
+- Long overlay text no longer overflows past the card's bottom or right edge. Content past the card truncates with an ellipsis. Body text also stays at a consistent size across notes (previously the font shrank to fit, making the same overlay look different sizes for different inputs).
+
+### Other
+- Added `just preview` — renders an HTML gallery of representative overlays at `.preview/index.html` for visual iteration without launching iTerm2.
+- Added 67 tests covering the overlay compositor (parser, block splitting, layout, strike-run merging, oversized-word truncation, smoke render).
+- Spec updates: OVERLAY-01 and CLI-05 enumerate the expanded markdown subset; §6.11 names a daemon-backed headless renderer as the eventual escape hatch.
+
 ## 0.17.0
 
 ### Breaking Changes
