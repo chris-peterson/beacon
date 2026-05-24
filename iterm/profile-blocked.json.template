@@ -20,8 +20,7 @@
         "Blue Component":  0.333
       },
       "Background Image Location": "__BEACON_BLOCKED_IMAGE__",
-      "Background Image Mode": 2,
-      "Blend": 0.20
+      "Background Image Mode": 2
     }
   ]
 }

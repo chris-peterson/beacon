@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.18.1
+
+### Fixes
+- Marginalia card no longer renders faintly when a description is set while the session is also showing a permission/idle prompt. The `beacon-blocked` and `beacon-blocked-idle` profiles were forcing `Blend: 0.20` for the red `!` / `?` watermark; that dilution bled into the card painted on top via OSC. Blend is now `1.0` across every state profile, and the watermark PNGs carry their pre-faded alpha so they still read as a quiet backdrop.
+
+### Migration
+- Re-run `python3 scripts/beacon install` after upgrading so iTerm2 picks up the updated `beacon-blocked` / `beacon-blocked-idle` profile templates (without re-install, the cached profiles keep `Blend: 0.20`).
+
 ## 0.18.0
 
 ### Features
