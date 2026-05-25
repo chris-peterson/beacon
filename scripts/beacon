@@ -1304,7 +1304,6 @@ def apply(state: dict):
     s = state["status"]
 
     prev = read_state_json("resolved", {})
-    prev_status = prev.get("status")
 
     # BADGE-14: marker presence is the shell snippet's engagement gate.
     place_engagement_marker()
@@ -1357,10 +1356,6 @@ def apply(state: dict):
     task_text = state["task"]
     if prev.get("task") != task_text:
         _cli("uservar", "beacon_task", f": {task_text}" if task_text else "")
-
-    # Dock attention: only on transition into waiting.
-    if s == "waiting" and prev_status != "waiting":
-        _cli("attention")
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],

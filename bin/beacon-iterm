@@ -7,7 +7,6 @@ Stateless CLI. Subcommands paint one surface each:
   badge-color  — set the per-session badge color (SetColors=badge=)
   tab-color    — set the per-tab color (SetColors=tab=)
   set-profile  — switch the session's dynamic profile (SetProfile=)
-  attention    — request dock attention once
   bg-image     — set the per-session background image
   note         — compose a marginalia overlay (status label + description) and paint it as bg-image
   clear        — restore all surfaces to profile defaults
@@ -145,10 +144,6 @@ def cmd_badge_format(args):
     _osc(f"1337;SetBadgeFormat={_b64(args.template)}")
 
 
-def cmd_attention(_args):
-    _osc("1337;RequestAttention=once")
-
-
 def cmd_set_profile(args):
     # Profile names must exist in iTerm2's DynamicProfiles dir. iTerm2
     # silently ignores unknown names, so this fails quietly if the caller
@@ -266,9 +261,6 @@ def main(argv=None):
     sp = sub.add_parser("badge-format", help="set the per-session badge format template")
     sp.add_argument("template")
     sp.set_defaults(func=cmd_badge_format)
-
-    sp = sub.add_parser("attention", help="bounce dock once")
-    sp.set_defaults(func=cmd_attention)
 
     sp = sub.add_parser("set-profile", help="switch session profile (SetProfile=)")
     sp.add_argument("name")

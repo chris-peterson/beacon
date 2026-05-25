@@ -1,6 +1,6 @@
 # beacon — Specification
 
-At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and what's happening right now (status, with an optional user-supplied description) on a render target the user can scan without focusing — terminal background, badge, color, dock.
+At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and what's happening right now (status, with an optional user-supplied description) on a render target the user can scan without focusing — badge, tab color, and a marginalia card for richer context.
 
 This document specifies requirements in [EARS](https://alistairmavin.com/ears/) form and outlines the first implementation: a CLI plus a Claude Code plugin targeting iTerm2 on macOS with zsh.
 
@@ -44,7 +44,7 @@ A surface where signal state becomes visible. Render targets are pluggable; the 
 Three components write to iTerm2:
 
 - **CLI** (`beacon-iterm`) — a stateless executable that translates simple commands into iTerm2 escape sequences and writes them to `/dev/tty`. Knows nothing about signals, sessions, or projects. The only writer that touches iTerm2 directly.
-- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks and slash commands. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `status`, the status description, the marginalia overlay, and dock attention.
+- **Plugin** (`beacon`) — a Claude Code plugin reacting to hooks and slash commands. Resolves signals through a chain-of-responsibility engine, then invokes the CLI to surface results. Owns `status`, the status description, and the marginalia overlay.
 - **Shell integration** — a sourceable zsh snippet shipped with the plugin. Owns `project` and `branch`, refreshed on every prompt. Calls the CLI directly to publish user vars; never goes through the plugin.
 
 The plugin and shell write to disjoint user-var slots, so neither overwrites the other. The badge format (set once on the iTerm2 profile) consumes the relevant slots and re-evaluates whenever any var changes.
@@ -293,8 +293,6 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 **CLI-11.** When invoked as `beacon-iterm tab-color <hex|default>`, the CLI shall set the per-tab color via `OSC 1337 SetColors=tab=<hex>` (or `=default` to revert). The hex is 6 digits without a leading `#`. iTerm2 binds tab color to the tab containing the calling session; in multi-pane tabs the most-recent painter wins, which the user is expected to manage via a tabs-not-panes workflow (one Claude session per tab).
 
 **CLI-12.** When invoked as `beacon-iterm uservar-batch`, the CLI shall read newline-separated `<name>=<value>` pairs from stdin and publish each via the same OSC 1337 `SetUserVar` mechanism as CLI-03, in a single process invocation. This reduces flicker when SessionStart paints the full status-bar slot set (HOOK-08), where 10 sequential CLI invocations produced visible incremental redraws.
-
-**CLI-13.** When invoked as `beacon-iterm attention`, the CLI shall request iTerm2 dock attention via `OSC 1337 RequestAttention=once`. Used by the plugin when `signal.status = waiting` (HOOK-03) to bounce the dock icon for sessions blocked on the user.
 
 **CLI-14.** When invoked as `beacon-iterm set-profile <name>`, the CLI shall switch the current session's profile via `OSC 1337 SetProfile=<name>`. The named profile must exist in iTerm2's DynamicProfiles directory; iTerm2 silently ignores unknown names, which the plugin treats as a fatal install-time misconfiguration rather than a runtime error. A profile switch atomically applies the new profile's `Badge Color` (with alpha), `Tab Color`, and `Background Image Location` — and atomically wipes any prior session-specific OSC overrides for those keys. This atomic wipe-and-apply is the mechanism behind RENDER-04's resume-from-pause cleanup.
 
@@ -596,8 +594,7 @@ The base dynamic profile stores chip colors as RGB float components (sRGB). Stat
 │  beacon-iterm CLI (the only writer to iTerm2)            │
 │  ├─ uservar     ├─ badge-format ├─ badge-color          │
 │  ├─ tab-color   ├─ set-profile  ├─ bg-image             │
-│  ├─ note        ├─ attention    ├─ clear                 │
-│  └─ clear-screen                                         │
+│  ├─ note        ├─ clear        ├─ clear-screen          │
 └──────────────────────────────────────────────────────────┘
                          │
                          ▼
@@ -626,7 +623,7 @@ The shell side and the CLI are both stateless: each shell prompt recomputes proj
 
 A single Python 3 script with subcommand dispatch. Dependencies:
 
-- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `tab-color`, `set-profile`, `attention`, `bg-image`, `clear`, `clear-screen`.
+- **stdlib only** for `uservar`, `badge-format`, `badge-color`, `tab-color`, `set-profile`, `bg-image`, `clear`, `clear-screen`.
 - **Pillow** required for `note` (pause overlay composition). When missing, `note` exits non-zero with `"Pillow required for note composition; install via 'pip install Pillow'"`.
 
 All subcommands open `/dev/tty` lazily, write the escape sequence, flush, and close. No persistent process, no shared state.
@@ -736,8 +733,6 @@ apply(state):
     else:
       beacon-iterm set-profile beacon-<logical_state>          # atomic profile swap
                                                                 # — wipes any prior OSC overlays
-  if status transitioned to waiting:
-    beacon-iterm attention
 write state/<sid>.resolved (provenance snapshot)
 ```
 

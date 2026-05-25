@@ -35,7 +35,7 @@ Per docs/spec.md §4.1 — these and only these:
 
 beacon does **not** paint: terminal bg/fg, window title, tab title, cursor color/shape. These belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice.
 
-beacon profiles also explicitly **disable** iTerm2's notification-center delivery (`BM Growl: false`) and terminal-generated alerts (`Send Terminal Generated Alerts: false`). Claude Code triggers these on permission prompts and idle prompts, but beacon already surfaces both via badge color + watermark + dock attention — duplicate notifications add no signal and can transiently overlay the badge.
+beacon profiles also explicitly **disable** iTerm2's notification-center delivery (`BM Growl: false`) and terminal-generated alerts (`Send Terminal Generated Alerts: false`). Claude Code triggers these on permission prompts and idle prompts, but beacon already surfaces both via badge color + watermark — duplicate notifications add no signal and can transiently overlay the badge.
 
 ## Logical states are the contract
 
