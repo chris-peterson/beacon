@@ -228,10 +228,11 @@ _beacon "$@"
 # `paused` is de-emphasized (Dracula comment) so a parked session reads
 # distinct from one blocked on the user (BADGE-10).
 BADGE_COLOR_PALETTE = {
-    "ready":   "50fa7b",
-    "busy":    "ffb86c",
-    "blocked": "ff5555",
-    "paused":  "6272a4",
+    "ready":        "50fa7b",
+    "busy":         "ffb86c",
+    "blocked":      "ff5555",
+    "blocked-idle": "ff5555",
+    "paused":       "6272a4",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -931,7 +932,11 @@ def _publish_anchor(cwd: Path) -> None:
 
     SessionStart-only: publishes chips via `_publish_chips`, then anchors
     `beacon_project` (badge text fallback) and clears `beacon_task` so a
-    fresh session starts from a known state."""
+    fresh session starts from a known state. The cwd and resolved project
+    are persisted as `anchor.cwd` / `anchor.project` so the Stop hook
+    (HOOK-08b) re-resolves chips from this fixed anchor rather than trusting
+    each turn's payload cwd — the anchor is beacon's own record of where the
+    session began, not an implicit property of Claude's hook payloads."""
     _publish_chips(cwd)
 
     project = _project_name_at(cwd)
@@ -940,6 +945,8 @@ def _publish_anchor(cwd: Path) -> None:
     # project, fall back to the abbreviated cwd so the badge always carries
     # spatial context.
     project_display = project or local_path
+    write_state("anchor.cwd", str(cwd))
+    write_state("anchor.project", project_display)
     _cli("uservar-batch", f"beacon_project={project_display}", "beacon_task=")
 
 
@@ -1312,10 +1319,12 @@ def apply(state: dict):
     if not prev:
         _cli("badge-format", BADGE_FORMAT)
 
-    # BADGE-09 + -09a. With no description, the logical state owns the
-    # color/tab/bg-image swap via SetProfile (atomic). With a description,
-    # we paint the marginalia overlay on top of the active profile via
-    # OSC: per-note bg image can't live in a static profile (OVERLAY-01).
+    # BADGE-09 + -09a / RENDER-04. Each non-paused logical state owns its
+    # color/tab/bg-image atomically via SetProfile. `paused` has no profile
+    # (PROFILE_STATES) — it is painted via OSC badge-color/tab-color, with or
+    # without a note. A description (overlay) likewise paints via OSC so the
+    # marginalia card lands on top of whatever profile is active; per-note bg
+    # images can't live in a static profile (OVERLAY-01).
     logical = _logical_state_for(state)
     prev_logical = prev.get("logical_state")
     note_image = state.get("note_image")
@@ -1323,23 +1332,30 @@ def apply(state: dict):
     has_overlay = bool(state.get("description")) and bool(note_image)
     prev_has_overlay = bool(prev.get("description")) and bool(prev_note_image)
 
-    if has_overlay:
-        # Marginalia overlay path: OSC on top of the active profile.
-        if logical != prev_logical or not prev_has_overlay:
+    use_osc = has_overlay or logical == "paused"
+    prev_use_osc = prev_has_overlay or prev_logical == "paused"
+
+    if use_osc:
+        if logical != prev_logical or not prev_use_osc:
             hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["paused"])
             _cli("badge-color", hex_color)
             _cli("tab-color", hex_color)
-        if note_image != prev_note_image or not prev_has_overlay:
+        if has_overlay and (note_image != prev_note_image or not prev_has_overlay):
             _cli("bg-image", note_image)
             # iTerm2 bg images render *behind* terminal text. Clearing the
             # visible viewport gives the card a clean canvas; scrollback is
             # preserved so the user can still scroll back to pre-overlay
             # history.
             _cli("clear-screen")
-    elif logical != prev_logical or prev_has_overlay:
+        elif prev_has_overlay and not has_overlay:
+            # Dropped the card while staying in an OSC state (paused → paused
+            # without a note): no SetProfile fires to wipe the bg image, so
+            # clear it explicitly or the previous card lingers on screen.
+            _cli("bg-image", "clear")
+    elif logical != prev_logical or prev_use_osc:
         # Profile path: atomic SetProfile wipes any prior OSC overrides
-        # (color, tab, bg image), so coming back from an overlay needs no
-        # explicit cleanup.
+        # (color, tab, bg image), so coming back from an overlay or from
+        # paused needs no explicit cleanup.
         _cli("set-profile", f"beacon-{logical}")
 
     # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
@@ -1982,8 +1998,10 @@ def cmd_hook(args):
         # Refresh chips that may have drifted during the turn (branch the
         # agent created, tack context the user set). The shell's precmd
         # can't run while Claude holds the prompt, so the plugin covers
-        # the gap once per turn.
-        cwd_str = payload.get("cwd") or os.getcwd()
+        # the gap once per turn. HOOK-08b: resolve from the SessionStart
+        # anchor cwd (persisted by HOOK-08), not this turn's payload cwd —
+        # the anchor is fixed for the session even as chip values evolve.
+        cwd_str = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
         _publish_chips(Path(cwd_str))
 
     elif event == "Notification":

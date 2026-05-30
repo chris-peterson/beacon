@@ -1,16 +1,13 @@
 """beacon-iterm marginalia-overlay composition.
 
-Renders the marginalia overlay (OVERLAY-01) as a right-anchored card
-sitting just below the iTerm2 status bar — Dracula-themed:
+Renders the marginalia overlay (OVERLAY-01) as a compact card tucked
+into the top-right corner, resting a little under twice the badge's
+height — Dracula-themed:
 
-                                ╭──────────────────╮
-                                │ █                  │
-                                │ █ <LABEL> · 14:23  │
-                                │ █                  │
-                                │ █ description      │
-                                │ █ body…            │
-                                │ █                  │
-                                ╰──────────────────╯
+                                      ╭──────────────╮
+                                      │ █ <LABEL>      │
+                                      │ █ description… │
+                                      ╰──────────────╯
 
 The label is the uppercased status name (PAUSED, WAITING, etc.) passed
 in by the caller, so the same compose path serves any user-set status
@@ -18,12 +15,16 @@ with a description.
 
 A vertical pink accent stripe runs the full height of the card on the
 inner (left) edge — the "marginalia" marker that separates body content
-in the pane from the card. The card has a small top inset so it doesn't
-butt up against the iTerm2 status bar (the bg image fills the entire
-pane area, and a y=0 card visually merges with the status bar above it).
-The badge — at its profile-configured top margin — sits in the corner
-above the card. The left ~60% of the canvas is transparent so the
-underlying pane content stays legible when the user comes back.
+in the pane from the card. The card sits below the badge with a top
+inset large enough to clear aspect-fill's vertical crop (see
+CARD_TOP_FRAC). The badge — at its profile-configured top margin — sits
+above the card. The rest of the canvas is transparent so the underlying
+pane content stays legible, and so foreground terminal text redrawn over
+the bg image only competes with the card's small footprint.
+
+A long note grows the card downward (up to CARD_MAX_GROWTH x the resting
+height) and then shrinks the body font before it truncates, so more of a
+long note survives without enlarging the common short-note case.
 
 The note text supports a small markdown subset:
 - When the note has multiple lines, the first line renders as a bold
@@ -46,25 +47,47 @@ rest of beacon is stdlib-only.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 
 W, H = 1440, 1080
 
-CARD_GUTTER_FRAC = 0.04
-CARD_TOP_FRAC = 0.05
-CARD_WIDTH_FRAC = 0.38
-CARD_HEIGHT_FRAC = 0.55
-CARD_RADIUS = 18
-STRIPE_W = 8
-PAD_X = 50
-PAD_Y = 56
+# The overlay is a full-pane background image displayed under iTerm2's
+# aspect-fill mode (Background Image Mode 2), so the "card" is a small
+# panel in the top-right corner of an otherwise transparent canvas. Sizes
+# are fractions of the canvas so the card keeps its on-pane proportions
+# across pane sizes; per-card type and padding scale from card_h in
+# _card_metrics so the whole card shrinks as one unit.
+#
+# CARD_TOP_FRAC clears two things: the badge (profile Badge Max Height
+# ~0.06, top-right) and aspect-fill's vertical crop. The canvas aspect is
+# a guess — cols x cell_w by lines x cell_h — and when the real cell is
+# wider than the 7:16 estimate the pane is wider than the canvas, so
+# aspect-fill scales to width and crops top + bottom (centered). A card
+# flush to the top loses its label to that crop; the inset sits the card
+# below the cropped band. 0.14 absorbs the worst-case top crop for
+# realistic monospace cell ratios (~0.42–0.60); the deliberately narrow
+# 7:16 guess keeps the crop axis vertical (raising the guess toward 0.5
+# would instead crop the right edge and clip the card's outer corner), so
+# the matching horizontal risk stays under CARD_GUTTER_FRAC.
+CARD_WIDTH_FRAC = 0.28
+CARD_HEIGHT_FRAC = 0.13
+CARD_TOP_FRAC = 0.14
+CARD_GUTTER_FRAC = 0.05
 MASK_SS = 2
-LABEL_TRACKING = 6
-LABEL_PT = 54
-META_PT = 28
-HEADING_PT = 40
+
+# CARD_HEIGHT_FRAC is the resting height. A long note grows the card down to
+# CARD_MAX_GROWTH x that before any text is dropped; once the grown card is
+# full, the body font shrinks (down to CARD_MIN_FONT_SCALE of its resting
+# size) to pack more in, and only then does the body truncate. Short notes
+# never leave the resting height or the resting font.
+CARD_MAX_GROWTH = 2.0
+CARD_MIN_FONT_SCALE = 0.6
+
+# Reference body size and list indent for the layout/wrap helpers (and the
+# tests that drive them directly). compose_note renders at a card-scaled
+# size from _card_metrics, not these — these only set the helper defaults.
 BODY_PT = 38
+BULLET_INDENT = 28
 
 # Dracula palette (THEME-01..03 — same hues, different roles).
 #
@@ -77,25 +100,13 @@ BODY_PT = 38
 CARD_BG = (68, 71, 90, 255)      # #44475a — Dracula current line, lifted dark
 ACCENT = (255, 121, 198, 255)    # #ff79c6 — pink, action/affordance accent
 LABEL_HUE = (255, 121, 198, 255) # pink — sits crisply on the lifted-dark card
-META_HUE = (98, 114, 164, 255)   # #6272a4 — comment, de-emphasized timestamp
-RULE_HUE = (98, 114, 164, 180)   # comment @ ~70% alpha — short editorial rule
 HEADING_HUE = (248, 248, 242, 255)  # body fg for headings, weight carries emphasis
 BODY_HUE = (248, 248, 242, 255)  # #f8f8f2 — Dracula foreground, body ink
 
 BODY_MAX_LINES = 9
 HEADING_MAX_LINES = 2
 
-# Pixels of vertical breathing room reserved between the last body line
-# and the card's rounded bottom edge. compose_note caps the effective
-# line count at card_h - cursor_y - BODY_BOTTOM_PAD divided by line_h,
-# so content past the visible card area truncates with ellipsis instead
-# of bleeding into the transparent rounded-corner region.
-BODY_BOTTOM_PAD = 40
-
 BULLET_CHAR = "•"
-# Pixels added to text_left for list-item rows — clears the bullet
-# glyph + a small visual gap at BODY_PT.
-BULLET_INDENT = 28
 
 # (path, face_index) candidates per weight. HelveticaNeue ships separate
 # faces for Medium and Bold (and italic variants of both), so the body
@@ -417,12 +428,13 @@ Row = tuple[list[Word], int, bool]
 
 def _layout_body(
     draw, blocks: list[Block], fonts, body_max_w: int, max_lines: int,
+    bullet_indent: int = BULLET_INDENT,
 ) -> list[Row]:
     """Compose body rows from blocks, capping the total at `max_lines`.
 
     Paragraph blocks wrap at body_max_w and render flush-left. List-item
-    blocks wrap at body_max_w - BULLET_INDENT and render at x_offset
-    BULLET_INDENT so the bullet glyph + gap fits in the gutter. Only the
+    blocks wrap at body_max_w - bullet_indent and render at x_offset
+    bullet_indent so the bullet glyph + gap fits in the gutter. Only the
     first wrapped row of a list item carries the bullet — continuation
     rows hang-indent with no glyph. When the body would exceed
     max_lines, the last visible line is truncated with an ellipsis.
@@ -433,8 +445,8 @@ def _layout_body(
         if remaining <= 0:
             break
         if kind == "li":
-            wrap_w = body_max_w - BULLET_INDENT
-            x_off = BULLET_INDENT
+            wrap_w = body_max_w - bullet_indent
+            x_off = bullet_indent
         else:
             wrap_w = body_max_w
             x_off = 0
@@ -544,27 +556,144 @@ def _draw_tracked(draw, text: str, xy, font, fill, *, tracking: int = 0) -> int:
     return x
 
 
+def _card_metrics(card_h: int) -> dict[str, int]:
+    """Derive the frame, label, and resting body size from the resting card
+    height.
+
+    Every value is a fixed fraction of the resting height (CARD_HEIGHT_FRAC),
+    so the card reads at consistent proportions across pane sizes. Floors keep
+    the smallest panes legible. The label anchors the card and stays this size
+    even when a long note shrinks the body font (compose_note scales
+    `body_pt` down from here). Heading shares the body size — on a card this
+    small a separate large subhead would eat the whole height, so the first
+    line differentiates by weight (bold) alone, set off by generous margins
+    above and below.
+    """
+    body_pt = max(10, round(card_h * 0.17))
+    return {
+        "pad_x": max(6, round(card_h * 0.15)),
+        "pad_top": max(5, round(card_h * 0.12)),
+        "pad_bottom": max(4, round(card_h * 0.10)),
+        "stripe_w": max(3, round(card_h * 0.05)),
+        "radius": max(4, round(card_h * 0.11)),
+        "label_pt": max(11, round(card_h * 0.22)),
+        "body_pt": body_pt,
+        "label_tracking": max(1, round(card_h * 0.045)),
+        "label_gap": max(3, round(card_h * 0.05)),
+        "heading_gap_above": max(6, round(card_h * 0.14)),
+        "heading_gap_below": max(5, round(card_h * 0.12)),
+        "bullet_indent": max(10, round(body_pt * 0.8)),
+    }
+
+
+def _heading_fonts(pt: int) -> dict[tuple[bool, bool], object]:
+    """Heading faces at `pt` — always bold (bold-italic when the run is
+    italic) so the subhead reads as emphasis regardless of inline markers."""
+    bold = _load_font(pt, weight="bold")
+    bold_italic = _load_font(pt, weight="bold-italic")
+    return {
+        (False, False): bold,
+        (False, True): bold_italic,
+        (True, False): bold,
+        (True, True): bold_italic,
+    }
+
+
+def _line_height(body_pt: int) -> int:
+    return round(body_pt * 1.35)
+
+
+def _copy_blocks(blocks: list[Block]) -> list[Block]:
+    """Deep-enough copy for re-layout: each Word becomes a fresh list so the
+    in-place truncation in `_wrap_by_pixels` can't bleed a stray `…` from one
+    layout pass into the next. Segments are immutable tuples, so the words
+    themselves don't need copying — only the lists that hold them."""
+    return [(kind, [list(word) for word in words]) for kind, words in blocks]
+
+
 def compose_note(label: str, text: str, out: Path, w: int = W, h: int = H) -> None:
     from PIL import Image, ImageDraw
 
-    base = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-
     card_w = int(w * CARD_WIDTH_FRAC)
-    card_h = int(h * CARD_HEIGHT_FRAC)
+    rest_h = int(h * CARD_HEIGHT_FRAC)
+    max_h = int(rest_h * CARD_MAX_GROWTH)
     card_x = w - card_w - int(w * CARD_GUTTER_FRAC)
     card_y = int(h * CARD_TOP_FRAC)
+
+    # Frame, label, and resting body size all derive from the resting height;
+    # the card grows from there and the body font shrinks within it, so the
+    # frame stays put while only the body type adapts to the note's length.
+    m = _card_metrics(rest_h)
+    text_left = m["stripe_w"] + m["pad_x"]
+    body_max_w = card_w - m["pad_x"] - text_left
+
+    heading_words, body_blocks = _parse_markdown(text)
+
+    label_text = (label or "PAUSED").upper()
+    label_font = _load_font(m["label_pt"], weight="bold")
+
+    # Measure on a scratch canvas before we know the final card height.
+    scratch = ImageDraw.Draw(Image.new("RGBA", (max(1, card_w), max(1, max_h))))
+    label_bbox = scratch.textbbox((0, 0), label_text, font=label_font)
+    label_h = label_bbox[3] - label_bbox[1]
+
+    gap_above = m["heading_gap_above"] if heading_words else m["label_gap"]
+    gap_below = m["heading_gap_below"] if heading_words else 0
+
+    def fixed_overhead(heading_line_count: int, line_h: int) -> int:
+        """Vertical space the body does not get: label, heading, every gap,
+        and both pads."""
+        return (m["pad_top"] + label_h + gap_above
+                + heading_line_count * line_h + gap_below + m["pad_bottom"])
+
+    # Pick the largest body font (resting size down to CARD_MIN_FONT_SCALE) at
+    # which the whole note fits the grown-to-max card. Short notes settle at
+    # the resting font on the first pass; a long note steps the font down so
+    # more of it survives before the truncation cap applies.
+    scale = 1.0
+    while True:
+        body_pt = max(8, round(m["body_pt"] * scale))
+        line_h = _line_height(body_pt)
+        body_fonts = _build_fonts(body_pt)
+        heading_fonts = _heading_fonts(body_pt) if heading_words else None
+        heading_lines = (
+            _wrap_by_pixels(scratch, heading_words, body_max_w,
+                            HEADING_MAX_LINES, heading_fonts)
+            if heading_words else []
+        )
+        full_rows = _layout_body(
+            scratch, _copy_blocks(body_blocks), body_fonts, body_max_w,
+            BODY_MAX_LINES, bullet_indent=m["bullet_indent"],
+        )
+        needed = fixed_overhead(len(heading_lines), line_h) + len(full_rows) * line_h
+        if needed <= max_h or scale <= CARD_MIN_FONT_SCALE:
+            break
+        scale = round(scale - 0.1, 2)
+
+    # Cap the body to what the grown card holds at the chosen font, then size
+    # the card to its actual content (resting height floor, max-growth ceiling).
+    # The overhead is fixed once the font scale is settled.
+    overhead = fixed_overhead(len(heading_lines), line_h)
+    max_body_lines = max(0, min(BODY_MAX_LINES, (max_h - overhead) // line_h))
+    body_rows = _layout_body(
+        scratch, _copy_blocks(body_blocks), body_fonts, body_max_w,
+        max_body_lines, bullet_indent=m["bullet_indent"],
+    )
+    card_h = max(rest_h, min(max_h, overhead + len(body_rows) * line_h))
+
+    base = Image.new("RGBA", (w, h), (0, 0, 0, 0))
 
     # Build the filled interior: bg field + accent stripe baked on the
     # inner (left) edge of the card so the right edge stays clean and
     # the badge above the card has uninterrupted backdrop.
     fill = Image.new("RGBA", (card_w, card_h), CARD_BG)
-    ImageDraw.Draw(fill).rectangle((0, 0, STRIPE_W, card_h), fill=ACCENT)
+    ImageDraw.Draw(fill).rectangle((0, 0, m["stripe_w"], card_h), fill=ACCENT)
 
     ss = MASK_SS
     hi_mask = Image.new("L", (card_w * ss, card_h * ss), 0)
     ImageDraw.Draw(hi_mask).rounded_rectangle(
         (0, 0, card_w * ss - 1, card_h * ss - 1),
-        radius=CARD_RADIUS * ss,
+        radius=m["radius"] * ss,
         fill=255,
     )
     mask = hi_mask.resize((card_w, card_h), Image.LANCZOS)
@@ -573,59 +702,20 @@ def compose_note(label: str, text: str, out: Path, w: int = W, h: int = H) -> No
     card.paste(fill, (0, 0), mask)
 
     cd = ImageDraw.Draw(card)
+    cursor_y = m["pad_top"]
 
-    text_left = STRIPE_W + PAD_X
-    text_right = card_w - PAD_X
-    cursor_y = PAD_Y
-
-    heading_words, body_blocks = _parse_markdown(text)
-
-    label_text = (label or "PAUSED").upper()
-    label_font = _load_font(LABEL_PT, weight="bold")
-    label_bbox = cd.textbbox((0, 0), label_text, font=label_font)
-    label_h = label_bbox[3] - label_bbox[1]
-    label_end_x = _draw_tracked(
+    _draw_tracked(
         cd, label_text, (text_left, cursor_y), label_font, LABEL_HUE,
-        tracking=LABEL_TRACKING,
+        tracking=m["label_tracking"],
     )
+    cursor_y += label_h + gap_above
 
-    meta_font = _load_font(META_PT)
-    meta_text = f"  ·  {datetime.now().strftime('%H:%M')}"
-    meta_bbox = cd.textbbox((0, 0), meta_text, font=meta_font)
-    meta_h = meta_bbox[3] - meta_bbox[1]
-    cd.text(
-        (label_end_x, cursor_y + (label_h - meta_h)),
-        meta_text, font=meta_font, fill=META_HUE,
-    )
-
-    cursor_y += label_h + 22
-
-    body_max_w = text_right - text_left
-
-    if heading_words:
-        # Headings stay bold regardless of inline markers — bold-italic
-        # when the run is italic, plain bold otherwise. Italic inside a
-        # heading still differentiates from non-italic spans.
-        heading_fonts = {
-            (False, False): _load_font(HEADING_PT, weight="bold"),
-            (False, True): _load_font(HEADING_PT, weight="bold-italic"),
-            (True, False): _load_font(HEADING_PT, weight="bold"),
-            (True, True): _load_font(HEADING_PT, weight="bold-italic"),
-        }
-        heading_lines = _wrap_by_pixels(
-            cd, heading_words, body_max_w, HEADING_MAX_LINES, heading_fonts,
-        )
-        heading_line_h = int(HEADING_PT * 1.32)
+    if heading_lines:
         for line in heading_lines:
             _draw_runs_line(cd, line, (text_left, cursor_y), heading_fonts, HEADING_HUE)
-            cursor_y += heading_line_h
-        cursor_y += 16
+            cursor_y += line_h
+        cursor_y += gap_below
 
-    body_fonts = _build_fonts(BODY_PT)
-    line_h = int(BODY_PT * 1.42)
-    available_body_h = card_h - cursor_y - BODY_BOTTOM_PAD
-    effective_max_lines = max(0, min(BODY_MAX_LINES, available_body_h // line_h))
-    body_rows = _layout_body(cd, body_blocks, body_fonts, body_max_w, effective_max_lines)
     if body_rows:
         bullet_font = body_fonts[(False, False)]
         for line, x_off, render_bullet in body_rows:

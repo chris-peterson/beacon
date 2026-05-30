@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.machinery
 import importlib.util
+import io
+import json
 import os
 import subprocess
 import sys
@@ -344,6 +346,61 @@ class DescriptionOverlay(BeaconTest):
                 "Entering an overlay must not switch profiles — OSC only",
             )
 
+    def test_paused_without_description_emits_osc_not_profile(self):
+        # RENDER-04 / BADGE-10: bare `pause` (no note) has no static profile
+        # to switch to — paused must paint via OSC badge-color/tab-color, not
+        # SetProfile to a nonexistent `beacon-paused`.
+        self.beacon.apply({**_base_state(), "status": "working"})
+        self.cli_calls.clear()
+
+        self.beacon.apply({**_base_state(), "status": "paused"})
+
+        paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
+        self.assertIn(("badge-color", paused_hex), self.cli_calls)
+        self.assertIn(("tab-color", paused_hex), self.cli_calls)
+        for call in self.cli_calls:
+            self.assertNotEqual(
+                call[0], "set-profile",
+                "Bare pause must not switch profiles (no beacon-paused exists)",
+            )
+        bg_calls = [c for c in self.cli_calls if c[0] == "bg-image"]
+        self.assertEqual(bg_calls, [], "Bare pause paints no marginalia card")
+
+    def test_dropping_note_while_staying_paused_clears_card(self):
+        # described+paused → bare paused: no SetProfile fires to wipe the bg
+        # image, so apply() must clear it explicitly or the stale card lingers.
+        self.beacon.apply({
+            **_base_state(), "status": "paused",
+            "description": "stepping out", "note_image": "/tmp/note.png",
+        })
+        self.cli_calls.clear()
+
+        self.beacon.apply({**_base_state(), "status": "paused"})
+
+        self.assertIn(("bg-image", "clear"), self.cli_calls)
+        for call in self.cli_calls:
+            self.assertNotEqual(
+                call[0], "set-profile",
+                "Staying paused must not switch profiles",
+            )
+
+    def test_blocked_idle_with_description_uses_red_hex(self):
+        # THEME-02: blocked-idle shares the red palette. With a description,
+        # the OSC overlay must paint red, not fall back to paused gray.
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+
+        self.beacon.apply({
+            **_base_state(), "status": "idle",
+            "pending_attention": True, "pending_attention_type": "idle",
+            "description": "waiting on you",
+            "note_image": "/tmp/note.png",
+        })
+
+        red = self.beacon.BADGE_COLOR_PALETTE["blocked-idle"]
+        self.assertIn(("badge-color", red), self.cli_calls)
+        self.assertIn(("tab-color", red), self.cli_calls)
+
     def test_waiting_with_description_uses_blocked_hex(self):
         # `status waiting "bg refresh"` reuses the blocked palette so the
         # at-a-glance color signal still says "this session is parked on
@@ -529,6 +586,49 @@ class BadgeFormatReferencesTaskSlot(BeaconTest):
             'profile.json.template "Badge Text" must reference user.beacon_task '
             "to match BADGE_FORMAT",
         )
+
+
+class SessionAnchor(BeaconTest):
+    """HOOK-08 / HOOK-08b: SessionStart persists the navigational anchor
+    (`anchor.cwd` / `anchor.project`); Stop re-resolves chips from the
+    persisted anchor cwd, not the turn's payload cwd. Without the persisted
+    anchor the session's identity is only implicit in Claude's per-hook
+    payload — the landmine this guards against."""
+
+    def setUp(self):
+        super().setUp()
+        self.chip_cwds: list[str] = []
+        p = mock.patch.object(
+            self.beacon, "_publish_chips",
+            side_effect=lambda cwd: self.chip_cwds.append(str(cwd)),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _fire(self, event: str, payload: dict):
+        args = mock.Mock(event=event)
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def test_session_start_persists_anchor(self):
+        self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
+        self.assertEqual(self.beacon.read_state("anchor.cwd"), "/work/acme/widget")
+        # _project_name_at is mocked to "acme/widget" in BeaconTest.
+        self.assertEqual(self.beacon.read_state("anchor.project"), "acme/widget")
+
+    def test_stop_resolves_chips_from_anchor_not_payload(self):
+        self.beacon.write_state("anchor.cwd", "/anchored/dir")
+        self.chip_cwds.clear()
+        self._fire("Stop", {"cwd": "/some/other/dir"})
+        self.assertEqual(
+            self.chip_cwds, ["/anchored/dir"],
+            "Stop must resolve chips from the persisted anchor cwd, not the payload cwd",
+        )
+
+    def test_stop_falls_back_to_payload_cwd_without_anchor(self):
+        self.chip_cwds.clear()
+        self._fire("Stop", {"cwd": "/payload/dir"})
+        self.assertEqual(self.chip_cwds, ["/payload/dir"])
 
 
 def _base_state() -> dict:

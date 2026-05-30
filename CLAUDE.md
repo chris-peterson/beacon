@@ -45,7 +45,7 @@ Status maps to a logical color state (`ready` / `busy` / `blocked`) which then m
 
 `DATA_DIR` resolves to `$CLAUDE_PLUGIN_DATA` when set (Claude Code provides it for hook invocations). For slash commands and the `~/.local/bin/beacon` wrapper the env var is unset, so the script derives the same path from `CLAUDE_PLUGIN_ROOT` matching Claude Code's `<plugin>-<owner>` convention (e.g. `~/.claude/plugins/data/beacon-chris-peterson/`). All three invocation contexts must land on the same dir or hooks see no state to act on.
 
-- Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `description` (user-supplied marginalia text), `note-image` (rendered PNG path), `pending-attention` (sticky permission marker), `override.*`, `signal.status`, `resolved`, `claude_session_id`.
+- Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `description` (user-supplied marginalia text), `note-image` (rendered PNG path), `pending-attention` (sticky permission marker), `override.*`, `signal.status`, `resolved`, `claude_session_id`, `anchor.cwd` / `anchor.project` (SessionStart navigational anchor; Stop re-resolves chips from `anchor.cwd` per HOOK-08/08b).
 - Note image pool (LRU, fixed N=8): `<DATA_DIR>/cache/note-NN.png`
 - Per-session shell handoff files (read by status-bar action buttons): `<DATA_DIR>/cache/{url,cwd}-$ITERM_SESSION_ID.txt`
 
