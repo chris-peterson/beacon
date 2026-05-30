@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0
+
+### Features
+- The session note card is now a compact tile in the top-right corner instead of a tall panel down the side of the pane. It covers far less of the terminal and gets overwritten by output much less often. A longer note grows the card (up to ~2x its resting height) and shrinks its text to fit before truncating, so short notes stay small and long ones stay readable.
+
+### Fixes
+- `beacon pause` with no note now shows the paused gray badge and tab color — previously a note-less pause painted nothing (it tried to switch to a profile that doesn't exist).
+- Clearing the note while a pane stays paused (e.g. `pause "x"` then `pause`) no longer leaves the old card on screen.
+- A pane showing an idle-prompt notification alongside a note now reads red, matching its state, instead of the paused gray.
+- Project / branch / URL chips stay pinned to where the session started instead of drifting with the working directory mid-session.
+
+### Other
+- The note card no longer shows a timestamp (low signal, and it went stale while a pane sat paused).
+- Spec (OVERLAY-01, §4.1, CLI-05), CLAUDE.md, and tests updated; the card's type sizes and padding now scale from the card height.
+
 ## 0.18.1
 
 ### Fixes
