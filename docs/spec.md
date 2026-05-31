@@ -234,6 +234,24 @@ Behavior:
 
 ---
 
+### 3.8 Cross-session introspection / export (WIP)
+
+`wip` and `serve` read across **all** sessions' state — not just the current pane — and emit a machine-readable snapshot of active work streams. They are read-only: unlike every other plugin command they invoke no render adapter and paint no surface (the §4.1 pane anatomy is unchanged). Their purpose is to feed external dashboards — e.g. the goals "wip" tab — with higher-signal "what is actually being worked on right now" than a planned-work tracker alone can give.
+
+**WIP-01.** When the user invokes `wip`, the plugin shall enumerate every session with state on disk, resolve each from its stored fields (status, anchored project/cwd, description, last-activity, Claude session id), and emit one record per session. With `--json` the plugin shall emit a single object `{ generated_at, window_since, sessions[] }`; otherwise a human-readable table grouped by correlated route. Each record carries both the Claude session id (`session`) and beacon's per-pane hash. Resolution uses the anchored project/cwd (HOOK-08), not the live provider chain, so the snapshot does not depend on any pane's current subprocess cwd. A session that carries only a session id with no project/cwd anchor is omitted — it carries no work-stream signal.
+
+**WIP-02.** For each session, the plugin shall correlate a tack route by the first authoritative match, then by location heuristics: (1) the Claude session id appearing in a route's `sessions[]` block — the exact beacon↔tack join, since Claude Code issues the id, beacon stores it per pane, and tack records it on the route the session worked (ties broken by latest `started_at`); then (2) a `.tack` pin file at the anchor cwd; (3) the branch name; (4) the resolved project name, whole or as its last path segment (so `owner/repo` correlates to route `repo`) — each looked up as `$TACK_HOME/routes/<name>.yaml` with the canonical slug read from inside the file. When nothing resolves, the route is null. Correlation is best-effort and shall never fail the command.
+
+**WIP-03.** `wip` shall window by session last-activity (the newest mtime across a session's state files). With no flag it shall default to a trailing window (the bare command shows recent work, not the full history); `--since <ISO-8601>` shall set an explicit start; `--all` shall disable the window. The intended explicit window is "since the prior dashboard refresh", so the snapshot shows what has been active since the user last looked; within the window, recency (age of last activity) is the dashboard's cue for visual intensity, not for layout order.
+
+**WIP-04.** When the user invokes `serve [--port <n>]`, the plugin shall serve the `wip --json` payload over HTTP on `127.0.0.1` (default port 8787) at `GET /wip.json`, honoring optional `?since=` / `?all=` queries, with a permissive CORS header so a locally-opened dashboard can fetch it. The server binds loopback only and exposes no other route. This enables near-realtime polling when the dashboard is opened locally; a deployed dashboard that cannot reach loopback falls back to a snapshot baked at refresh time.
+
+**WIP-05.** A `--since` value shall accept either a relative duration (`90s`, `30m`, `2h`, `1d`, `1w` — that long before now) or an ISO-8601 timestamp.
+
+**WIP-06.** When the user invokes `prune [--since <when>]` (alias `--keep`), the plugin shall keep sessions active within that window and remove all per-session state for the rest (default 30 days; same duration/ISO grammar as `wip --since`), always keeping the current session. This is garbage collection for accumulated pane state — including project-less sessions that never reached SessionStart; a pruned session repaints on its next hook event.
+
+---
+
 ## 4. iTerm2 adapter requirements
 
 The first deliverable adapter targets iTerm2 on macOS with zsh. Section 4 collects every requirement that depends on iTerm2 specifics — escape sequences, OSC payloads, plist quirks, profile layouts. A future adapter for tmux / kitty / a web dashboard would replace §4 entirely while leaving §3 untouched.

@@ -74,6 +74,9 @@ iTerm2 caches its plist in memory while running and writes it back on quit. Any 
 | Run plugin once | `python3 scripts/beacon <subcommand>` |
 | Bootstrap install | `python3 scripts/beacon install` |
 | Apply prefs needing iTerm2 quit (default profile, bg-image trust) | `python3 scripts/beacon exclusive-configuration` |
+| List active work streams across all sessions (last 24h) | `python3 scripts/beacon wip [--json] [--since 1d] [--all]` |
+| Serve the wip snapshot for the goals dashboard | `python3 scripts/beacon serve [--port 8787]` |
+| GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
 | Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.0
+
+### Features
+- `beacon wip` surfaces active work streams across every session, not just the current pane. It enumerates each session's stored state (status, anchored project/cwd, marginalia description, last activity, Claude session id) and prints a table grouped by tack route. Route correlation is authoritative-first: the Claude session id matched against tack's `sessions[]` block, then `.tack` pin, branch, or project name (whole or last path segment, so `owner/repo` maps to route `repo`). `--json` emits a structured snapshot; `--since <ISO-8601>` windows to a given time (e.g. the prior dashboard refresh); with no flag it defaults to the last 24h, and `--all` returns the full history.
+- `beacon serve` exposes the same snapshot over `http://127.0.0.1:8787/wip.json` (loopback only, CORS-open, optional `?since=`) so a locally-opened dashboard can poll for near-realtime work-stream signal. The goals dashboard's "wip" tab consumes this to highlight which planned routes have a live session attached right now, falling back to a baked snapshot when the service isn't reachable.
+- `--since` accepts a duration (`1d`, `2h`, `30m`) as well as an ISO-8601 timestamp.
+- `beacon prune [--since 30d]` (alias `--keep`) garbage-collects per-session state for long-idle panes (including project-less sessions that never reached SessionStart), keeping the current session and everything active within the window.
+
+### Other
+- `wip` / `serve` / `prune` are read-only/maintenance surfaces — they paint no iTerm2 surface. New spec section §3.8 (WIP-01..06); CLAUDE.md and README updated; `tests/test_wip.py` added.
+
 ## 0.19.0
 
 ### Features

@@ -18,6 +18,8 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 # --- paths and identity ---
@@ -169,6 +171,9 @@ _beacon() {
     'resume:clear all overrides (full reset to provider chain)'
     'reset:clear all per-session state'
     'render:re-render current state'
+    'wip:list active work streams across all beacon sessions'
+    'serve:serve the wip payload over localhost for the goals dashboard'
+    'prune:remove per-session state for long-idle sessions'
     'completions:install or print shell completions'
     'install:run all install steps (shell, wrapper, completions, profile)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
@@ -206,6 +211,15 @@ _beacon() {
       ;;
     pause)
       (( CURRENT == 3 )) && _message 'description (optional)'
+      ;;
+    wip)
+      compadd -- --json --since --all
+      ;;
+    serve)
+      compadd -- --port
+      ;;
+    prune)
+      compadd -- --since --keep
       ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
@@ -649,6 +663,421 @@ def cmd_json(_args):
         "claude_session": claude_sid,
     }
     print(json.dumps(payload, indent=2))
+
+
+# --- cross-session introspection (wip / serve) ---
+#
+# `wip` and `serve` are read-only export surfaces: they enumerate *every*
+# beacon session's stored state — not just the current pane — and correlate
+# each to its tack route, so the goals dashboard can show which planned work
+# has a live session attached right now. They paint no iTerm surface (see
+# docs/spec.md "Introspection / export"). Unlike resolve()/read_state, which
+# operate on the current session_hash(), these read state for explicit hashes
+# and use the *anchored* project/cwd (HOOK-08) rather than re-running the live
+# git/pwd providers — those need a live per-pane cwd and would be costly across
+# N sessions; the anchor already records where each session lives.
+
+TACK_HOME = Path(os.environ.get("TACK_HOME") or (Path.home() / ".tack"))
+
+# Default `wip` / `serve` window when the caller gives no explicit `--since`.
+# Without it the command dumps every session ever recorded (weeks of stale
+# panes); a day keeps the bare command to recent, legible work. `--all` opts
+# back into the full history.
+DEFAULT_WINDOW_SECONDS = 86400
+
+
+def _all_session_hashes() -> list[str]:
+    """Distinct session hashes with state on disk. Filenames are
+    `<hash>.<field>`; the hash is dot-free hex while fields (e.g.
+    `override.status`) carry dots, so the hash is everything before the
+    first dot."""
+    hashes = set()
+    try:
+        for p in STATE_DIR.glob("*"):
+            if p.is_file():
+                hashes.add(p.name.split(".", 1)[0])
+    except OSError:
+        pass
+    return sorted(hashes)
+
+
+def _read_state_for(sh: str, field: str) -> str | None:
+    try:
+        v = (STATE_DIR / f"{sh}.{field}").read_text().strip()
+        return v or None
+    except (FileNotFoundError, OSError):
+        return None
+
+
+def _session_last_activity(sh: str) -> float:
+    """Newest mtime across this hash's state files — the session's last
+    observed activity, since hooks rewrite state on every Claude event."""
+    latest = 0.0
+    try:
+        for p in STATE_DIR.glob(f"{sh}.*"):
+            try:
+                latest = max(latest, p.stat().st_mtime)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return latest
+
+
+def _raw_branch(cwd: Path) -> str | None:
+    """Unfiltered branch name at cwd (keeps default branches, unlike
+    p_branch — for tack slug matching and display)."""
+    try:
+        r = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            cwd=str(cwd), capture_output=True, text=True, timeout=2, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    name = r.stdout.strip()
+    return name if (r.returncode == 0 and name) else None
+
+
+def _tack_pin_slug(cwd: Path) -> str | None:
+    try:
+        for line in (cwd / ".tack").read_text().splitlines():
+            m = re.match(r"\s*slug:\s*(\S+)", line)
+            if m:
+                return m.group(1).strip().strip("\"'")
+    except (FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _read_route(name: str) -> tuple[str, str | None] | None:
+    """(canonical_slug, group) from $TACK_HOME/routes/<name>.yaml, or None when
+    no such route. The in-file `slug:` is authoritative — filename casing can
+    drift on case-insensitive filesystems, but the dashboard joins on tack's
+    canonical slug."""
+    if not name:
+        return None
+    try:
+        text = (TACK_HOME / "routes" / f"{name}.yaml").read_text()
+    except (FileNotFoundError, OSError):
+        return None
+    slug, group = name, None
+    for line in text.splitlines():
+        m = re.match(r"\s*slug:\s*(\S+)", line)
+        if m:
+            slug = m.group(1).strip().strip("\"'")
+        m = re.match(r"\s*group:\s*(\S+)", line)
+        if m:
+            group = m.group(1).strip().strip("\"'")
+    return (slug, group)
+
+
+def _tack_session_index() -> dict:
+    """Map Claude session id → (route_slug, route_group), built from every
+    route's `sessions:` block. This is the authoritative beacon↔tack join:
+    Claude Code issues the session id, beacon stores it per pane, and tack
+    records it on the route the session worked. When a session was registered
+    on multiple routes, the most recently started wins (the pane's current
+    work). Scanned once per `wip` call."""
+    index: dict[str, tuple[str, str | None]] = {}
+    chosen: dict[str, str] = {}
+    try:
+        files = list((TACK_HOME / "routes").glob("*.yaml"))
+    except OSError:
+        return index
+    for path in files:
+        try:
+            text = path.read_text()
+        except OSError:
+            continue
+        slug, group = path.stem, None
+        in_sessions = False
+        cur = None
+        for line in text.splitlines():
+            if re.match(r"^\S", line):
+                in_sessions = line.startswith("sessions:")
+                m = re.match(r"slug:\s*(\S+)", line)
+                if m:
+                    slug = m.group(1).strip().strip("\"'")
+                m = re.match(r"group:\s*(\S+)", line)
+                if m:
+                    group = m.group(1).strip().strip("\"'")
+                continue
+            if not in_sessions:
+                continue
+            m = re.match(r"\s*-\s*id:\s*(\S+)", line)
+            if m:
+                cur = m.group(1).strip().strip("\"'")
+                if cur not in chosen:
+                    chosen[cur] = ""
+                    index[cur] = (slug, group)
+                continue
+            m = re.match(r"\s*started_at:\s*(\S+)", line)
+            if m and cur:
+                started = m.group(1).strip().strip("\"'")
+                if started > chosen[cur]:
+                    chosen[cur] = started
+                    index[cur] = (slug, group)
+                cur = None
+    return index
+
+
+def _tack_route_for(cwd: Path | None, branch: str | None,
+                    project: str | None) -> tuple[str | None, str | None]:
+    """(route_slug, route_group) for a session. Candidate route names, most to
+    least authoritative: a `.tack` pin file at cwd (tack's own primary), the
+    branch name, then the resolved project name (exact or lowercased). The
+    project tier is the common case for work on a default branch with no pin —
+    route slugs are typically the project name. Returns the first candidate
+    that resolves to a real route; (None, None) if none do."""
+    pin = _tack_pin_slug(cwd) if cwd is not None else None
+    candidates = [pin, branch]
+    if project:
+        # Match the project both whole and as its last path segment, each
+        # cased and lowercased: a project resolved as `cpeterson/ai-sdlc`
+        # (git-remote form) should still correlate to route `ai-sdlc`.
+        for p in (project, project.rsplit("/", 1)[-1]):
+            candidates += [p, p.lower()]
+    for name in candidates:
+        route = _read_route(name)
+        if route:
+            return route
+    return (None, None)
+
+
+def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
+    """Point-in-time state for one session from stored fields only (no live
+    providers). None when the hash carries no real beacon session.
+    session_index (session id → route) supplies the authoritative tack join;
+    cwd/branch/project correlation is the fallback when tack never registered
+    the session."""
+    project = _read_state_for(sh, "anchor.project") or _read_state_for(sh, "override.project")
+    cwd = _read_state_for(sh, "anchor.cwd")
+    cwd_path = Path(cwd).expanduser() if cwd else None
+    display_cwd = _local_path_at(cwd_path) if cwd_path else None
+    project = project or display_cwd
+    # A work stream needs a location. A hash with only a claude_session_id and
+    # no project/cwd anchor (e.g. a session that never reached SessionStart)
+    # carries no signal for the dashboard — drop it.
+    if not project:
+        return None
+
+    status = (_read_state_for(sh, "override.status")
+              or _read_state_for(sh, "signal.status")
+              or "idle")
+    pending = (STATE_DIR / f"{sh}.pending-attention").exists()
+    state = _logical_state_for({
+        "status": status,
+        "pending_attention": pending,
+        "pending_attention_type": _read_state_for(sh, "pending-attention"),
+    })
+
+    claude_session = _read_state_for(sh, "claude_session_id") or ""
+    branch = _raw_branch(cwd_path) if cwd_path else None
+    route, route_group = (None, None)
+    if session_index and claude_session in session_index:
+        route, route_group = session_index[claude_session]
+    else:
+        route, route_group = _tack_route_for(cwd_path, branch, project)
+
+    return {
+        "session": claude_session,
+        "hash": sh,
+        "project": project,
+        "route": route,
+        "route_group": route_group,
+        "status": status,
+        "state": state,
+        "description": _read_state_for(sh, "description") or "",
+        "cwd": display_cwd,
+        "branch": branch,
+        "_epoch": _session_last_activity(sh),
+        "pending_attention": pending,
+    }
+
+
+def _iso(epoch: float) -> str:
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat()
+
+
+_DURATION_RE = re.compile(r"^\s*(\d+)\s*([smhdw])\s*$", re.IGNORECASE)
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def _parse_since(s: str | None, strict: bool) -> float | None:
+    """Resolve a `--since` value to epoch seconds. Accepts a relative duration
+    (`90s`, `30m`, `2h`, `1d`, `1w` → that long ago) or an ISO-8601 timestamp.
+    strict (CLI) exits on bad input; lenient (the HTTP server) returns None so
+    one bad query can't take it down."""
+    if not s:
+        return None
+    m = _DURATION_RE.match(s)
+    if m:
+        return time.time() - int(m.group(1)) * _DURATION_UNITS[m.group(2).lower()]
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        if strict:
+            sys.exit(f"invalid time value: {s!r} (expected a duration like 1d/2h/30m or an ISO-8601 timestamp)")
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def collect_sessions(since_epoch: float | None = None) -> dict:
+    now = time.time()
+    session_index = _tack_session_index()
+    sessions = []
+    for sh in _all_session_hashes():
+        s = _resolve_session(sh, session_index)
+        if not s:
+            continue
+        epoch = s.pop("_epoch", 0.0)
+        if since_epoch is not None and epoch < since_epoch:
+            continue
+        s["last_activity"] = _iso(epoch) if epoch else None
+        s["age_seconds"] = int(now - epoch) if epoch else None
+        sessions.append(s)
+    sessions.sort(key=lambda s: (s["route"] or "~", s["project"] or "", s["session"]))
+    return {
+        "generated_at": _iso(now),
+        "window_since": _iso(since_epoch) if since_epoch else None,
+        "sessions": sessions,
+    }
+
+
+_WIP_DOT_COLOR = {
+    "ready": "32", "busy": "33", "blocked": "31",
+    "blocked-idle": "31", "paused": "34",
+}
+
+
+def _fmt_age(secs: int | None) -> str:
+    if secs is None:
+        return ""
+    if secs < 60:
+        return f"{secs}s ago"
+    if secs < 3600:
+        return f"{secs // 60}m ago"
+    if secs < 86400:
+        return f"{secs // 3600}h ago"
+    return f"{secs // 86400}d ago"
+
+
+def _print_wip_human(payload: dict) -> None:
+    sessions = payload["sessions"]
+    if not sessions:
+        print("No active beacon sessions.")
+        return
+    by_route: dict[str, list] = {}
+    for s in sessions:
+        by_route.setdefault(s["route"] or "(unrouted)", []).append(s)
+    # Routed work is the signal; park the catch-all "(unrouted)" group last.
+    routes = sorted(r for r in by_route if r != "(unrouted)") + (
+        ["(unrouted)"] if "(unrouted)" in by_route else [])
+    for route in routes:
+        group = by_route[route]
+        grp = group[0].get("route_group")
+        print(_color("1", route + (f"  [{grp}]" if grp else "")))
+        for s in group:
+            dot = _color(_WIP_DOT_COLOR.get(s["state"], "37"), "●")
+            branch = f" ({s['branch']})" if s.get("branch") else ""
+            first_line = s["description"].splitlines()[0] if s["description"] else ""
+            desc = f"  — {first_line}" if first_line else ""
+            print(f"  {dot} {s['project']}{branch}  {s['status']:<8} {_fmt_age(s['age_seconds'])}{desc}")
+    if payload.get("window_since"):
+        print()
+        print(_color("2", f"window: since {payload['window_since']} — pass --all for full history"))
+
+
+def _window_since(all_flag: bool, since_arg: str | None, strict: bool) -> float | None:
+    """Resolve the activity window: `--all` → no filter; explicit `--since` →
+    that time; otherwise the default trailing window."""
+    if all_flag:
+        return None
+    if since_arg:
+        return _parse_since(since_arg, strict=strict)
+    return time.time() - DEFAULT_WINDOW_SECONDS
+
+
+def cmd_wip(args):
+    since = _window_since(getattr(args, "all", False), getattr(args, "since", None), strict=True)
+    payload = collect_sessions(since)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2))
+    else:
+        _print_wip_human(payload)
+
+
+def cmd_prune(args):
+    """Remove per-session state for sessions idle longer than the threshold —
+    a GC for the panes beacon has accumulated state for. The current session is
+    always kept; pruned sessions simply repaint on their next hook event."""
+    raw = getattr(args, "keep", None) or "30d"
+    cutoff = _parse_since(raw, strict=True)
+    current = session_hash()
+    sessions = files = 0
+    for sh in _all_session_hashes():
+        if sh == current or _session_last_activity(sh) >= cutoff:
+            continue
+        for p in STATE_DIR.glob(f"{sh}.*"):
+            try:
+                p.unlink()
+                files += 1
+            except OSError:
+                pass
+        sessions += 1
+    print(f"pruned {sessions} session(s) idle longer than {raw} ({files} state files removed)")
+
+
+def wip_http_server(port: int):
+    """Build (don't start) the localhost wip server: bound to 127.0.0.1 only,
+    CORS-open so the dashboard can fetch it from file:// and the deployed Pages
+    origin, serving the wip payload at GET /wip.json with optional ?since= /
+    ?all=. Returns the HTTPServer; the caller drives it (serve_forever, or a
+    single handle_request in tests)."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from urllib.parse import urlparse, parse_qs
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code: int, body: str) -> None:
+            data = body.encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            parsed = urlparse(self.path)
+            if parsed.path in ("/wip.json", "/"):
+                q = parse_qs(parsed.query)
+                all_flag = q.get("all", ["0"])[0] in ("1", "true")
+                since = _window_since(all_flag, q.get("since", [None])[0], strict=False)
+                self._send(200, json.dumps(collect_sessions(since)))
+            else:
+                self._send(404, json.dumps({"error": "not found"}))
+
+    return HTTPServer(("127.0.0.1", port), Handler)
+
+
+def cmd_serve(args):
+    """Serve the wip payload over localhost so a locally-opened goals dashboard
+    can poll for near-realtime work-stream signal."""
+    port = getattr(args, "port", None) or 8787
+    server = wip_http_server(port)
+    try:
+        print(f"beacon serve → http://127.0.0.1:{port}/wip.json  (Ctrl-C to stop)")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print()
+    finally:
+        server.server_close()
 
 
 # --- resolver ---
@@ -2101,6 +2530,22 @@ def main(argv=None):
 
     sub.add_parser("json", help="print the resolved session state as JSON")
 
+    sp = sub.add_parser("wip", help="list active work streams across all beacon sessions (+ tack routes)")
+    sp.add_argument("--json", action="store_true", help="emit JSON instead of a table")
+    sp.add_argument("--since", default=None, metavar="WHEN",
+                    help="only sessions active since this time — a duration (1d, 2h, 30m) "
+                         "or ISO-8601 timestamp (default: last 24h)")
+    sp.add_argument("--all", action="store_true",
+                    help="every recorded session, no time window (the full history)")
+
+    sp = sub.add_parser("serve", help="serve the wip payload over http://127.0.0.1 for the goals dashboard")
+    sp.add_argument("--port", type=int, default=8787, help="port to bind (default 8787)")
+
+    sp = sub.add_parser("prune", help="remove per-session state for long-idle sessions")
+    sp.add_argument("--since", "--keep", dest="keep", default="30d", metavar="WHEN",
+                    help="keep sessions active within this window and prune the rest — "
+                         "a duration (14d, 12h) or ISO-8601 timestamp (default 30d)")
+
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
 
     args = parser.parse_args(argv)
@@ -2115,6 +2560,7 @@ def main(argv=None):
         "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
+        "wip": cmd_wip, "serve": cmd_serve, "prune": cmd_prune,
         "data-dir": cmd_data_dir,
     }
     if not args.cmd:

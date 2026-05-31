@@ -48,6 +48,8 @@ D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it
 
 The behavioral contract for hooks vs shell is documented in [`CLAUDE.md`](CLAUDE.md): the plugin owns `status` (and its optional description) and writes to its user-var slots; the shell owns `project`/`branch`/`cwd`/`url` and writes to disjoint slots; the CLI is unaware of either.
 
+`beacon wip` and `beacon serve` (spec §3.8) are read-only export surfaces on D3 — they enumerate every session's state and emit a snapshot for external dashboards (the goals "wip" tab) rather than painting iTerm2, so they don't route through D2.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
