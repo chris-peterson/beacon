@@ -631,6 +631,42 @@ class SessionAnchor(BeaconTest):
         self.assertEqual(self.chip_cwds, ["/payload/dir"])
 
 
+class EmptyItermIdIsolatesSessions(BeaconTest):
+    """When ITERM_SESSION_ID is unavailable (session launched outside an
+    iTerm-integrated shell — auto-spawned tab, `claude --resume`, a non-iTerm
+    terminal), session_hash() must still give each Claude session its own state
+    bucket. Without isolation every such session collapses onto sha1("default")
+    and they cross-wire: the last writer's project/url paints all of them."""
+
+    def setUp(self):
+        super().setUp()
+        # _publish_anchor → _publish_chips would otherwise shell out to git.
+        p = mock.patch.object(self.beacon, "_publish_chips", side_effect=lambda cwd: None)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _fire_start_with_empty_id(self, session_id: str, cwd: str):
+        # Each real hook is a fresh process whose env carries an empty
+        # ITERM_SESSION_ID; reset before every fire to mirror that.
+        os.environ["ITERM_SESSION_ID"] = ""
+        args = mock.Mock(event="SessionStart")
+        payload = {"session_id": session_id, "cwd": cwd, "source": "startup"}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def test_distinct_claude_sessions_do_not_share_bucket(self):
+        self._fire_start_with_empty_id("sess-A", "/work/ai-sdlc")
+        self._fire_start_with_empty_id("sess-B", "/work/beacon")
+        anchors = sorted(
+            p.read_text() for p in self.beacon.STATE_DIR.glob("*.anchor.cwd")
+        )
+        self.assertEqual(
+            anchors, ["/work/ai-sdlc", "/work/beacon"],
+            "empty ITERM_SESSION_ID must not collapse distinct Claude sessions "
+            "onto one shared state bucket",
+        )
+
+
 def _base_state() -> dict:
     """Default state dict acceptable to apply(). Tests override individual fields."""
     return {

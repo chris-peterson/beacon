@@ -122,7 +122,7 @@ The fallback is not parenthesized — it appears as a real path so it reads natu
 **PROV-07.** For `url` (the "best URL relevant to this session"), the plugin shall consult providers in this order, returning the first non-empty value:
 
 1. **User override** — set via `/beacon set url <url>`
-2. **Tack-derived URL** — when `tack` is on `$PATH` and has a route whose slug matches the current git branch (or whose `tack find <pwd>` returns a route), an inner chain of:
+2. **Tack-derived URL** — when `tack` is on `$PATH` and has a route whose slug matches the current git branch, an inner chain of:
    a. The route's first `status: in_progress` tack's `deliverable.url`
    b. The route's most-recently-updated `status: done` tack's `deliverable.url`
    c. The first `link.url` on any tack

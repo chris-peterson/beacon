@@ -197,6 +197,12 @@ unset _beacon_data_dir
 mkdir -p "$_BEACON_CACHE_DIR"
 
 _beacon_write_session_file() {
+  # Skip when the pane id is unavailable (non-iTerm shell). Mirrors the
+  # plugin's `if iterm_id:` guard: an empty id would write the shared
+  # `cwd-.txt` / `url-.txt`, which the action buttons then serve to every
+  # empty-id session — and an empty `url-.txt` sends the web button to its
+  # google.com fallback.
+  [[ -n "$ITERM_SESSION_ID" ]] || return 0
   print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID}.txt"
 }
 

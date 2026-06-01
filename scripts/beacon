@@ -2373,6 +2373,15 @@ def cmd_hook(args):
     # for the lifetime of the Claude conversation; a colleague can resume it
     # via `claude --resume <id>`.
     claude_sid = payload.get("session_id") or ""
+    # When the iTerm pane id is unavailable (session launched outside an
+    # iTerm-integrated shell — auto-spawned tab, `claude --resume`, a non-iTerm
+    # terminal), seed the session key from the Claude session id instead so each
+    # session gets its own state bucket. Without this, session_hash() falls
+    # through to the literal "default" and every such session shares one bucket,
+    # cross-wiring their project/url (last writer wins). Set before the first
+    # write_state below so the claude_session_id record lands in the right bucket.
+    if not os.environ.get("ITERM_SESSION_ID") and claude_sid:
+        os.environ["ITERM_SESSION_ID"] = f"claude-session:{claude_sid}"
     if claude_sid:
         write_state("claude_session_id", claude_sid)
     transcript_path = payload.get("transcript_path") or ""
