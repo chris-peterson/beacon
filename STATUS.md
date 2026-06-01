@@ -27,6 +27,8 @@ Status (`signal.status`) has exactly four values — `idle`, `working`,
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions; stage-signaling responsibility removed with stage |
 | CMD-01..09, 12..16 (gap at 10, 11) | 14 | All Covered | Slash command surface |
 | WIP-01..06 | 6 | All Covered | Cross-session introspection / export (`wip`, `serve`, `prune`) |
+| WATCH-01..02 | 2 | All Covered | Live person-facing recency feed (`watch`); diff-render, TTY-required, route-echo suppression |
+| COLOR-01 | 1 | Covered | `--color` flag + `NO_COLOR`/`FORCE_COLOR`/`CLICOLOR_FORCE` precedence for `wip`/`watch` output |
 | CLI-01..12, 14, 15 (gap at 13) | 14 | All Covered | `beacon-iterm` subcommands |
 | BADGE-01..10, 12..15 (incl. 09a; gap at 11) | 15 | All Covered | Badge text + color + watermark; profile-per-state mechanism |
 | STATUS-BAR-01..03, 05, 06 (gap at 04) | 5 | All Covered | Fixed-layout status-bar chips + action buttons |
