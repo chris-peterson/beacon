@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.21.0
+
+### Features
+- New `beacon watch`: a live, person-facing work-stream view. Sessions form a recency feed (most-recently-active on top), refreshing in place without the flicker of `watch beacon wip`. Press `q` to quit. The tack route is shown only when it carries signal the project name doesn't.
+- `beacon` now respects standard color controls so output keeps its color through a pipe: a global `--color=auto|always|never` flag and the `NO_COLOR` / `FORCE_COLOR` / `CLICOLOR_FORCE` environment variables. This makes `watch --color 'beacon --color=always wip'` render in color, where `watch beacon wip` previously came through uncolored.
+
+### Fixes
+- Sessions started without an iTerm pane id (auto-spawned tabs, `claude --resume`, non-iTerm terminals) no longer share a single state bucket and cross-wire each other's project and URL.
+
+### Other
+- Refreshed STATUS.md to the current spec audit and trimmed an obsolete `tack find <pwd>` clause from the spec.
+
 ## 0.20.0
 
 ### Features
