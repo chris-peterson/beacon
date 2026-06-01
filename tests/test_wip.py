@@ -12,6 +12,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -217,6 +218,110 @@ class WipTest(unittest.TestCase):
             self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
             payload = json.loads(resp.read())
         self.assertEqual([s["project"] for s in payload["sessions"]], ["served"])
+
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+class WatchViewTest(unittest.TestCase):
+    """The live `beacon watch` recency feed. _watch_frame_lines is a pure
+    function over a payload dict, so these build sessions directly and assert
+    on the rendered frame with SGR codes stripped."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+
+    def _session(self, **kw):
+        base = dict(state="ready", status="idle", project="proj",
+                    branch=None, route=None, description="", age_seconds=10)
+        base.update(kw)
+        return base
+
+    def _rows(self, sessions, cols=120):
+        payload = {"sessions": sessions, "window_since": "2026-01-01T00:00:00+00:00"}
+        return [ANSI.sub("", ln) for ln in self.beacon._watch_frame_lines(payload, cols)]
+
+    def _body(self, lines):
+        return [ln for ln in lines if ln.lstrip().startswith("●")]
+
+    def test_recency_feed_most_recent_first(self):
+        rows = self._body(self._rows([
+            self._session(project="older", age_seconds=500),
+            self._session(project="newer", age_seconds=2),
+        ]))
+        self.assertIn("newer", rows[0])
+        self.assertIn("older", rows[1])
+
+    def test_route_hidden_when_it_echoes_project(self):
+        text = "\n".join(self._rows([
+            self._session(project="beacon", route="beacon"),
+            self._session(project="cpeterson/ai-sdlc", route="ai-sdlc"),
+            self._session(project="sextant", route="spec-status"),
+        ]))
+        self.assertNotIn("[beacon]", text)       # exact echo suppressed
+        self.assertNotIn("[ai-sdlc]", text)      # last-segment echo suppressed
+        self.assertIn("[spec-status]", text)     # distinct route kept
+
+    def test_empty_feed_message(self):
+        self.assertTrue(any("No active beacon sessions." in ln for ln in self._rows([])))
+
+    def test_columns_grid_aligned(self):
+        rows = self._body(self._rows([
+            self._session(project="x", status="idle", age_seconds=5),
+            self._session(project="much-longer-project-name", status="waiting", age_seconds=50),
+        ]))
+        self.assertEqual(rows[0].index("idle"), rows[1].index("waiting"))
+
+    def test_description_truncated_to_width(self):
+        s = self._session(project="p", description="a very long description that keeps going")
+        self.assertIn("very long description", "\n".join(self._rows([s], cols=200)))
+        narrow = self._body(self._rows([s], cols=40))[0]
+        self.assertIn("…", narrow)
+        self.assertLessEqual(len(narrow), 40)
+
+    def test_first_description_line_only(self):
+        row = self._body(self._rows([self._session(description="line one\nline two")], cols=200))[0]
+        self.assertIn("line one", row)
+        self.assertNotIn("line two", row)
+
+
+class ColorControlTest(unittest.TestCase):
+    """_color_enabled precedence: --color flag (_COLOR_OVERRIDE) > env vars
+    (NO_COLOR off, FORCE_COLOR / CLICOLOR_FORCE on) > stdout.isatty()."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+
+    def _colored(self, *, env, isatty=False):
+        full = {"NO_COLOR": "", "FORCE_COLOR": "", "CLICOLOR_FORCE": ""}
+        full.update(env)
+        with mock.patch.dict(os.environ, full), \
+                mock.patch.object(self.beacon.sys.stdout, "isatty", return_value=isatty):
+            return "\x1b[" in self.beacon._color("1", "x")
+
+    def test_flag_override_beats_env(self):
+        self.beacon._COLOR_OVERRIDE = True
+        self.assertTrue(self._colored(env={"NO_COLOR": "1"}))
+        self.beacon._COLOR_OVERRIDE = False
+        self.assertFalse(self._colored(env={"FORCE_COLOR": "1"}))
+
+    def test_no_color_beats_force_color(self):
+        self.beacon._COLOR_OVERRIDE = None
+        self.assertFalse(self._colored(env={"NO_COLOR": "1", "FORCE_COLOR": "1"}))
+
+    def test_force_color_enables_without_tty(self):
+        self.beacon._COLOR_OVERRIDE = None
+        self.assertTrue(self._colored(env={"FORCE_COLOR": "1"}, isatty=False))
+
+    def test_auto_follows_isatty(self):
+        self.beacon._COLOR_OVERRIDE = None
+        self.assertFalse(self._colored(env={}, isatty=False))
+        self.beacon._COLOR_OVERRIDE = None
+        self.assertTrue(self._colored(env={}, isatty=True))
 
 
 if __name__ == "__main__":

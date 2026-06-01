@@ -97,10 +97,29 @@ CACHE_DIR = DATA_DIR / "cache"
 BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
 
 
+# Set by the global --color flag (always/never); None means auto-detect.
+_COLOR_OVERRIDE: bool | None = None
+
+
+def _color_enabled() -> bool:
+    """Color on when stdout is a TTY, overridable so wrappers that pipe
+    stdout (e.g. `watch`, which hides the TTY behind a pipe) can still get
+    color. Precedence: the --color flag (_COLOR_OVERRIDE) wins, then the
+    de-facto env-var standard (NO_COLOR forces off, FORCE_COLOR /
+    CLICOLOR_FORCE force on), then stdout.isatty()."""
+    if _COLOR_OVERRIDE is not None:
+        return _COLOR_OVERRIDE
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR") or os.environ.get("CLICOLOR_FORCE"):
+        return True
+    return sys.stdout.isatty()
+
+
 def _color(code: str, s: str) -> str:
-    """Wrap `s` in an ANSI SGR sequence when stdout is a TTY; passthrough
+    """Wrap `s` in an ANSI SGR sequence when color is enabled; passthrough
     otherwise so logs and pipes stay clean."""
-    return f"\x1b[{code}m{s}\x1b[0m" if sys.stdout.isatty() else s
+    return f"\x1b[{code}m{s}\x1b[0m" if _color_enabled() else s
 
 
 DEFAULT_BRANCHES = {"main", "master", "develop", "trunk", "HEAD"}
@@ -1007,6 +1026,131 @@ def cmd_wip(args):
         print(json.dumps(payload, indent=2))
     else:
         _print_wip_human(payload)
+
+
+def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
+    """Render the live work-stream view as a flat recency feed: most-recently
+    active session on top, so a pane that transitions (working / waiting) rises
+    to the head of the list. Distinct from _print_wip_human's route grouping —
+    here motion *is* the signal."""
+    sessions = sorted(
+        payload["sessions"],
+        key=lambda s: (s["age_seconds"] is None, s["age_seconds"] or 0),
+    )
+    win = payload.get("window_since")
+    hint = (f"since {win} · " if win else "") + "q to quit"
+    lines = [_color("1", "beacon · live work streams"), _color("2", hint), ""]
+    if not sessions:
+        lines.append("No active beacon sessions.")
+        return lines
+
+    rows = []
+    for s in sessions:
+        branch = f" ({s['branch']})" if s.get("branch") else ""
+        # Show the route only when it carries signal the project name doesn't.
+        # A route resolved by matching the project (the tier-3 case in
+        # _tack_route_for) just echoes it; a pin- or branch-derived route does
+        # not, so keep those.
+        proj = s.get("project") or ""
+        route_slug = s.get("route") or ""
+        echoes_project = not route_slug or route_slug.lower() in {proj.lower(), proj.rsplit("/", 1)[-1].lower()}
+        rows.append({
+            "dot": _color(_WIP_DOT_COLOR.get(s["state"], "37"), "●"),
+            "name": f"{s['project']}{branch}",
+            "status": s["status"],
+            "age": _fmt_age(s["age_seconds"]),
+            "route": "" if echoes_project else f"[{route_slug}]",
+            "desc": s["description"].splitlines()[0] if s["description"] else "",
+        })
+    namew = max(len(r["name"]) for r in rows)
+    statusw = max(len(r["status"]) for r in rows)
+    agew = max(len(r["age"]) for r in rows)
+    routew = max(len(r["route"]) for r in rows)
+
+    # Every column is padded to a fixed width, so the visible prefix width
+    # (dot + space + columns + separators) is the same for every row.
+    used = 2 + namew + 2 + statusw + 2 + agew
+    if routew:
+        used += 2 + routew
+
+    for r in rows:
+        cells = f"{r['name'].ljust(namew)}  {r['status'].ljust(statusw)}  {r['age'].rjust(agew)}"
+        if routew:
+            cells += "  " + _color("2", r["route"].ljust(routew))
+        desc = ""
+        if r["desc"]:
+            avail = cols - used - 4
+            if avail > 1:
+                d = r["desc"] if len(r["desc"]) <= avail else r["desc"][: avail - 1] + "…"
+                desc = _color("2", f"  — {d}")
+        lines.append(f"{r['dot']} {cells}{desc}")
+    return lines
+
+
+def _watch_paint(lines: list[str], last: list[str] | None) -> None:
+    """Repaint only the rows that changed since the last frame, addressing each
+    by absolute position so an idle fleet writes nothing. No full clear between
+    frames — that's what makes it flicker-free where `watch beacon wip` isn't."""
+    out: list[str] = []
+    if last is None:
+        out.append("\x1b[H\x1b[J")
+        out.append("\r\n".join(f"{ln}\x1b[K" for ln in lines))
+    else:
+        for i, ln in enumerate(lines):
+            if i >= len(last) or ln != last[i]:
+                out.append(f"\x1b[{i + 1};1H{ln}\x1b[K")
+        for i in range(len(lines), len(last)):
+            out.append(f"\x1b[{i + 1};1H\x1b[K")
+    sys.stdout.write("".join(out))
+    sys.stdout.flush()
+
+
+def cmd_watch(args):
+    """Live, person-facing work-stream view. Interactive by definition, so it
+    requires a TTY and always colors — the scriptable/pipeable surface is
+    `beacon wip`."""
+    if not sys.stdout.isatty():
+        sys.exit("beacon watch needs an interactive terminal; pipe `beacon wip` instead")
+    import termios
+    import tty
+    import select
+    import signal
+
+    global _COLOR_OVERRIDE
+    if _COLOR_OVERRIDE is None:  # an explicit --color flag still wins
+        _COLOR_OVERRIDE = True
+    interval = max(0.2, getattr(args, "interval", 1.0) or 1.0)
+    since = _window_since(getattr(args, "all", False), getattr(args, "since", None), strict=True)
+
+    fd = sys.stdin.fileno()
+    old_attrs = termios.tcgetattr(fd)
+    resized = {"flag": True}
+    cols = rows = 0
+    try:
+        signal.signal(signal.SIGWINCH, lambda *_: resized.__setitem__("flag", True))
+        tty.setcbreak(fd)
+        sys.stdout.write("\x1b[?1049h\x1b[?25l")
+        last: list[str] | None = None
+        while True:
+            if resized["flag"]:
+                cols, rows = os.get_terminal_size()
+                last = None
+                resized["flag"] = False
+            lines = _watch_frame_lines(collect_sessions(since), cols)
+            if len(lines) > rows:
+                lines = lines[: rows - 1] + [_color("2", f"…+{len(lines) - (rows - 1)} more")]
+            _watch_paint(lines, last)
+            last = lines
+            ready, _, _ = select.select([sys.stdin], [], [], interval)
+            if ready and sys.stdin.read(1) in ("q", "Q"):
+                break
+    except KeyboardInterrupt:
+        pass
+    finally:
+        signal.signal(signal.SIGWINCH, signal.SIG_DFL)
+        sys.stdout.write("\x1b[?25h\x1b[?1049l")
+        sys.stdout.flush()
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
 
 
 def cmd_prune(args):
@@ -2478,6 +2622,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
     parser.add_argument("--version", "-v", action="version",
                         version=f"beacon {_plugin_version()}")
+    parser.add_argument("--color", choices=["auto", "always", "never"], default="auto",
+                        help="colorize output: auto (TTY-detect, the default), always, or never. "
+                             "Use --color=always to keep color through a pipe (e.g. `watch --color`).")
     sub = parser.add_subparsers(dest="cmd")
 
     sub.add_parser("show", help="show resolved signal state")
@@ -2547,6 +2694,15 @@ def main(argv=None):
     sp.add_argument("--all", action="store_true",
                     help="every recorded session, no time window (the full history)")
 
+    sp = sub.add_parser("watch", help="live, person-facing work-stream view (recency feed; q to quit)")
+    sp.add_argument("--interval", type=float, default=1.0, metavar="SECS",
+                    help="refresh cadence in seconds (default 1.0)")
+    sp.add_argument("--since", default=None, metavar="WHEN",
+                    help="only sessions active since this time — a duration (1d, 2h, 30m) "
+                         "or ISO-8601 timestamp (default: last 24h)")
+    sp.add_argument("--all", action="store_true",
+                    help="every recorded session, no time window (the full history)")
+
     sp = sub.add_parser("serve", help="serve the wip payload over http://127.0.0.1 for the goals dashboard")
     sp.add_argument("--port", type=int, default=8787, help="port to bind (default 8787)")
 
@@ -2559,6 +2715,10 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
+    if args.color != "auto":
+        global _COLOR_OVERRIDE
+        _COLOR_OVERRIDE = args.color == "always"
+
     handlers = {
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
         "status": cmd_status, "project": cmd_project, "clear": cmd_clear,
@@ -2569,7 +2729,7 @@ def main(argv=None):
         "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
-        "wip": cmd_wip, "serve": cmd_serve, "prune": cmd_prune,
+        "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "data-dir": cmd_data_dir,
     }
     if not args.cmd:
