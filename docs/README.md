@@ -16,9 +16,14 @@ Plus a third surface only during pause:
 
 ## Install
 
+```bash
+claude plugin marketplace add chris-peterson/claude-marketplace
+claude plugin install beacon@chris-peterson
+```
+
+Then, inside a Claude Code session, bootstrap everything around the plugin:
+
 ```text
-/plugin marketplace add chris-peterson/claude-marketplace
-/plugin install beacon@chris-peterson/claude-marketplace
 /beacon install
 ```
 
