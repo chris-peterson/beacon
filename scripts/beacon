@@ -191,10 +191,12 @@ _beacon() {
     'reset:clear all per-session state'
     'render:re-render current state'
     'wip:list active work streams across all beacon sessions'
+    'watch:live, person-facing work-stream view (recency feed; q to quit)'
     'serve:serve the wip payload over localhost for the goals dashboard'
+    'service:manage the always-on serve service (launchd/systemd)'
     'prune:remove per-session state for long-idle sessions'
     'completions:install or print shell completions'
-    'install:run all install steps (shell, wrapper, completions, profile)'
+    'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'exclusive-configuration:orchestrate iTerm2 quit+relaunch to apply prefs that require iTerm2 to be quit'
     'copy-url:copy the resolved URL to the clipboard'
@@ -234,7 +236,14 @@ _beacon() {
     wip)
       compadd -- --json --since --all
       ;;
+    watch)
+      compadd -- --interval --since --all
+      ;;
     serve)
+      compadd -- --port
+      ;;
+    service)
+      (( CURRENT == 3 )) && compadd install uninstall status
       compadd -- --port
       ;;
     prune)
@@ -1239,6 +1248,181 @@ def cmd_serve(args):
         server.server_close()
 
 
+# --- managed serve service ---
+#
+# Keeps `beacon serve` always running so an external dashboard has a stable
+# endpoint to poll. The state files remain the source of record; the server is
+# a stateless projection (it re-reads them on every GET), so it can die and
+# respawn between two polls without losing anything. The unit invokes the
+# stable wrapper (~/.local/bin/beacon), not the version-pinned script path, so
+# a plugin upgrade that refreshes the wrapper keeps the service working without
+# rewriting the unit.
+
+SERVICE_LABEL = "com.beacon.serve"
+DEFAULT_SERVE_PORT = 8787
+
+
+def _wrapper_path() -> Path:
+    return Path.home() / ".local" / "bin" / "beacon"
+
+
+def _launchd_plist_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{SERVICE_LABEL}.plist"
+
+
+def _systemd_unit_path() -> Path:
+    return Path.home() / ".config" / "systemd" / "user" / "beacon-serve.service"
+
+
+def _render_launchd_plist(wrapper: Path, port: int, log: Path, errlog: Path) -> str:
+    args = "".join(f"        <string>{a}</string>\n"
+                   for a in (str(wrapper), "serve", "--port", str(port)))
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        f'    <key>Label</key>\n    <string>{SERVICE_LABEL}</string>\n'
+        f'    <key>ProgramArguments</key>\n    <array>\n{args}    </array>\n'
+        '    <key>RunAtLoad</key>\n    <true/>\n'
+        '    <key>KeepAlive</key>\n    <true/>\n'
+        f'    <key>StandardOutPath</key>\n    <string>{log}</string>\n'
+        f'    <key>StandardErrorPath</key>\n    <string>{errlog}</string>\n'
+        '</dict>\n</plist>\n'
+    )
+
+
+def _render_systemd_unit(wrapper: Path, port: int) -> str:
+    return (
+        "[Unit]\n"
+        "Description=beacon fleet dashboard (serve)\n"
+        "After=default.target\n\n"
+        "[Service]\n"
+        f"ExecStart={wrapper} serve --port {port}\n"
+        "Restart=always\n"
+        "RestartSec=2\n\n"
+        "[Install]\n"
+        "WantedBy=default.target\n"
+    )
+
+
+def _launchctl(*args) -> subprocess.CompletedProcess:
+    return subprocess.run(["launchctl", *args],
+                          capture_output=True, text=True, timeout=10)
+
+
+def _systemctl(*args) -> subprocess.CompletedProcess:
+    return subprocess.run(["systemctl", "--user", *args],
+                          capture_output=True, text=True, timeout=10)
+
+
+def _service_supervisor() -> str:
+    """Which init system manages the service here: 'launchd' on macOS,
+    'systemd' on Linux when a user instance is reachable, else 'none'."""
+    if sys.platform == "darwin":
+        return "launchd"
+    try:
+        r = _systemctl("--version")
+        if r.returncode == 0:
+            return "systemd"
+    except Exception:
+        pass
+    return "none"
+
+
+def _service_install(port: int, indent: str = "") -> bool:
+    wrapper = _wrapper_path()
+    if not wrapper.exists():
+        print(f"{indent}! wrapper not found at {wrapper} — run `beacon install-cli` first")
+        return False
+    sup = _service_supervisor()
+
+    if sup == "launchd":
+        logs = DATA_DIR / "logs"
+        logs.mkdir(parents=True, exist_ok=True)
+        plist = _launchd_plist_path()
+        plist.parent.mkdir(parents=True, exist_ok=True)
+        plist.write_text(_render_launchd_plist(
+            wrapper, port, logs / "serve.out.log", logs / "serve.err.log"))
+        domain = f"gui/{os.getuid()}"
+        _launchctl("bootout", domain, str(plist))  # clear any prior load
+        r = _launchctl("bootstrap", domain, str(plist))
+        if r.returncode != 0:
+            r = _launchctl("load", "-w", str(plist))  # older launchctl
+        if r.returncode == 0:
+            print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/wip.json")
+            return True
+        print(f"{indent}! launchctl could not load {plist}: {r.stderr.strip()}")
+        return False
+
+    if sup == "systemd":
+        unit = _systemd_unit_path()
+        unit.parent.mkdir(parents=True, exist_ok=True)
+        unit.write_text(_render_systemd_unit(wrapper, port))
+        _systemctl("daemon-reload")
+        r = _systemctl("enable", "--now", "beacon-serve")
+        if r.returncode == 0:
+            print(f"{indent}✓ systemd user unit enabled → http://127.0.0.1:{port}/wip.json")
+            return True
+        print(f"{indent}! systemctl could not enable beacon-serve: {r.stderr.strip()}")
+        return False
+
+    print(f"{indent}! no supervised-process manager (launchd/systemd) here")
+    print(f"{indent}  run it yourself: beacon serve --port {port} &")
+    return False
+
+
+def _service_uninstall() -> bool:
+    sup = _service_supervisor()
+    if sup == "launchd":
+        plist = _launchd_plist_path()
+        _launchctl("bootout", f"gui/{os.getuid()}", str(plist))
+        _launchctl("unload", str(plist))  # older launchctl
+        existed = plist.exists()
+        plist.unlink(missing_ok=True)
+        print("✓ launchd agent removed" if existed else "✓ no launchd agent installed")
+        return True
+    if sup == "systemd":
+        unit = _systemd_unit_path()
+        _systemctl("disable", "--now", "beacon-serve")
+        existed = unit.exists()
+        unit.unlink(missing_ok=True)
+        _systemctl("daemon-reload")
+        print("✓ systemd user unit removed" if existed else "✓ no systemd user unit installed")
+        return True
+    print("no supervised-process manager (launchd/systemd) here; nothing to remove")
+    return True
+
+
+def _service_status() -> None:
+    sup = _service_supervisor()
+    if sup == "launchd":
+        plist = _launchd_plist_path()
+        print(f"unit:  {plist} ({'present' if plist.exists() else 'absent'})")
+        r = _launchctl("list", SERVICE_LABEL)
+        print("state: loaded" if r.returncode == 0 else "state: not loaded")
+    elif sup == "systemd":
+        unit = _systemd_unit_path()
+        print(f"unit:  {unit} ({'present' if unit.exists() else 'absent'})")
+        r = _systemctl("is-active", "beacon-serve")
+        print(f"state: {r.stdout.strip() or 'unknown'}")
+    else:
+        print("no supervised-process manager (launchd/systemd) here")
+        print(f"run it yourself: beacon serve --port {DEFAULT_SERVE_PORT} &")
+
+
+def cmd_service(args):
+    action = getattr(args, "action", None) or "status"
+    if action == "install":
+        ok = _service_install(getattr(args, "port", None) or DEFAULT_SERVE_PORT)
+        sys.exit(0 if ok else 1)
+    elif action == "uninstall":
+        _service_uninstall()
+    else:
+        _service_status()
+
+
 # --- resolver ---
 
 def chain(providers):
@@ -1651,6 +1835,30 @@ def _is_iterm_running() -> bool:
         return False
 
 
+def _is_iterm_installed() -> bool:
+    """Whether the iTerm2 render adapter can be configured on this machine —
+    macOS with iTerm.app present. Gates the iTerm2-specific install steps; a
+    box without it gets the dashboard-only install (CLI + fleet service). The
+    adapter needs `defaults`/`osascript`/DynamicProfiles (all macOS) plus the
+    app itself, so a macOS user on kitty/Terminal.app with no iTerm2 is
+    correctly treated as adapter-less."""
+    if sys.platform != "darwin":
+        return False
+    for p in (Path("/Applications/iTerm.app"),
+              Path.home() / "Applications" / "iTerm.app"):
+        if p.exists():
+            return True
+    # Launch Services lookup catches non-standard install locations.
+    try:
+        r = subprocess.run(
+            ["osascript", "-e", 'POSIX path of (path to application "iTerm")'],
+            capture_output=True, text=True, timeout=3,
+        )
+        return r.returncode == 0 and r.stdout.strip().endswith(".app/")
+    except Exception:
+        return False
+
+
 def _bg_paths_needing_approval() -> list[str]:
     """Pool slots, empty-string sentinel, and static state images
     (BADGE-15) not yet in iTerm2's AlwaysAllowBackgroundImage. Empty
@@ -1817,30 +2025,35 @@ def _write_default_profile_now() -> None:
         sys.exit(f"defaults write failed (exit {r.returncode})")
 
 
-def ensure_per_pane_bg_image():
+def ensure_per_pane_bg_image() -> bool:
     """Force iTerm2 to scope SetBackgroundImageFile to the pane, not the window.
-    Required for the pause overlay to appear only in the paused pane."""
+    Required for the pause overlay to appear only in the paused pane. Returns
+    whether the pref is now set, so the install step reports the truth rather
+    than an unconditional checkmark."""
     try:
         out = subprocess.run(
             ["defaults", "read", "com.googlecode.iterm2", "PerPaneBackgroundImage"],
             capture_output=True, text=True, timeout=2,
         )
         if out.returncode == 0 and out.stdout.strip() == "1":
-            return
+            return True
     except Exception:
         pass
     try:
-        subprocess.run(
+        r = subprocess.run(
             ["defaults", "write", "com.googlecode.iterm2",
              "PerPaneBackgroundImage", "-bool", "true"],
             capture_output=True, timeout=2,
         )
-        sys.stderr.write(
-            "beacon: enabled iTerm2 'Separate background images per pane' "
-            "(restart iTerm2 for this to take effect in existing windows)\n"
-        )
+        if r.returncode == 0:
+            sys.stderr.write(
+                "beacon: enabled iTerm2 'Separate background images per pane' "
+                "(restart iTerm2 for this to take effect in existing windows)\n"
+            )
+            return True
     except Exception:
         pass
+    return False
 
 
 # --- apply ---
@@ -2375,22 +2588,48 @@ def cmd_install(_args):
     print("beacon install")
     print("==============")
     print()
+    iterm = _is_iterm_installed()
+    total = 7 if iterm else 2
+    n = 0
+
+    def step(title: str) -> None:
+        nonlocal n
+        n += 1
+        print(f"[{n}/{total}] {title}")
+
     deferred: list[str] = []
 
-    print("[1/7] shell integration")
-    _install_shell_source()
-    print()
-    print("[2/7] CLI wrapper on PATH")
+    # Terminal-agnostic surface — the fleet dashboard, works in any terminal.
+    step("CLI wrapper on PATH")
     _install_cli_wrapper()
     print()
-    print("[3/7] tab completion")
+    step("tab completion")
     _install_completions()
     print()
-    print("[4/7] iTerm2 'separate background images per pane'")
-    ensure_per_pane_bg_image()
-    print("  ✓ defaults set (PerPaneBackgroundImage = true)")
+
+    if not iterm:
+        print(_color("33",
+            "iTerm2 not detected — per-pane painting (badge, status bar, overlay)"))
+        print(_color("33",
+            "is unavailable here. The fleet dashboard is ready:"))
+        print("  beacon wip      # snapshot of active work streams")
+        print("  beacon watch    # live view (q to quit)")
+        print("  beacon serve    # localhost endpoint for a dashboard")
+        print()
+        print("  beacon service install   # keep serve running for an external dashboard")
+        return
+
+    # iTerm2 render adapter — macOS + iTerm.app only.
+    step("shell integration")
+    _install_shell_source()
     print()
-    print("[5/7] iTerm2 bg-image trust pre-approval")
+    step("iTerm2 'separate background images per pane'")
+    if ensure_per_pane_bg_image():
+        print("  ✓ PerPaneBackgroundImage = true")
+    else:
+        print(_color("33", "  ! could not set PerPaneBackgroundImage (defaults write failed)"))
+    print()
+    step("iTerm2 bg-image trust pre-approval")
     ok, added = _pre_approve_iterm_paths()
     if not ok:
         for line in (
@@ -2400,7 +2639,7 @@ def cmd_install(_args):
             "    iTerm2 prompts once per pool slot the first time it's used.",
         ):
             print(_color("33", line))
-        deferred.append("[5/7] bg-image trust pre-approval")
+        deferred.append("bg-image trust pre-approval")
     elif added:
         print(f"  ✓ added {len(added)} entries to AlwaysAllowBackgroundImage:")
         for p in added:
@@ -2408,11 +2647,11 @@ def cmd_install(_args):
     else:
         print("  ✓ all bg-image paths already pre-approved")
     print()
-    print("[6/7] iTerm2 dynamic profile (status bar layout)")
+    step("iTerm2 dynamic profile (status bar layout)")
     _, msg = install_dynamic_profile()
     print(f"  ✓ {msg}")
     print()
-    print("[7/7] iTerm2 default profile")
+    step("iTerm2 default profile")
     if _is_beacon_already_default():
         print("  ✓ 'beacon' is already the default profile")
     else:
@@ -2421,7 +2660,7 @@ def cmd_install(_args):
             "    Set via: iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default",
         ):
             print(_color("33", line))
-        deferred.append("[7/7] default profile")
+        deferred.append("default profile")
     print()
     if deferred:
         label = "deferred step" if len(deferred) == 1 else "deferred steps"
@@ -2438,6 +2677,8 @@ def cmd_install(_args):
             "  while iTerm2 is dead, and relaunches it."))
     else:
         print("Next: exec zsh, then open a fresh iTerm2 tab.")
+    print()
+    print("Optional: `beacon service install` keeps serve running for an external dashboard.")
 
 
 def cmd_exclusive_configuration(args):
@@ -2681,7 +2922,8 @@ def main(argv=None):
     sp.add_argument("--print", dest="print_only", action="store_true",
                     help="print the script to stdout instead of installing")
 
-    sub.add_parser("install", help="run all install steps (shell, wrapper, completions, profile)")
+    sub.add_parser("install",
+                   help="run all install steps (wrapper, completions, + iTerm2 adapter if present)")
 
     sp = sub.add_parser("install-cli",
                         help="install or refresh the beacon wrapper at ~/.local/bin/beacon (+ completions)")
@@ -2719,7 +2961,15 @@ def main(argv=None):
                     help="every recorded session, no time window (the full history)")
 
     sp = sub.add_parser("serve", help="serve the wip payload over http://127.0.0.1 for the goals dashboard")
-    sp.add_argument("--port", type=int, default=8787, help="port to bind (default 8787)")
+    sp.add_argument("--port", type=int, default=DEFAULT_SERVE_PORT,
+                    help=f"port to bind (default {DEFAULT_SERVE_PORT})")
+
+    sp = sub.add_parser("service",
+                        help="manage the always-on serve service (launchd/systemd)")
+    sp.add_argument("action", nargs="?", choices=["install", "uninstall", "status"],
+                    default="status")
+    sp.add_argument("--port", type=int, default=DEFAULT_SERVE_PORT,
+                    help=f"port the service binds (default {DEFAULT_SERVE_PORT})")
 
     sp = sub.add_parser("prune", help="remove per-session state for long-idle sessions")
     sp.add_argument("--since", "--keep", dest="keep", default="30d", metavar="WHEN",
@@ -2748,7 +2998,7 @@ def main(argv=None):
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "data-dir": cmd_data_dir,
+        "service": cmd_service, "data-dir": cmd_data_dir,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)

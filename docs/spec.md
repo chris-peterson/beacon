@@ -1,8 +1,13 @@
 # beacon — Specification
 
-At-a-glance session awareness across many concurrent Claude Code sessions. Each session displays its identity (which project, what task) and what's happening right now (status, with an optional user-supplied description) on a render target the user can scan without focusing — badge, tab color, and a marginalia card for richer context.
+At-a-glance session awareness across concurrent Claude Code sessions. Each session displays its identity (which project, what task) and what's happening right now (status, with an optional user-supplied description) on a surface the user can scan without focusing.
 
-This document specifies requirements in [EARS](https://alistairmavin.com/ears/) form and outlines the first implementation: a CLI plus a Claude Code plugin targeting iTerm2 on macOS with zsh.
+beacon surfaces that state two ways:
+
+- a **terminal-agnostic fleet view** (§3.8) — `wip` / `watch` / `serve` read every session's state and render it as a snapshot, a live TTY view, or a localhost HTTP feed for an external dashboard. It paints no per-pane surface, so it works in any terminal with Python 3.
+- an **iTerm2 per-pane render adapter** (§4) — paints a single session's state onto its own pane (badge, status bar, marginalia card, tab color) so the user can scan many panes without focusing each.
+
+This document specifies requirements in [EARS](https://alistairmavin.com/ears/) form. §3 is render-agnostic and applies to any adapter; §4 collects the iTerm2-specific implementation (macOS, zsh).
 
 ---
 
@@ -37,7 +42,7 @@ Status accepts a user override via `/beacon status <value> [<description>]` (or 
 
 ### 1.4 Render target
 
-A surface where signal state becomes visible. Render targets are pluggable; the first implementation targets iTerm2 on macOS. Other plausible targets: tmux status line, menubar app, Stream Deck, web dashboard.
+A surface where signal state becomes visible. Two ship today: the render-agnostic fleet view (§3.8), which reads across all sessions and works in any terminal, and the iTerm2 per-pane adapter (§4), which paints one session's state onto its own pane. Render targets are pluggable — other plausible per-pane adapters: tmux status line, menubar app, Stream Deck, kitty.
 
 ### 1.5 Render collaborators
 
@@ -209,7 +214,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-07.** When the user invokes `render`, the plugin shall force a re-render with the current resolved state without changing any state.
 
-**CMD-08.** When the user invokes `install`, the plugin shall perform every bootstrap step the active render adapter can complete without an iTerm2 restart, print one line per step, and emit a deferred-action notice for any steps it cannot complete in-place (see CMD-12). The adapter's specific step list is captured in the adapter section — for iTerm2, see STATUS-BAR-01 and OVERLAY-04.
+**CMD-08.** When the user invokes `install`, the plugin shall perform the terminal-agnostic bootstrap steps (CLI wrapper on `$PATH`, tab completion), then every bootstrap step the active render adapter can complete without an iTerm2 restart, printing one line per step and emitting a deferred-action notice for any steps it cannot complete in-place (see CMD-12). When no render adapter is applicable — iTerm2 absent (not macOS, or iTerm.app not installed) — the plugin shall perform only the terminal-agnostic steps and point the user at the fleet view (`wip` / `watch` / `serve`). `install` shall not start the serve service (WIP-07) — it is opt-in — but shall point the user at it. The adapter's specific step list is captured in the adapter section — for iTerm2, see STATUS-BAR-01 and OVERLAY-04.
 
 **CMD-09.** When the user invokes `completions zsh`, the plugin shall install a tab-completion script such that `beacon <TAB>` works in a fresh zsh session. With `--print`, the plugin shall print the script to stdout instead of installing. Install location and `fpath` plumbing are implementation details (see §6.5).
 
@@ -238,7 +243,9 @@ Behavior:
 
 ### 3.8 Cross-session introspection / export (WIP)
 
-`wip`, `watch`, and `serve` read across **all** sessions' state — not just the current pane. `wip` and `serve` emit a machine-readable snapshot of active work streams; `watch` renders the same snapshot as a live, person-facing view. They are read-only: unlike every other plugin command they invoke no render adapter and paint no surface (the §4.1 pane anatomy is unchanged). Their purpose is to surface "what is actually being worked on right now" with higher signal than a planned-work tracker alone can give — feeding external dashboards (e.g. the goals "wip" tab) or, for `watch`, a person scanning their own fleet of panes.
+`wip`, `watch`, and `serve` read across **all** sessions' state — not just the current pane. `wip` and `serve` emit a machine-readable snapshot of active work streams; `watch` renders the same snapshot as a live, person-facing view. They are read-only: unlike every other plugin command they invoke no render adapter and paint no surface (the §4.1 pane anatomy is unchanged). Because they need no adapter, they are the surface beacon offers in **any** terminal — the fleet view a user on a non-iTerm2 terminal relies on. Their purpose is to surface "what is actually being worked on right now" with higher signal than a planned-work tracker alone can give — feeding external dashboards (e.g. the goals "wip" tab) or, for `watch`, a person scanning their own fleet of panes.
+
+The state-file directory (§6.2) is the single source of record. Every consumer reads it: the per-pane adapter resolves the current session's fields, the fleet commands enumerate all sessions, and `serve` re-reads on every request (WIP-04) — it holds no state of its own. So the fleet view and the per-pane adapter cannot disagree: they project the same files.
 
 **WIP-01.** When the user invokes `wip`, the plugin shall enumerate every session with state on disk, resolve each from its stored fields (status, anchored project/cwd, description, last-activity, Claude session id), and emit one record per session. With `--json` the plugin shall emit a single object `{ generated_at, window_since, sessions[] }`; otherwise a human-readable table grouped by correlated route. Each record carries both the Claude session id (`session`) and beacon's per-pane hash. When two state buckets carry the same Claude session id — a session that moved panes (e.g. `claude --resume` in a new pane) leaves its prior pane's bucket behind — the plugin shall emit only the most recently active bucket's record; buckets with no session id are distinct panes and are never collapsed. Resolution uses the anchored project/cwd (HOOK-08), not the live provider chain, so the snapshot does not depend on any pane's current subprocess cwd. A session that carries only a session id with no project/cwd anchor is omitted — it carries no work-stream signal.
 
@@ -251,6 +258,8 @@ Behavior:
 **WIP-05.** A `--since` value shall accept either a relative duration (`90s`, `30m`, `2h`, `1d`, `1w` — that long before now) or an ISO-8601 timestamp.
 
 **WIP-06.** When the user invokes `prune [--since <when>]` (alias `--keep`), the plugin shall keep sessions active within that window and remove all per-session state for the rest (default 30 days; same duration/ISO grammar as `wip --since`), always keeping the current session. This is garbage collection for accumulated pane state — including project-less sessions that never reached SessionStart; a pruned session repaints on its next hook event.
+
+**WIP-07.** The serve service is opt-in — the user enables it explicitly, and `install` does not (CMD-08). When the user invokes `service <install|uninstall|status>`, the plugin shall manage a platform-native supervised process that keeps `serve` (WIP-04) always running, so an external dashboard has a stable endpoint to poll. `install` shall write and load a launchd user agent (macOS) or systemd user unit (Linux) that restarts the process on failure; `uninstall` shall unload and remove it; `status` shall report whether the unit is installed and running. On a platform with no supported supervisor, the command shall print the manual `serve` invocation rather than fail. The unit shall invoke the stable CLI wrapper (`~/.local/bin/beacon`, CMD-13), not a version-pinned path, so a plugin upgrade that refreshes the wrapper keeps the service working without rewriting the unit. The service changes no contract: the state files remain the source of record and the server stays a stateless projection (WIP-04); the per-pane render path (§4) is never routed through it.
 
 **WATCH-01.** When the user invokes `watch [--interval <secs>] [--since <when>] [--all]`, the plugin shall render the `wip` snapshot as a live view that refreshes in place until the user quits with `q` (or interrupts), windowing per WIP-03/05 with `--interval` setting the refresh cadence (default 1s). It is interactive by definition: it shall require an interactive terminal (stdout is a TTY) and otherwise exit pointing the user at `wip`. It shall own its render loop and repaint only the rows that changed against the previous frame, so an idle fleet produces no output; it shall restore the terminal (cursor, alternate-screen buffer, canonical mode) on every exit path.
 

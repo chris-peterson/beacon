@@ -1,6 +1,6 @@
 # beacon
 
-At-a-glance session awareness for Claude Code in iTerm2.
+At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus per-pane painting in iTerm2.
 
 **[Read the docs](https://chris-peterson.github.io/beacon/)** for install, usage, and the full behavioral spec.
 
@@ -19,9 +19,16 @@ This wires up the shell side just like `/beacon install`, but pointed at your cl
 
 ## Dependencies
 
-- macOS with iTerm2 — the only adapter today; spec §4 is iTerm2-specific.
+The fleet dashboard (`wip` / `watch` / `serve`) needs only:
+
+- Python 3 — the plugin script and CLI run via the system `python3`.
+
+The per-pane painting layer (badge, status bar, overlay; spec §4) additionally needs:
+
+- macOS with iTerm2 — the render adapter is iTerm2-specific. `install` detects iTerm.app and skips these steps when it's absent.
 - zsh — the shell snippet relies on zsh-only features.
-- Python 3 — the plugin script runs via the system `python3`.
+
+The always-on serve service (`beacon service`) uses launchd on macOS, systemd user units on Linux.
 
 ## Repository layout
 
@@ -44,11 +51,11 @@ beacon ships as three deliverables with a hard boundary between them:
 | D2 | `beacon-iterm` CLI | Stateless OSC-emitter executable |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 
-D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, a web dashboard) or driver plugins.
+D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, `beacon-kitty`) or driver plugins.
 
 The behavioral contract for hooks vs shell is documented in [`CLAUDE.md`](CLAUDE.md): the plugin owns `status` (and its optional description) and writes to its user-var slots; the shell owns `project`/`branch`/`cwd`/`url` and writes to disjoint slots; the CLI is unaware of either.
 
-`beacon wip` and `beacon serve` (spec §3.8) are read-only export surfaces on D3 — they enumerate every session's state and emit a snapshot for external dashboards (the goals "wip" tab) rather than painting iTerm2, so they don't route through D2.
+`beacon wip` / `watch` / `serve` (spec §3.8) are the terminal-agnostic fleet surface on D3 — they enumerate every session's state and render a snapshot (TTY, JSON, or localhost HTTP) for external dashboards rather than painting iTerm2, so they don't route through D2 and work in any terminal. `beacon service` keeps `serve` running under launchd/systemd. The per-session state-file directory is the single source of record: the iTerm2 paint and the fleet view both read it, and `serve` re-reads it per request, so they can't disagree.
 
 ## License
 
