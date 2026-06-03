@@ -946,11 +946,26 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 def collect_sessions(since_epoch: float | None = None) -> dict:
     now = time.time()
     session_index = _tack_session_index()
-    sessions = []
+    resolved = []
     for sh in _all_session_hashes():
         s = _resolve_session(sh, session_index)
-        if not s:
-            continue
+        if s:
+            resolved.append(s)
+    # WIP-01: one record per Claude session. A session that moved panes
+    # (e.g. `claude --resume` in a new pane) leaves its prior pane's state
+    # bucket behind, so two hashes can carry the same Claude session id —
+    # the most recently active bucket wins. Records with no session id are
+    # distinct panes, not joinable duplicates; keep them all.
+    newest_by_sid: dict[str, dict] = {}
+    no_sid = []
+    for s in resolved:
+        sid = s["session"]
+        if not sid:
+            no_sid.append(s)
+        elif sid not in newest_by_sid or s["_epoch"] > newest_by_sid[sid]["_epoch"]:
+            newest_by_sid[sid] = s
+    sessions = []
+    for s in no_sid + list(newest_by_sid.values()):
         epoch = s.pop("_epoch", 0.0)
         if since_epoch is not None and epoch < since_epoch:
             continue

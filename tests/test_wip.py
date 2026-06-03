@@ -95,6 +95,28 @@ class WipTest(unittest.TestCase):
         self._write("ghost", "signal.status", "working")
         self.assertEqual(self._sessions(), [])
 
+    def test_one_record_per_claude_session_newest_wins(self):
+        # A session resumed in a new pane leaves its prior pane's state
+        # bucket behind; both buckets carry the same Claude session id.
+        # WIP-01: one record per session — most recently active bucket wins.
+        old = time.time() - 3600
+        self._write("oldpane", "anchor.project", "proj", mtime=old)
+        self._write("oldpane", "claude_session_id", "sid-moved", mtime=old)
+        self._write("newpane", "anchor.project", "proj")
+        self._write("newpane", "claude_session_id", "sid-moved")
+
+        sessions = self._sessions()
+        self.assertEqual(len(sessions), 1)
+        self.assertEqual(sessions[0]["session"], "sid-moved")
+        self.assertEqual(sessions[0]["hash"], "newpane")
+
+    def test_panes_without_session_id_are_not_collapsed(self):
+        # An empty session id is "unknown pane tenant", not a join key —
+        # two id-less panes must both emit.
+        self._write("aaa", "anchor.project", "p1")
+        self._write("bbb", "anchor.project", "p2")
+        self.assertEqual(len(self._sessions()), 2)
+
     # --- status → logical state ---
 
     def test_status_maps_to_logical_state(self):
