@@ -1307,27 +1307,35 @@ def _render_systemd_unit(wrapper: Path, port: int) -> str:
     )
 
 
+def _run_supervisor(cmd: list[str]) -> subprocess.CompletedProcess:
+    """Run a launchctl/systemctl command, turning a missing binary or a hang
+    into a non-zero result instead of an exception. cmd_service is user-facing,
+    so call sites surface r.stderr as a `! ...` line; an uncaught TimeoutExpired
+    / FileNotFoundError would replace that with a traceback."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        return subprocess.CompletedProcess(cmd, 1, "", str(e))
+
+
 def _launchctl(*args) -> subprocess.CompletedProcess:
-    return subprocess.run(["launchctl", *args],
-                          capture_output=True, text=True, timeout=10)
+    return _run_supervisor(["launchctl", *args])
 
 
 def _systemctl(*args) -> subprocess.CompletedProcess:
-    return subprocess.run(["systemctl", "--user", *args],
-                          capture_output=True, text=True, timeout=10)
+    return _run_supervisor(["systemctl", "--user", *args])
 
 
 def _service_supervisor() -> str:
     """Which init system manages the service here: 'launchd' on macOS,
-    'systemd' on Linux when a user instance is reachable, else 'none'."""
+    'systemd' on Linux when the systemctl binary is present, else 'none'.
+    The systemd probe is `systemctl --user --version` (binary present); a
+    user instance that isn't actually running surfaces later, when
+    `enable --now` fails in _service_install."""
     if sys.platform == "darwin":
         return "launchd"
-    try:
-        r = _systemctl("--version")
-        if r.returncode == 0:
-            return "systemd"
-    except Exception:
-        pass
+    if _systemctl("--version").returncode == 0:
+        return "systemd"
     return "none"
 
 
@@ -1349,12 +1357,16 @@ def _service_install(port: int, indent: str = "") -> bool:
         _launchctl("bootout", domain, str(plist))  # clear any prior load
         r = _launchctl("bootstrap", domain, str(plist))
         if r.returncode != 0:
-            r = _launchctl("load", "-w", str(plist))  # older launchctl
-        if r.returncode == 0:
-            print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/wip.json")
-            return True
-        print(f"{indent}! launchctl could not load {plist}: {r.stderr.strip()}")
-        return False
+            legacy = _launchctl("load", "-w", str(plist))  # older launchctl
+            if legacy.returncode != 0:
+                # Prefer bootstrap's stderr — the load retry's is usually empty
+                # or a deprecation notice on modern macOS, so it would mask the
+                # actionable diagnostic.
+                err = r.stderr.strip() or legacy.stderr.strip()
+                print(f"{indent}! launchctl could not load {plist}: {err}")
+                return False
+        print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/wip.json")
+        return True
 
     if sup == "systemd":
         unit = _systemd_unit_path()
@@ -1374,22 +1386,36 @@ def _service_install(port: int, indent: str = "") -> bool:
 
 
 def _service_uninstall() -> bool:
+    """Tear down the unit and report on the teardown, not just the file. A
+    `bootout`/`disable` that fails (service wedged, permissions) while the unit
+    file unlinks fine would otherwise read as a clean removal."""
     sup = _service_supervisor()
     if sup == "launchd":
         plist = _launchd_plist_path()
-        _launchctl("bootout", f"gui/{os.getuid()}", str(plist))
-        _launchctl("unload", str(plist))  # older launchctl
-        existed = plist.exists()
+        if not plist.exists():
+            print("✓ no launchd agent installed")
+            return True
+        r = _launchctl("bootout", f"gui/{os.getuid()}", str(plist))
+        if r.returncode != 0:
+            r = _launchctl("unload", str(plist))  # older launchctl
         plist.unlink(missing_ok=True)
-        print("✓ launchd agent removed" if existed else "✓ no launchd agent installed")
+        if r.returncode != 0:
+            print(f"! launchd agent file removed, but unload failed: {r.stderr.strip()}")
+            return False
+        print("✓ launchd agent removed")
         return True
     if sup == "systemd":
         unit = _systemd_unit_path()
-        _systemctl("disable", "--now", "beacon-serve")
-        existed = unit.exists()
+        if not unit.exists():
+            print("✓ no systemd user unit installed")
+            return True
+        r = _systemctl("disable", "--now", "beacon-serve")
         unit.unlink(missing_ok=True)
         _systemctl("daemon-reload")
-        print("✓ systemd user unit removed" if existed else "✓ no systemd user unit installed")
+        if r.returncode != 0:
+            print(f"! systemd unit file removed, but disable failed: {r.stderr.strip()}")
+            return False
+        print("✓ systemd user unit removed")
         return True
     print("no supervised-process manager (launchd/systemd) here; nothing to remove")
     return True
@@ -1418,7 +1444,7 @@ def cmd_service(args):
         ok = _service_install(getattr(args, "port", None) or DEFAULT_SERVE_PORT)
         sys.exit(0 if ok else 1)
     elif action == "uninstall":
-        _service_uninstall()
+        sys.exit(0 if _service_uninstall() else 1)
     else:
         _service_status()
 

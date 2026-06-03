@@ -725,6 +725,14 @@ class InstallGating(unittest.TestCase):
                          "the serve service is opt-in; install must not start it")
         self.assertIn("[7/7]", out)
 
+    def test_per_pane_failure_reports_truthfully(self):
+        # ensure_per_pane_bg_image() returning False must render the warning,
+        # not a checkmark — the truthful-reporting fix this PR introduced.
+        self.mocks["ensure_per_pane_bg_image"].return_value = False
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
+            out = self._run_install()
+        self.assertIn("could not set PerPaneBackgroundImage", out)
+
 
 class ServiceUnit(unittest.TestCase):
     """WIP-07: `service install` writes a supervised unit that runs `serve` via
@@ -744,6 +752,10 @@ class ServiceUnit(unittest.TestCase):
     @staticmethod
     def _ok():
         return subprocess.CompletedProcess([], 0, "", "")
+
+    @staticmethod
+    def _fail(stderr="boom"):
+        return subprocess.CompletedProcess([], 1, "", stderr)
 
     def test_wrapper_path_is_stable_local_bin(self):
         # The unit must point at the upgrade-stable wrapper, not a version-pinned
@@ -806,6 +818,85 @@ class ServiceUnit(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.beacon._service_uninstall()
         self.assertFalse(plist.exists())
+
+    def test_run_supervisor_turns_missing_binary_into_nonzero(self):
+        # A missing launchctl/systemctl must surface as r.stderr (a `! ...`
+        # line), not an uncaught FileNotFoundError traceback.
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=FileNotFoundError("no launchctl")):
+            r = self.beacon._launchctl("list")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no launchctl", r.stderr)
+
+    def test_supervisor_is_none_when_systemctl_absent(self):
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._fail()):
+            self.assertEqual(self.beacon._service_supervisor(), "none")
+
+    def test_supervisor_is_systemd_when_systemctl_present(self):
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._ok()):
+            self.assertEqual(self.beacon._service_supervisor(), "systemd")
+
+    def test_install_launchd_failure_surfaces_bootstrap_error(self):
+        wrapper = self._wrapper_file()
+        plist = self.tmp / "agent.plist"
+        # bootout, bootstrap, and the legacy load retry all fail; the bootstrap
+        # diagnostic must be the one surfaced, not the (empty) load retry.
+        calls = {"bootstrap": self._fail("Bootstrap failed: 5"), "load": self._fail("")}
+        def launchctl(*a):
+            return calls.get(a[0], self._fail(""))
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", side_effect=launchctl), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_install(8800)
+        self.assertFalse(ok)
+        self.assertIn("Bootstrap failed: 5", buf.getvalue())
+
+    def test_install_systemd_failure_returns_false(self):
+        wrapper = self._wrapper_file()
+        unit = self.tmp / "beacon-serve.service"
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_systemd_unit_path", return_value=unit), \
+             mock.patch.object(self.beacon, "_service_supervisor", return_value="systemd"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._fail("enable failed")):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_install(8800)
+        self.assertFalse(ok)
+        self.assertIn("enable failed", buf.getvalue())
+
+    def test_uninstall_launchd_failure_returns_false(self):
+        plist = self.tmp / "agent.plist"
+        plist.write_text("x")
+        with mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", return_value=self._fail("wedged")), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_uninstall()
+        self.assertFalse(ok)
+        self.assertFalse(plist.exists())  # file still removed
+        self.assertIn("wedged", buf.getvalue())
+
+    def test_uninstall_systemd_removes_unit(self):
+        unit = self.tmp / "beacon-serve.service"
+        unit.write_text("x")
+        with mock.patch.object(self.beacon, "_systemd_unit_path", return_value=unit), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._ok()), \
+             mock.patch("sys.platform", "linux"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_uninstall()
+        self.assertTrue(ok)
+        self.assertFalse(unit.exists())
+
+    def test_is_iterm_installed_false_off_darwin(self):
+        with mock.patch("sys.platform", "linux"):
+            self.assertFalse(self.beacon._is_iterm_installed())
 
 
 def _base_state() -> dict:
