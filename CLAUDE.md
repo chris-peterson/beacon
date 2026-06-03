@@ -4,7 +4,7 @@ Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](
 
 ## What beacon is
 
-A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state on iTerm2 surfaces (badge, status bar, pause overlay) so the user can scan many concurrent panes without focusing each one.
+A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state two ways: a **terminal-agnostic fleet view** (`wip` / `watch` / `serve`, optionally kept always-on via `beacon service`) that reads across all sessions and paints no pane, and an **iTerm2 per-pane render adapter** (badge, status bar, pause overlay) for scanning concurrent panes without focusing each. Both read the same per-session state files — the single source of record; neither inverts that into a daemon. The fleet view works in any terminal; the iTerm2 adapter needs macOS + iTerm2.
 
 ## Three deliverables, hard boundaries
 
@@ -48,6 +48,7 @@ Status maps to a logical color state (`ready` / `busy` / `blocked`) which then m
 - Per-session state: `<DATA_DIR>/state/<session-hash>.<field>` — fields include `description` (user-supplied marginalia text), `note-image` (rendered PNG path), `pending-attention` (sticky permission marker), `override.*`, `signal.status`, `resolved`, `claude_session_id`, `anchor.cwd` / `anchor.project` (SessionStart navigational anchor; Stop re-resolves chips from `anchor.cwd` per HOOK-08/08b).
 - Note image pool (LRU, fixed N=8): `<DATA_DIR>/cache/note-NN.png`
 - Per-session shell handoff files (read by status-bar action buttons): `<DATA_DIR>/cache/{url,cwd}-$ITERM_SESSION_ID.txt`
+- Always-on serve service logs (launchd `StandardOut/ErrorPath`): `<DATA_DIR>/logs/serve.{out,err}.log`
 
 Session hash is SHA-1 of `$ITERM_SESSION_ID` truncated; collisions are not a security concern.
 
@@ -76,6 +77,7 @@ iTerm2 caches its plist in memory while running and writes it back on quit. Any 
 | Apply prefs needing iTerm2 quit (default profile, bg-image trust) | `python3 scripts/beacon exclusive-configuration` |
 | List active work streams across all sessions (last 24h) | `python3 scripts/beacon wip [--json] [--since 1d] [--all]` |
 | Serve the wip snapshot for the goals dashboard | `python3 scripts/beacon serve [--port 8787]` |
+| Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon service <install\|uninstall\|status>` |
 | GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |

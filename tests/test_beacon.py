@@ -7,6 +7,7 @@ calls would have fired.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.machinery
 import importlib.util
 import io
@@ -665,6 +666,237 @@ class EmptyItermIdIsolatesSessions(BeaconTest):
             "empty ITERM_SESSION_ID must not collapse distinct Claude sessions "
             "onto one shared state bucket",
         )
+
+
+class InstallGating(unittest.TestCase):
+    """CMD-08: install always runs the terminal-agnostic steps (wrapper,
+    completions) and runs the iTerm2 render-adapter steps only when iTerm2 is
+    present. The serve service is opt-in (WIP-07), so install never starts it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+        returns = {
+            "_install_cli_wrapper": Path("/tmp/beacon"),
+            "_install_completions": None,
+            "_install_shell_source": None,
+            "_service_install": True,
+            "ensure_per_pane_bg_image": True,
+            "_pre_approve_iterm_paths": (True, []),
+            "install_dynamic_profile": (True, "profile written"),
+            "_is_beacon_already_default": True,
+        }
+        self.mocks = {}
+        for name, val in returns.items():
+            p = mock.patch.object(self.beacon, name, return_value=val)
+            self.mocks[name] = p.start()
+            self.addCleanup(p.stop)
+
+    def _run_install(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon.cmd_install(None)
+        return buf.getvalue()
+
+    _ITERM_STEPS = ("_install_shell_source", "ensure_per_pane_bg_image",
+                    "_pre_approve_iterm_paths", "install_dynamic_profile")
+    _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions")
+
+    def test_dashboard_only_skips_iterm_steps(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            out = self._run_install()
+        for name in self._ALWAYS_STEPS:
+            self.assertTrue(self.mocks[name].called, f"{name} should run")
+        for name in self._ITERM_STEPS:
+            self.assertFalse(self.mocks[name].called, f"{name} should be skipped")
+        self.assertFalse(self.mocks["_service_install"].called,
+                         "the serve service is opt-in; install must not start it")
+        self.assertIn("[1/2]", out)
+        self.assertIn("beacon wip", out)
+        self.assertIn("beacon service install", out)
+
+    def test_full_runs_every_step(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
+            out = self._run_install()
+        for name in (*self._ALWAYS_STEPS, *self._ITERM_STEPS, "_is_beacon_already_default"):
+            self.assertTrue(self.mocks[name].called, f"{name} should run")
+        self.assertFalse(self.mocks["_service_install"].called,
+                         "the serve service is opt-in; install must not start it")
+        self.assertIn("[7/7]", out)
+
+    def test_per_pane_failure_reports_truthfully(self):
+        # ensure_per_pane_bg_image() returning False must render the warning,
+        # not a checkmark — the truthful-reporting fix this PR introduced.
+        self.mocks["ensure_per_pane_bg_image"].return_value = False
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
+            out = self._run_install()
+        self.assertIn("could not set PerPaneBackgroundImage", out)
+
+
+class ServiceUnit(unittest.TestCase):
+    """WIP-07: `service install` writes a supervised unit that runs `serve` via
+    the stable wrapper, restart-on-failure; `uninstall` removes it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.tmp)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _wrapper_file(self) -> Path:
+        w = self.tmp / "beacon"
+        w.write_text("#!/bin/sh\n")
+        return w
+
+    @staticmethod
+    def _ok():
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    @staticmethod
+    def _fail(stderr="boom"):
+        return subprocess.CompletedProcess([], 1, "", stderr)
+
+    def test_wrapper_path_is_stable_local_bin(self):
+        # The unit must point at the upgrade-stable wrapper, not a version-pinned
+        # script path, so a plugin upgrade keeps the service working.
+        self.assertTrue(str(self.beacon._wrapper_path()).endswith("/.local/bin/beacon"))
+
+    def test_render_launchd_embeds_wrapper_keepalive_and_port(self):
+        out = self.beacon._render_launchd_plist(Path("/x/beacon"), 1234, Path("/o"), Path("/e"))
+        self.assertIn("<key>KeepAlive</key>", out)
+        self.assertIn("<string>/x/beacon</string>", out)
+        self.assertIn("<string>serve</string>", out)
+        self.assertIn("<string>1234</string>", out)
+
+    def test_render_systemd_embeds_wrapper_restart_and_port(self):
+        out = self.beacon._render_systemd_unit(Path("/x/beacon"), 1234)
+        self.assertIn("Restart=always", out)
+        self.assertIn("ExecStart=/x/beacon serve --port 1234", out)
+        self.assertIn("WantedBy=default.target", out)
+
+    def test_install_launchd_writes_and_loads_idempotently(self):
+        wrapper = self._wrapper_file()
+        plist = self.tmp / "agent.plist"
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", return_value=self._ok()), \
+             mock.patch("sys.platform", "darwin"):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(self.beacon._service_install(8800))
+                self.assertTrue(self.beacon._service_install(8800))  # idempotent
+        content = plist.read_text()
+        self.assertIn(str(wrapper), content)
+        self.assertIn("8800", content)
+
+    def test_install_systemd_writes_and_enables(self):
+        wrapper = self._wrapper_file()
+        unit = self.tmp / "beacon-serve.service"
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_systemd_unit_path", return_value=unit), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._ok()), \
+             mock.patch("sys.platform", "linux"):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(self.beacon._service_install(8800))
+        self.assertIn("Restart=always", unit.read_text())
+        self.assertIn("--port 8800", unit.read_text())
+
+    def test_install_without_wrapper_fails(self):
+        with mock.patch.object(self.beacon, "_wrapper_path",
+                               return_value=self.tmp / "absent"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.assertFalse(self.beacon._service_install(8800))
+        self.assertIn("install-cli", buf.getvalue())
+
+    def test_uninstall_launchd_removes_unit(self):
+        plist = self.tmp / "agent.plist"
+        plist.write_text("x")
+        with mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", return_value=self._ok()), \
+             mock.patch("sys.platform", "darwin"):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.beacon._service_uninstall()
+        self.assertFalse(plist.exists())
+
+    def test_run_supervisor_turns_missing_binary_into_nonzero(self):
+        # A missing launchctl/systemctl must surface as r.stderr (a `! ...`
+        # line), not an uncaught FileNotFoundError traceback.
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=FileNotFoundError("no launchctl")):
+            r = self.beacon._launchctl("list")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no launchctl", r.stderr)
+
+    def test_supervisor_is_none_when_systemctl_absent(self):
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._fail()):
+            self.assertEqual(self.beacon._service_supervisor(), "none")
+
+    def test_supervisor_is_systemd_when_systemctl_present(self):
+        with mock.patch("sys.platform", "linux"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._ok()):
+            self.assertEqual(self.beacon._service_supervisor(), "systemd")
+
+    def test_install_launchd_failure_surfaces_bootstrap_error(self):
+        wrapper = self._wrapper_file()
+        plist = self.tmp / "agent.plist"
+        # bootout, bootstrap, and the legacy load retry all fail; the bootstrap
+        # diagnostic must be the one surfaced, not the (empty) load retry.
+        calls = {"bootstrap": self._fail("Bootstrap failed: 5"), "load": self._fail("")}
+        def launchctl(*a):
+            return calls.get(a[0], self._fail(""))
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", side_effect=launchctl), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_install(8800)
+        self.assertFalse(ok)
+        self.assertIn("Bootstrap failed: 5", buf.getvalue())
+
+    def test_install_systemd_failure_returns_false(self):
+        wrapper = self._wrapper_file()
+        unit = self.tmp / "beacon-serve.service"
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_systemd_unit_path", return_value=unit), \
+             mock.patch.object(self.beacon, "_service_supervisor", return_value="systemd"), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._fail("enable failed")):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_install(8800)
+        self.assertFalse(ok)
+        self.assertIn("enable failed", buf.getvalue())
+
+    def test_uninstall_launchd_failure_returns_false(self):
+        plist = self.tmp / "agent.plist"
+        plist.write_text("x")
+        with mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", return_value=self._fail("wedged")), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_uninstall()
+        self.assertFalse(ok)
+        self.assertFalse(plist.exists())  # file still removed
+        self.assertIn("wedged", buf.getvalue())
+
+    def test_uninstall_systemd_removes_unit(self):
+        unit = self.tmp / "beacon-serve.service"
+        unit.write_text("x")
+        with mock.patch.object(self.beacon, "_systemd_unit_path", return_value=unit), \
+             mock.patch.object(self.beacon, "_systemctl", return_value=self._ok()), \
+             mock.patch("sys.platform", "linux"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_uninstall()
+        self.assertTrue(ok)
+        self.assertFalse(unit.exists())
+
+    def test_is_iterm_installed_false_off_darwin(self):
+        with mock.patch("sys.platform", "linux"):
+            self.assertFalse(self.beacon._is_iterm_installed())
 
 
 def _base_state() -> dict:
