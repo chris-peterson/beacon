@@ -5,7 +5,7 @@
 ### Features
 - **The fleet dashboard (`wip` / `watch` / `serve`) now works in any terminal.** It reads across all sessions and paints no pane, so it no longer depends on iTerm2 — only the per-pane painting (badge, status bar, overlay) needs macOS + iTerm2.
 - **`beacon install` is terminal-aware.** It detects iTerm2 (macOS + `iTerm.app`); when absent it installs only the CLI wrapper and completions and points you at the fleet dashboard, skipping the iTerm2-only setup instead of attempting it.
-- **New `beacon service install|uninstall|status`.** Keeps `serve` always running under a launchd agent (macOS) or systemd user unit (Linux) so an external dashboard has a stable endpoint that restarts on crash. Opt-in — `install` doesn't start it.
+- **New `beacon serve install|uninstall|status`.** Keeps `serve` always running under a launchd agent (macOS) or systemd user unit (Linux) so an external dashboard has a stable endpoint that restarts on crash. Opt-in — `install` doesn't start it.
 
 ### Fixes
 - **`beacon install` no longer reports success for an iTerm2 preference it couldn't set.** On a non-macOS box the `PerPaneBackgroundImage` write silently no-ops; install now reports the failure instead of printing a checkmark.

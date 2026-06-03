@@ -192,8 +192,7 @@ _beacon() {
     'render:re-render current state'
     'wip:list active work streams across all beacon sessions'
     'watch:live, person-facing work-stream view (recency feed; q to quit)'
-    'serve:serve the wip payload over localhost for the goals dashboard'
-    'service:manage the always-on serve service (launchd/systemd)'
+    'serve:serve the wip payload over localhost, or manage the always-on unit'
     'prune:remove per-session state for long-idle sessions'
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
@@ -240,10 +239,7 @@ _beacon() {
       compadd -- --interval --since --all
       ;;
     serve)
-      compadd -- --port
-      ;;
-    service)
-      (( CURRENT == 3 )) && compadd install uninstall status
+      (( CURRENT == 3 )) && compadd run install uninstall status
       compadd -- --port
       ;;
     prune)
@@ -1235,9 +1231,23 @@ def wip_http_server(port: int):
 
 
 def cmd_serve(args):
-    """Serve the wip payload over localhost so a locally-opened goals dashboard
-    can poll for near-realtime work-stream signal."""
-    port = getattr(args, "port", None) or 8787
+    """Serve the wip payload over localhost, or manage the always-on unit that
+    keeps that server running. Bare `serve` runs in the foreground (so a
+    locally-opened dashboard can poll for near-realtime signal); `install` /
+    `uninstall` / `status` manage the launchd/systemd supervised process."""
+    action = getattr(args, "action", None) or "run"
+    port = getattr(args, "port", None) or DEFAULT_SERVE_PORT
+    if action == "install":
+        sys.exit(0 if _service_install(port) else 1)
+    if action == "uninstall":
+        sys.exit(0 if _service_uninstall() else 1)
+    if action == "status":
+        _service_status()
+        return
+    _serve_foreground(port)
+
+
+def _serve_foreground(port: int):
     server = wip_http_server(port)
     try:
         print(f"beacon serve → http://127.0.0.1:{port}/wip.json  (Ctrl-C to stop)")
@@ -1309,7 +1319,7 @@ def _render_systemd_unit(wrapper: Path, port: int) -> str:
 
 def _run_supervisor(cmd: list[str]) -> subprocess.CompletedProcess:
     """Run a launchctl/systemctl command, turning a missing binary or a hang
-    into a non-zero result instead of an exception. cmd_service is user-facing,
+    into a non-zero result instead of an exception. `serve` is user-facing,
     so call sites surface r.stderr as a `! ...` line; an uncaught TimeoutExpired
     / FileNotFoundError would replace that with a traceback."""
     try:
@@ -1436,17 +1446,6 @@ def _service_status() -> None:
     else:
         print("no supervised-process manager (launchd/systemd) here")
         print(f"run it yourself: beacon serve --port {DEFAULT_SERVE_PORT} &")
-
-
-def cmd_service(args):
-    action = getattr(args, "action", None) or "status"
-    if action == "install":
-        ok = _service_install(getattr(args, "port", None) or DEFAULT_SERVE_PORT)
-        sys.exit(0 if ok else 1)
-    elif action == "uninstall":
-        sys.exit(0 if _service_uninstall() else 1)
-    else:
-        _service_status()
 
 
 # --- resolver ---
@@ -2642,7 +2641,7 @@ def cmd_install(_args):
         print("  beacon watch    # live view (q to quit)")
         print("  beacon serve    # localhost endpoint for a dashboard")
         print()
-        print("  beacon service install   # keep serve running for an external dashboard")
+        print("  beacon serve install   # keep serve running for an external dashboard")
         return
 
     # iTerm2 render adapter — macOS + iTerm.app only.
@@ -2704,7 +2703,7 @@ def cmd_install(_args):
     else:
         print("Next: exec zsh, then open a fresh iTerm2 tab.")
     print()
-    print("Optional: `beacon service install` keeps serve running for an external dashboard.")
+    print("Optional: `beacon serve install` keeps serve running for an external dashboard.")
 
 
 def cmd_exclusive_configuration(args):
@@ -2986,16 +2985,13 @@ def main(argv=None):
     sp.add_argument("--all", action="store_true",
                     help="every recorded session, no time window (the full history)")
 
-    sp = sub.add_parser("serve", help="serve the wip payload over http://127.0.0.1 for the goals dashboard")
+    sp = sub.add_parser("serve",
+                        help="serve the wip payload on http://127.0.0.1, or manage the always-on unit")
+    sp.add_argument("action", nargs="?",
+                    choices=["run", "install", "uninstall", "status"], default="run",
+                    help="run in the foreground (default), or manage the launchd/systemd unit")
     sp.add_argument("--port", type=int, default=DEFAULT_SERVE_PORT,
                     help=f"port to bind (default {DEFAULT_SERVE_PORT})")
-
-    sp = sub.add_parser("service",
-                        help="manage the always-on serve service (launchd/systemd)")
-    sp.add_argument("action", nargs="?", choices=["install", "uninstall", "status"],
-                    default="status")
-    sp.add_argument("--port", type=int, default=DEFAULT_SERVE_PORT,
-                    help=f"port the service binds (default {DEFAULT_SERVE_PORT})")
 
     sp = sub.add_parser("prune", help="remove per-session state for long-idle sessions")
     sp.add_argument("--since", "--keep", dest="keep", default="30d", metavar="WHEN",
@@ -3024,7 +3020,7 @@ def main(argv=None):
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "service": cmd_service, "data-dir": cmd_data_dir,
+        "data-dir": cmd_data_dir,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)

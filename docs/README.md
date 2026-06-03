@@ -23,9 +23,9 @@ beacon surfaces what every session is doing — which project, what task, and wh
 If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon install`:
 
 ```bash
-beacon service install      # launchd agent (macOS) / systemd user unit (Linux)
-beacon service status       # is it installed and running?
-beacon service uninstall    # tear it down
+beacon serve install      # launchd agent (macOS) / systemd user unit (Linux)
+beacon serve status       # is it installed and running?
+beacon serve uninstall    # tear it down
 ```
 
 The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin upgrade that refreshes the wrapper keeps the service working. The state files stay the source of record; `serve` re-reads them per request, so the service can restart between two polls without the dashboard noticing.
@@ -122,7 +122,7 @@ Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://githu
 /plugin uninstall beacon
 ```
 
-If you set up the [always-on serve service](#always-on-serve-service-optional), tear it down first: `beacon service uninstall`.
+If you set up the [always-on serve service](#always-on-serve-service-optional), tear it down first: `beacon serve uninstall`.
 
 To fully clean up the shell side, also delete these from `~/.zshrc`:
 

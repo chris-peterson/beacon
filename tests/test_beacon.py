@@ -714,7 +714,7 @@ class InstallGating(unittest.TestCase):
                          "the serve service is opt-in; install must not start it")
         self.assertIn("[1/2]", out)
         self.assertIn("beacon wip", out)
-        self.assertIn("beacon service install", out)
+        self.assertIn("beacon serve install", out)
 
     def test_full_runs_every_step(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
@@ -735,8 +735,8 @@ class InstallGating(unittest.TestCase):
 
 
 class ServiceUnit(unittest.TestCase):
-    """WIP-07: `service install` writes a supervised unit that runs `serve` via
-    the stable wrapper, restart-on-failure; `uninstall` removes it."""
+    """WIP-07: `serve install` writes a supervised unit that runs `serve` via
+    the stable wrapper, restart-on-failure; `serve uninstall` removes it."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

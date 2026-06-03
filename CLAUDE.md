@@ -4,7 +4,7 @@ Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](
 
 ## What beacon is
 
-A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state two ways: a **terminal-agnostic fleet view** (`wip` / `watch` / `serve`, optionally kept always-on via `beacon service`) that reads across all sessions and paints no pane, and an **iTerm2 per-pane render adapter** (badge, status bar, pause overlay) for scanning concurrent panes without focusing each. Both read the same per-session state files — the single source of record; neither inverts that into a daemon. The fleet view works in any terminal; the iTerm2 adapter needs macOS + iTerm2.
+A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state two ways: a **terminal-agnostic fleet view** (`wip` / `watch` / `serve`, optionally kept always-on via `beacon serve install`) that reads across all sessions and paints no pane, and an **iTerm2 per-pane render adapter** (badge, status bar, pause overlay) for scanning concurrent panes without focusing each. Both read the same per-session state files — the single source of record; neither inverts that into a daemon. The fleet view works in any terminal; the iTerm2 adapter needs macOS + iTerm2.
 
 ## Three deliverables, hard boundaries
 
@@ -77,7 +77,7 @@ iTerm2 caches its plist in memory while running and writes it back on quit. Any 
 | Apply prefs needing iTerm2 quit (default profile, bg-image trust) | `python3 scripts/beacon exclusive-configuration` |
 | List active work streams across all sessions (last 24h) | `python3 scripts/beacon wip [--json] [--since 1d] [--all]` |
 | Serve the wip snapshot for the goals dashboard | `python3 scripts/beacon serve [--port 8787]` |
-| Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon service <install\|uninstall\|status>` |
+| Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon serve <install\|uninstall\|status>` |
 | GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |

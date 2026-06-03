@@ -26,7 +26,7 @@ Status (`signal.status`) has exactly four values — `idle`, `working`,
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; pause is `status = paused`; descriptions on any user-set status |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions; stage-signaling responsibility removed with stage |
 | CMD-01..09, 12..17 (gap at 10, 11) | 15 | All Covered | Slash command surface; CMD-17 (bare CLI prints usage; slash shim passes `show`) |
-| WIP-01..07 | 7 | All Covered | Cross-session introspection / export (`wip`, `serve`, `prune`); WIP-07 opt-in `service` (launchd/systemd) keeps `serve` always-on |
+| WIP-01..07 | 7 | All Covered | Cross-session introspection / export (`wip`, `serve`, `prune`); WIP-07 opt-in `serve install` (launchd/systemd) keeps `serve` always-on |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed (`watch`); diff-render, TTY-required, route-echo suppression |
 | COLOR-01 | 1 | Covered | `--color` flag + `NO_COLOR`/`FORCE_COLOR`/`CLICOLOR_FORCE` precedence for `wip`/`watch` output |
 | CLI-01..12, 14..16 (gap at 13) | 15 | All Covered | `beacon-iterm` subcommands; CLI-16 (`--help` + no-args usage) |
