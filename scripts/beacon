@@ -2728,6 +2728,9 @@ def main(argv=None):
 
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
 
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["help"]:
+        argv = ["--help"]
     args = parser.parse_args(argv)
 
     if args.color != "auto":
@@ -2748,7 +2751,8 @@ def main(argv=None):
         "data-dir": cmd_data_dir,
     }
     if not args.cmd:
-        return cmd_show(args)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
     handlers[args.cmd](args)
 
 

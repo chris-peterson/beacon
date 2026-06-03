@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.22.0
+
+### Breaking Changes
+- **Bare `beacon` (no arguments) now prints the usage text** (to stderr, exit 1) instead of running `show` (CMD-17). Run `beacon show` for the resolved signal state. The `/beacon:beacon` slash command is unaffected — its shim passes `show` when given no arguments.
+
+### Features
+- **`beacon-iterm` with no arguments now prints the full help text** (to stderr, exit 1) instead of argparse's one-line "cmd required" error (CLI-16). `--help` / `-h` behavior is unchanged (full help to stdout, exit 0).
+- **`beacon help` and `beacon-iterm help`** now work as aliases for `--help` (CMD-17, CLI-16).
+
 ## 0.21.0
 
 ### Features

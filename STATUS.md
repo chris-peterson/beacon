@@ -5,8 +5,8 @@ Updated after each `/spec-audit`.
 
 **Last audit:** 2026-05-31
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 0.20.0
-**Coverage:** 115 Covered, 0 Partial, 0 Missing/Contradicts.
+**Plugin version:** 0.22.0
+**Coverage:** 117 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has exactly four values — `idle`, `working`,
 `waiting`, `paused` — mapping to three logical badge color states (`ready` /
@@ -25,11 +25,11 @@ Status (`signal.status`) has exactly four values — `idle`, `working`,
 | OVR-01..04 | 4 | All Covered | User overrides |
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; pause is `status = paused`; descriptions on any user-set status |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions; stage-signaling responsibility removed with stage |
-| CMD-01..09, 12..16 (gap at 10, 11) | 14 | All Covered | Slash command surface |
+| CMD-01..09, 12..17 (gap at 10, 11) | 15 | All Covered | Slash command surface; CMD-17 (bare CLI prints usage; slash shim passes `show`) |
 | WIP-01..06 | 6 | All Covered | Cross-session introspection / export (`wip`, `serve`, `prune`) |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed (`watch`); diff-render, TTY-required, route-echo suppression |
 | COLOR-01 | 1 | Covered | `--color` flag + `NO_COLOR`/`FORCE_COLOR`/`CLICOLOR_FORCE` precedence for `wip`/`watch` output |
-| CLI-01..12, 14, 15 (gap at 13) | 14 | All Covered | `beacon-iterm` subcommands |
+| CLI-01..12, 14..16 (gap at 13) | 15 | All Covered | `beacon-iterm` subcommands; CLI-16 (`--help` + no-args usage) |
 | BADGE-01..10, 12..15 (incl. 09a; gap at 11) | 15 | All Covered | Badge text + color + watermark; profile-per-state mechanism |
 | STATUS-BAR-01..03, 05, 06 (gap at 04) | 5 | All Covered | Fixed-layout status-bar chips + action buttons |
 | OVERLAY-01..04 | 4 | All Covered | Marginalia card overlay; LRU image pool; trust pre-approval |

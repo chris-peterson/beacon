@@ -232,6 +232,8 @@ Behavior:
 
 **CMD-16.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
 
+**CMD-17.** When the `beacon` CLI is invoked with no subcommand, it shall print the usage text to stderr and exit non-zero. When invoked as `beacon --help` / `-h` / `help`, it shall print the usage text to stdout and exit zero. The `/beacon:beacon` slash command shim preserves the bare-invocation convenience by passing `show` when given no arguments.
+
 ---
 
 ### 3.8 Cross-session introspection / export (WIP)
@@ -320,6 +322,8 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 **CLI-14.** When invoked as `beacon-iterm set-profile <name>`, the CLI shall switch the current session's profile via `OSC 1337 SetProfile=<name>`. The named profile must exist in iTerm2's DynamicProfiles directory; iTerm2 silently ignores unknown names, which the plugin treats as a fatal install-time misconfiguration rather than a runtime error. A profile switch atomically applies the new profile's `Badge Color` (with alpha), `Tab Color`, and `Background Image Location` — and atomically wipes any prior session-specific OSC overrides for those keys. This atomic wipe-and-apply is the mechanism behind RENDER-04's resume-from-pause cleanup.
 
 **CLI-15.** When invoked as `beacon-iterm clear-screen`, the CLI shall emit ANSI CSI `2J` (erase visible viewport) followed by CSI `H` (cursor home) to `/dev/tty`. Scrollback is intentionally preserved — the user can scroll up to see pre-clear history. Used by the pause render path (OVERLAY-01) so the marginalia card overlay paints onto a blank canvas instead of competing with TUI text rendered on top of it (iTerm2 bg images render *behind* terminal text).
+
+**CLI-16.** When invoked as `beacon-iterm --help` (`-h`, `help`), the CLI shall print the usage text and exit zero. When invoked with no arguments, the CLI shall print the same usage text to stderr and exit non-zero.
 
 ### 4.3 Badge area (BADGE)
 
