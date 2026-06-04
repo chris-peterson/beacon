@@ -4,8 +4,8 @@ At-a-glance awareness across concurrent Claude Code sessions.
 
 beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan a whole fleet without focusing each one. It does this two ways:
 
-- a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`)
-- **per-pane painting in iTerm2** — a badge, status bar, and pause overlay on each pane
+- a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
+- **per-pane painting in iTerm2** — a badge, status bar, and tab color on each pane
 
 > [!TIP]
 > Read the full behavioral spec on the [Specification](/spec) page.
@@ -16,7 +16,7 @@ beacon surfaces what every session is doing — which project, what task, and wh
 
 - **`beacon wip`** — a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
 - **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own fleet.
-- **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll. To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+- **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll, and accepts `POST /focus` to raise a session's iTerm2 window when its dashboard card is clicked. To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
 ## Always-on serve service (optional)
 
@@ -36,7 +36,7 @@ On macOS with iTerm2, beacon also paints each session's state onto its own pane:
 
 - **Badge** (always on) — project name, optionally followed by `: <task>` when a task is set, plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge stays readable in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
 - **Status bar** (in the beacon profile) — a fixed-layout strip with `↖ web` + project identity flush left, branch + `↗ code` flush right: `↖ web · project │ branch · ↗ code`. The project chip abbreviates known forge hosts (`gh:acme/widgets`, `gl:acmecorp/platform/auth-svc`) and appends `#42` / `!17` when the resolved URL points at a deliverable. The `↖ web` button opens the resolved URL — a CR/PR/issue when [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, or when `gh`/`glab` finds an open PR/MR for the current branch (see [Tack integration](#tack-integration-optional)) — otherwise a branch URL or the project URL; the `↗ code` button opens the cwd in VS Code.
-- **Pause overlay** (during pause) — a Dracula-themed marginalia card anchored to the right edge of the pane, carrying your free-text note (`/beacon pause "leaving for lunch"`). Multi-line notes treat the first line as a heading; `*` toggles bold and `_` toggles italic (any quantity of marker works). The badge color flips to a de-emphasized gray; together they distinguish paused from waiting (red).
+- **Pause / status notes** — `/beacon pause "leaving for lunch"` flips the badge to a de-emphasized gray (distinct from waiting red). The free-text note isn't painted on the pane; it surfaces in the fleet dashboard as recall context. Any user-set status takes an optional note the same way (`/beacon status waiting "bg refresh ~30 min"`).
 
 ## Install
 
@@ -53,11 +53,9 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 
 The first two commands install the Claude plugin (hooks, slash command, skill, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon install` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion.
 
-On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line, the iTerm2 dynamic profile, `PerPaneBackgroundImage`, and pause-overlay bg-image trust pre-approval. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
+On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profile (status bar + badge sizing). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
 
 To keep `serve` running for an external dashboard, install the always-on service separately — see [Always-on serve service](#always-on-serve-service-optional).
-
-Some iTerm2 prefs (default profile, bg-image trust pre-approval) only stick when iTerm2 is fully quit. If `install` reports those steps as DEFERRED, run `beacon exclusive-configuration` — it confirms before quitting iTerm2, applies the writes, and relaunches.
 
 ## Verify
 
@@ -70,9 +68,9 @@ beacon <TAB>        # subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red with a `!` watermark when Claude is hard-blocked on a permission prompt, or red with a `?` for the softer idle prompt
-- `/beacon pause "checking lunch options"` flips the badge to gray and pins a marginalia card to the right edge of the pane carrying the note; sending the next prompt clears both
-- `/beacon status waiting "bg refresh ~30 min"` flips the badge to red and pins the same marginalia card with your description — useful when *you* are waiting on something async, not Claude
+- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red when Claude is blocked on you (a permission or idle prompt)
+- `/beacon pause "checking lunch options"` flips the badge to gray; the note shows in the fleet dashboard, and sending the next prompt clears both
+- `/beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
 

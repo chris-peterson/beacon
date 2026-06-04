@@ -211,233 +211,104 @@ class CmdSetPropagatesToBadge(BeaconTest):
         )
 
 
-class ApplyEmitsProfileSwitch(BeaconTest):
-    """BADGE-09 + RENDER-04: status transitions among ready/busy/blocked are
-    delivered via `set-profile beacon-<state>`, never via the per-session
-    badge-color/tab-color OSC pair (those are reserved for paused — the only
-    state that overlays rather than switches)."""
+class ApplyEmitsBaseProfileAndColor(BeaconTest):
+    """RENDER-04 / §6.6: the first render switches into the single base
+    `beacon` profile and sets the badge format; state color is delivered by
+    OSC badge-color/tab-color, not a per-state profile. Subsequent renders
+    repaint color only when the logical state changes."""
 
-    def test_first_render_emits_ready_profile(self):
+    def test_first_render_switches_base_profile_and_sets_ready_color(self):
         self.beacon.apply({**_base_state(), "status": "idle"})
 
-        self.assertIn(
-            ("set-profile", "beacon-ready"), self.cli_calls,
-            "First render with idle status must SetProfile=beacon-ready",
-        )
+        self.assertIn(("set-profile", "beacon"), self.cli_calls,
+                      "First render must switch into the base beacon profile")
+        ready = self.beacon.BADGE_COLOR_PALETTE["ready"]
+        self.assertIn(("badge-color", ready), self.cli_calls)
+        self.assertIn(("tab-color", ready), self.cli_calls)
 
-    def test_status_transition_emits_profile(self):
+    def test_status_transition_emits_color_not_profile(self):
         self.beacon.apply({**_base_state(), "status": "idle"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "status": "working"})
 
-        self.assertIn(
-            ("set-profile", "beacon-busy"), self.cli_calls,
-            "idle → working must SetProfile=beacon-busy",
-        )
-        for call in self.cli_calls:
-            self.assertNotEqual(
-                call[0], "badge-color",
-                "Non-paused transitions must NOT emit badge-color (profile owns it)",
-            )
-
-    def test_unchanged_state_emits_nothing(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "status": "working"})
-
-        set_profile_calls = [c for c in self.cli_calls if c[0] == "set-profile"]
+        busy = self.beacon.BADGE_COLOR_PALETTE["busy"]
+        self.assertIn(("badge-color", busy), self.cli_calls)
+        self.assertIn(("tab-color", busy), self.cli_calls)
         self.assertEqual(
-            set_profile_calls, [],
-            "Identical state must not re-emit set-profile",
+            [c for c in self.cli_calls if c[0] == "set-profile"], [],
+            "A state transition repaints via OSC color, never a profile switch",
         )
 
-class PendingAttentionPicksWatermarkProfile(BeaconTest):
-    """BADGE-09a + BADGE-15: the pending-attention marker forces the blocked
-    color state, and the recorded subtype picks the watermark — `permission`
-    routes to `beacon-blocked` (`!`), `idle` routes to `beacon-blocked-idle`
-    (`?`). Both keep the red palette; only the watermark differs."""
-
-    def test_permission_subtype_emits_blocked_profile(self):
-        self.beacon.apply({
-            **_base_state(),
-            "status": "waiting",
-            "pending_attention": True,
-            "pending_attention_type": "permission",
-        })
-        self.assertIn(("set-profile", "beacon-blocked"), self.cli_calls)
-        self.assertNotIn(("set-profile", "beacon-blocked-idle"), self.cli_calls)
-
-    def test_idle_subtype_emits_blocked_idle_profile(self):
-        self.beacon.apply({
-            **_base_state(),
-            "status": "waiting",
-            "pending_attention": True,
-            "pending_attention_type": "idle",
-        })
-        self.assertIn(("set-profile", "beacon-blocked-idle"), self.cli_calls)
-        self.assertNotIn(("set-profile", "beacon-blocked"), self.cli_calls)
-
-    def test_missing_subtype_defaults_to_blocked(self):
-        # Defensive: a pending-attention marker without an explicit subtype
-        # falls back to the permission watermark (the highest-urgency case).
-        self.beacon.apply({
-            **_base_state(),
-            "status": "waiting",
-            "pending_attention": True,
-            "pending_attention_type": None,
-        })
-        self.assertIn(("set-profile", "beacon-blocked"), self.cli_calls)
-
-    def test_subtype_transition_emits_new_profile(self):
-        self.beacon.apply({
-            **_base_state(),
-            "status": "waiting",
-            "pending_attention": True,
-            "pending_attention_type": "idle",
-        })
+    def test_unchanged_state_emits_no_color(self):
+        self.beacon.apply({**_base_state(), "status": "working"})
         self.cli_calls.clear()
 
-        self.beacon.apply({
-            **_base_state(),
-            "status": "waiting",
-            "pending_attention": True,
-            "pending_attention_type": "permission",
-        })
+        self.beacon.apply({**_base_state(), "status": "working"})
 
-        self.assertIn(
-            ("set-profile", "beacon-blocked"), self.cli_calls,
-            "Idle → permission must re-emit set-profile so the watermark swaps",
+        self.assertEqual(
+            [c for c in self.cli_calls
+             if c[0] in ("badge-color", "tab-color", "set-profile")],
+            [],
+            "Identical logical state must not repaint color or switch profiles",
         )
 
 
-class DescriptionOverlay(BeaconTest):
-    """OVERLAY-01 + RENDER-04: a non-empty description triggers the OSC
-    marginalia overlay (badge-color, tab-color, bg-image + clear-screen)
-    on top of whatever profile is active. Clearing the description goes
-    back to the profile-driven path."""
+class PendingAttentionPaintsBlocked(BeaconTest):
+    """BADGE-09a: the pending-attention marker forces the blocked (red) color
+    state via OSC, regardless of the prompt subtype — beacon no longer
+    distinguishes permission from idle on the pane (the watermark is gone)."""
 
-    def test_paused_with_description_emits_osc_overlay(self):
+    def test_pending_attention_emits_blocked_hex(self):
+        self.beacon.apply({
+            **_base_state(), "status": "waiting", "pending_attention": True,
+        })
+        red = self.beacon.BADGE_COLOR_PALETTE["blocked"]
+        self.assertIn(("badge-color", red), self.cli_calls)
+        self.assertIn(("tab-color", red), self.cli_calls)
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "set-profile" and c[1] != "beacon"],
+            [],
+            "No per-state profile switch — blocked is an OSC color",
+        )
+
+
+class DescriptionIsFleetData(BeaconTest):
+    """STATE-02: a description is persisted and surfaced in the fleet view; it
+    paints no per-pane surface. apply() emits only the logical-state OSC color
+    — never bg-image, note, or clear-screen (the overlay is retired)."""
+
+    def test_paused_with_description_paints_only_color(self):
         self.beacon.apply({**_base_state(), "status": "working"})
         self.cli_calls.clear()
 
         self.beacon.apply({
             **_base_state(), "status": "paused",
             "description": "leaving for lunch",
-            "note_image": "/tmp/note.png",
         })
 
         paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
         self.assertIn(("badge-color", paused_hex), self.cli_calls)
         self.assertIn(("tab-color", paused_hex), self.cli_calls)
-        self.assertIn(("bg-image", "/tmp/note.png"), self.cli_calls)
-        # OVERLAY-01: the viewport is cleared after the bg-image paint so
-        # the marginalia card has a clean canvas instead of fighting the
-        # active TUI's overlaid text.
-        self.assertIn(("clear-screen",), self.cli_calls)
-        bg_idx = self.cli_calls.index(("bg-image", "/tmp/note.png"))
-        clear_idx = self.cli_calls.index(("clear-screen",))
-        self.assertLess(bg_idx, clear_idx,
-                        "clear-screen must follow bg-image so the image is in place "
-                        "before the viewport is wiped")
-        for call in self.cli_calls:
-            self.assertNotEqual(
-                call[0], "set-profile",
-                "Entering an overlay must not switch profiles — OSC only",
+        for verb in ("bg-image", "note", "clear-screen"):
+            self.assertEqual(
+                [c for c in self.cli_calls if c[0] == verb], [],
+                f"a description must not emit {verb} (overlay retired)",
             )
 
-    def test_paused_without_description_emits_osc_not_profile(self):
-        # RENDER-04 / BADGE-10: bare `pause` (no note) has no static profile
-        # to switch to — paused must paint via OSC badge-color/tab-color, not
-        # SetProfile to a nonexistent `beacon-paused`.
-        self.beacon.apply({**_base_state(), "status": "working"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "status": "paused"})
-
-        paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
-        self.assertIn(("badge-color", paused_hex), self.cli_calls)
-        self.assertIn(("tab-color", paused_hex), self.cli_calls)
-        for call in self.cli_calls:
-            self.assertNotEqual(
-                call[0], "set-profile",
-                "Bare pause must not switch profiles (no beacon-paused exists)",
-            )
-        bg_calls = [c for c in self.cli_calls if c[0] == "bg-image"]
-        self.assertEqual(bg_calls, [], "Bare pause paints no marginalia card")
-
-    def test_dropping_note_while_staying_paused_clears_card(self):
-        # described+paused → bare paused: no SetProfile fires to wipe the bg
-        # image, so apply() must clear it explicitly or the stale card lingers.
-        self.beacon.apply({
-            **_base_state(), "status": "paused",
-            "description": "stepping out", "note_image": "/tmp/note.png",
-        })
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "status": "paused"})
-
-        self.assertIn(("bg-image", "clear"), self.cli_calls)
-        for call in self.cli_calls:
-            self.assertNotEqual(
-                call[0], "set-profile",
-                "Staying paused must not switch profiles",
-            )
-
-    def test_blocked_idle_with_description_uses_red_hex(self):
-        # THEME-02: blocked-idle shares the red palette. With a description,
-        # the OSC overlay must paint red, not fall back to paused gray.
-        self.beacon.apply({**_base_state(), "status": "idle"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({
-            **_base_state(), "status": "idle",
-            "pending_attention": True, "pending_attention_type": "idle",
-            "description": "waiting on you",
-            "note_image": "/tmp/note.png",
-        })
-
-        red = self.beacon.BADGE_COLOR_PALETTE["blocked-idle"]
-        self.assertIn(("badge-color", red), self.cli_calls)
-        self.assertIn(("tab-color", red), self.cli_calls)
-
-    def test_waiting_with_description_uses_blocked_hex(self):
-        # `status waiting "bg refresh"` reuses the blocked palette so the
-        # at-a-glance color signal still says "this session is parked on
-        # something" — the description carries the why.
-        self.beacon.apply({**_base_state(), "status": "idle"})
+    def test_description_alone_does_not_repaint(self):
+        # Adding a description without a logical-state change is data-only.
+        self.beacon.apply({**_base_state(), "status": "waiting"})
         self.cli_calls.clear()
 
         self.beacon.apply({
             **_base_state(), "status": "waiting",
             "description": "bg refresh ~30 min",
-            "note_image": "/tmp/note.png",
         })
 
-        blocked_hex = self.beacon.BADGE_COLOR_PALETTE["blocked"]
-        self.assertIn(("badge-color", blocked_hex), self.cli_calls)
-        self.assertIn(("tab-color", blocked_hex), self.cli_calls)
-        self.assertIn(("bg-image", "/tmp/note.png"), self.cli_calls)
-
-    def test_clearing_description_emits_set_profile_only(self):
-        # set-profile atomically wipes the OSC overlay; no explicit
-        # `bg-image clear` should be needed.
-        self.beacon.apply({
-            **_base_state(), "status": "paused",
-            "description": "leaving",
-            "note_image": "/tmp/note.png",
-        })
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "status": "working"})
-
-        self.assertIn(("set-profile", "beacon-busy"), self.cli_calls)
-        bg_clears = [c for c in self.cli_calls
-                     if c[0] == "bg-image" and (len(c) < 2 or c[1] == "clear")]
         self.assertEqual(
-            bg_clears, [],
-            "Resume must rely on set-profile's atomic wipe, not bg-image clear",
+            [c for c in self.cli_calls if c[0] in ("badge-color", "tab-color")], [],
+            "logical state unchanged → no color repaint; description is data",
         )
 
 
@@ -464,8 +335,8 @@ class EngagementMarker(BeaconTest):
         self.beacon.cmd_clear(mock.Mock(field=None))
 
         self.assertFalse(marker.exists(), "clear (no field) must remove the engagement marker")
-        self.assertIn(("set-profile", "beacon"), self.cli_calls,
-                      "clear (no field) must return to the base profile")
+        self.assertIn(("clear",), self.cli_calls,
+                      "clear (no field) must reset badge + tab color to default")
         self.assertIn(("uservar", "beacon_project", ""), self.cli_calls,
                       "clear (no field) must empty the badge text")
         self.assertIn(("uservar", "beacon_task", ""), self.cli_calls,
@@ -682,10 +553,7 @@ class InstallGating(unittest.TestCase):
             "_install_completions": None,
             "_install_shell_source": None,
             "_service_install": True,
-            "ensure_per_pane_bg_image": True,
-            "_pre_approve_iterm_paths": (True, []),
             "install_dynamic_profile": (True, "profile written"),
-            "_is_beacon_already_default": True,
         }
         self.mocks = {}
         for name, val in returns.items():
@@ -699,8 +567,7 @@ class InstallGating(unittest.TestCase):
             self.beacon.cmd_install(None)
         return buf.getvalue()
 
-    _ITERM_STEPS = ("_install_shell_source", "ensure_per_pane_bg_image",
-                    "_pre_approve_iterm_paths", "install_dynamic_profile")
+    _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile")
     _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions")
 
     def test_dashboard_only_skips_iterm_steps(self):
@@ -719,19 +586,19 @@ class InstallGating(unittest.TestCase):
     def test_full_runs_every_step(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
             out = self._run_install()
-        for name in (*self._ALWAYS_STEPS, *self._ITERM_STEPS, "_is_beacon_already_default"):
+        for name in (*self._ALWAYS_STEPS, *self._ITERM_STEPS):
             self.assertTrue(self.mocks[name].called, f"{name} should run")
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
-        self.assertIn("[7/7]", out)
+        self.assertIn("[4/4]", out)
 
-    def test_per_pane_failure_reports_truthfully(self):
-        # ensure_per_pane_bg_image() returning False must render the warning,
-        # not a checkmark — the truthful-reporting fix this PR introduced.
-        self.mocks["ensure_per_pane_bg_image"].return_value = False
+    def test_install_completes_in_place(self):
+        # 1.0 pivot: no pref needs iTerm2 quit, so install emits no
+        # deferred-action notice.
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
             out = self._run_install()
-        self.assertIn("could not set PerPaneBackgroundImage", out)
+        self.assertIn("no iTerm2 restart required", out)
+        self.assertNotIn("DEFERRED", out)
 
 
 class ServiceUnit(unittest.TestCase):
