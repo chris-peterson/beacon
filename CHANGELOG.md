@@ -2,8 +2,22 @@
 
 ## 1.1.0
 
+### Features
+- **A session that works in another project now shows where it went.** When a Claude session changes directory into a different project mid-task, the badge's task slot surfaces that location (e.g. `beacon: ~/src/ai-sdlc`) as secondary context. Navigating within the session's own project keeps the branch/PR task; an explicit task you've set always wins.
+
 ### Fixes
+- **The badge project stays anchored to where the session started.** A session that changed directory mid-task used to repaint its badge with the new directory's project, so glancing across panes no longer identified each session by its home project. The badge now pins the project to the directory the session began in, and `beacon show` reports the same project and task the badge paints.
 - **A dashboard deployed to a private host can now focus sessions on click.** `POST /focus` extends its origin allowlist (FOCUS-04) with the `focus_origins` list in `~/.config/beacon/config.json` — so a dashboard served off-machine (e.g. GitLab/Cloudflare Pages) clears the browser's CORS preflight without committing the origin to the source. The config is read at serve startup and persists across reinstalls. Reading `wip.json` was already open to any origin; only focus-on-click was gated.
+
+## 1.0.0
+
+### Breaking Changes
+- **The iTerm2 marginalia overlay is retired in favor of the externalized fleet view.** Its raster-to-file rendering, permission grants, behind-text layering, and color-banding made it a poor surface. Removed with it: the `note` / background-image / clear-screen subcommands, the `_compose.py` helper and the Pillow dependency, the four per-state dynamic profiles and the `!` / `?` watermark assets, and the exclusive-configuration / default-profile / background-image-trust machinery. beacon no longer issues any `defaults write` — badge and tab color paint via OSC on a single base profile, activated by a runtime `set-profile`.
+
+### Features
+- **Click a session in the fleet dashboard to raise its iTerm2 window** (FOCUS-01..04). `beacon-iterm focus <id>` brings the window forward; the iTerm2 session GUID is recorded at SessionStart and exposed as a per-session `focusable` flag in `wip.json` without leaking the GUID. `serve` adds `POST /focus`, which resolves the hash to the handle server-side behind a loopback `Host` check and an `Origin` allowlist; `GET /wip.json` keeps its permissive CORS.
+- **The session description is now recall context in the fleet view** rather than paint on the pane — it survives the overlay's removal.
+- **`task` is part of the `wip.json` session payload** (WIP-01). One of beacon's three core signals (project / task / status), it was previously dropped from the payload, so the fleet view and the goals/WIP dashboard couldn't show what each session was working on. Sourced from the last-rendered snapshot, preferring a fresher explicit override.
 
 ## 0.23.0
 

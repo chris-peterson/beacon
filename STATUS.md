@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-04
+**Last audit:** 2026-06-05
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.0.0
-**Coverage:** 108 Covered, 2 Partial, 7 Missing/Contradicts.
+**Plugin version:** 1.1.0
+**Coverage:** 109 Covered, 2 Partial, 7 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -26,7 +26,7 @@ tracked in the implementation issue.
 | Prefix | Covered | Status | Notes |
 |--------|--------:|--------|-------|
 | RES-01..05 | 5 | All Covered | Signal resolution model |
-| PROV-01..03, 05, 06 | 5 | All Covered | Provider chains (no PROV-04) |
+| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a surfaces a wandered cwd in the task slot |
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b | 10 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane |
 | OVR-01..04 | 4 | All Covered | User overrides |
@@ -62,6 +62,12 @@ watermark assets, `exclusive-configuration`, and the bg-image trust /
 `PerPaneBackgroundImage` install steps. RENDER-04 / TAB-01 must move to
 OSC-only color on a single base profile, and STATUS-BAR-01 must activate that
 profile via runtime `set-profile` instead of the default-profile pref.
+
+## Audit history
+
+### 2026-06-05 — Coverage refresh (spec-status)
+
+STATUS.md updated: +1 ID (PROV-02a, Covered), 108 → 109 Covered.
 
 ## How to use this file
 
