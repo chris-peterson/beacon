@@ -503,6 +503,90 @@ class SessionAnchor(BeaconTest):
         self.assertEqual(self.chip_cwds, ["/payload/dir"])
 
 
+class BadgePinnedToAnchorOnWander(BeaconTest):
+    """BADGE-02 / PROV-02a: the badge project follows the SessionStart anchor,
+    not Claude's live subprocess cwd. When the agent cd's into a different
+    project root mid-turn the project stays pinned, and the live cwd surfaces in
+    the task slot as secondary spatial context. The landmine this guards
+    against: render() re-resolving project from `Path.cwd()` so a mid-turn `cd`
+    repaints the badge with the wandered directory."""
+
+    def setUp(self):
+        super().setUp()
+        self._anchor_dir = tempfile.TemporaryDirectory()
+        self._live_dir = tempfile.TemporaryDirectory()
+        self.anchor_dir = Path(self._anchor_dir.name).resolve()
+        self.live_dir = Path(self._live_dir.name).resolve()
+        self.addCleanup(self._anchor_dir.cleanup)
+        self.addCleanup(self._live_dir.cleanup)
+        self.beacon.write_state("anchor.cwd", str(self.anchor_dir))
+
+    def _chdir(self, path: Path):
+        prev = os.getcwd()
+        os.chdir(path)
+        self.addCleanup(os.chdir, prev)
+
+    def test_wander_pins_project_and_surfaces_live_cwd_in_task(self):
+        self._chdir(self.live_dir)
+        self.beacon.render()
+
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_project"),
+            [("uservar", "beacon_project", "acme/widget")],
+            "Project must stay pinned to the anchor when the agent wanders",
+        )
+        expected = self.beacon._local_path_at(Path.cwd())
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", f": {expected}")],
+            "Wandered live cwd must surface in the task slot",
+        )
+
+    def test_no_wander_keeps_normal_task(self):
+        self._chdir(self.anchor_dir)
+        self.beacon.render()
+        # anchor root == live root: task resolves normally (nothing here — the
+        # tmp dir is not a git repo), so the slot is never the wander path.
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"), [],
+            "No wander: the task slot must not show a cwd path",
+        )
+
+    def test_task_override_wins_over_wander(self):
+        self.beacon.write_state("override.task", "my-task")
+        self._chdir(self.live_dir)
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", ": my-task")],
+            "An explicit task override must survive a wander",
+        )
+
+    def test_subdirectory_of_anchor_is_not_a_wander(self):
+        # PROV-02a gates on project *root*: navigating into a subdirectory of the
+        # anchored project resolves to the same root, so no wander overlay fires.
+        # find_project_root's own marker walk only runs under $HOME, so mock it
+        # to a fixed root for both operands — the contract under test is the
+        # root comparison in the gate, not find_project_root's home boundary.
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path("/proj/root")):
+            self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"), [],
+            "Same project root (subdirectory nav) must not trigger the wander task",
+        )
+
+    def test_show_and_badge_share_wander_resolution(self):
+        # CMD-01 / BADGE-12: `show` must report what the badge paints. Both go
+        # through _resolve_for_display, so a wander reflects identically in both
+        # — the badge project stays pinned, the task carries the wandered path.
+        self._chdir(self.live_dir)
+        state = self.beacon._resolve_for_display()
+        self.assertEqual(state["project"], "acme/widget")
+        self.assertEqual(state["task_provider"], "wander")
+        self.assertEqual(state["task"], self.beacon._local_path_at(Path.cwd()))
+
+
 class EmptyItermIdIsolatesSessions(BeaconTest):
     """When ITERM_SESSION_ID is unavailable (session launched outside an
     iTerm-integrated shell — auto-spawned tab, `claude --resume`, a non-iTerm

@@ -2079,16 +2079,43 @@ def apply(state: dict):
     write_state("resolved", json.dumps(snapshot, indent=2))
 
 
+def _resolve_for_display() -> dict:
+    """Resolve the badge state the way the renderer paints it: against the
+    SessionStart anchor (BADGE-02), with the PROV-02a wander overlay. Shared by
+    render() (paints the badge) and cmd_show() (reports what the badge shows) so
+    `show` (CMD-01) can never diverge from the painted value (BADGE-12).
+
+    BADGE-02: beacon_project follows the anchor (HOOK-08), not Claude's live
+    subprocess cwd, so a mid-turn `cd` doesn't repaint the badge. No anchor (a
+    session that never reached SessionStart, or an interactive CLI invocation)
+    falls back to live cwd."""
+    anchor = read_state("anchor.cwd")
+    anchor_cwd = Path(anchor).expanduser() if anchor else None
+    state = resolve(anchor_cwd)
+
+    # PROV-02a: when the session has wandered into a different project root than
+    # its anchor, surface the live cwd in the task slot as secondary spatial
+    # context — replacing the branch/PR task, but never an explicit override.
+    # Gating on project root (not raw cwd) keeps subdirectory navigation within
+    # the anchored project from displacing the branch task.
+    if anchor_cwd is not None and state["task_provider"] != "override":
+        live_cwd = Path.cwd()
+        if find_project_root(live_cwd) != find_project_root(anchor_cwd):
+            state["task"] = _local_path_at(live_cwd)
+            state["task_provider"] = "wander"
+
+    return state
+
+
 def render():
     ensure_initialized()
-    state = resolve()
-    apply(state)
+    apply(_resolve_for_display())
 
 
 # --- subcommands ---
 
 def cmd_show(_args):
-    state = resolve()
+    state = _resolve_for_display()
     rows = []
     for field in ("project", "task", "status"):
         value = state[field]
