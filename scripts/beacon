@@ -896,10 +896,23 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
     else:
         route, route_group = _tack_route_for(cwd_path, branch, project)
 
+    # task (PROV-02) isn't anchored like project; take the last-rendered value
+    # from the resolved snapshot — it already folds in the override / PR-title /
+    # branch chain — preferring a fresher explicit override when one is set.
+    task = _read_state_for(sh, "override.task")
+    if not task:
+        raw = _read_state_for(sh, "resolved")
+        if raw:
+            try:
+                task = (json.loads(raw) or {}).get("task") or None
+            except (ValueError, TypeError):
+                task = None
+
     return {
         "session": claude_session,
         "hash": sh,
         "project": project,
+        "task": task or None,
         "route": route,
         "route_group": route_group,
         "status": status,

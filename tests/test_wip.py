@@ -90,6 +90,24 @@ class WipTest(unittest.TestCase):
         self.assertEqual(alpha["status"], "working")
         self.assertEqual(alpha["state"], "busy")
 
+    def test_task_in_payload(self):
+        # task is a first-class field (WIP-01): an explicit override surfaces,
+        # and the key is present (null) even when no task is set.
+        self._write("withtask", "anchor.project", "alpha")
+        self._write("withtask", "override.task", "ship it")
+        self._write("notask", "anchor.project", "beta")
+        by_hash = {s["hash"]: s for s in self._sessions()}
+        self.assertEqual(by_hash["withtask"]["task"], "ship it")
+        self.assertIn("task", by_hash["notask"])
+        self.assertIsNone(by_hash["notask"]["task"])
+
+    def test_task_falls_back_to_resolved_snapshot(self):
+        # With no override, task comes from the last-rendered `resolved` snapshot.
+        self._write("snap", "anchor.project", "gamma")
+        self._write("snap", "resolved", json.dumps({"task": "from-branch"}))
+        task = next(s for s in self._sessions() if s["hash"] == "snap")["task"]
+        self.assertEqual(task, "from-branch")
+
     def test_drops_sessions_without_a_location(self):
         # Only a claude_session_id, no project/cwd anchor → not a work stream.
         self._write("ghost", "claude_session_id", "sid-ghost")
