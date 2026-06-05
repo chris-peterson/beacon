@@ -28,18 +28,20 @@ fi
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
-# in the hot path. These determine how soon a freshly-split pane stops
-# showing the parent's pause overlay.
+# in the hot path.
 #
-# Clear inherited bg-image (OVERLAY-02): freshly-split panes inherit the
-# parent's session OSC overrides, including any pause overlay. The clear is
-# harmless when no overlay exists, and necessary when one does.
-printf '\e]1337;SetBackgroundImageFile=\a'
+# Switch this pane into the beacon profile (STATUS-BAR-01): it carries the
+# status bar layout and badge sizing. beacon is not iTerm2's default profile,
+# so interactive panes activate it here; Claude panes do it at SessionStart.
+# A non-iTerm terminal silently ignores the sequence.
+printf '\e]1337;SetProfile=beacon\a'
 # Badge format: project + optional task suffix. The task slot self-collapses
 # when empty (beacon_task carries ": <task>" when set). The badge renders
 # only after engagement (BADGE-14) populates beacon_project; until then both
 # user vars are empty and the format evaluates to nothing, so a fresh
-# terminal shows no badge.
+# terminal shows no badge. Set after SetProfile, which wipes session OSC
+# overrides including SetBadgeFormat (§6.10); the profile's Badge Text key
+# carries the same format as a backstop.
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
 

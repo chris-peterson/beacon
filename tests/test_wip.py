@@ -18,6 +18,7 @@ import tempfile
 import threading
 import time
 import urllib.request
+import urllib.error
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -344,6 +345,93 @@ class ColorControlTest(unittest.TestCase):
         self.assertFalse(self._colored(env={}, isatty=False))
         self.beacon._COLOR_OVERRIDE = None
         self.assertTrue(self._colored(env={}, isatty=True))
+
+
+class FocusTest(unittest.TestCase):
+    """FOCUS-01..04 + CLI-17: focus-handle recording, the `focusable` flag in
+    the payload, the hash→handle resolve, and the POST /focus access model."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.state_dir = self.beacon.STATE_DIR
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _write(self, sh: str, field: str, value: str):
+        (self.state_dir / f"{sh}.{field}").write_text(value)
+
+    def _sessions(self):
+        return self.beacon.collect_sessions(None)["sessions"]
+
+    def test_focusable_flag_tracks_recorded_handle(self):
+        self._write("withguid", "anchor.project", "p")
+        self._write("withguid", "iterm_session_id", "GUID-1")
+        self._write("noguid", "anchor.project", "q")
+        by_hash = {s["hash"]: s for s in self._sessions()}
+        self.assertTrue(by_hash["withguid"]["focusable"])
+        self.assertFalse(by_hash["noguid"]["focusable"])
+
+    def test_record_handle_keeps_guid_for_real_iterm_id(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w2t0p0:ABC-123"}):
+            self.beacon._record_focus_handle()
+            self.assertEqual(self.beacon.read_state("iterm_session_id"), "ABC-123")
+
+    def test_record_handle_skips_synthesized_fallback(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "claude-session:xyz"}):
+            self.beacon._record_focus_handle()
+            self.assertIsNone(self.beacon.read_state("iterm_session_id"))
+
+    def test_focus_session_not_focusable_without_handle(self):
+        self._write("abcdef99", "anchor.project", "p")
+        ok, msg = self.beacon._focus_session("abcdef99")
+        self.assertFalse(ok)
+        self.assertEqual(msg, "not focusable")
+
+    def test_focus_session_rejects_non_hex_hash(self):
+        ok, msg = self.beacon._focus_session("../secrets")
+        self.assertFalse(ok)
+        self.assertEqual(msg, "bad hash")
+
+    def test_focus_session_invokes_cli_with_recorded_guid(self):
+        self._write("abcdef01", "iterm_session_id", "GUID-9")
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               return_value=mock.Mock(returncode=0, stdout="", stderr="")) as run:
+            ok, msg = self.beacon._focus_session("abcdef01")
+        self.assertTrue(ok)
+        cmd = run.call_args.args[0]
+        self.assertIn("focus", cmd)
+        self.assertIn("GUID-9", cmd)
+
+    def _start_server(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        return server.server_address[1]
+
+    def _post_focus(self, port, origin=None):
+        body = json.dumps({"hash": "abcdef01"}).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/focus", data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        if origin is not None:
+            req.add_header("Origin", origin)
+        return urllib.request.urlopen(req, timeout=3)
+
+    def test_focus_route_rejects_foreign_origin(self):
+        port = self._start_server()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._post_focus(port, origin="https://evil.example")
+        self.assertEqual(cm.exception.code, 403)
+
+    def test_focus_route_invokes_focus_for_allowed_request(self):
+        port = self._start_server()
+        with mock.patch.object(self.beacon, "_focus_session",
+                               return_value=(True, "focused")) as m:
+            with self._post_focus(port) as resp:
+                payload = json.loads(resp.read())
+        self.assertTrue(payload["focused"])
+        m.assert_called_once_with("abcdef01")
 
 
 if __name__ == "__main__":

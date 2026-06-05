@@ -14,10 +14,8 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -197,7 +195,6 @@ _beacon() {
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
-    'exclusive-configuration:orchestrate iTerm2 quit+relaunch to apply prefs that require iTerm2 to be quit'
     'copy-url:copy the resolved URL to the clipboard'
   )
 
@@ -251,9 +248,6 @@ _beacon() {
     install-cli)
       (( CURRENT == 3 )) && compadd -- --dir
       ;;
-    exclusive-configuration)
-      (( CURRENT == 3 )) && compadd -- --yes -y
-      ;;
   esac
 }
 
@@ -269,7 +263,6 @@ BADGE_COLOR_PALETTE = {
     "ready":        "50fa7b",
     "busy":         "ffb86c",
     "blocked":      "ff5555",
-    "blocked-idle": "ff5555",
     "paused":       "6272a4",
 }
 
@@ -916,6 +909,7 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
         "branch": branch,
         "_epoch": _session_last_activity(sh),
         "pending_attention": pending,
+        "focusable": bool(_read_state_for(sh, "iterm_session_id")),
     }
 
 
@@ -986,8 +980,7 @@ def collect_sessions(since_epoch: float | None = None) -> dict:
 
 
 _WIP_DOT_COLOR = {
-    "ready": "32", "busy": "33", "blocked": "31",
-    "blocked-idle": "31", "paused": "34",
+    "ready": "32", "busy": "33", "blocked": "31", "paused": "34",
 }
 
 
@@ -1194,28 +1187,87 @@ def cmd_prune(args):
     print(f"pruned {sessions} session(s) idle longer than {raw} ({files} state files removed)")
 
 
+# Browser origins allowed to POST /focus (FOCUS-04), beyond loopback origins
+# (which origin_allowed permits unconditionally). The deployed dashboard's
+# Pages origin goes here; a foreign page's Origin is rejected.
+FOCUS_ORIGIN_ALLOWLIST = {
+    "https://chris-peterson.github.io",
+}
+
+
+def _focus_session(sh: str) -> tuple[bool, str]:
+    """FOCUS-01: resolve a per-pane hash to its recorded iTerm2 focus handle
+    (FOCUS-02) and bring that session forward via `beacon-iterm focus`. The
+    GUID never leaves the server — the dashboard sends only the hash. Returns
+    (ok, detail)."""
+    if not re.fullmatch(r"[0-9a-f]{8,}", sh or ""):
+        return False, "bad hash"
+    guid = _read_state_for(sh, "iterm_session_id")
+    if not guid:
+        return False, "not focusable"
+    try:
+        r = subprocess.run(
+            ["python3", str(BEACON_ITERM), "focus", guid],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"focus failed: {e}"
+    if r.returncode != 0:
+        return False, (r.stderr.strip() or "focus failed")
+    return True, "focused"
+
+
 def wip_http_server(port: int):
-    """Build (don't start) the localhost wip server: bound to 127.0.0.1 only,
-    CORS-open so the dashboard can fetch it from file:// and the deployed Pages
-    origin, serving the wip payload at GET /wip.json with optional ?since= /
-    ?all=. Returns the HTTPServer; the caller drives it (serve_forever, or a
-    single handle_request in tests)."""
+    """Build (don't start) the localhost fleet server, bound to 127.0.0.1 only.
+
+    GET /wip.json — the read-only wip payload (WIP-04), CORS-open so a
+    dashboard on file:// or the deployed Pages origin can fetch it.
+
+    POST /focus — bring a session's window forward (FOCUS-01). Mutating, so it
+    carries the tighter FOCUS-04 access model: the Host header must be the
+    loopback endpoint (DNS-rebind defense) and a present Origin must be on the
+    dashboard allowlist — not the `*` the read route uses.
+
+    Returns the HTTPServer; the caller drives it (serve_forever, or a single
+    handle_request in tests)."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
+
+    def origin_allowed(origin: str) -> bool:
+        # A missing Origin (curl, same-origin, some file:// browsers) is not
+        # the threat — only a *foreign* browser origin is. A present Origin
+        # must be loopback or the deployed dashboard.
+        if not origin or origin == "null":
+            return True
+        try:
+            host = urlparse(origin).hostname
+        except ValueError:
+            return False
+        if host in ("127.0.0.1", "localhost"):
+            return True
+        return origin in FOCUS_ORIGIN_ALLOWLIST
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
 
-        def _send(self, code: int, body: str) -> None:
+        def _send(self, code: int, body: str, origin: str = "*") -> None:
             data = body.encode()
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(data)
+
+        def _host_ok(self) -> bool:
+            # DNS-rebind defense: the Host header's hostname must be loopback.
+            # Port-agnostic — the bound port is ours, the hostname is the attack
+            # surface (a rebound evil.com resolves to 127.0.0.1 but sends its
+            # own name in Host).
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            return host.strip("[]").lower() in ("127.0.0.1", "localhost", "::1")
 
         def do_GET(self):
             parsed = urlparse(self.path)
@@ -1226,6 +1278,38 @@ def wip_http_server(port: int):
                 self._send(200, json.dumps(collect_sessions(since)))
             else:
                 self._send(404, json.dumps({"error": "not found"}))
+
+        def do_OPTIONS(self):
+            origin = self.headers.get("Origin") or ""
+            if (urlparse(self.path).path == "/focus"
+                    and self._host_ok() and origin_allowed(origin)):
+                self.send_response(204)
+                self.send_header("Access-Control-Allow-Origin", origin or "*")
+                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                self.send_header("Access-Control-Max-Age", "600")
+                self.end_headers()
+            else:
+                self.send_response(403)
+                self.end_headers()
+
+        def do_POST(self):
+            origin = self.headers.get("Origin") or ""
+            if urlparse(self.path).path != "/focus":
+                self._send(404, json.dumps({"error": "not found"}))
+                return
+            if not self._host_ok() or not origin_allowed(origin):
+                self._send(403, json.dumps({"error": "forbidden"}), origin or "*")
+                return
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b""
+                sh = (json.loads(raw or b"{}").get("hash") or "").strip()
+            except (ValueError, OSError):
+                sh = ""
+            ok, msg = _focus_session(sh)
+            code = 200 if ok else (404 if msg == "not focusable" else 400)
+            self._send(code, json.dumps({"focused": ok, "detail": msg}), origin or "*")
 
     return HTTPServer(("127.0.0.1", port), Handler)
 
@@ -1779,59 +1863,6 @@ def detect_pane_pixels(default=(1440, 1080)) -> tuple[int, int]:
     return (w // 8) * 8, (h // 8) * 8
 
 
-NOTE_POOL_SIZE = 8
-
-
-def _next_note_slot() -> Path:
-    """Pick the LRU slot from the fixed pool of note-NN.png files.
-
-    Reusing a fixed pool of paths means iTerm2's trust prompt for
-    SetBackgroundImageFile only fires N times ever (once per slot). After
-    that, every pause reuses an already-trusted path.
-
-    Avoid slots currently referenced by any active `note-image` state file —
-    including our own session's current slot. iTerm2 caches the background
-    image by path, so a second pause that landed on our previous slot would
-    leave the prior overlay on screen even though the file was overwritten.
-    Picking a different slot every pause forces a path change that iTerm2
-    actually refreshes on. If every slot is in use (very unlikely with
-    N=8), fall back to LRU and accept the race.
-    """
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    slots = [CACHE_DIR / f"note-{i:02d}.png" for i in range(1, NOTE_POOL_SIZE + 1)]
-
-    in_use: set[str] = set()
-    for state_file in STATE_DIR.glob("*.note-image"):
-        try:
-            path = state_file.read_text().strip()
-            if path:
-                in_use.add(path)
-        except OSError:
-            pass
-
-    def mtime(p: Path) -> float:
-        try:
-            return p.stat().st_mtime
-        except OSError:
-            return 0.0
-
-    free = [s for s in slots if str(s) not in in_use]
-    return min(free or slots, key=mtime)
-
-
-def render_note_card(label: str, text: str) -> str | None:
-    """Compose the marginalia overlay via beacon-iterm note --out, returning
-    the path on success. Slot selected by LRU rotation across the fixed
-    pool so iTerm2's trust prompt only fires N times ever."""
-    out = _next_note_slot()
-    cmd = ["python3", str(BEACON_ITERM), "note", label, text, "--out", str(out)]
-    try:
-        subprocess.run(cmd, capture_output=True, timeout=15, check=False)
-    except Exception:
-        return None
-    return str(out) if out.exists() else None
-
-
 # --- initialization ---
 
 _initialized = False
@@ -1843,7 +1874,6 @@ def ensure_initialized():
         return
     for d in (STATE_DIR, CACHE_DIR):
         d.mkdir(parents=True, exist_ok=True)
-    ensure_per_pane_bg_image()
     _initialized = True
 
 
@@ -1884,201 +1914,54 @@ def _is_iterm_installed() -> bool:
         return False
 
 
-def _bg_paths_needing_approval() -> list[str]:
-    """Pool slots, empty-string sentinel, and static state images
-    (BADGE-15) not yet in iTerm2's AlwaysAllowBackgroundImage. Empty
-    list ⇒ already fully approved.
-
-    Match by quoted entry to avoid substring false-matches (e.g. `note-01`
-    matching `note-010` in some hypothetical future)."""
-    paths = ["", *(str(CACHE_DIR / f"note-{i:02d}.png")
-                   for i in range(1, NOTE_POOL_SIZE + 1)),
-             *(str(p) for p in STATE_IMAGE_PATHS.values())]
-    try:
-        out = subprocess.run(
-            ["defaults", "read", "com.googlecode.iterm2",
-             "AlwaysAllowBackgroundImage"],
-            capture_output=True, text=True, timeout=2,
-        )
-        existing = out.stdout if out.returncode == 0 else ""
-    except Exception:
-        existing = ""
-    return [p for p in paths if f'"{p}"' not in existing]
-
-
-def _pre_approve_iterm_paths() -> tuple[bool, list[str]]:
-    """Pre-approve the pool slots and the bg-image-clear sentinel (empty path)
-    in iTerm2's AlwaysAllowBackgroundImage array so SetBackgroundImageFile
-    never prompts the user.
-
-    Skipped (returns False) if iTerm2 is currently running, because iTerm2
-    holds prefs in memory and overwrites the plist on quit — any writes here
-    would be silently undone.
-    """
-    if _is_iterm_running():
-        return False, []
-
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    added: list[str] = []
-    for path in _bg_paths_needing_approval():
-        try:
-            r = subprocess.run(
-                ["defaults", "write", "com.googlecode.iterm2",
-                 "AlwaysAllowBackgroundImage", "-array-add", path],
-                capture_output=True, timeout=2,
-            )
-            if r.returncode == 0:
-                added.append(path)
-        except Exception:
-            pass
-
-    return True, added
-
-
-BEACON_PROFILE_GUID = "ec2933e2-0e56-4d96-9a63-245d5ec7c527"
-
-# Non-paused logical states (BADGE-09 / -09a) each map to a dynamic profile.
-# Paused is exempt — pause is an OSC overlay (RENDER-04, §6.6) on top of
-# whichever profile is currently active. `blocked` and `blocked-idle` share
-# the red palette but ship distinct watermarks (`!` vs `?`) so a scan across
-# panes can separate "permission needed now" from softer idle prompts.
-PROFILE_STATES = ("ready", "busy", "blocked", "blocked-idle")
-
-# Static state images (BADGE-15). The blocked state ships a translucent `!`
-# watermark for permission prompts — the highest-urgency case where Claude
-# is gated on a human answer. The blocked-idle state ships a `?` for the
-# softer idle_prompt case (often a false positive while a background tool
-# is in flight). Other states ship no image (None) for now.
-STATE_IMAGE_PATHS = {
-    "blocked":      PLUGIN_ROOT / "iterm" / "images" / "blocked.png",
-    "blocked-idle": PLUGIN_ROOT / "iterm" / "images" / "blocked-idle.png",
-}
-
-
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the base beacon profile and the per-status state profiles
-    (BADGE-09: ready/busy/blocked/blocked-idle) into iTerm2's DynamicProfiles
-    directory. iTerm2 watches the directory and reloads on change without
-    restart.
+    """Write the single base beacon profile (status bar layout + badge sizing,
+    §6.6) into iTerm2's DynamicProfiles directory. iTerm2 watches the directory
+    and reloads on change without restart, so the write needs no quit.
 
-    Each profile is written from a `.template` in `iterm/`, with these
-    substitutions:
-      __BEACON_SCRIPT__            — script path for non-interactive coprocess
-                                     shells that can't see the user's `beacon`
-                                     alias (base profile only).
-      __BEACON_CACHE_DIR__         — so the `↖ web` and `↗ code` action shells
-                                     don't have to derive it themselves (base
-                                     profile only).
-      __BEACON_BLOCKED_IMAGE__     — absolute path to the `!` watermark PNG
-                                     for permission prompts (BADGE-15;
-                                     blocked profile only).
-      __BEACON_BLOCKED_IDLE_IMAGE__ — absolute path to the `?` watermark PNG
-                                     for idle prompts (BADGE-15; blocked-idle
-                                     profile only).
+    Substitutions in `iterm/profile.json.template`:
+      __BEACON_SCRIPT__     — script path for the non-interactive coprocess
+                              shells behind the status-bar action buttons.
+      __BEACON_CACHE_DIR__  — so the `↖ web` / `↗ code` action shells read the
+                              per-session handoff files without deriving it.
 
-    Always rewrites — iTerm2 re-serializes dynamic profiles back to disk
-    with its own formatting and any GUI-edited values, so a "content
-    matches" short-circuit silently lets stale state win.
+    Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
+    its own formatting and any GUI-edited values, so a "content matches"
+    short-circuit would silently let stale state win. Also sweeps the retired
+    per-state profiles a pre-1.0 install left behind so iTerm2 stops loading
+    them.
     """
     target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
-    blocked_image = str(STATE_IMAGE_PATHS["blocked"])
-    blocked_idle_image = str(STATE_IMAGE_PATHS["blocked-idle"])
-
-    plans: list[tuple[Path, Path]] = [
-        (PLUGIN_ROOT / "iterm" / "profile.json.template", target_dir / "beacon.json"),
-    ]
-    for state in PROFILE_STATES:
-        plans.append((
-            PLUGIN_ROOT / "iterm" / f"profile-{state}.json.template",
-            target_dir / f"beacon-{state}.json",
-        ))
+    template = PLUGIN_ROOT / "iterm" / "profile.json.template"
+    target = target_dir / "beacon.json"
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         return False, f"failed to create {target_dir}: {e}"
 
-    written: list[Path] = []
-    for template, target in plans:
-        if not template.is_file():
-            return False, f"profile template not found: {template}"
-        content = (template.read_text()
-                   .replace("__BEACON_SCRIPT__", beacon_script)
-                   .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR))
-                   .replace("__BEACON_BLOCKED_IMAGE__", blocked_image)
-                   .replace("__BEACON_BLOCKED_IDLE_IMAGE__", blocked_idle_image))
-        try:
-            target.write_text(content)
-            written.append(target)
-        except OSError as e:
-            return False, f"failed to write {target}: {e}"
+    if not template.is_file():
+        return False, f"profile template not found: {template}"
+    content = (template.read_text()
+               .replace("__BEACON_SCRIPT__", beacon_script)
+               .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR)))
+    try:
+        target.write_text(content)
+    except OSError as e:
+        return False, f"failed to write {target}: {e}"
 
-    # Sweep leftover profile JSONs from retired state profiles so iTerm2 stops
-    # loading them. Without this an upgrade carries forward beacon-drifted.json
-    # (or any future-retired state) as orphaned profile rows in the UI.
-    for retired in ("beacon-drifted.json",):
-        stale = target_dir / retired
+    # Sweep the retired per-state profiles (and the old drifted profile) so a
+    # pre-1.0 upgrade stops loading them as orphaned rows in the UI.
+    for retired in ("beacon-ready.json", "beacon-busy.json",
+                    "beacon-blocked.json", "beacon-blocked-idle.json",
+                    "beacon-drifted.json"):
         try:
-            stale.unlink(missing_ok=True)
+            (target_dir / retired).unlink(missing_ok=True)
         except OSError:
             pass
 
-    return True, f"wrote {len(written)} profile files to {target_dir}"
-
-
-def _is_beacon_already_default() -> bool:
-    try:
-        out = subprocess.run(
-            ["defaults", "read", "com.googlecode.iterm2", "Default Bookmark Guid"],
-            capture_output=True, text=True, timeout=2,
-        )
-        return out.returncode == 0 and out.stdout.strip() == BEACON_PROFILE_GUID
-    except Exception:
-        return False
-
-
-def _write_default_profile_now() -> None:
-    """Write the default-profile pref. Caller is responsible for ensuring
-    iTerm2 is not running (otherwise the prefs cache will overwrite this)."""
-    r = subprocess.run(
-        ["defaults", "write", "com.googlecode.iterm2",
-         "Default Bookmark Guid", "-string", BEACON_PROFILE_GUID],
-        capture_output=True, timeout=2,
-    )
-    if r.returncode != 0:
-        sys.exit(f"defaults write failed (exit {r.returncode})")
-
-
-def ensure_per_pane_bg_image() -> bool:
-    """Force iTerm2 to scope SetBackgroundImageFile to the pane, not the window.
-    Required for the pause overlay to appear only in the paused pane. Returns
-    whether the pref is now set, so the install step reports the truth rather
-    than an unconditional checkmark."""
-    try:
-        out = subprocess.run(
-            ["defaults", "read", "com.googlecode.iterm2", "PerPaneBackgroundImage"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if out.returncode == 0 and out.stdout.strip() == "1":
-            return True
-    except Exception:
-        pass
-    try:
-        r = subprocess.run(
-            ["defaults", "write", "com.googlecode.iterm2",
-             "PerPaneBackgroundImage", "-bool", "true"],
-            capture_output=True, timeout=2,
-        )
-        if r.returncode == 0:
-            sys.stderr.write(
-                "beacon: enabled iTerm2 'Separate background images per pane' "
-                "(restart iTerm2 for this to take effect in existing windows)\n"
-            )
-            return True
-    except Exception:
-        pass
-    return False
+    return True, f"wrote {target}"
 
 
 # --- apply ---
@@ -2122,14 +2005,12 @@ def _logical_state_for(state: dict) -> str:
 
     - `paused` (BADGE-10): de-emphasized, distinct from waiting so a
       parked session doesn't compete with one blocked on the user.
-    - `pending_attention` → `blocked` (`!` watermark) for permission prompts,
-      `blocked-idle` (`?`) for idle prompts. Both share the red palette but
-      ship distinct glyphs so a scan separates "must answer now" from
-      softer idle signals (often spurious during background tools)."""
+    - `pending_attention` → `blocked` (red): a permission or idle prompt
+      both read as "needs the user"; beacon no longer distinguishes them."""
     if state.get("status") == "paused":
         return "paused"
     if state.get("pending_attention"):
-        return "blocked-idle" if state.get("pending_attention_type") == "idle" else "blocked"
+        return "blocked"
     return STATUS_TO_BADGE_STATE.get(state["status"], "ready")
 
 
@@ -2141,48 +2022,23 @@ def apply(state: dict):
     # BADGE-14: marker presence is the shell snippet's engagement gate.
     place_engagement_marker()
 
-    # Backup for non-zsh / remote shells where shell/beacon.zsh hasn't run.
+    # First render of this session: switch into the base beacon profile
+    # (status bar layout + badge sizing, §6.6) and set the badge format.
+    # set-profile must precede badge-format — SetProfile wipes session OSC
+    # overrides including SetBadgeFormat (§6.10 caveat). Subsequent renders
+    # skip both; the OSC color below layers on top of the profile.
     if not prev:
+        _cli("set-profile", "beacon")
         _cli("badge-format", BADGE_FORMAT)
 
-    # BADGE-09 + -09a / RENDER-04. Each non-paused logical state owns its
-    # color/tab/bg-image atomically via SetProfile. `paused` has no profile
-    # (PROFILE_STATES) — it is painted via OSC badge-color/tab-color, with or
-    # without a note. A description (overlay) likewise paints via OSC so the
-    # marginalia card lands on top of whatever profile is active; per-note bg
-    # images can't live in a static profile (OVERLAY-01).
+    # BADGE-09 / -09a / RENDER-04: state color is a per-session OSC overlay on
+    # the single base profile — no per-state profile switch. Repaint badge and
+    # tab only when the logical state actually changed.
     logical = _logical_state_for(state)
-    prev_logical = prev.get("logical_state")
-    note_image = state.get("note_image")
-    prev_note_image = prev.get("note_image")
-    has_overlay = bool(state.get("description")) and bool(note_image)
-    prev_has_overlay = bool(prev.get("description")) and bool(prev_note_image)
-
-    use_osc = has_overlay or logical == "paused"
-    prev_use_osc = prev_has_overlay or prev_logical == "paused"
-
-    if use_osc:
-        if logical != prev_logical or not prev_use_osc:
-            hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["paused"])
-            _cli("badge-color", hex_color)
-            _cli("tab-color", hex_color)
-        if has_overlay and (note_image != prev_note_image or not prev_has_overlay):
-            _cli("bg-image", note_image)
-            # iTerm2 bg images render *behind* terminal text. Clearing the
-            # visible viewport gives the card a clean canvas; scrollback is
-            # preserved so the user can still scroll back to pre-overlay
-            # history.
-            _cli("clear-screen")
-        elif prev_has_overlay and not has_overlay:
-            # Dropped the card while staying in an OSC state (paused → paused
-            # without a note): no SetProfile fires to wipe the bg image, so
-            # clear it explicitly or the previous card lingers on screen.
-            _cli("bg-image", "clear")
-    elif logical != prev_logical or prev_use_osc:
-        # Profile path: atomic SetProfile wipes any prior OSC overrides
-        # (color, tab, bg image), so coming back from an overlay or from
-        # paused needs no explicit cleanup.
-        _cli("set-profile", f"beacon-{logical}")
+    if logical != prev.get("logical_state"):
+        hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["ready"])
+        _cli("badge-color", hex_color)
+        _cli("tab-color", hex_color)
 
     # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
     # must publish or CLI engagement leaves the badge empty (the shell no
@@ -2205,8 +2061,6 @@ def apply(state: dict):
         "status": s, "status_provider": state["status_provider"],
         "description": state.get("description", ""),
         "pending_attention": state.get("pending_attention", False),
-        "pending_attention_type": state.get("pending_attention_type"),
-        "note_image": note_image,
         "logical_state": logical,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
@@ -2215,8 +2069,6 @@ def apply(state: dict):
 def render():
     ensure_initialized()
     state = resolve()
-    if state.get("description"):
-        state["note_image"] = read_state("note-image")
     apply(state)
 
 
@@ -2293,23 +2145,12 @@ def cmd_clear(args):
     remove_state("resolved")
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
-    _cli("set-profile", "beacon")
+    _cli("clear")
 
 
 def _clear_description() -> None:
-    """Drop the description text and the rendered note-image reference. The
-    image file itself is part of the LRU pool (OVERLAY-03) and shared across
-    sessions; leave it on disk so iTerm2's bg-image trust prompt doesn't
-    re-fire on the next paint."""
+    """Drop the description text (surfaced in the fleet view, not painted)."""
     remove_state("description")
-    remove_state("note-image")
-
-
-def _label_for_status(status: str) -> str:
-    """Uppercase status label for the marginalia card header. The compose
-    layer renders this as the `PAUSED` / `WAITING` / `WORKING` / `IDLE`
-    chip in pink at the top of the card."""
-    return (status or "paused").upper()
 
 
 def _apply_status(value: str, description: str) -> None:
@@ -2317,9 +2158,8 @@ def _apply_status(value: str, description: str) -> None:
     `paused`, snapshot the current resolved project + task so the badge
     keeps its identity while the session is parked (STATE-03). For other
     values (e.g. `waiting "bg refresh"`), don't snapshot — the user is
-    labeling current state, not parking.
-
-    Renders the marginalia card if a description was provided."""
+    labeling current state, not parking. The description is persisted and
+    surfaced in the fleet view (STATE-02); it is not painted on the pane."""
     if value == "paused":
         # Drop any prior overrides on project/task so we re-snapshot from
         # the resolved (live) values rather than stale entries.
@@ -2333,10 +2173,6 @@ def _apply_status(value: str, description: str) -> None:
     _clear_description()
     if description:
         write_state("description", description)
-        ensure_initialized()
-        path = render_note_card(_label_for_status(value), description)
-        if path:
-            write_state("note-image", path)
 
 
 def cmd_status(args):
@@ -2443,8 +2279,6 @@ def cmd_reset(_args):
             p.unlink()
         except OSError:
             pass
-    # Don't delete pool slots — they're shared and persisting them keeps
-    # iTerm2's bg-image trust intact across sessions.
     _cli("clear")
 
 
@@ -2614,15 +2448,13 @@ def cmd_install(_args):
     print("==============")
     print()
     iterm = _is_iterm_installed()
-    total = 7 if iterm else 2
+    total = 4 if iterm else 2
     n = 0
 
     def step(title: str) -> None:
         nonlocal n
         n += 1
         print(f"[{n}/{total}] {title}")
-
-    deferred: list[str] = []
 
     # Terminal-agnostic surface — the fleet dashboard, works in any terminal.
     step("CLI wrapper on PATH")
@@ -2634,9 +2466,9 @@ def cmd_install(_args):
 
     if not iterm:
         print(_color("33",
-            "iTerm2 not detected — per-pane painting (badge, status bar, overlay)"))
+            "iTerm2 not detected — per-pane painting (badge, status bar) is"))
         print(_color("33",
-            "is unavailable here. The fleet dashboard is ready:"))
+            "unavailable here. The fleet dashboard is ready:"))
         print("  beacon wip      # snapshot of active work streams")
         print("  beacon watch    # live view (q to quit)")
         print("  beacon serve    # localhost endpoint for a dashboard")
@@ -2644,144 +2476,32 @@ def cmd_install(_args):
         print("  beacon serve install   # keep serve running for an external dashboard")
         return
 
-    # iTerm2 render adapter — macOS + iTerm.app only.
+    # iTerm2 render adapter — macOS + iTerm.app only. Every step completes in
+    # place: iTerm2 reloads DynamicProfiles live, and beacon writes no pref
+    # that needs iTerm2 quit, so there is no deferred-action step.
     step("shell integration")
     _install_shell_source()
     print()
-    step("iTerm2 'separate background images per pane'")
-    if ensure_per_pane_bg_image():
-        print("  ✓ PerPaneBackgroundImage = true")
-    else:
-        print(_color("33", "  ! could not set PerPaneBackgroundImage (defaults write failed)"))
+    step("iTerm2 dynamic profile (status bar + badge sizing)")
+    ok, msg = install_dynamic_profile()
+    print(f"  ✓ {msg}" if ok else _color("33", f"  ! {msg}"))
     print()
-    step("iTerm2 bg-image trust pre-approval")
-    ok, added = _pre_approve_iterm_paths()
-    if not ok:
-        for line in (
-            "  ! DEFERRED — iTerm2 is currently running.",
-            "    iTerm2 caches prefs in memory and overwrites the plist on quit,",
-            "    so this write must happen with iTerm2 fully exited. Without it,",
-            "    iTerm2 prompts once per pool slot the first time it's used.",
-        ):
-            print(_color("33", line))
-        deferred.append("bg-image trust pre-approval")
-    elif added:
-        print(f"  ✓ added {len(added)} entries to AlwaysAllowBackgroundImage:")
-        for p in added:
-            print(f"      {p or '(empty — bg-image clear)'}")
-    else:
-        print("  ✓ all bg-image paths already pre-approved")
-    print()
-    step("iTerm2 dynamic profile (status bar layout)")
-    _, msg = install_dynamic_profile()
-    print(f"  ✓ {msg}")
-    print()
-    step("iTerm2 default profile")
-    if _is_beacon_already_default():
-        print("  ✓ 'beacon' is already the default profile")
-    else:
-        for line in (
-            "  ! DEFERRED — requires iTerm2 quit (caches prefs in memory).",
-            "    Set via: iTerm2 → Settings → Profiles → 'beacon' → Other Actions ▾ → Set as Default",
-        ):
-            print(_color("33", line))
-        deferred.append("default profile")
-    print()
-    if deferred:
-        label = "deferred step" if len(deferred) == 1 else "deferred steps"
-        print(_color("1;33", f"ACTION REQUIRED — {label}:"))
-        for s in deferred:
-            print(_color("33", f"  • {s}"))
-        print()
-        tail = "it" if len(deferred) == 1 else "all of them at once"
-        print(_color("1;33",
-            f"  Run `beacon exclusive-configuration` to apply {tail}."))
-        print(_color("33",
-            "  It confirms before quitting iTerm2, applies the deferred writes"))
-        print(_color("33",
-            "  while iTerm2 is dead, and relaunches it."))
-    else:
-        print("Next: exec zsh, then open a fresh iTerm2 tab.")
+    print("Next: exec zsh, then open a fresh iTerm2 tab.")
+    print("Every step completed in place — no iTerm2 restart required.")
     print()
     print("Optional: `beacon serve install` keeps serve running for an external dashboard.")
 
 
-def cmd_exclusive_configuration(args):
-    """Apply iTerm2 prefs that require iTerm2 to be fully quit. iTerm2 caches
-    prefs in memory and overwrites the plist on quit, so the writes only stick
-    when iTerm2 is not running.
-
-    Currently covers:
-      - bg-image trust (AlwaysAllowBackgroundImage array — pool slots + the
-        bg-image-clear sentinel)
-      - default profile (Default Bookmark Guid → beacon)
-
-    Two execution paths:
-      - iTerm2 not running: do the writes directly, then relaunch.
-      - iTerm2 running: spawn a detached helper that polls for iTerm2 to
-        fully exit, then re-invokes this same command (which then takes
-        the not-running path). Send `quit` via AppleScript. The detached
-        helper survives our process being SIGHUP'd by iTerm2.
-    """
-    needs_default = not _is_beacon_already_default()
-    missing_bg = _bg_paths_needing_approval()
-
-    if not needs_default and not missing_bg:
-        print("nothing to do — already configured")
-        return
-
-    if not _is_iterm_running():
-        ok, added = _pre_approve_iterm_paths()
-        if added:
-            print(f"pre-approved {len(added)} bg-image path(s):")
-            for p in added:
-                print(f"  {p or '(empty — bg-image clear)'}")
-        if needs_default:
-            _write_default_profile_now()
-            print("set 'beacon' as default profile")
-        subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=5)
-        return
-
-    if not args.yes:
-        print("This will quit iTerm2 (closing all windows and panes including this one)")
-        print("and relaunch it after applying:")
-        if needs_default:
-            print("  - default profile → 'beacon'")
-        if missing_bg:
-            print(f"  - bg-image trust for {len(missing_bg)} path(s)")
-        try:
-            with open("/dev/tty") as tty:
-                sys.stdout.write("Continue? [y/N] ")
-                sys.stdout.flush()
-                response = tty.readline().strip().lower()
-        except OSError:
-            sys.exit("no controlling tty; re-run with --yes to skip the prompt")
-        if response not in ("y", "yes"):
-            print("aborted")
-            return
-
-    log_path = Path(tempfile.gettempdir()) / "beacon-exclusive-configuration.log"
-    self_path = Path(__file__).resolve()
-    # Re-invoke ourselves once iTerm2 is dead — single source of truth for the
-    # writes. The detached process survives our SIGHUP because of nohup +
-    # start_new_session.
-    helper = (
-        f"while pgrep -x iTerm2 >/dev/null; do sleep 0.5; done; "
-        f"python3 {shlex.quote(str(self_path))} exclusive-configuration --yes"
-    )
-    with open(log_path, "w") as log:
-        subprocess.Popen(
-            ["nohup", "zsh", "-c", helper],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    print(f"helper logged to {log_path}")
-    print("quitting iTerm2 — it will relaunch with the new configuration")
-    subprocess.run(
-        ["osascript", "-e", 'tell application "iTerm" to quit'],
-        capture_output=True, timeout=10,
-    )
+def _record_focus_handle() -> None:
+    """FOCUS-02: record the iTerm2 session GUID as the session's focus handle.
+    Real iTerm ids look like `w2t0p0:GUID`; the synthesized
+    `claude-session:<id>` fallback (a non-iTerm terminal) has no addressable
+    surface, so it is not recorded and the session is not focusable."""
+    sid = os.environ.get("ITERM_SESSION_ID") or ""
+    if ":" in sid and not sid.startswith("claude-session:"):
+        guid = sid.rsplit(":", 1)[-1].strip()
+        if guid:
+            write_state("iterm_session_id", guid)
 
 
 def cmd_hook(args):
@@ -2824,6 +2544,7 @@ def cmd_hook(args):
         source = (payload.get("source") or "").lower()
         if source != "resume":
             _wipe_session_for_fresh_start()
+        _record_focus_handle()
         _publish_anchor(Path(cwd_str))
 
     elif event == "UserPromptSubmit":
@@ -2955,11 +2676,6 @@ def main(argv=None):
     sp.add_argument("--dir", default=None,
                     help="directory to install into (default: ~/.local/bin)")
 
-    sp = sub.add_parser("exclusive-configuration",
-                        help="orchestrate iTerm2 quit + relaunch to apply prefs that require iTerm2 to be quit (bg-image trust, default profile)")
-    sp.add_argument("--yes", "-y", action="store_true",
-                    help="skip the confirmation prompt")
-
     sub.add_parser("resolve-url", help="(internal) print resolved url+label as TAB-separated text")
 
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
@@ -3016,7 +2732,6 @@ def main(argv=None):
         "render": cmd_render, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
-        "exclusive-configuration": cmd_exclusive_configuration,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
