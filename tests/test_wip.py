@@ -451,6 +451,37 @@ class FocusTest(unittest.TestCase):
         self.assertTrue(payload["focused"])
         m.assert_called_once_with("abcdef01")
 
+    def test_focus_route_allows_origin_from_config_allowlist(self):
+        # FOCUS-04: a private deployment's origin reaches the allowlist via the
+        # user config file rather than being baked into the source.
+        cfg_origin = "https://dashboard.pages.example"
+        with mock.patch.object(self.beacon, "_load_config",
+                               return_value={"focus_origins": [cfg_origin]}):
+            port = self._start_server()
+            with mock.patch.object(self.beacon, "_focus_session",
+                                   return_value=(True, "focused")):
+                with self._post_focus(port, origin=cfg_origin) as resp:
+                    payload = json.loads(resp.read())
+        self.assertTrue(payload["focused"])
+
+    def test_focus_origins_reads_config_list(self):
+        with mock.patch.object(
+                self.beacon, "_load_config",
+                return_value={"focus_origins": ["https://a.example", "https://b.example"]}):
+            origins = self.beacon._focus_origins()
+        self.assertIn("https://a.example", origins)
+        self.assertIn("https://b.example", origins)
+        self.assertIn("https://chris-peterson.github.io", origins)
+
+    def test_focus_origins_reads_config_from_xdg_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = Path(d) / "beacon" / "config.json"
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(json.dumps({"focus_origins": ["https://x.example"]}))
+            with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": d}):
+                origins = self.beacon._focus_origins()
+        self.assertIn("https://x.example", origins)
+
 
 if __name__ == "__main__":
     unittest.main()

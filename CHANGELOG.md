@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+### Fixes
+- **A dashboard deployed to a private host can now focus sessions on click.** `POST /focus` extends its origin allowlist (FOCUS-04) with the `focus_origins` list in `~/.config/beacon/config.json` — so a dashboard served off-machine (e.g. GitLab/Cloudflare Pages) clears the browser's CORS preflight without committing the origin to the source. The config is read at serve startup and persists across reinstalls. Reading `wip.json` was already open to any origin; only focus-on-click was gated.
+
 ## 0.23.0
 
 ### Features

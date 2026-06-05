@@ -30,6 +30,18 @@ beacon serve uninstall    # tear it down
 
 The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin upgrade that refreshes the wrapper keeps the service working. The state files stay the source of record; `serve` re-reads them per request, so the service can restart between two polls without the dashboard noticing.
 
+### Clicking focus from a deployed dashboard
+
+`POST /focus` accepts requests from loopback origins and from the built-in public dashboard. A dashboard served from another origin (e.g. your own GitLab Pages or Cloudflare Pages host) is rejected by the browser's CORS preflight until you add its origin to `~/.config/beacon/config.json`:
+
+```json
+{
+  "focus_origins": ["https://your-dashboard.example"]
+}
+```
+
+`serve` reads the config at startup, so restart it after editing (`beacon serve status` to check, then re-run, or restart the always-on unit). The config persists across reinstalls. Reading the dashboard's `wip.json` works from any origin without this; only the focus-on-click action is gated.
+
 ## In iTerm2: per-pane painting
 
 On macOS with iTerm2, beacon also paints each session's state onto its own pane:

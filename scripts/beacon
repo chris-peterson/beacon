@@ -1201,11 +1201,43 @@ def cmd_prune(args):
 
 
 # Browser origins allowed to POST /focus (FOCUS-04), beyond loopback origins
-# (which origin_allowed permits unconditionally). The deployed dashboard's
-# Pages origin goes here; a foreign page's Origin is rejected.
+# (which origin_allowed permits unconditionally). The built-in entry is the
+# public dashboard's Pages origin; a foreign page's Origin is rejected.
 FOCUS_ORIGIN_ALLOWLIST = {
     "https://chris-peterson.github.io",
 }
+
+
+def _config_file() -> Path:
+    """The user config path: $XDG_CONFIG_HOME/beacon/config.json, else
+    ~/.config/beacon/config.json — the same ~/.config base the systemd unit
+    lives under."""
+    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base) / "beacon" / "config.json"
+
+
+def _load_config() -> dict:
+    """Parse the user config file, or {} when it's absent or unreadable. The
+    file is optional, so a missing one is the common path, not an error; a
+    malformed one degrades to defaults rather than taking the daemon down."""
+    path = _config_file()
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _focus_origins() -> set[str]:
+    """The /focus origin allowlist (FOCUS-04): the built-in public dashboard
+    origin plus the `focus_origins` list in the user config file. A private
+    deployment (e.g. a GitLab Pages host) adds its origin to the config rather
+    than editing this source, so internal hostnames stay out of the public
+    tree. Read at serve startup — edit the config and restart to apply."""
+    extra = _load_config().get("focus_origins") or []
+    if isinstance(extra, str):
+        extra = [extra]
+    return set(FOCUS_ORIGIN_ALLOWLIST) | {o.strip() for o in extra if isinstance(o, str) and o.strip()}
 
 
 def _focus_session(sh: str) -> tuple[bool, str]:
@@ -1246,10 +1278,12 @@ def wip_http_server(port: int):
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
 
+    allowed_origins = _focus_origins()
+
     def origin_allowed(origin: str) -> bool:
         # A missing Origin (curl, same-origin, some file:// browsers) is not
         # the threat — only a *foreign* browser origin is. A present Origin
-        # must be loopback or the deployed dashboard.
+        # must be loopback or an allowlisted dashboard.
         if not origin or origin == "null":
             return True
         try:
@@ -1258,7 +1292,7 @@ def wip_http_server(port: int):
             return False
         if host in ("127.0.0.1", "localhost"):
             return True
-        return origin in FOCUS_ORIGIN_ALLOWLIST
+        return origin in allowed_origins
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
