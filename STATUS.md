@@ -3,7 +3,7 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-05
+**Last audit:** 2026-06-06
 **Spec version:** v1 (root-level, `docs/spec.md`)
 **Plugin version:** 1.1.0
 **Coverage:** 109 Covered, 2 Partial, 7 Missing/Contradicts.
@@ -64,6 +64,10 @@ OSC-only color on a single base profile, and STATUS-BAR-01 must activate that
 profile via runtime `set-profile` instead of the default-profile pref.
 
 ## Audit history
+
+### 2026-06-06 — Coverage refresh (spec-status)
+
+PROV-02a behavior revised (wander now prefixes an @<project> marker plus task); still Covered, no count change.
 
 ### 2026-06-05 — Coverage refresh (spec-status)
 
