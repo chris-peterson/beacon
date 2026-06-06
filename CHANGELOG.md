@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+- **A wandering session now shows a compact `@<project>` marker plus what it's doing there.** When a session works in another project mid-task, the task slot read the full live path (`beacon: ~/src/getty/cpeterson/ai-sdlc`). It now reads `beacon: @ai-sdlc: <task>`, where the task is your explicit override if set, otherwise the PR title or branch resolved at the wandered location. With nothing to show there, the marker stands alone (`beacon: @ai-sdlc`). The marker now also coexists with an override instead of being suppressed by it.
+
 ## 1.1.0
 
 ### Features

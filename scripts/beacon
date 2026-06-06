@@ -2128,14 +2128,27 @@ def _resolve_for_display() -> dict:
     state = resolve(anchor_cwd)
 
     # PROV-02a: when the session has wandered into a different project root than
-    # its anchor, surface the live cwd in the task slot as secondary spatial
-    # context — replacing the branch/PR task, but never an explicit override.
-    # Gating on project root (not raw cwd) keeps subdirectory navigation within
-    # the anchored project from displacing the branch task.
-    if anchor_cwd is not None and state["task_provider"] != "override":
+    # its anchor, prefix the task slot with an @<wandered-project> location
+    # marker as secondary spatial context. The project slot stays pinned to the
+    # anchor (BADGE-02). The task text after the marker is the explicit override
+    # when one is set; with no override, the task chain (PR title → branch) is
+    # re-resolved at the wandered cwd so the marker carries what's happening
+    # there. With neither, the marker stands alone. Gating on project root (not
+    # raw cwd) keeps subdirectory navigation within the anchored project from
+    # displacing the badge.
+    if anchor_cwd is not None:
         live_cwd = Path.cwd()
-        if find_project_root(live_cwd) != find_project_root(anchor_cwd):
-            state["task"] = _local_path_at(live_cwd)
+        live_root = find_project_root(live_cwd)
+        if live_root != find_project_root(anchor_cwd):
+            if state["task_provider"] == "override":
+                wandered_task = state["task"]
+            else:
+                wandered_task, _ = chain([
+                    ("pr",     lambda: p_pr_title(live_cwd)),
+                    ("branch", lambda: p_branch(live_cwd)),
+                ])
+            location = f"@{live_root.name}"
+            state["task"] = f"{location}: {wandered_task}" if wandered_task else location
             state["task_provider"] = "wander"
 
     return state

@@ -26,7 +26,7 @@ tracked in the implementation issue.
 | Prefix | Covered | Status | Notes |
 |--------|--------:|--------|-------|
 | RES-01..05 | 5 | All Covered | Signal resolution model |
-| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a surfaces a wandered cwd in the task slot |
+| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a prefixes the task slot with an @<wandered-project> marker |
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b | 10 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane |
 | OVR-01..04 | 4 | All Covered | User overrides |
