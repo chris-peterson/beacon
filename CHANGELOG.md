@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- **Exiting a session now clears its badge.** A new `SessionEnd` hook disengages the pane when you leave Claude — the badge text and color clear and the pane looks like an unmanaged terminal again, instead of holding the last-painted color and project. `/clear` and resume are exempt, since those re-engage the same pane immediately. (Exit is best-effort: a hard crash or `kill -9` can't run the hook, so a stale badge there clears on the pane's next beacon-aware action.)
+
+### Changes
+- **The `@<project>` wander marker now clears when a session comes home.** The marker is live "where the session is working" context, so it shows only while the session is actively working. At rest — idle, blocked on a prompt, or paused — the task re-resolves from the session's anchor and the marker drops. A session that returns home and finishes its turn clears the marker at Stop, and a session that blocks or ends while away no longer freezes a stale marker into the fleet view.
+
 ## 1.2.0
 
 ### Changes

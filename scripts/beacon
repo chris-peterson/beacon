@@ -2136,7 +2136,16 @@ def _resolve_for_display() -> dict:
     # there. With neither, the marker stands alone. Gating on project root (not
     # raw cwd) keeps subdirectory navigation within the anchored project from
     # displacing the badge.
-    if anchor_cwd is not None:
+    #
+    # The marker is live "where the subprocess is right now" context, so it
+    # applies only while the session is actively working (busy). At rest —
+    # idle, blocked on a prompt, or paused — the badge shows the session's
+    # resting identity and the task re-resolves from the anchor. This is what
+    # removes a wander once the session comes home: the returning turn's Stop
+    # renders at rest (status → idle) and drops the marker even if the last
+    # working render fired while the cwd was still away, and a session that
+    # blocks or ends mid-wander never freezes a stale @marker into its snapshot.
+    if anchor_cwd is not None and _logical_state_for(state) == "busy":
         live_cwd = Path.cwd()
         live_root = find_project_root(live_cwd)
         if live_root != find_project_root(anchor_cwd):
@@ -2210,16 +2219,13 @@ def cmd_project(args):
     render()
 
 
-def cmd_clear(args):
-    if args.field:
-        remove_state(f"override.{args.field}")
-        if args.field == "status":
-            _clear_description()
-        render()
-        return
-
-    # Full clear (BADGE-14 disengagement). Skipping render() at the end is
-    # deliberate — render() would re-place the engagement marker.
+def _disengage() -> None:
+    """BADGE-14 disengagement: return the pane to its unpainted, unmanaged
+    look. Clears overrides, description, and sticky red markers, drops the
+    engagement marker and the resolved snapshot, blanks the badge user vars,
+    and reverts badge / tab color to default. Callers must NOT render()
+    afterward — render() would re-place the engagement marker and re-engage.
+    Shared by `clear` (OVR-04) and the SessionEnd hook (HOOK-09)."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
     _clear_description()
@@ -2233,6 +2239,17 @@ def cmd_clear(args):
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
     _cli("clear")
+
+
+def cmd_clear(args):
+    if args.field:
+        remove_state(f"override.{args.field}")
+        if args.field == "status":
+            _clear_description()
+        render()
+        return
+
+    _disengage()
 
 
 def _clear_description() -> None:
@@ -2619,6 +2636,19 @@ def cmd_hook(args):
     transcript_path = payload.get("transcript_path") or ""
     if transcript_path:
         write_state("transcript_path", transcript_path)
+
+    if event == "SessionEnd":
+        # HOOK-09: the session is over, so the pane is no longer managed —
+        # disengage (BADGE-14) so it stops carrying a stale badge color/text
+        # after the user exits. Returning here skips the trailing render(),
+        # which would re-place the engagement marker and re-engage the pane.
+        # Skip reasons that aren't a real exit of this pane: `clear` is
+        # immediately followed by a fresh SessionStart that re-engages, and
+        # `resume` suspends the session expecting its state to persist.
+        reason = (payload.get("reason") or "").lower()
+        if reason not in ("clear", "resume"):
+            _disengage()
+        return
 
     if event == "SessionStart":
         cwd_str = payload.get("cwd") or os.getcwd()

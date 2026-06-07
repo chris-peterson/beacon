@@ -503,6 +503,58 @@ class SessionAnchor(BeaconTest):
         self.assertEqual(self.chip_cwds, ["/payload/dir"])
 
 
+class SessionEndDisengages(BeaconTest):
+    """HOOK-09: when a session ends, the pane is no longer managed, so the
+    plugin disengages (BADGE-14) — blanks the badge user vars, reverts color,
+    and removes the engagement marker — instead of leaving a stale badge on the
+    pane after the user exits. Reasons that aren't a real exit of this pane
+    (`clear`, `resume`) are skipped so the badge survives the handoff."""
+
+    def _fire(self, payload: dict):
+        args = mock.Mock(event="SessionEnd")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def _engaged(self) -> bool:
+        return self.beacon._engagement_marker_path().exists()
+
+    def test_exit_disengages_the_pane(self):
+        self.beacon.render()  # engage: places the marker, paints the badge
+        self.assertTrue(self._engaged())
+        self.cli_calls.clear()
+        self._fire({"reason": "other"})
+        self.assertFalse(self._engaged(), "Exit must remove the engagement marker")
+        self.assertIn(
+            ("uservar", "beacon_project", ""), self.cli_calls,
+            "Exit must blank the badge text",
+        )
+        self.assertIn(("clear",), self.cli_calls, "Exit must revert badge/tab color")
+        self.assertIsNone(self.beacon.read_state("resolved"))
+
+    def test_clear_reason_keeps_engagement(self):
+        # `/clear` ends the session with reason=clear but a fresh SessionStart
+        # re-engages the same pane immediately — disengaging would just flicker.
+        self.beacon.render()
+        self.cli_calls.clear()
+        self._fire({"reason": "clear"})
+        self.assertTrue(self._engaged(), "`clear` reason must not disengage the pane")
+
+    def test_resume_reason_keeps_engagement(self):
+        self.beacon.render()
+        self.cli_calls.clear()
+        self._fire({"reason": "resume"})
+        self.assertTrue(self._engaged(), "`resume` reason must not disengage the pane")
+
+    def test_absent_reason_disengages(self):
+        # A SessionEnd with no `reason` key collapses to "" via the `or ""`
+        # guard, which is not in the skip set — an ambiguous end is treated as
+        # a real exit and the pane disengages (the safe direction).
+        self.beacon.render()
+        self.assertTrue(self._engaged())
+        self._fire({})
+        self.assertFalse(self._engaged(), "An end with no reason must disengage")
+
+
 class BadgePinnedToAnchorOnWander(BeaconTest):
     """BADGE-02 / PROV-02a: the badge project follows the SessionStart anchor,
     not Claude's live subprocess cwd. When the agent cd's into a different
@@ -521,6 +573,10 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         self.addCleanup(self._anchor_dir.cleanup)
         self.addCleanup(self._live_dir.cleanup)
         self.beacon.write_state("anchor.cwd", str(self.anchor_dir))
+        # The @marker is live "where the subprocess is" context, applied only
+        # while the session is actively working (busy). These tests exercise the
+        # wander overlay, so put the session in the working state.
+        self.beacon.write_state("signal.status", "working")
 
     def _chdir(self, path: Path):
         prev = os.getcwd()
@@ -587,6 +643,41 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         self.assertEqual(state["project"], "acme/widget")
         self.assertEqual(state["task_provider"], "wander")
         self.assertEqual(state["task"], f"@{self.live_dir.name}")
+
+    def test_wander_clears_at_rest(self):
+        # PROV-02a: the marker is live working-state context. At rest (idle here,
+        # but the same holds for blocked / paused) the task re-resolves from the
+        # anchor and the marker is dropped — even though the live cwd is still
+        # away. This is what removes the marker once a session comes home: the
+        # returning turn's Stop renders at rest and clears it.
+        self.beacon.write_state("signal.status", "idle")
+        self._chdir(self.live_dir)
+        state = self.beacon._resolve_for_display()
+        self.assertNotEqual(
+            state["task_provider"], "wander",
+            "A session at rest must not carry the @marker, even while away",
+        )
+
+    def test_blocked_wander_does_not_freeze_marker(self):
+        # The frozen-phantom case: a session that blocks on a prompt while away
+        # must not persist an @marker into its snapshot (the fleet view reads it).
+        self.beacon.write_state("pending-attention", "permission")
+        self._chdir(self.live_dir)
+        state = self.beacon._resolve_for_display()
+        self.assertNotEqual(state["task_provider"], "wander")
+
+    def test_paused_wander_does_not_freeze_marker(self):
+        # `paused` is a distinct precedence branch in _logical_state_for (it
+        # short-circuits above pending_attention), reachable only via
+        # override.status — so it needs its own assertion that the busy-gate
+        # drops the marker, not just the idle/blocked cases above.
+        self.beacon.write_state("override.status", "paused")
+        self._chdir(self.live_dir)
+        state = self.beacon._resolve_for_display()
+        self.assertNotEqual(
+            state["task_provider"], "wander",
+            "A paused session must not carry the @marker, even while away",
+        )
 
 
 class EmptyItermIdIsolatesSessions(BeaconTest):

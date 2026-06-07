@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-06
+**Last audit:** 2026-06-07
 **Spec version:** v1 (root-level, `docs/spec.md`)
 **Plugin version:** 1.1.0
-**Coverage:** 109 Covered, 2 Partial, 7 Missing/Contradicts.
+**Coverage:** 110 Covered, 2 Partial, 7 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -26,9 +26,9 @@ tracked in the implementation issue.
 | Prefix | Covered | Status | Notes |
 |--------|--------:|--------|-------|
 | RES-01..05 | 5 | All Covered | Signal resolution model |
-| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a prefixes the task slot with an @<wandered-project> marker |
+| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a prefixes the task slot with an @<wandered-project> marker while working, clearing it at rest |
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
-| HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b | 10 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane |
+| HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09 | 11 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-09 disengages the pane on SessionEnd |
 | OVR-01..04 | 4 | All Covered | User overrides |
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay) |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
@@ -64,6 +64,10 @@ OSC-only color on a single base profile, and STATUS-BAR-01 must activate that
 profile via runtime `set-profile` instead of the default-profile pref.
 
 ## Audit history
+
+### 2026-06-07 — Coverage refresh (spec-status)
+
+PROV-02a behavior revised (the @<project> marker now applies only while working and clears at rest); still Covered, no count change. Added HOOK-09 (SessionEnd disengages the pane), Covered; 109 → 110 Covered.
 
 ### 2026-06-06 — Coverage refresh (spec-status)
 
