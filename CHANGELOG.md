@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 ### Features
 - **Exiting a session now clears its badge.** A new `SessionEnd` hook disengages the pane when you leave Claude — the badge text and color clear and the pane looks like an unmanaged terminal again, instead of holding the last-painted color and project. `/clear` and resume are exempt, since those re-engage the same pane immediately. (Exit is best-effort: a hard crash or `kill -9` can't run the hook, so a stale badge there clears on the pane's next beacon-aware action.)

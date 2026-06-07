@@ -5,7 +5,7 @@ Maintained by `/sextant:spec-status`.
 
 **Last audit:** 2026-06-07
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.1.0
+**Plugin version:** 1.3.0
 **Coverage:** 110 Covered, 2 Partial, 7 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
