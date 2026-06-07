@@ -6,20 +6,21 @@ Maintained by `/sextant:spec-status`.
 **Last audit:** 2026-06-07
 **Spec version:** v1 (root-level, `docs/spec.md`)
 **Plugin version:** 1.3.0
-**Coverage:** 110 Covered, 2 Partial, 7 Missing/Contradicts.
+**Coverage:** 118 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
 `blocked`), with `paused` adding a de-emphasized gray. Pause is a status value,
 not a separate concept (STATE).
 
-**1.0 pivot (in progress).** The 1.0 spec retires the iTerm2 marginalia
-overlay, the `!` / `?` watermarks, the per-state dynamic profiles,
-`exclusive-configuration`, and all background-image machinery — and adds
-dashboard-driven session focus (FOCUS, CLI-17). The code is still pre-pivot, so
-the rows below mark the gap: FOCUS + CLI-17 are Missing, and CMD-08 / RENDER-04
-/ STATUS-BAR-01 / TAB-01 still implement the retired model. Convergence is
-tracked in the implementation issue.
+**1.0 pivot (landed).** The 1.0 spec retired the iTerm2 marginalia overlay, the
+`!` / `?` watermarks, the per-state dynamic profiles, `exclusive-configuration`,
+and all background-image machinery, and added dashboard-driven session focus
+(FOCUS, CLI-17). The code has converged: `focus` ships (`bin/beacon-iterm
+focus`, the `POST /focus` route, the recorded `iterm_session_id` handle), color
+is OSC `badge-color` / `tab-color` on the single base `beacon` profile switched
+in via `set-profile`, and the retired surfaces are gone — `install_dynamic_profile`
+sweeps the per-state profiles a pre-1.0 install left behind.
 
 ## Status by category
 
@@ -32,38 +33,35 @@ tracked in the implementation issue.
 | OVR-01..04 | 4 | All Covered | User overrides |
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay) |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
-| CMD-01..09, 13..17 (gap 10, 11; CMD-12 retired) | 14 | 13 Covered, 1 Contradicts | CMD-08 install still runs the retired exclusive-config / bg-image steps — to be gutted |
-| WIP-01..07 | 7 | All Covered | Cross-session introspection / export; WIP-01 must add the `focusable` field (FOCUS-03) |
+| CMD-01..09, 13..17 (gap 10, 11; CMD-12 retired) | 14 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; exclusive-config / bg-image gone |
+| WIP-01..07 | 7 | All Covered | Cross-session introspection / export; WIP-01 emits the `focusable` field (FOCUS-03) |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
-| FOCUS-01..04 | 4 | Missing | Dashboard-driven session focus — not yet implemented |
-| CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | 12 Covered, 1 Missing | CLI-17 `focus` (osascript) not yet implemented |
+| FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
+| CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..10, 12..14 (incl. 09a; gap 11; BADGE-15 retired) | 14 | All Covered | Badge text + color + engagement; watermark removed |
-| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | 4 Covered, 1 Partial | STATUS-BAR-01: runtime `set-profile` activation (plugin SessionStart + shell on source) not yet wired — code still relies on the default-profile model |
-| RENDER-01..04 | 4 | 3 Covered, 1 Contradicts | RENDER-04: code switches per-state profiles; spec now mandates OSC `badge-color`/`tab-color` on a single base profile |
-| TAB-01..03 | 3 | 2 Covered, 1 Partial | TAB-01: code delivers tab color via per-state profile; spec now mandates OSC `tab-color` on every change |
+| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base profile) |
+| RENDER-01..04 | 4 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the single base profile, no per-state swap |
+| TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
 | THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed) |
-| NFR-01..11 | 11 | All Covered | Timing reqs advisory; NFR-02 (overlay caching) retired, NFR-04 now bounds `focus` |
+| NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus` |
 
 Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no BADGE-11, no
 STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 (`exclusive-configuration`), CLI-04/05/15 (`bg-image` / `note` /
-`clear-screen`), BADGE-15 (watermark), and the entire OVERLAY namespace — are
-removed, not missing coverage.
-
-## Open / Needs Decision
-
-The 1.0 pivot is captured in the spec but not yet in the code. Implementing it
-means **adding** FOCUS-01..04 + CLI-17 (dashboard focus) and **removing** the
-retired surfaces from `scripts/beacon`, `bin/beacon-iterm`, `shell/beacon.zsh`,
-`hooks/`, and `iterm/` — the marginalia overlay, `note` / `bg-image` /
-`clear-screen` subcommands, `_compose.py`, the per-state profiles, the `!`/`?`
-watermark assets, `exclusive-configuration`, and the bg-image trust /
-`PerPaneBackgroundImage` install steps. RENDER-04 / TAB-01 must move to
-OSC-only color on a single base profile, and STATUS-BAR-01 must activate that
-profile via runtime `set-profile` instead of the default-profile pref.
+`clear-screen`), BADGE-15 (watermark), NFR-02 (overlay caching), and the entire
+OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-07 — Coverage refresh (spec-status)
+
+1.0 pivot landed in the code: FOCUS-01..04 + CLI-17 (dashboard focus) now
+Covered; CMD-08 / RENDER-04 (was Contradicts) and STATUS-BAR-01 / TAB-01 (was
+Partial) now Covered — color is OSC `badge-color`/`tab-color` over the single
+base profile and the `focus` chain ships. NFR row count corrected 11 → 10
+(NFR-02 retired, not coverage). 110 → 118 Covered; 0 Partial, 0
+Missing/Contradicts. Open / Needs Decision section removed (no open items).
 
 ### 2026-06-07 — Coverage refresh (spec-status)
 
