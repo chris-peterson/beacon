@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 ### Features
 - **The fleet view now carries each project's icon.** beacon finds the project's favicon from its own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` / `app/` roots, `icon.*` / `logo.*`) and exposes it in the `wip` / `serve` payload's new `icon` field, so a dashboard can show the favicon and tell work streams apart at a glance. A local icon is served alongside the payload at `/icon/<hash>`; an `http(s)` icon URL loads from any origin. Point beacon at a custom icon with `beacon icon <path-or-url>`; the field is `null` when a project ships no icon.
