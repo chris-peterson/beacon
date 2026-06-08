@@ -566,12 +566,21 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
 
     def setUp(self):
         super().setUp()
-        self._anchor_dir = tempfile.TemporaryDirectory()
-        self._live_dir = tempfile.TemporaryDirectory()
-        self.anchor_dir = Path(self._anchor_dir.name).resolve()
-        self.live_dir = Path(self._live_dir.name).resolve()
-        self.addCleanup(self._anchor_dir.cleanup)
-        self.addCleanup(self._live_dir.cleanup)
+        # A wander is only recognized when the live cwd resolves to a
+        # marker-bearing project root under $HOME (PROV-02a). Mock $HOME to a
+        # temp root and create both the anchor and the wandered-into project as
+        # real .git repos beneath it, so _project_root finds their markers.
+        self._home = tempfile.TemporaryDirectory()
+        home = Path(self._home.name).resolve()
+        self.addCleanup(self._home.cleanup)
+        home_patcher = mock.patch.dict(os.environ, {"HOME": str(home)})
+        home_patcher.start()
+        self.addCleanup(home_patcher.stop)
+
+        self.anchor_dir = home / "acme-widget"
+        self.live_dir = home / "other-project"
+        for d in (self.anchor_dir, self.live_dir):
+            (d / ".git").mkdir(parents=True)
         self.beacon.write_state("anchor.cwd", str(self.anchor_dir))
         # The @marker is live "where the subprocess is" context, applied only
         # while the session is actively working (busy). These tests exercise the
@@ -620,13 +629,28 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
             "An override must survive a wander as the text behind the @ marker",
         )
 
+    def test_scratch_tmp_dir_is_not_a_wander(self):
+        # PROV-02a: agents routinely cd into a uniquified scratch dir (a mktemp
+        # path under /tmp or $TMPDIR) for ad-hoc work. It has no project marker
+        # and lives outside $HOME, so _project_root returns None and no @marker
+        # paints — the badge must not churn to @<random-tmp-name>.
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self._chdir(Path(scratch.name).resolve())
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"), [],
+            "A scratch tmp dir must not trigger the wander @marker",
+        )
+
     def test_subdirectory_of_anchor_is_not_a_wander(self):
         # PROV-02a gates on project *root*: navigating into a subdirectory of the
         # anchored project resolves to the same root, so no wander overlay fires.
-        # find_project_root's own marker walk only runs under $HOME, so mock it
-        # to a fixed root for both operands — the contract under test is the
-        # root comparison in the gate, not find_project_root's home boundary.
-        with mock.patch.object(self.beacon, "find_project_root",
+        # _project_root's own marker walk only runs under $HOME, so mock it to a
+        # fixed root for both operands (find_project_root delegates to it) — the
+        # contract under test is the root comparison in the gate, not the marker
+        # walk's home boundary.
+        with mock.patch.object(self.beacon, "_project_root",
                                side_effect=lambda p: Path("/proj/root")):
             self.beacon.render()
         self.assertEqual(

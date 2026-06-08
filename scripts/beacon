@@ -291,9 +291,12 @@ def _tty_name() -> str | None:
         return None
 
 
-def find_project_root(cwd: Path) -> Path:
-    # Treat $HOME as a boundary — markers at or above $HOME (stray package.json,
-    # dotfiles .git, etc.) don't represent the user's "current project".
+def _project_root(cwd: Path) -> Path | None:
+    # The nearest ancestor (within $HOME) holding a PROJECT_MARKER, or None when
+    # cwd is inside no recognized project — a bare scratch dir like a mktemp
+    # /tmp path, or anywhere outside $HOME. Treat $HOME as a boundary: markers at
+    # or above $HOME (stray package.json, dotfiles .git, etc.) don't represent
+    # the user's "current project".
     p = cwd.resolve()
     home = Path.home().resolve()
     for d in (p, *p.parents):
@@ -302,7 +305,11 @@ def find_project_root(cwd: Path) -> Path:
         for marker in PROJECT_MARKERS:
             if (d / marker).exists():
                 return d
-    return p
+    return None
+
+
+def find_project_root(cwd: Path) -> Path:
+    return _project_root(cwd) or cwd.resolve()
 
 
 # --- state files ---
@@ -2135,7 +2142,10 @@ def _resolve_for_display() -> dict:
     # re-resolved at the wandered cwd so the marker carries what's happening
     # there. With neither, the marker stands alone. Gating on project root (not
     # raw cwd) keeps subdirectory navigation within the anchored project from
-    # displacing the badge.
+    # displacing the badge. The live cwd must resolve to a recognized project
+    # (a marker-bearing root, not find_project_root's bare-cwd fallback): a
+    # mktemp /tmp scratch dir the agent cd's into for ad-hoc work is not a
+    # project it has wandered into, so it carries no @marker.
     #
     # The marker is live "where the subprocess is right now" context, so it
     # applies only while the session is actively working (busy). At rest —
@@ -2147,8 +2157,8 @@ def _resolve_for_display() -> dict:
     # blocks or ends mid-wander never freezes a stale @marker into its snapshot.
     if anchor_cwd is not None and _logical_state_for(state) == "busy":
         live_cwd = Path.cwd()
-        live_root = find_project_root(live_cwd)
-        if live_root != find_project_root(anchor_cwd):
+        live_root = _project_root(live_cwd)
+        if live_root is not None and live_root != find_project_root(anchor_cwd):
             if state["task_provider"] == "override":
                 wandered_task = state["task"]
             else:
