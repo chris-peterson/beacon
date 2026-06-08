@@ -39,7 +39,11 @@ def _load_beacon(data_dir: Path):
     return module
 
 
-class WipTest(unittest.TestCase):
+class _WipBase(unittest.TestCase):
+    """Shared fixture for the wip/serve suites: a fresh tempdir DATA_DIR, tack
+    correlation isolated from the developer's real ~/.tack, and helpers to
+    write raw state files and collect the resolved sessions."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.data_dir = Path(self._tmp.name)
@@ -75,6 +79,8 @@ class WipTest(unittest.TestCase):
     def _sessions(self, since=None):
         return self.beacon.collect_sessions(since)["sessions"]
 
+
+class WipTest(_WipBase):
     # --- enumeration + resolve ---
 
     def test_enumerates_anchored_sessions(self):
@@ -259,6 +265,97 @@ class WipTest(unittest.TestCase):
             self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
             payload = json.loads(resp.read())
         self.assertEqual([s["project"] for s in payload["sessions"]], ["served"])
+
+
+class IconTest(_WipBase):
+    """PROV-08 / WIP-08: project-icon discovery, the `icon` field in the wip
+    payload, and the /icon/<hash> serve route."""
+
+    def _project(self, *rel_files: str) -> Path:
+        """A throwaway project root (.git marker) with the given files, placed
+        under a fake $HOME so `_project_root_at` accepts it."""
+        home = Path(self._tmp.name) / "home"
+        root = home / "proj"
+        (root / ".git").mkdir(parents=True, exist_ok=True)
+        for rel in rel_files:
+            f = root / rel
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"<svg/>" if rel.endswith(".svg") else b"\x89PNG")
+        self._home_patch = mock.patch.object(self.beacon.Path, "home", return_value=home)
+        self._home_patch.start()
+        self.addCleanup(self._home_patch.stop)
+        # _project_root_at resolves paths (on macOS /var → /private/var), so
+        # hand back the resolved root for symmetry with discovery's output.
+        return root.resolve()
+
+    def test_discover_prefers_docs_favicon(self):
+        root = self._project("favicon.ico", "docs/favicon.svg")
+        # docs/favicon.svg precedes the root favicon.ico in ICON_CANDIDATES.
+        self.assertEqual(self.beacon._discover_icon_at(root),
+                         str(root / "docs/favicon.svg"))
+
+    def test_discover_none_when_no_icon(self):
+        root = self._project("README.md")
+        self.assertIsNone(self.beacon._discover_icon_at(root))
+
+    def test_icon_field_local_file_points_at_route(self):
+        root = self._project("favicon.svg")
+        self._write("withicon", "anchor.project", "proj")
+        self._write("withicon", "anchor.icon", str(root / "favicon.svg"))
+        icon = next(s for s in self._sessions() if s["hash"] == "withicon")["icon"]
+        self.assertEqual(icon, "/icon/withicon")
+
+    def test_icon_field_http_override_passthrough(self):
+        self._write("online", "anchor.project", "proj")
+        self._write("online", "override.icon", "https://example.com/favicon.ico")
+        icon = next(s for s in self._sessions() if s["hash"] == "online")["icon"]
+        self.assertEqual(icon, "https://example.com/favicon.ico")
+
+    def test_icon_field_http_override_scheme_is_case_insensitive(self):
+        # An uppercase scheme is still a URL passthrough, not a local-file path.
+        self._write("loud", "anchor.project", "proj")
+        self._write("loud", "override.icon", "HTTPS://example.com/favicon.ico")
+        icon = next(s for s in self._sessions() if s["hash"] == "loud")["icon"]
+        self.assertEqual(icon, "HTTPS://example.com/favicon.ico")
+
+    def test_icon_field_null_when_absent(self):
+        self._write("plain", "anchor.project", "proj")
+        rec = next(s for s in self._sessions() if s["hash"] == "plain")
+        self.assertIn("icon", rec)
+        self.assertIsNone(rec["icon"])
+
+    def test_nonimage_override_is_refused(self):
+        # The exfil guard (WIP-08): a local override that isn't an image type
+        # resolves to no icon, so the route can't be steered into serving it.
+        secret = Path(self._tmp.name) / "secret.txt"
+        secret.write_text("nope")
+        self._write("evil", "anchor.project", "proj")
+        self._write("evil", "override.icon", str(secret))
+        rec = next(s for s in self._sessions() if s["hash"] == "evil")
+        self.assertIsNone(rec["icon"])
+        self.assertIsNone(self.beacon._icon_local_path("evil"))
+
+    def test_serve_icon_route_streams_bytes(self):
+        root = self._project("docs/favicon.svg")
+        self._write("served", "anchor.project", "proj")
+        self._write("served", "anchor.icon", str(root / "docs/favicon.svg"))
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/icon/served", timeout=3) as resp:
+            self.assertEqual(resp.headers["Content-Type"], "image/svg+xml")
+            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+            self.assertEqual(resp.read(), b"<svg/>")
+
+    def test_serve_icon_route_404_unknown(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/icon/deadbeef", timeout=3)
+        self.assertEqual(ctx.exception.code, 404)
 
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")

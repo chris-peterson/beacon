@@ -502,6 +502,22 @@ class SessionAnchor(BeaconTest):
         self._fire("Stop", {"cwd": "/payload/dir"})
         self.assertEqual(self.chip_cwds, ["/payload/dir"])
 
+    def test_session_start_anchors_discovered_icon(self):
+        # PROV-08: SessionStart records the discovered project icon path.
+        with mock.patch.object(self.beacon, "_discover_icon_at",
+                               return_value="/work/acme/widget/docs/favicon.svg"):
+            self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
+        self.assertEqual(self.beacon.read_state("anchor.icon"),
+                         "/work/acme/widget/docs/favicon.svg")
+
+    def test_session_start_clears_stale_icon_anchor(self):
+        # A reused pane whose new project ships no icon must not inherit the
+        # prior tenant's anchored icon.
+        self.beacon.write_state("anchor.icon", "/old/favicon.svg")
+        with mock.patch.object(self.beacon, "_discover_icon_at", return_value=None):
+            self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
+        self.assertIsNone(self.beacon.read_state("anchor.icon"))
+
 
 class SessionEndDisengages(BeaconTest):
     """HOOK-09: when a session ends, the pane is no longer managed, so the

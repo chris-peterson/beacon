@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-07
+**Last audit:** 2026-06-08
 **Spec version:** v1 (root-level, `docs/spec.md`)
 **Plugin version:** 1.3.0
-**Coverage:** 118 Covered, 0 Partial, 0 Missing/Contradicts.
+**Coverage:** 121 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -29,12 +29,13 @@ sweeps the per-state profiles a pre-1.0 install left behind.
 | RES-01..05 | 5 | All Covered | Signal resolution model |
 | PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a prefixes the task slot with an @<wandered-project> marker while working, clearing it at rest |
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
+| PROV-08 | 1 | Covered | `icon` chain: override → discovered project favicon (`_discover_icon_at`), anchored at SessionStart |
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09 | 11 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-09 disengages the pane on SessionEnd |
-| OVR-01..04 | 4 | All Covered | User overrides |
+| OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay) |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
 | CMD-01..09, 13..17 (gap 10, 11; CMD-12 retired) | 14 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; exclusive-config / bg-image gone |
-| WIP-01..07 | 7 | All Covered | Cross-session introspection / export; WIP-01 emits the `focusable` field (FOCUS-03) |
+| WIP-01..08 | 8 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08); WIP-08 is the `/icon/<hash>` serve route |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
@@ -53,6 +54,13 @@ STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-08 — Project icons (new-feature)
+
+Added the `icon` provider chain (PROV-08), the `icon` field + `/icon/<hash>`
+serve route (WIP-01 extended, WIP-08 new), and the dedicated `icon` override
+(OVR-05). The fleet view now carries each project's favicon so a dashboard can
+tell work streams apart. 118 → 121 Covered.
 
 ### 2026-06-07 — Coverage refresh (spec-status)
 

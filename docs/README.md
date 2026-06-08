@@ -18,6 +18,8 @@ beacon surfaces what every session is doing — which project, what task, and wh
 - **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own fleet.
 - **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll, and accepts `POST /focus` to raise a session's iTerm2 window when its dashboard card is clicked. To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
+Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …); to point it elsewhere, set one with `beacon icon <path-or-url>`. A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
+
 ## Always-on serve service (optional)
 
 If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon install`:
