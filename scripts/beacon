@@ -1030,6 +1030,10 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 
 
 def collect_sessions(since_epoch: float | None = None) -> dict:
+    # Paused sessions are exempt from the activity window: a parked session is
+    # deliberately set aside and stays relevant however long it sits, so it
+    # survives past since_epoch where an idle/working session of the same age
+    # would be dropped. (The fleet view pins these to the right.)
     now = time.time()
     session_index = _tack_session_index()
     resolved = []
@@ -1053,7 +1057,7 @@ def collect_sessions(since_epoch: float | None = None) -> dict:
     sessions = []
     for s in no_sid + list(newest_by_sid.values()):
         epoch = s.pop("_epoch", 0.0)
-        if since_epoch is not None and epoch < since_epoch:
+        if since_epoch is not None and epoch < since_epoch and s.get("state") != "paused":
             continue
         s["last_activity"] = _iso(epoch) if epoch else None
         s["age_seconds"] = int(now - epoch) if epoch else None

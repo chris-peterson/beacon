@@ -171,6 +171,21 @@ class WipTest(_WipBase):
         projects = {s["project"] for s in self._sessions(since=cutoff)}
         self.assertEqual(projects, {"fresh"})
 
+    def test_since_exempts_paused_sessions(self):
+        # WIP-03: a paused session is exempt from the window — parked, not
+        # stale — so it survives past the cutoff where an old idle one is
+        # dropped.
+        old = time.time() - 86400 * 3
+        self._write("parked", "anchor.project", "parked-proj", mtime=old)
+        self._write("parked", "override.status", "paused", mtime=old)
+        self._write("stale", "anchor.project", "stale-proj", mtime=old)
+
+        cutoff = time.time() - 3600
+        by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
+        self.assertIn("parked-proj", by_proj)
+        self.assertEqual(by_proj["parked-proj"]["state"], "paused")
+        self.assertNotIn("stale-proj", by_proj)
+
     def test_since_accepts_durations(self):
         now = time.time()
         self.assertAlmostEqual(self.beacon._parse_since("1d", True), now - 86400, delta=2)

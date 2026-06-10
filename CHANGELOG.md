@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+- **Paused sessions stay in the fleet view however long they're parked.** `wip` / `serve` window by last-activity, so a session you set aside for days used to drop out of the snapshot once it aged past the window. A `paused` session is now exempt from the window — parking is deliberate, not idle decay — so it survives past the cutoff where an idle/working session of the same age is dropped (WIP-03). A dashboard can surface these alongside active work (the wip dashboard pins them to the right).
+
 ## 1.4.0
 
 ### Features
