@@ -3,9 +3,9 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-08
+**Last audit:** 2026-06-09
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.4.0
+**Plugin version:** 1.5.0
 **Coverage:** 121 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
@@ -54,6 +54,10 @@ STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-09 — Coverage refresh (spec-status)
+
+WIP-03 extended: paused sessions are exempt from the activity window (`collect_sessions` in `scripts/beacon`, `test_since_exempts_paused_sessions`). Still Covered, no count change.
 
 ### 2026-06-08 — Project icons (new-feature)
 
