@@ -95,6 +95,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 | `WATCH` | Live fleet view |
 | `COLOR` | Human-readable output coloring |
 | `FOCUS` | Dashboard-driven session focus |
+| `FORGET`| Dashboard-driven session forget (state delete) |
 
 ### 3.1 Signal resolution (RES)
 
@@ -254,7 +255,7 @@ The state-file directory (§6.2) is the single source of record. Every consumer 
 
 **WIP-03.** `wip` shall window by session last-activity (the newest mtime across a session's state files). With no flag it shall default to a trailing window (the bare command shows recent work, not the full history); `--since <ISO-8601>` shall set an explicit start; `--all` shall disable the window. The intended explicit window is "since the prior dashboard refresh", so the snapshot shows what has been active since the user last looked; within the window, recency (age of last activity) is the dashboard's cue for visual intensity, not for layout order. Paused sessions (logical state `paused`) are exempt from the window: a parked session is deliberately set aside and stays relevant however long it sits, so it survives past the cutoff where an idle/working session of the same age would be dropped. The fleet view surfaces these to the right of active sessions.
 
-**WIP-04.** When the user invokes `serve [run] [--port <n>]` — `run` is the default action, so the bare verb runs in the foreground — the plugin shall serve the `wip --json` payload over HTTP on `127.0.0.1` (default port 8787) at `GET /wip.json`, honoring optional `?since=` / `?all=` queries, with a permissive CORS header so a locally-opened dashboard can fetch it. The server binds loopback only; beyond the read-only `GET /wip.json` it exposes the `POST /focus` action (FOCUS-01), which follows the tighter FOCUS-04 access model rather than wip.json's permissive CORS. This enables near-realtime polling when the dashboard is opened locally; a deployed dashboard that cannot reach loopback falls back to a snapshot baked at refresh time. The same `serve` verb's `install` / `uninstall` / `status` actions manage the always-on supervised unit (WIP-07).
+**WIP-04.** When the user invokes `serve [run] [--port <n>]` — `run` is the default action, so the bare verb runs in the foreground — the plugin shall serve the `wip --json` payload over HTTP on `127.0.0.1` (default port 8787) at `GET /wip.json`, honoring optional `?since=` / `?all=` queries, with a permissive CORS header so a locally-opened dashboard can fetch it. The server binds loopback only; beyond the read-only `GET /wip.json` it exposes the mutating `POST /focus` (FOCUS-01) and `POST /forget` (FORGET-01) actions, which follow the tighter FOCUS-04 access model rather than wip.json's permissive CORS. This enables near-realtime polling when the dashboard is opened locally; a deployed dashboard that cannot reach loopback falls back to a snapshot baked at refresh time. The same `serve` verb's `install` / `uninstall` / `status` actions manage the always-on supervised unit (WIP-07).
 
 **WIP-05.** A `--since` value shall accept either a relative duration (`90s`, `30m`, `2h`, `1d`, `1w` — that long before now) or an ISO-8601 timestamp.
 
@@ -281,6 +282,16 @@ Clicking a session in the fleet dashboard brings that session's terminal surface
 **FOCUS-03.** The `wip --json` payload shall carry a per-session `focusable` boolean derived from whether a focus handle is recorded, and shall not expose the handle itself — the dashboard sends the session hash back to `POST /focus`, which resolves the handle server-side.
 
 **FOCUS-04.** The `/focus` route shall be reachable only on the loopback bind it shares with `GET /wip.json` (WIP-04). If a `/focus` request carries a `Host` header that is not the loopback endpoint (DNS-rebind defense) or an `Origin` outside the dashboard allowlist, then the plugin shall reject it. The allowlist shall be the built-in public dashboard origin plus the `focus_origins` list in the user config file (`$XDG_CONFIG_HOME/beacon/config.json`, default `~/.config/beacon/config.json`), so a deployment on a private host extends the allowlist without committing its origin to the source. The config is read at serve startup; an absent or malformed file degrades to the built-in allowlist rather than failing. The wildcard CORS header applies to the read-only `GET /wip.json` only, not to `/focus`. Rationale: a mutating endpoint reachable from any page the user's browser visits could yank window focus; the read-only feed carries no such risk, so the two routes use different access models.
+
+### 3.10 Session forget (FORGET)
+
+A long-idle session lingers in the fleet view — a paused or aged-out pane the user has moved on from. `prune` (WIP-06) sweeps these in bulk by age, but the user often wants to clear one named session now, from the dashboard, rather than reason about an age cutoff. The close button on a timed-out card does this: the dashboard POSTs the session's hash to the always-on `serve` process (WIP-07), which deletes that session's state. It is the targeted counterpart to `prune` and parallels FOCUS — both are dashboard-driven actions the browser routes to the loopback server.
+
+**FORGET-01.** When the service receives a `POST /forget` request naming a session by its per-pane hash, the plugin shall delete all per-session state for that session (every `<hash>.*` state file). The same operation shall be available as the CLI verb `forget <hash>`. A forgotten session repaints on its next hook event, exactly as after a prune; the operation is idempotent, so forgetting a session with no state on disk reports success rather than an error.
+
+**FORGET-02.** The plugin shall accept only a well-formed per-pane hash (the hex token the `wip --json` payload exposes), refusing any other value before touching the filesystem, so the state-file glob cannot be steered outside the state bucket. Unlike `prune` (WIP-06), `forget` carries no current-session protection — it removes exactly the named session, since the dashboard only offers it for sessions other than a live, active one.
+
+**FORGET-03.** The `/forget` route shall share the FOCUS-04 access model: reachable only on the loopback bind (WIP-04), rejecting a non-loopback `Host` (DNS-rebind defense) or an `Origin` outside the same dashboard allowlist `/focus` uses, and excluded from the wildcard CORS header that covers the read-only feed. Rationale: a mutating endpoint that deletes state must not be reachable from an arbitrary page the user's browser visits.
 
 ---
 

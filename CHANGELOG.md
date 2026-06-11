@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.0
+
+### Features
+- **Forget a single stale session from the fleet view.** A long-idle pane lingers in the dashboard — a paused or aged-out session you've moved on from. `prune` sweeps these in bulk by age; the new `forget <hash>` removes one named session now, and the always-on `serve` process exposes it as `POST /forget` so the dashboard's close button on a timed-out card deletes that session's state directly (FORGET-01..03). The route shares the `/focus` access model — loopback bind, DNS-rebind defense, the same origin allowlist — since it's a mutating endpoint. A forgotten session repaints on its next hook event, exactly as after a prune; forgetting a session with no state on disk is a no-op.
+
 ## 1.5.0
 
 ### Changes

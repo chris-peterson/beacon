@@ -16,7 +16,7 @@ beacon surfaces what every session is doing — which project, what task, and wh
 
 - **`beacon wip`** — a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
 - **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own fleet.
-- **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll, and accepts `POST /focus` to raise a session's iTerm2 window when its dashboard card is clicked. To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+- **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
 Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …); to point it elsewhere, set one with `beacon icon <path-or-url>`. A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
 
@@ -32,9 +32,9 @@ beacon serve uninstall    # tear it down
 
 The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin upgrade that refreshes the wrapper keeps the service working. The state files stay the source of record; `serve` re-reads them per request, so the service can restart between two polls without the dashboard noticing.
 
-### Clicking focus from a deployed dashboard
+### Clicking focus or dismiss from a deployed dashboard
 
-`POST /focus` accepts requests from loopback origins and from the built-in public dashboard. A dashboard served from another origin (e.g. your own GitLab Pages or Cloudflare Pages host) is rejected by the browser's CORS preflight until you add its origin to `~/.config/beacon/config.json`:
+The mutating routes `POST /focus` and `POST /forget` accept requests from loopback origins and from the built-in public dashboard. A dashboard served from another origin (e.g. your own GitLab Pages or Cloudflare Pages host) is rejected by the browser's CORS preflight until you add its origin to `~/.config/beacon/config.json`:
 
 ```json
 {

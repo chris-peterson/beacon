@@ -83,6 +83,7 @@ Clicking a session in the dashboard raises its iTerm2 window. The chain: dashboa
 | Serve the wip snapshot for the goals dashboard | `python3 scripts/beacon serve [--port 8787]` |
 | Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon serve <install\|uninstall\|status>` |
 | GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
+| Delete per-session state for one session | `python3 scripts/beacon forget <hash>` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
 | Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |

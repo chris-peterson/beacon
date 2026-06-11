@@ -17,6 +17,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import urllib.request
 import urllib.error
 import unittest
@@ -593,6 +594,80 @@ class FocusTest(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": d}):
                 origins = self.beacon._focus_origins()
         self.assertIn("https://x.example", origins)
+
+
+class ForgetTest(unittest.TestCase):
+    """FORGET-01..03: per-session state delete via the CLI verb and the
+    POST /forget route, the hash guard, and the shared FOCUS-04 access model."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.state_dir = self.beacon.STATE_DIR
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _write(self, sh: str, field: str, value: str):
+        (self.state_dir / f"{sh}.{field}").write_text(value)
+
+    def test_forget_removes_all_state_files(self):
+        self._write("abcdef01", "anchor.project", "p")
+        self._write("abcdef01", "override.status", "paused")
+        self._write("beef0099", "anchor.project", "keep")  # a different session
+        valid, files = self.beacon._forget_session("abcdef01")
+        self.assertTrue(valid)
+        self.assertEqual(files, 2)
+        self.assertEqual(list(self.state_dir.glob("abcdef01.*")), [])
+        self.assertTrue(list(self.state_dir.glob("beef0099.*")))  # untouched
+
+    def test_forget_rejects_non_hex_hash(self):
+        self._write("abcdef01", "anchor.project", "p")
+        valid, files = self.beacon._forget_session("../secrets")
+        self.assertFalse(valid)
+        self.assertEqual(files, 0)
+        self.assertTrue(list(self.state_dir.glob("abcdef01.*")))  # nothing deleted
+
+    def test_forget_is_idempotent_for_unknown_session(self):
+        valid, files = self.beacon._forget_session("abcdef02")
+        self.assertTrue(valid)
+        self.assertEqual(files, 0)
+
+    def test_cmd_forget_exits_on_bad_hash(self):
+        with self.assertRaises(SystemExit) as cm:
+            self.beacon.cmd_forget(types.SimpleNamespace(hash="../x"))
+        self.assertEqual(cm.exception.code, 2)
+
+    def _start_server(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        return server.server_address[1]
+
+    def _post_forget(self, port, sh="abcdef01", origin=None):
+        body = json.dumps({"hash": sh}).encode()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/forget", data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        if origin is not None:
+            req.add_header("Origin", origin)
+        return urllib.request.urlopen(req, timeout=3)
+
+    def test_forget_route_deletes_for_allowed_request(self):
+        self._write("abcdef01", "anchor.project", "p")
+        port = self._start_server()
+        with self._post_forget(port) as resp:
+            payload = json.loads(resp.read())
+        self.assertTrue(payload["forgotten"])
+        self.assertEqual(payload["files"], 1)
+        self.assertEqual(list(self.state_dir.glob("abcdef01.*")), [])
+
+    def test_forget_route_rejects_foreign_origin(self):
+        self._write("abcdef01", "anchor.project", "p")
+        port = self._start_server()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._post_forget(port, origin="https://evil.example")
+        self.assertEqual(cm.exception.code, 403)
+        self.assertTrue(list(self.state_dir.glob("abcdef01.*")))  # not deleted
 
 
 if __name__ == "__main__":

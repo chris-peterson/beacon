@@ -222,6 +222,7 @@ _beacon() {
     'watch:live, person-facing work-stream view (recency feed; q to quit)'
     'serve:serve the wip payload over localhost, or manage the always-on unit'
     'prune:remove per-session state for long-idle sessions'
+    'forget:remove per-session state for one session, by its per-pane hash'
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
@@ -271,6 +272,9 @@ _beacon() {
       ;;
     prune)
       compadd -- --since --keep
+      ;;
+    forget)
+      (( CURRENT == 3 )) && _message 'session hash'
       ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
@@ -1278,7 +1282,43 @@ def cmd_prune(args):
     print(f"pruned {sessions} session(s) idle longer than {raw} ({files} state files removed)")
 
 
-# Browser origins allowed to POST /focus (FOCUS-04), beyond loopback origins
+def _forget_session(sh: str) -> tuple[bool, int]:
+    """Delete all per-session state for one session, addressed by its per-pane
+    hash (FORGET-01). Returns (valid, files_removed); valid is False only when
+    the hash is malformed — the hex guard keeps the glob from escaping the
+    state bucket, the same defense _focus_session uses. Forgetting a session
+    with no state on disk is a no-op that still reports valid: forget is
+    idempotent, so a double-click or a stale dashboard card resolves the same
+    way. Unlike prune (age sweep, always keeps the current session), forget
+    targets one named session — the caller decides which."""
+    if not re.fullmatch(r"[0-9a-f]{8,}", sh or ""):
+        return False, 0
+    files = 0
+    for p in STATE_DIR.glob(f"{sh}.*"):
+        try:
+            p.unlink()
+            files += 1
+        except OSError:
+            pass
+    return True, files
+
+
+def cmd_forget(args):
+    """Delete all per-session state for a single session, addressed by its
+    per-pane hash (the `hash` field of a `wip --json` record). The targeted
+    form of `prune`: prune sweeps by age, forget removes one named stale
+    session. The fleet dashboard's close button drives the `POST /forget`
+    route (FORGET-01); this is the CLI equivalent."""
+    sh = (getattr(args, "hash", "") or "").strip()
+    valid, files = _forget_session(sh)
+    if not valid:
+        print(f"not a session hash: {sh!r}", file=sys.stderr)
+        sys.exit(2)
+    print(f"forgot session {sh} ({files} state file(s) removed)")
+
+
+# Browser origins allowed to POST the mutating routes /focus and /forget
+# (FOCUS-04, FORGET-03), beyond loopback origins
 # (which origin_allowed permits unconditionally). The built-in entry is the
 # public dashboard's Pages origin; a foreign page's Origin is rejected.
 FOCUS_ORIGIN_ALLOWLIST = {
@@ -1307,11 +1347,12 @@ def _load_config() -> dict:
 
 
 def _focus_origins() -> set[str]:
-    """The /focus origin allowlist (FOCUS-04): the built-in public dashboard
-    origin plus the `focus_origins` list in the user config file. A private
-    deployment (e.g. a GitLab Pages host) adds its origin to the config rather
-    than editing this source, so internal hostnames stay out of the public
-    tree. Read at serve startup — edit the config and restart to apply."""
+    """The origin allowlist for the mutating routes /focus and /forget
+    (FOCUS-04, FORGET-03): the built-in public dashboard origin plus the
+    `focus_origins` list in the user config file. A private deployment (e.g. a
+    GitLab Pages host) adds its origin to the config rather than editing this
+    source, so internal hostnames stay out of the public tree. Read at serve
+    startup — edit the config and restart to apply."""
     extra = _load_config().get("focus_origins") or []
     if isinstance(extra, str):
         extra = [extra]
@@ -1349,6 +1390,10 @@ def wip_http_server(port: int):
     GET /icon/<hash> — the session's project icon bytes (WIP-08), CORS-open
     like wip.json. The `icon` field of a record points here when the icon is
     a local file; an online (http) icon is in the field directly.
+
+    POST /forget — delete a session's per-session state (FORGET-01), the
+    dashboard's close button on a timed-out card. Mutating, so it shares the
+    FOCUS-04 access model with /focus.
 
     POST /focus — bring a session's window forward (FOCUS-01). Mutating, so it
     carries the tighter FOCUS-04 access model: the Host header must be the
@@ -1433,7 +1478,7 @@ def wip_http_server(port: int):
 
         def do_OPTIONS(self):
             origin = self.headers.get("Origin") or ""
-            if (urlparse(self.path).path == "/focus"
+            if (urlparse(self.path).path in ("/focus", "/forget")
                     and self._host_ok() and origin_allowed(origin)):
                 self.send_response(204)
                 self.send_header("Access-Control-Allow-Origin", origin or "*")
@@ -1447,7 +1492,8 @@ def wip_http_server(port: int):
 
         def do_POST(self):
             origin = self.headers.get("Origin") or ""
-            if urlparse(self.path).path != "/focus":
+            path = urlparse(self.path).path
+            if path not in ("/focus", "/forget"):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
             if not self._host_ok() or not origin_allowed(origin):
@@ -1459,9 +1505,14 @@ def wip_http_server(port: int):
                 sh = (json.loads(raw or b"{}").get("hash") or "").strip()
             except (ValueError, OSError):
                 sh = ""
-            ok, msg = _focus_session(sh)
-            code = 200 if ok else (404 if msg == "not focusable" else 400)
-            self._send(code, json.dumps({"focused": ok, "detail": msg}), origin or "*")
+            if path == "/focus":
+                ok, msg = _focus_session(sh)
+                code = 200 if ok else (404 if msg == "not focusable" else 400)
+                self._send(code, json.dumps({"focused": ok, "detail": msg}), origin or "*")
+            else:
+                valid, files = _forget_session(sh)
+                self._send(200 if valid else 400,
+                           json.dumps({"forgotten": valid, "files": files}), origin or "*")
 
     return HTTPServer(("127.0.0.1", port), Handler)
 
@@ -2981,6 +3032,9 @@ def main(argv=None):
                     help="keep sessions active within this window and prune the rest — "
                          "a duration (14d, 12h) or ISO-8601 timestamp (default 30d)")
 
+    sp = sub.add_parser("forget", help="remove per-session state for one session, by its per-pane hash")
+    sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
+
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
 
     argv = sys.argv[1:] if argv is None else argv
@@ -3003,7 +3057,7 @@ def main(argv=None):
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "data-dir": cmd_data_dir,
+        "forget": cmd_forget, "data-dir": cmd_data_dir,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)
