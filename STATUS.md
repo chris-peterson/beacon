@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-09
+**Last audit:** 2026-06-11
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.5.0
-**Coverage:** 121 Covered, 0 Partial, 0 Missing/Contradicts.
+**Plugin version:** 1.6.0
+**Coverage:** 124 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -39,6 +39,7 @@ sweeps the per-state profiles a pre-1.0 install left behind.
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
+| FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..10, 12..14 (incl. 09a; gap 11; BADGE-15 retired) | 14 | All Covered | Badge text + color + engagement; watermark removed |
 | STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base profile) |
