@@ -7,6 +7,10 @@ beacon surfaces what every session is doing — which project, what task, and wh
 - a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
 - **per-pane painting in iTerm2** — a badge, status bar, and tab color on each pane
 
+A glance across the windows tells you which session needs you:
+
+<div class="cw-session" data-cw-session="session"></div>
+
 > [!TIP]
 > Read the full behavioral spec on the [Specification](/spec) page.
 
@@ -87,6 +91,10 @@ Then run `claude` in that tab and type any prompt:
 - `/beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
+
+Labeling a pane and scanning the fleet, in motion:
+
+<div class="cw-session" data-cw-session="examples"></div>
 
 Inside Claude Code:
 

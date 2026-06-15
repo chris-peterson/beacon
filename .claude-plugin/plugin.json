@@ -1,7 +1,18 @@
 {
   "name": "beacon",
   "version": "1.6.0",
-  "description": "At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.",
-  "keywords": ["iterm2", "macos", "dashboard", "workflow", "session-management"],
-  "license": "MIT"
+  "description": "At-a-glance awareness across concurrent Claude Code sessions \u2014 a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.",
+  "author": {
+    "name": "chris-peterson"
+  },
+  "repository": "https://github.com/chris-peterson/beacon",
+  "icon": "docs/favicon.svg",
+  "license": "MIT",
+  "keywords": [
+    "iterm2",
+    "macos",
+    "dashboard",
+    "workflow",
+    "session-management"
+  ]
 }

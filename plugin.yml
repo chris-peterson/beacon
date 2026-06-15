@@ -1,0 +1,52 @@
+# Canonical descriptor for the beacon plugin — edit here, never plugin.json.
+# Projects into .claude-plugin/plugin.json (via scripts/gen-plugin-json.py) and
+# the marketplace SPA (the suite: block).
+
+name: beacon
+version: 1.6.0
+description: At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.
+author: chris-peterson
+repository: https://github.com/chris-peterson/beacon
+icon: docs/favicon.svg
+license: MIT
+keywords: [iterm2, macos, dashboard, workflow, session-management]
+
+# → marketplace.json entry
+marketplace:
+  category: development
+  homepage: https://chris-peterson.github.io/beacon/#/
+
+# → marketplace SPA; keys mirror the SPA's PLUGINS object.
+suite:
+  ac: "--orient"
+  cli: true
+  group: keep your bearings
+  # The plugin's docs site renders the live session preview, so the hub hands
+  # its drill-in off to the spoke rather than showing the in-hub detail view.
+  spoke: true
+  gloss: A lighthouse you can read from across the harbor.
+  pitch: "Running several Claude windows? Each gets a badge showing whether it's working or waiting on you."
+  with: tack
+  what: "Puts a colored badge on each terminal window so you can tell what every Claude session is doing at a glance: green idle, amber working, red waiting on you. Look away and still know which window needs you."
+  cmds:
+    - ["/beacon:beacon", "Label a pane, or set status / pause with a note"]
+    - ["beacon", "Read the resolved project / task / status anywhere"]
+  # Skill-anchored previews shown live on the docs site; the session: below is
+  # the at-a-glance flow the hub also reads.
+  examples:
+    - label: "/beacon:beacon"
+      ac: "--orange"
+      frames:
+        - { t: you, text: "/beacon:beacon set project ai-sdlc task perms" }
+        - { t: claude, text: "Labeled this pane. The badge now reads ai-sdlc: perms, so you can pick it out across windows." }
+        - { t: status, text: "paints the per-pane badge and status bar in iTerm2" }
+    - label: "beacon wip"
+      ac: "--cyan"
+      frames:
+        - { t: you, text: "beacon wip" }
+        - { t: claude, text: "Three sessions active: two working, one waiting on you. Window 3 has been red while you were heads-down elsewhere." }
+        - { t: status, text: "scans every session's state — no iTerm2 required" }
+  session:
+    - { t: note, text: "Three Claude windows running; you're heads-down in one." }
+    - { t: event, text: "a glance across the windows" }
+    - { t: status, text: "window 3  ● red — it has been waiting on you while you weren't looking." }
