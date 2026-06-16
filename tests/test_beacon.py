@@ -312,6 +312,47 @@ class DescriptionIsFleetData(BeaconTest):
         )
 
 
+class PauseSnapshotIsNetworkFree(BeaconTest):
+    """STATE-03: pause freezes the project/task the badge is currently showing.
+    It reads the last-rendered `resolved` snapshot rather than re-resolving, so
+    the hot pause path never runs the task chain's gh/glab PR-title provider —
+    and an active label override survives the pause instead of being discarded."""
+
+    def test_pause_freezes_displayed_identity_from_snapshot(self):
+        self.beacon.write_state("resolved", json.dumps({
+            "project": "frozen-proj", "project_provider": "git-remote",
+            "task": "frozen-task", "task_provider": "pr",
+        }))
+        # If pause re-resolved, this would blow up — there's no live PR to fetch
+        # and the providers are pinned to acme/widget, not the frozen values.
+        with mock.patch.object(self.beacon, "resolve",
+                               side_effect=AssertionError("pause must not re-resolve")):
+            self.beacon._apply_status("paused", "")
+        self.assertEqual(self.beacon.read_state("override.project"), "frozen-proj")
+        self.assertEqual(self.beacon.read_state("override.task"), "frozen-task")
+        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+
+    def test_pause_preserves_active_label_override(self):
+        # The old re-resolve dropped overrides and snapshotted git-derived
+        # values, so a labeled pane silently relabeled on pause. Freezing what
+        # is shown keeps the label.
+        self.beacon.write_state("resolved", json.dumps({
+            "project": "mylabel", "project_provider": "override",
+            "task": "", "task_provider": "default",
+        }))
+        self.beacon._apply_status("paused", "")
+        self.assertEqual(self.beacon.read_state("override.project"), "mylabel")
+        # An empty/default task is not frozen as an override.
+        self.assertIsNone(self.beacon.read_state("override.task"))
+
+    def test_pause_falls_back_to_resolve_when_never_rendered(self):
+        # No `resolved` snapshot yet (badge never painted this session) → fall
+        # back to a live resolve so the freeze still captures current identity.
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=""):
+            self.beacon._apply_status("paused", "")
+        self.assertEqual(self.beacon.read_state("override.project"), "acme/widget")
+
+
 class EngagementMarker(BeaconTest):
     """BADGE-14: any apply() call places the per-pane engagement marker.
     `beacon clear` (no field) removes it and disengages the pane."""

@@ -2578,14 +2578,18 @@ def _apply_status(value: str, description: str) -> None:
     labeling current state, not parking. The description is persisted and
     surfaced in the fleet view (STATE-02); it is not painted on the pane."""
     if value == "paused":
-        # Drop any prior overrides on project/task so we re-snapshot from
-        # the resolved (live) values rather than stale entries.
-        remove_state("override.project")
-        remove_state("override.task")
-        state = resolve()
+        # Freeze the project/task the badge is *currently showing* by reading
+        # the last-rendered snapshot, rather than re-resolving from scratch.
+        # Re-resolving runs the task chain's p_pr_title provider — a gh/glab
+        # network call — in this hot, user-facing path; reading the cached
+        # snapshot keeps pause network-free. It also preserves an active
+        # project/task override (the old re-resolve discarded it, so a labeled
+        # pane silently relabeled itself on pause). Fall back to a live resolve
+        # only when nothing has been rendered yet this session.
+        snap = read_state_json("resolved", {}) or resolve()
         for field in ("project", "task"):
-            if state[f"{field}_provider"] != "default" and state[field]:
-                write_state(f"override.{field}", state[field])
+            if snap.get(field) and snap.get(f"{field}_provider") != "default":
+                write_state(f"override.{field}", snap[field])
     write_state("override.status", value)
     _clear_description()
     if description:
