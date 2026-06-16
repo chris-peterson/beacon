@@ -829,14 +829,128 @@ def _read_route(name: str) -> tuple[str, str | None] | None:
     return (slug, group)
 
 
+# A tack is "existing" (vs "emerging") when it carries a forge PR/MR/issue
+# reference — the signal that the work was already tracked before a session
+# picked it up. Mirrors tack's CL-37 forge recognition (GitHub /pull|/issues,
+# GitLab /-/merge_requests|/-/issues). A deliverable is always such a reference,
+# so its mere presence counts; a plain link counts only when its URL matches.
+_TRACKER_URL_RE = re.compile(r"/(pull|issues)/\d+|/-/(merge_requests|issues)/\d+")
+
+
+def _is_tracker_url(url: str) -> bool:
+    return bool(_TRACKER_URL_RE.search(url))
+
+
+def _parse_route_index(text: str):
+    """Parse one route YAML into (slug, group, tacks, sessions) for the
+    session→tack join. tacks: {tid: {summary, status, kind}} where kind is
+    `existing` (carries a deliverable or forge tracker link) or `emerging`.
+    sessions: [{id, started_at, tacks: [tid,...]}] — the bound tacks per
+    RT-11, in touch order. Hand-rolled line scan rather than `tack … --json`:
+    beacon reads the source-of-record files directly so the join never depends
+    on the installed tack CLI being a version that knows the `tacks` field."""
+    slug = group = None
+    tacks: dict[str, dict] = {}
+    has_deliverable: dict[str, bool] = {}
+    has_tracker: dict[str, bool] = {}
+    sessions: list[dict] = []
+    section = None          # "tacks" | "sessions" | None
+    cur_tid = None
+    cur_sess = None
+    sub = None              # nested block: "deliverable" | "links" | "session_tacks"
+
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        if re.match(r"^\S", line):
+            cur_tid = cur_sess = sub = None
+            m = re.match(r"slug:\s*(\S+)", line)
+            if m:
+                slug = m.group(1).strip().strip("\"'")
+            m = re.match(r"group:\s*(\S+)", line)
+            if m:
+                group = m.group(1).strip().strip("\"'")
+            section = ("tacks" if line.startswith("tacks:")
+                       else "sessions" if line.startswith("sessions:") else None)
+            continue
+
+        if section == "tacks":
+            m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
+            if m:
+                cur_tid = m.group(1).strip().strip("\"'")
+                tacks[cur_tid] = {"summary": "", "status": ""}
+                has_deliverable[cur_tid] = has_tracker[cur_tid] = False
+                sub = None
+                continue
+            if cur_tid is None:
+                continue
+            m = re.match(r"\s{4}(\w+):\s*(.*)", line)
+            if m:
+                key, val = m.group(1), m.group(2).strip().strip("\"'")
+                if key == "summary":
+                    tacks[cur_tid]["summary"] = val
+                    sub = None
+                elif key == "status":
+                    tacks[cur_tid]["status"] = val
+                    sub = None
+                elif key == "deliverable":
+                    has_deliverable[cur_tid] = True
+                    sub = "deliverable"
+                elif key == "links":
+                    sub = "links"
+                else:
+                    sub = None
+                continue
+            m = re.match(r"\s{6,}.*url:\s*(\S+)", line)
+            if m and sub == "links" and _is_tracker_url(m.group(1).strip().strip("\"'")):
+                has_tracker[cur_tid] = True
+            continue
+
+        if section == "sessions":
+            m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
+            if m:
+                cur_sess = {"id": m.group(1).strip().strip("\"'"), "started_at": "", "tacks": []}
+                sessions.append(cur_sess)
+                sub = None
+                continue
+            if cur_sess is None:
+                continue
+            m = re.match(r"\s{4}started_at:\s*(\S+)", line)
+            if m:
+                cur_sess["started_at"] = m.group(1).strip().strip("\"'")
+                sub = None
+                continue
+            if re.match(r"\s{4}tacks:\s*$", line):
+                sub = "session_tacks"
+                continue
+            m = re.match(r"\s{6}-\s*(\S+)", line)
+            if m and sub == "session_tacks":
+                cur_sess["tacks"].append(m.group(1).strip().strip("\"'"))
+                continue
+            if re.match(r"\s{4}\w+:", line):
+                sub = None
+
+    meta = {
+        tid: {
+            "summary": m["summary"],
+            "status": m["status"],
+            "kind": "existing" if (has_deliverable[tid] or has_tracker[tid]) else "emerging",
+        }
+        for tid, m in tacks.items()
+    }
+    return slug, group, meta, sessions
+
+
 def _tack_session_index() -> dict:
-    """Map Claude session id → (route_slug, route_group), built from every
+    """Map Claude session id → {route, group, tacks[]}, built from every
     route's `sessions:` block. This is the authoritative beacon↔tack join:
     Claude Code issues the session id, beacon stores it per pane, and tack
-    records it on the route the session worked. When a session was registered
+    records it on the route — and now the tack(s) — the session worked.
+    `tacks` is the route-qualified list the session is driving (WIP-09), in
+    touch order; the last is its current focus. When a session was registered
     on multiple routes, the most recently started wins (the pane's current
     work). Scanned once per `wip` call."""
-    index: dict[str, tuple[str, str | None]] = {}
+    index: dict[str, dict] = {}
     chosen: dict[str, str] = {}
     try:
         files = list((TACK_HOME / "routes").glob("*.yaml"))
@@ -847,35 +961,28 @@ def _tack_session_index() -> dict:
             text = path.read_text()
         except OSError:
             continue
-        slug, group = path.stem, None
-        in_sessions = False
-        cur = None
-        for line in text.splitlines():
-            if re.match(r"^\S", line):
-                in_sessions = line.startswith("sessions:")
-                m = re.match(r"slug:\s*(\S+)", line)
-                if m:
-                    slug = m.group(1).strip().strip("\"'")
-                m = re.match(r"group:\s*(\S+)", line)
-                if m:
-                    group = m.group(1).strip().strip("\"'")
+        slug, group, meta, sessions = _parse_route_index(text)
+        if slug is None:
+            slug = path.stem
+        for sess in sessions:
+            sid = sess["id"]
+            started = sess["started_at"]
+            if sid in chosen and started <= chosen[sid]:
                 continue
-            if not in_sessions:
-                continue
-            m = re.match(r"\s*-\s*id:\s*(\S+)", line)
-            if m:
-                cur = m.group(1).strip().strip("\"'")
-                if cur not in chosen:
-                    chosen[cur] = ""
-                    index[cur] = (slug, group)
-                continue
-            m = re.match(r"\s*started_at:\s*(\S+)", line)
-            if m and cur:
-                started = m.group(1).strip().strip("\"'")
-                if started > chosen[cur]:
-                    chosen[cur] = started
-                    index[cur] = (slug, group)
-                cur = None
+            qualified = []
+            for tid in sess["tacks"]:
+                tm = meta.get(tid)
+                if tm is None:
+                    continue
+                qualified.append({
+                    "id": f"{slug}/{tid}",
+                    "tack_id": tid,
+                    "summary": tm["summary"],
+                    "status": tm["status"],
+                    "kind": tm["kind"],
+                })
+            chosen[sid] = started
+            index[sid] = {"route": slug, "group": group, "tacks": qualified}
     return index
 
 
@@ -941,9 +1048,9 @@ def _session_icon_ref(sh: str) -> str | None:
 def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
     """Point-in-time state for one session from stored fields only (no live
     providers). None when the hash carries no real beacon session.
-    session_index (session id → route) supplies the authoritative tack join;
-    cwd/branch/project correlation is the fallback when tack never registered
-    the session."""
+    session_index (session id → {route, group, tacks}) supplies the
+    authoritative tack join; cwd/branch/project correlation is the fallback
+    when tack never registered the session."""
     project = _read_state_for(sh, "anchor.project") or _read_state_for(sh, "override.project")
     cwd = _read_state_for(sh, "anchor.cwd")
     cwd_path = Path(cwd).expanduser() if cwd else None
@@ -967,10 +1074,13 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
     branch = _raw_branch(cwd_path) if cwd_path else None
-    route, route_group = (None, None)
+    route, route_group, tacks = (None, None, [])
     if session_index and claude_session in session_index:
-        route, route_group = session_index[claude_session]
+        entry = session_index[claude_session]
+        route, route_group, tacks = entry["route"], entry["group"], entry["tacks"]
     else:
+        # Location-correlated (WIP-02 tiers 2-4) — route only, no recorded
+        # session→tack binding, so the bound-tack list stays empty (WIP-09).
         route, route_group = _tack_route_for(cwd_path, branch, project)
 
     # task (PROV-02) isn't anchored like project; take the last-rendered value
@@ -992,6 +1102,7 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
         "task": task or None,
         "route": route,
         "route_group": route_group,
+        "tacks": tacks,
         "status": status,
         "state": state,
         "description": _read_state_for(sh, "description") or "",
@@ -1111,7 +1222,14 @@ def _print_wip_human(payload: dict) -> None:
             branch = f" ({s['branch']})" if s.get("branch") else ""
             first_line = s["description"].splitlines()[0] if s["description"] else ""
             desc = f"  — {first_line}" if first_line else ""
-            print(f"  {dot} {s['project']}{branch}  {s['status']:<8} {_fmt_age(s['age_seconds'])}{desc}")
+            # Current focus is the last bound tack (WIP-09); tag it
+            # existing/emerging so a glance distinguishes resumed tracked work
+            # from work spun up this session.
+            tk = ""
+            if s.get("tacks"):
+                cur = s["tacks"][-1]
+                tk = _color("2", f"  {cur['tack_id']}·{cur['kind']}")
+            print(f"  {dot} {s['project']}{branch}  {s['status']:<8} {_fmt_age(s['age_seconds'])}{tk}{desc}")
     if payload.get("window_since"):
         print()
         print(_color("2", f"window: since {payload['window_since']} — pass --all for full history"))

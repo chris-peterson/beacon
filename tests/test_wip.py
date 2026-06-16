@@ -69,12 +69,35 @@ class _WipBase(unittest.TestCase):
             os.utime(p, (mtime, mtime))
         return p
 
-    def _route_file(self, slug: str, group: str | None = None, sessions=None):
+    def _route_file(self, slug: str, group: str | None = None, sessions=None,
+                    tacks=None):
+        """Write a route YAML. `tacks` items are dicts: {id, summary?, status?,
+        deliverable? (url), links? (list of urls)}. `sessions` items are
+        (sid, started) or (sid, started, [bound_tack_ids]) — mirroring the
+        RT-11 `tacks` array on a session entry."""
         body = f"slug: {slug}\n" + (f"group: {group}\n" if group else "")
+        if tacks:
+            body += "tacks:\n"
+            for t in tacks:
+                body += f"  - id: {t['id']}\n"
+                body += f"    summary: {t.get('summary', 'work')}\n"
+                body += f"    status: {t.get('status', 'pending')}\n"
+                if t.get("deliverable"):
+                    body += f"    deliverable:\n      label: d\n      url: {t['deliverable']}\n"
+                if t.get("links"):
+                    body += "    links:\n"
+                    for u in t["links"]:
+                        body += f"      - label: l\n        url: {u}\n"
         if sessions:
             body += "sessions:\n"
-            for sid, started in sessions:
+            for entry in sessions:
+                sid, started = entry[0], entry[1]
                 body += f"  - id: {sid}\n    started_at: {started}\n"
+                bound = entry[2] if len(entry) > 2 else None
+                if bound:
+                    body += "    tacks:\n"
+                    for tid in bound:
+                        body += f"      - {tid}\n"
         (self.tack_home / "routes" / f"{slug}.yaml").write_text(body)
 
     def _sessions(self, since=None):
@@ -258,6 +281,84 @@ class WipTest(_WipBase):
         s = self._sessions()[0]
         self.assertIsNone(s["route"])
         self.assertIsNone(s["route_group"])
+
+    # --- session→tack binding (WIP-09) ---
+
+    def test_bound_tack_is_route_qualified_and_existing(self):
+        # A bound tack carrying a deliverable reads as existing, and its id is
+        # qualified with the route slug (tack ids are route-scoped).
+        self._route_file(
+            "feat", group="grp",
+            tacks=[{"id": "t1", "summary": "Wire it",
+                    "deliverable": "https://github.com/o/r/pull/7"}],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        s = self._sessions()[0]
+        self.assertEqual(len(s["tacks"]), 1)
+        self.assertEqual(s["tacks"][0]["id"], "feat/t1")
+        self.assertEqual(s["tacks"][0]["tack_id"], "t1")
+        self.assertEqual(s["tacks"][0]["summary"], "Wire it")
+        self.assertEqual(s["tacks"][0]["kind"], "existing")
+
+    def test_bound_tack_without_tracker_is_emerging(self):
+        self._route_file(
+            "feat",
+            tacks=[{"id": "t1", "summary": "New idea"}],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        self.assertEqual(self._sessions()[0]["tacks"][0]["kind"], "emerging")
+
+    def test_tracker_link_marks_existing_but_docs_link_does_not(self):
+        self._route_file(
+            "feat",
+            tacks=[
+                {"id": "t1", "links": ["https://github.com/o/r/issues/3"]},
+                {"id": "t2", "links": ["https://example.com/design-doc"]},
+            ],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t2"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        by_id = {t["tack_id"]: t for t in self._sessions()[0]["tacks"]}
+        self.assertEqual(by_id["t1"]["kind"], "existing")
+        self.assertEqual(by_id["t2"]["kind"], "emerging")
+
+    def test_bound_tacks_preserve_touch_order_last_is_current(self):
+        self._route_file(
+            "feat",
+            tacks=[{"id": "t1"}, {"id": "t2"}],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t2"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        ids = [t["tack_id"] for t in self._sessions()[0]["tacks"]]
+        self.assertEqual(ids, ["t1", "t2"])
+
+    def test_location_correlated_session_has_empty_tacks(self):
+        # Correlated by project name (WIP-02 tier 4), not a recorded binding —
+        # so the bound-tack list is empty even though the route resolves.
+        self._route_file("feat", tacks=[{"id": "t1"}])
+        self._write("s1", "anchor.project", "feat")
+        s = self._sessions()[0]
+        self.assertEqual(s["route"], "feat")
+        self.assertEqual(s["tacks"], [])
+
+    def test_unknown_bound_tack_id_is_skipped(self):
+        # A session referencing a tack that no longer exists (removed later)
+        # is dropped from the resolved list rather than emitting a stub.
+        self._route_file(
+            "feat",
+            tacks=[{"id": "t1"}],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t9"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        ids = [t["tack_id"] for t in self._sessions()[0]["tacks"]]
+        self.assertEqual(ids, ["t1"])
 
     # --- payload shape ---
 
