@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-11
+**Last audit:** 2026-06-17
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.6.0
-**Coverage:** 124 Covered, 0 Partial, 0 Missing/Contradicts.
+**Plugin version:** 1.7.0
+**Coverage:** 130 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -32,14 +32,15 @@ sweeps the per-state profiles a pre-1.0 install left behind.
 | PROV-08 | 1 | Covered | `icon` chain: override → discovered project favicon (`_discover_icon_at`), anchored at SessionStart |
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09 | 11 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-09 disengages the pane on SessionEnd |
 | OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
-| STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay) |
+| STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree` |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
-| CMD-01..09, 13..17 (gap 10, 11; CMD-12 retired) | 14 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; exclusive-config / bg-image gone |
-| WIP-01..08 | 8 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08); WIP-08 is the `/icon/<hash>` serve route |
+| CMD-01..09, 13..18 (gap 10, 11; CMD-12 retired) | 15 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; CMD-18 is the dedicated `/beacon:pause` shim (`commands/pause.md`, no model pin) |
+| WIP-01..09 | 9 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging) |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
+| PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..10, 12..14 (incl. 09a; gap 11; BADGE-15 retired) | 14 | All Covered | Badge text + color + engagement; watermark removed |
 | STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base profile) |
@@ -55,6 +56,14 @@ STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-17 — Coverage refresh (spec-status)
+
++6 IDs for the 1.7.0 release: WIP-09 (session→tack bound `tacks` in the wip
+payload), CMD-18 (`/beacon:pause` shim), PERF-01..04 (fleet-scan performance
+objectives + `wip --timing`). STATE-03 reworded — the paused snapshot now reads
+the cached `resolved` state instead of re-resolving (network-free, preserves
+overrides); still Covered, no count change. 124 → 130 Covered.
 
 ### 2026-06-09 — Coverage refresh (spec-status)
 
