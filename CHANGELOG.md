@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0
+
+## What's Changed
+* Add v1 beacon plugin and iTerm2 status bar by @chris-peterson in https://github.com/chris-peterson/beacon/pull/1
+* Decouple the fleet view from iTerm2 by @chris-peterson in https://github.com/chris-peterson/beacon/pull/3
+* Pivot to 1.0: add session focus, retire overlay by @chris-peterson in https://github.com/chris-peterson/beacon/pull/4
+
+**Full Changelog**: https://github.com/chris-peterson/beacon/commits/v1.7.0
+
 ## 1.6.0
 
 ### Features
