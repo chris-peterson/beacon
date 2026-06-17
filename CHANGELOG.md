@@ -2,12 +2,18 @@
 
 ## 1.7.0
 
-## What's Changed
-* Add v1 beacon plugin and iTerm2 status bar by @chris-peterson in https://github.com/chris-peterson/beacon/pull/1
-* Decouple the fleet view from iTerm2 by @chris-peterson in https://github.com/chris-peterson/beacon/pull/3
-* Pivot to 1.0: add session focus, retire overlay by @chris-peterson in https://github.com/chris-peterson/beacon/pull/4
+### Features
 
-**Full Changelog**: https://github.com/chris-peterson/beacon/commits/v1.7.0
+- **The fleet view shows which tack each session is driving, not just which route.** `wip` records now carry a `tacks` field — the route-qualified tacks the session is bound to (in touch order, last = current focus), each tagged `existing` (work resumed on a tracked tack) or `emerging` (spun up fresh this session). Pairs with tack 0.18.0, which records the binding (WIP-09).
+- **`/beacon:pause [note]`** — a dedicated slash command to park a session in one keystroke, instead of `/beacon:beacon pause`. The badge flips to the paused color immediately (CMD-18).
+
+### Performance
+
+- **The `wip` / `serve` fleet scan is dramatically faster on large fleets.** Profiling a 375-session fleet found the dashboard's default-window poll spending most of its time spawning a `git` subprocess per session and re-scanning the whole state directory per session. The scan now reads last-activity in a single pass, memoizes the branch probe per directory, and probes git only for the sessions it actually emits. Default-window scan: ~3.6s → ~0.3s; full history: ~3.6s → ~0.9s. Adds `beacon wip --timing` for profiling (PERF-01..04).
+
+### Fixes
+
+- **Pausing no longer makes a network call or drops your label.** Setting `paused` froze the badge's identity by re-resolving from scratch — which ran a `gh`/`glab` PR-title lookup in that hot path and discarded any active project/task override. It now freezes what the badge already shows (STATE-03).
 
 ## 1.6.0
 
