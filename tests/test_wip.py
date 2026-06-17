@@ -282,6 +282,17 @@ class WipTest(_WipBase):
         self.assertIsNone(s["route"])
         self.assertIsNone(s["route_group"])
 
+    def test_branch_probe_memoized_per_cwd(self):
+        # The git branch probe is a property of the directory, not the session.
+        # A fleet with many sessions per repo must probe once per cwd, not once
+        # per session (the dominant `wip` cost before memoization).
+        for h, cwd in (("a", "/repo/x"), ("b", "/repo/x"), ("c", "/repo/y")):
+            self._write(h, "anchor.project", "p")
+            self._write(h, "anchor.cwd", cwd)
+        with mock.patch.object(self.beacon, "_raw_branch", return_value="main") as m:
+            self.beacon.collect_sessions(None)
+        self.assertEqual(m.call_count, 2, "two distinct cwds → two probes, not three sessions")
+
     # --- session→tack binding (WIP-09) ---
 
     def test_bound_tack_is_route_qualified_and_existing(self):

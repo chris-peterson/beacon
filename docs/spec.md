@@ -96,6 +96,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 | `COLOR` | Human-readable output coloring |
 | `FOCUS` | Dashboard-driven session focus |
 | `FORGET`| Dashboard-driven session forget (state delete) |
+| `PERF`  | Fleet-scan performance objectives |
 
 ### 3.1 Signal resolution (RES)
 
@@ -296,6 +297,20 @@ A long-idle session lingers in the fleet view — a paused or aged-out pane the 
 **FORGET-02.** The plugin shall accept only a well-formed per-pane hash (the hex token the `wip --json` payload exposes), refusing any other value before touching the filesystem, so the state-file glob cannot be steered outside the state bucket. Unlike `prune` (WIP-06), `forget` carries no current-session protection — it removes exactly the named session, since the dashboard only offers it for sessions other than a live, active one.
 
 **FORGET-03.** The `/forget` route shall share the FOCUS-04 access model: reachable only on the loopback bind (WIP-04), rejecting a non-loopback `Host` (DNS-rebind defense) or an `Origin` outside the same dashboard allowlist `/focus` uses, and excluded from the wildcard CORS header that covers the read-only feed. Rationale: a mutating endpoint that deletes state must not be reachable from an arbitrary page the user's browser visits.
+
+---
+
+### 3.11 Fleet-scan performance (PERF)
+
+The fleet scan behind `wip` / `serve` (WIP-01) and the dashboard's polling of `GET /wip.json` (WIP-04) runs on every refresh, so its cost is felt directly as dashboard latency. These objectives bound that cost; they constrain *how fast*, not *what* the scan returns (WIP-01 owns the payload).
+
+**[PERF-01]** The cost of a fleet scan shall scale with the number of sessions it **emits** (those inside the activity window, WIP-03), not the total number of sessions with state on disk. A fleet that accumulates hundreds of stale sessions shall not slow the surfacing of the recent few — adding stale history is sub-linear in the emitted path.
+
+**[PERF-02]** To meet PERF-01 the scan shall avoid per-stale-session work: it shall derive every session's last-activity from a single directory scan (not a per-session glob of the whole state dir); determine the emitted set without the per-session git branch probe (branch feeds neither the dedup nor the window); and probe git for the branch only for emitted sessions, memoized per working directory (branch is a property of the directory, not the session).
+
+**[PERF-03]** `beacon wip --timing` shall print a scan-timing breakdown to stderr — per-phase durations plus session and git-probe counts — and shall not alter the payload. It is the instrument for verifying PERF-01/02 and catching regressions.
+
+**[PERF-04]** Reference budget (not a hard gate; hardware- and fleet-dependent): on a warm filesystem the default-window `wip --json` should complete within a few hundred milliseconds for a fleet of several hundred sessions, dominated by the cheap read pass and a git probe per *emitted* cwd. The `--timing` breakdown (PERF-03) is the measurement of record.
 
 ---
 

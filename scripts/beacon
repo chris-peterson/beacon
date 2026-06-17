@@ -782,6 +782,44 @@ def _session_last_activity(sh: str) -> float:
     return latest
 
 
+def _session_mtimes() -> dict[str, float]:
+    """Map session hash → newest state-file mtime, from a single scan of the
+    state dir. Equivalent to calling _session_last_activity for every hash, but
+    one pass (O(files)) instead of one whole-dir glob per hash
+    (O(sessions × files)) — the dominant cost once a fleet accumulates hundreds
+    of sessions and thousands of state files."""
+    out: dict[str, float] = {}
+    try:
+        with os.scandir(STATE_DIR) as it:
+            for entry in it:
+                if not entry.is_file():
+                    continue
+                h = entry.name.split(".", 1)[0]
+                try:
+                    mt = entry.stat().st_mtime
+                except OSError:
+                    continue
+                if mt > out.get(h, 0.0):
+                    out[h] = mt
+    except OSError:
+        pass
+    return out
+
+
+def _branch_for(cwd_path: Path, cache: dict | None) -> str | None:
+    """`_raw_branch` memoized by cwd for the span of one fleet scan. Branch is
+    a property of the directory, but a long-lived fleet has many sessions per
+    repo (e.g. 219 sessions across 51 cwds), so without this the scan spawns a
+    git subprocess per session instead of per directory — the bulk of `wip`
+    latency. The cache is per-scan, so a branch switch is still seen next call."""
+    if cache is None:
+        return _raw_branch(cwd_path)
+    key = str(cwd_path)
+    if key not in cache:
+        cache[key] = _raw_branch(cwd_path)
+    return cache[key]
+
+
 def _raw_branch(cwd: Path) -> str | None:
     """Unfiltered branch name at cwd (keeps default branches, unlike
     p_branch — for tack slug matching and display)."""
@@ -841,6 +879,11 @@ def _is_tracker_url(url: str) -> bool:
     return bool(_TRACKER_URL_RE.search(url))
 
 
+def _yv(s: str) -> str:
+    """A scalar YAML value with surrounding whitespace and quotes stripped."""
+    return s.strip().strip("\"'")
+
+
 def _parse_route_index(text: str):
     """Parse one route YAML into (slug, group, tacks, sessions) for the
     session→tack join. tacks: {tid: {summary, status, kind}} where kind is
@@ -866,10 +909,10 @@ def _parse_route_index(text: str):
             cur_tid = cur_sess = sub = None
             m = re.match(r"slug:\s*(\S+)", line)
             if m:
-                slug = m.group(1).strip().strip("\"'")
+                slug = _yv(m.group(1))
             m = re.match(r"group:\s*(\S+)", line)
             if m:
-                group = m.group(1).strip().strip("\"'")
+                group = _yv(m.group(1))
             section = ("tacks" if line.startswith("tacks:")
                        else "sessions" if line.startswith("sessions:") else None)
             continue
@@ -877,7 +920,7 @@ def _parse_route_index(text: str):
         if section == "tacks":
             m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
             if m:
-                cur_tid = m.group(1).strip().strip("\"'")
+                cur_tid = _yv(m.group(1))
                 tacks[cur_tid] = {"summary": "", "status": ""}
                 has_deliverable[cur_tid] = has_tracker[cur_tid] = False
                 sub = None
@@ -886,7 +929,7 @@ def _parse_route_index(text: str):
                 continue
             m = re.match(r"\s{4}(\w+):\s*(.*)", line)
             if m:
-                key, val = m.group(1), m.group(2).strip().strip("\"'")
+                key, val = m.group(1), _yv(m.group(2))
                 if key == "summary":
                     tacks[cur_tid]["summary"] = val
                     sub = None
@@ -902,14 +945,14 @@ def _parse_route_index(text: str):
                     sub = None
                 continue
             m = re.match(r"\s{6,}.*url:\s*(\S+)", line)
-            if m and sub == "links" and _is_tracker_url(m.group(1).strip().strip("\"'")):
+            if m and sub == "links" and _is_tracker_url(_yv(m.group(1))):
                 has_tracker[cur_tid] = True
             continue
 
         if section == "sessions":
             m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
             if m:
-                cur_sess = {"id": m.group(1).strip().strip("\"'"), "started_at": "", "tacks": []}
+                cur_sess = {"id": _yv(m.group(1)), "started_at": "", "tacks": []}
                 sessions.append(cur_sess)
                 sub = None
                 continue
@@ -917,7 +960,7 @@ def _parse_route_index(text: str):
                 continue
             m = re.match(r"\s{4}started_at:\s*(\S+)", line)
             if m:
-                cur_sess["started_at"] = m.group(1).strip().strip("\"'")
+                cur_sess["started_at"] = _yv(m.group(1))
                 sub = None
                 continue
             if re.match(r"\s{4}tacks:\s*$", line):
@@ -925,7 +968,7 @@ def _parse_route_index(text: str):
                 continue
             m = re.match(r"\s{6}-\s*(\S+)", line)
             if m and sub == "session_tacks":
-                cur_sess["tacks"].append(m.group(1).strip().strip("\"'"))
+                cur_sess["tacks"].append(_yv(m.group(1)))
                 continue
             if re.match(r"\s{4}\w+:", line):
                 sub = None
@@ -1045,12 +1088,21 @@ def _session_icon_ref(sh: str) -> str | None:
     return _icon_url_override(sh) or (f"/icon/{sh}" if _icon_local_path(sh) else None)
 
 
-def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
+def _resolve_session(sh: str, session_index: dict | None = None,
+                     branch_cache: dict | None = None,
+                     epoch: float | None = None,
+                     compute_branch: bool = True) -> dict | None:
     """Point-in-time state for one session from stored fields only (no live
     providers). None when the hash carries no real beacon session.
     session_index (session id → {route, group, tacks}) supplies the
     authoritative tack join; cwd/branch/project correlation is the fallback
-    when tack never registered the session."""
+    when tack never registered the session. branch_cache memoizes the per-cwd
+    git branch probe across a fleet scan; epoch supplies the precomputed
+    last-activity mtime (from _session_mtimes) so a fleet scan needn't re-glob
+    per hash. compute_branch=False skips the git branch probe (and the
+    branch tier of the route fallback) — used for the cheap first pass of a
+    fleet scan, since branch feeds neither the dedup nor the activity window,
+    so it is filled in only for the sessions actually emitted."""
     project = _read_state_for(sh, "anchor.project") or _read_state_for(sh, "override.project")
     cwd = _read_state_for(sh, "anchor.cwd")
     cwd_path = Path(cwd).expanduser() if cwd else None
@@ -1073,7 +1125,7 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
     })
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
-    branch = _raw_branch(cwd_path) if cwd_path else None
+    branch = (_branch_for(cwd_path, branch_cache) if compute_branch else None) if cwd_path else None
     route, route_group, tacks = (None, None, [])
     if session_index and claude_session in session_index:
         entry = session_index[claude_session]
@@ -1109,7 +1161,7 @@ def _resolve_session(sh: str, session_index: dict | None = None) -> dict | None:
         "icon": _session_icon_ref(sh),
         "cwd": display_cwd,
         "branch": branch,
-        "_epoch": _session_last_activity(sh),
+        "_epoch": epoch if epoch is not None else _session_last_activity(sh),
         "pending_attention": pending,
         "focusable": bool(_read_state_for(sh, "iterm_session_id")),
     }
@@ -1144,18 +1196,29 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
     return dt.timestamp()
 
 
-def collect_sessions(since_epoch: float | None = None) -> dict:
+def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> dict:
     # Paused sessions are exempt from the activity window: a parked session is
     # deliberately set aside and stays relevant however long it sits, so it
     # survives past since_epoch where an idle/working session of the same age
     # would be dropped. (The fleet view pins these to the right.)
     now = time.time()
+    t = time.perf_counter
+    t0 = t()
     session_index = _tack_session_index()
+    t_index = t()
+    mtimes = _session_mtimes()
+    t_mtimes = t()
+    # Phase A — cheap resolve (no per-cwd git branch). branch feeds neither the
+    # dedup nor the activity window below, so the emitted set is determined
+    # first and git is probed only for survivors (Phase B). On a long-lived
+    # fleet the window drops the vast majority, so this avoids hundreds of
+    # subprocess spawns to surface a handful of recent sessions.
     resolved = []
-    for sh in _all_session_hashes():
-        s = _resolve_session(sh, session_index)
+    for sh, epoch in mtimes.items():
+        s = _resolve_session(sh, session_index, epoch=epoch, compute_branch=False)
         if s:
             resolved.append(s)
+    t_cheap = t()
     # WIP-01: one record per Claude session. A session that moved panes
     # (e.g. `claude --resume` in a new pane) leaves its prior pane's state
     # bucket behind, so two hashes can carry the same Claude session id —
@@ -1169,15 +1232,39 @@ def collect_sessions(since_epoch: float | None = None) -> dict:
             no_sid.append(s)
         elif sid not in newest_by_sid or s["_epoch"] > newest_by_sid[sid]["_epoch"]:
             newest_by_sid[sid] = s
-    sessions = []
+    survivors = []
     for s in no_sid + list(newest_by_sid.values()):
-        epoch = s.pop("_epoch", 0.0)
+        epoch = s["_epoch"]
         if since_epoch is not None and epoch < since_epoch and s.get("state") != "paused":
             continue
-        s["last_activity"] = _iso(epoch) if epoch else None
-        s["age_seconds"] = int(now - epoch) if epoch else None
-        sessions.append(s)
+        survivors.append(s)
+    # Phase B — fill the per-cwd git branch (and the branch-dependent route
+    # fallback) for the emitted set only, memoized so a repo with many surviving
+    # sessions is still probed once. Re-resolving the survivor reuses the one
+    # code path, so the record is identical to a single-pass resolve.
+    branch_cache: dict[str, str | None] = {}
+    sessions = []
+    for s in survivors:
+        epoch = s.pop("_epoch", 0.0)
+        full = _resolve_session(s["hash"], session_index, branch_cache=branch_cache,
+                                epoch=epoch, compute_branch=True) or s
+        full.pop("_epoch", None)
+        full["last_activity"] = _iso(epoch) if epoch else None
+        full["age_seconds"] = int(now - epoch) if epoch else None
+        sessions.append(full)
     sessions.sort(key=lambda s: (s["route"] or "~", s["project"] or "", s["session"]))
+    t_done = t()
+    if timing:
+        sys.stderr.write(
+            "beacon wip timing: "
+            f"total={t_done - t0:.3f}s "
+            f"tack-index={t_index - t0:.3f}s "
+            f"mtimes={t_mtimes - t_index:.3f}s "
+            f"cheap-resolve={t_cheap - t_mtimes:.3f}s "
+            f"branch-fill={t_done - t_cheap:.3f}s | "
+            f"hashes={len(mtimes)} resolved={len(resolved)} "
+            f"emitted={len(sessions)} git-probes={len(branch_cache)}\n"
+        )
     return {
         "generated_at": _iso(now),
         "window_since": _iso(since_epoch) if since_epoch else None,
@@ -1247,7 +1334,7 @@ def _window_since(all_flag: bool, since_arg: str | None, strict: bool) -> float 
 
 def cmd_wip(args):
     since = _window_since(getattr(args, "all", False), getattr(args, "since", None), strict=True)
-    payload = collect_sessions(since)
+    payload = collect_sessions(since, timing=getattr(args, "timing", False))
     if getattr(args, "json", False):
         print(json.dumps(payload, indent=2))
     else:
@@ -3131,6 +3218,8 @@ def main(argv=None):
                          "or ISO-8601 timestamp (default: last 24h)")
     sp.add_argument("--all", action="store_true",
                     help="every recorded session, no time window (the full history)")
+    sp.add_argument("--timing", action="store_true",
+                    help="print a scan-timing breakdown to stderr (profiling)")
 
     sp = sub.add_parser("watch", help="live, person-facing work-stream view (recency feed; q to quit)")
     sp.add_argument("--interval", type=float, default=1.0, metavar="SECS",
