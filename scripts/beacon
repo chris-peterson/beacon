@@ -93,6 +93,7 @@ STATE_DIR = DATA_DIR / "state"
 CACHE_DIR = DATA_DIR / "cache"
 
 BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
+DASHBOARD_HTML = PLUGIN_ROOT / "dashboard" / "index.html"
 
 
 # Set by the global --color flag (always/never); None means auto-detect.
@@ -314,14 +315,33 @@ BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
 
 def session_hash() -> str:
-    seed = os.environ.get("ITERM_SESSION_ID") or _tty_name() or "default"
+    seed = _session_seed() or "default"
     return hashlib.sha1(seed.encode()).hexdigest()[:16]
 
 
+def _session_seed() -> str | None:
+    # Per-pane on iTerm2; elsewhere fall back to Claude Code's session id, which
+    # every in-session tool subprocess carries as CLAUDE_CODE_SESSION_ID on any
+    # platform. cmd_hook synthesizes the same `claude-session:<id>` form into
+    # ITERM_SESSION_ID, so a bare in-session `beacon set` and the hooks that run
+    # alongside it resolve to one bucket on non-iTerm terminals (Windows, plain
+    # Linux). A real tty is the last resort; the shared "default" only when none
+    # of these exist — without this, concurrent windows cross-wire their state.
+    iterm = os.environ.get("ITERM_SESSION_ID")
+    if iterm:
+        return iterm
+    claude_sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if claude_sid:
+        return f"claude-session:{claude_sid}"
+    return _tty_name()
+
+
 def _tty_name() -> str | None:
+    # os.ttyname is absent on Windows (AttributeError) and raises OSError when
+    # fd 0 isn't a tty; either way there's no tty-derived id to offer.
     try:
         return os.ttyname(0)
-    except OSError:
+    except (OSError, AttributeError):
         return None
 
 
@@ -1424,16 +1444,45 @@ def cmd_watch(args):
     `beacon wip`."""
     if not sys.stdout.isatty():
         sys.exit("beacon watch needs an interactive terminal; pipe `beacon wip` instead")
-    import termios
-    import tty
-    import select
-    import signal
-
     global _COLOR_OVERRIDE
     if _COLOR_OVERRIDE is None:  # an explicit --color flag still wins
         _COLOR_OVERRIDE = True
     interval = max(0.2, getattr(args, "interval", 1.0) or 1.0)
     since = _window_since(getattr(args, "all", False), getattr(args, "since", None), strict=True)
+    if _watch_supports_raw():
+        _watch_raw(since, interval)
+    else:
+        _watch_polling(since, interval)
+
+
+def _watch_supports_raw() -> bool:
+    # The single-keypress loop needs POSIX terminal control. Windows has no
+    # termios/tty and select() can't wait on stdin there, so it polls instead.
+    try:
+        import termios  # noqa: F401
+        import tty  # noqa: F401
+        import select  # noqa: F401
+    except ImportError:
+        return False
+    try:
+        sys.stdin.fileno()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _watch_frame(since, cols: int, rows: int) -> list[str]:
+    lines = _watch_frame_lines(collect_sessions(since), cols)
+    if len(lines) > rows:
+        lines = lines[: rows - 1] + [_color("2", f"…+{len(lines) - (rows - 1)} more")]
+    return lines
+
+
+def _watch_raw(since, interval):
+    import termios
+    import tty
+    import select
+    import signal
 
     fd = sys.stdin.fileno()
     old_attrs = termios.tcgetattr(fd)
@@ -1449,9 +1498,7 @@ def cmd_watch(args):
                 cols, rows = os.get_terminal_size()
                 last = None
                 resized["flag"] = False
-            lines = _watch_frame_lines(collect_sessions(since), cols)
-            if len(lines) > rows:
-                lines = lines[: rows - 1] + [_color("2", f"…+{len(lines) - (rows - 1)} more")]
+            lines = _watch_frame(since, cols, rows)
             _watch_paint(lines, last)
             last = lines
             ready, _, _ = select.select([sys.stdin], [], [], interval)
@@ -1464,6 +1511,35 @@ def cmd_watch(args):
         sys.stdout.write("\x1b[?25h\x1b[?1049l")
         sys.stdout.flush()
         termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+
+
+def _watch_polling(since, interval):
+    # Fallback for terminals without POSIX control (Windows Terminal, VS Code):
+    # no single-key quit and no SIGWINCH, so poll terminal size each tick and
+    # exit on Ctrl-C. The alternate screen + hidden cursor and the per-row diff
+    # in _watch_paint are honored by any VT-capable terminal, so it stays
+    # flicker-free; a column change resets the diff for a clean repaint.
+    sys.stdout.write("\x1b[?1049h\x1b[?25l")
+    last: list[str] | None = None
+    prev_cols = -1
+    try:
+        while True:
+            try:
+                cols, rows = os.get_terminal_size()
+            except OSError:
+                cols, rows = 80, 24
+            if cols != prev_cols:
+                last = None
+                prev_cols = cols
+            lines = _watch_frame(since, cols, rows)
+            _watch_paint(lines, last)
+            last = lines
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sys.stdout.write("\x1b[?25h\x1b[?1049l")
+        sys.stdout.flush()
 
 
 def cmd_prune(args):
@@ -1589,6 +1665,10 @@ def _focus_session(sh: str) -> tuple[bool, str]:
 def wip_http_server(port: int):
     """Build (don't start) the localhost fleet server, bound to 127.0.0.1 only.
 
+    GET / — the bundled reference dashboard (dashboard/index.html), so a
+    coworker with no dashboard of their own just runs `beacon serve` and opens
+    the page. It polls /wip.json from this same origin.
+
     GET /wip.json — the read-only wip payload (WIP-04), CORS-open so a
     dashboard on file:// or the deployed Pages origin can fetch it.
 
@@ -1669,9 +1749,24 @@ def wip_http_server(port: int):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_dashboard(self) -> None:
+            try:
+                data = DASHBOARD_HTML.read_bytes()
+            except OSError:
+                self._send(404, json.dumps({"error": "dashboard not found"}))
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self):
             parsed = urlparse(self.path)
-            if parsed.path in ("/wip.json", "/"):
+            if parsed.path in ("/", "/index.html"):
+                self._send_dashboard()
+            elif parsed.path == "/wip.json":
                 q = parse_qs(parsed.query)
                 all_flag = q.get("all", ["0"])[0] in ("1", "true")
                 since = _window_since(all_flag, q.get("since", [None])[0], strict=False)
@@ -1742,7 +1837,7 @@ def cmd_serve(args):
 def _serve_foreground(port: int):
     server = wip_http_server(port)
     try:
-        print(f"beacon serve → http://127.0.0.1:{port}/wip.json  (Ctrl-C to stop)")
+        print(f"beacon serve → http://127.0.0.1:{port}/  dashboard, /wip.json data  (Ctrl-C to stop)")
         server.serve_forever()
     except KeyboardInterrupt:
         print()
@@ -1867,7 +1962,7 @@ def _service_install(port: int, indent: str = "") -> bool:
                 err = r.stderr.strip() or legacy.stderr.strip()
                 print(f"{indent}! launchctl could not load {plist}: {err}")
                 return False
-        print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/wip.json")
+        print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/")
         return True
 
     if sup == "systemd":
@@ -1877,7 +1972,7 @@ def _service_install(port: int, indent: str = "") -> bool:
         _systemctl("daemon-reload")
         r = _systemctl("enable", "--now", "beacon-serve")
         if r.returncode == 0:
-            print(f"{indent}✓ systemd user unit enabled → http://127.0.0.1:{port}/wip.json")
+            print(f"{indent}✓ systemd user unit enabled → http://127.0.0.1:{port}/")
             return True
         print(f"{indent}! systemctl could not enable beacon-serve: {r.stderr.strip()}")
         return False

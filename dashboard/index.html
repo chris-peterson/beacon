@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>beacon · fleet</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23bd93f9'/%3E%3C/svg%3E">
+
+  <!--
+    Reference fleet dashboard. Self-contained (no build, no dependencies) so any
+    coworker can run `beacon serve` and open it — beacon serves this file at /
+    and the data at /wip.json. It is a *reference*: clone and restyle it, or
+    point your own dashboard at the same /wip.json + /focus + /forget contract
+    (docs/spec.md, WIP-04 / FOCUS / FORGET). Cross-platform — the fleet view
+    needs no iTerm2 or macOS; only the click-to-focus action is iTerm2-only, and
+    cards that can't be focused say so.
+  -->
+  <style>
+    :root {
+      /* Dracula — mirrors BADGE_COLOR_PALETTE in scripts/beacon so a card's dot
+         matches the same session's iTerm2 badge. */
+      --bg: #282a36;
+      --surface: #343746;
+      --surface-hi: #44475a;
+      --fg: #f8f8f2;
+      --muted: #6272a4;
+      --accent: #bd93f9;
+      --cyan: #8be9fd;
+      --ready: #50fa7b;
+      --busy: #ffb86c;
+      --blocked: #ff5555;
+      --paused: #6272a4;
+      --radius: 0.6rem;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      padding: 1.25rem;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: 0.02em;
+    }
+    h1 .pulse {
+      color: var(--accent);
+    }
+    .meta { color: var(--muted); font-size: 0.85rem; }
+    .meta .live { color: var(--ready); }
+    .meta .stale { color: var(--busy); }
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+      gap: 0.85rem;
+    }
+    .card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--surface-hi);
+      border-left: 3px solid var(--muted);
+      border-radius: var(--radius);
+      padding: 0.8rem 0.9rem;
+      transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+    }
+    .card[data-focusable="true"] { cursor: pointer; }
+    .card[data-focusable="true"]:hover {
+      border-color: var(--accent);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    }
+    .card.state-ready   { border-left-color: var(--ready); }
+    .card.state-busy    { border-left-color: var(--busy); }
+    .card.state-blocked { border-left-color: var(--blocked); }
+    .card.state-paused  { border-left-color: var(--paused); }
+    .card.attention { box-shadow: 0 0 0 1px var(--blocked); }
+    .row { display: flex; align-items: center; gap: 0.5rem; }
+    .dot {
+      width: 0.6rem; height: 0.6rem; border-radius: 50%;
+      flex: none; background: var(--muted);
+    }
+    .state-ready   .dot { background: var(--ready); }
+    .state-busy    .dot { background: var(--busy); box-shadow: 0 0 6px var(--busy); }
+    .state-blocked .dot { background: var(--blocked); box-shadow: 0 0 6px var(--blocked); }
+    .state-paused  .dot { background: var(--paused); }
+    .project {
+      font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .task { color: var(--cyan); font-weight: 400; }
+    .desc {
+      color: var(--fg); opacity: 0.85;
+      margin: 0.45rem 0 0.1rem;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .sub {
+      display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem;
+      color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem;
+    }
+    .sub .route { color: var(--accent); }
+    .branch::before { content: "⎇ "; }
+    .age { margin-left: auto; }
+    .forget {
+      position: absolute; top: 0.4rem; right: 0.5rem;
+      background: none; border: none; color: var(--muted);
+      font-size: 1rem; line-height: 1; cursor: pointer; padding: 0.15rem 0.3rem;
+      border-radius: 0.3rem; opacity: 0; transition: opacity 0.15s, color 0.15s;
+    }
+    .card:hover .forget { opacity: 1; }
+    .forget:hover { color: var(--blocked); background: var(--surface-hi); }
+    #empty {
+      color: var(--muted); padding: 3rem 1rem; text-align: center;
+    }
+    #err {
+      display: none; color: var(--blocked); font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span class="pulse">◉</span> beacon fleet</h1>
+    <span class="meta"><span id="count">0</span> sessions</span>
+    <span class="meta" id="freshness"></span>
+  </header>
+  <div id="err"></div>
+  <div id="grid"></div>
+  <div id="empty" hidden>No active beacon sessions in the window. Sessions appear here as Claude Code works.</div>
+
+  <script>
+    const POLL_MS = 2000;
+    const grid = document.getElementById("grid");
+    const cards = new Map(); // hash -> card element
+
+    const STATES = ["ready", "busy", "blocked", "paused"];
+
+    function fmtAge(s) {
+      if (s == null) return "";
+      if (s < 60) return s + "s";
+      if (s < 3600) return Math.floor(s / 60) + "m";
+      if (s < 86400) return Math.floor(s / 3600) + "h";
+      return Math.floor(s / 86400) + "d";
+    }
+
+    function buildCard(hash) {
+      const el = document.createElement("div");
+      el.className = "card";
+      el.dataset.hash = hash;
+      el.innerHTML = `
+        <button class="forget" title="Forget this session">×</button>
+        <div class="row">
+          <span class="dot"></span>
+          <span class="project"></span>
+        </div>
+        <div class="desc"></div>
+        <div class="sub">
+          <span class="route"></span>
+          <span class="branch"></span>
+          <span class="status"></span>
+          <span class="age"></span>
+        </div>`;
+      el.addEventListener("click", () => {
+        if (el.dataset.focusable === "true") focus(hash);
+      });
+      el.querySelector(".forget").addEventListener("click", (e) => {
+        e.stopPropagation();
+        forget(hash, el.querySelector(".project").textContent);
+      });
+      return el;
+    }
+
+    function setText(el, sel, value) {
+      const node = el.querySelector(sel);
+      const v = value || "";
+      if (node.textContent !== v) node.textContent = v;
+      node.hidden = !v;
+    }
+
+    function updateCard(el, s) {
+      el.classList.remove(...STATES.map((x) => "state-" + x));
+      el.classList.add("state-" + (s.state || "paused"));
+      el.classList.toggle("attention", !!s.pending_attention);
+      el.dataset.focusable = s.focusable ? "true" : "false";
+      el.title = s.focusable ? "Click to raise this window" : "This session can't be focused (not an iTerm2 pane)";
+
+      const proj = el.querySelector(".project");
+      proj.textContent = s.project || s.hash;
+      if (s.task) {
+        const t = document.createElement("span");
+        t.className = "task";
+        t.textContent = " : " + s.task;
+        proj.appendChild(t);
+      }
+      setText(el, ".desc", s.description);
+      setText(el, ".route", s.route ? "[" + s.route + "]" : "");
+      setText(el, ".branch", s.branch);
+      setText(el, ".status", s.status);
+      setText(el, ".age", fmtAge(s.age_seconds));
+    }
+
+    function render(payload) {
+      const sessions = (payload.sessions || []).slice().sort(
+        (a, b) => (a.age_seconds ?? 1e12) - (b.age_seconds ?? 1e12)
+      );
+      const seen = new Set();
+      let prev = null;
+      for (const s of sessions) {
+        seen.add(s.hash);
+        let el = cards.get(s.hash);
+        if (!el) {
+          el = buildCard(s.hash);
+          cards.set(s.hash, el);
+        }
+        updateCard(el, s);
+        // Place in sorted order without rebuilding the list: insertBefore moves
+        // an existing node cheaply and leaves untouched cards in place.
+        const anchor = prev ? prev.nextSibling : grid.firstChild;
+        if (el !== anchor) grid.insertBefore(el, anchor);
+        prev = el;
+      }
+      for (const [hash, el] of cards) {
+        if (!seen.has(hash)) { el.remove(); cards.delete(hash); }
+      }
+      document.getElementById("count").textContent = sessions.length;
+      document.getElementById("empty").hidden = sessions.length > 0;
+    }
+
+    async function focus(hash) {
+      try {
+        const r = await fetch("/focus", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hash }),
+        });
+        const j = await r.json();
+        if (!j.focused) flashError("Focus failed: " + (j.detail || "unknown"));
+      } catch (e) { flashError("Focus request failed"); }
+    }
+
+    async function forget(hash, label) {
+      if (!confirm(`Forget "${label || hash}"? This clears its beacon state.`)) return;
+      try {
+        await fetch("/forget", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hash }),
+        });
+        const el = cards.get(hash);
+        if (el) { el.remove(); cards.delete(hash); }
+      } catch (e) { flashError("Forget request failed"); }
+    }
+
+    let errTimer = null;
+    function flashError(msg) {
+      const e = document.getElementById("err");
+      e.textContent = msg;
+      e.style.display = "block";
+      clearTimeout(errTimer);
+      errTimer = setTimeout(() => { e.style.display = "none"; }, 4000);
+    }
+
+    let scheduled = false, latest = null;
+    function schedule(payload) {
+      latest = payload;
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => { scheduled = false; render(latest); });
+    }
+
+    let inFlight = false;
+    async function poll() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const r = await fetch("/wip.json", { cache: "no-store" });
+        const payload = await r.json();
+        schedule(payload);
+        const ts = payload.generated_at ? new Date(payload.generated_at) : new Date();
+        document.getElementById("freshness").innerHTML =
+          'updated <span class="live">' + ts.toLocaleTimeString() + "</span>";
+      } catch (e) {
+        document.getElementById("freshness").innerHTML =
+          '<span class="stale">serve unreachable — is `beacon serve` running?</span>';
+      } finally { inFlight = false; }
+    }
+
+    poll();
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>

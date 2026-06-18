@@ -24,6 +24,10 @@ install-hooks:
 try:
     claude --plugin-dir .
 
+# seed an isolated demo fleet, serve the dashboard, and live-simulate state changes
+demo *args:
+    python3 dev/demo.py {{args}}
+
 # run the python test suite (stdlib unittest, no external deps)
 test:
     python3 -m unittest discover -s tests -v

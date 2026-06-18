@@ -38,8 +38,19 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `scripts/beacon` | Plugin script — hook handlers, COR resolver, slash command, install (D3) |
 | `shell/beacon.zsh` | Sourceable zsh snippet — refreshes project / branch / cwd / URL on every prompt |
 | `hooks/`, `commands/`, `skills/` | Claude Code plugin glue |
+| `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
+| `dashboard/index.html` | Self-contained reference fleet dashboard `serve` hosts at `/` |
 | `iterm/profile.json.template` | Beacon dynamic profile, including the status-bar layout |
 | `docs/` | Docsify site sources; `spec.md` is the EARS-style behavioral spec (D1) |
+
+## Tests
+
+```bash
+just test                              # or:
+python3 -m unittest discover -s tests -v
+```
+
+The suite is pure stdlib `unittest` — it loads `scripts/beacon` via importlib and mocks `_cli` and `sys.platform`, so the iTerm2 paint paths and the launchd/systemd/Windows branches are all exercised without a Mac. `.github/workflows/test.yml` runs it on an `ubuntu` / `macos` / `windows` × Python `3.9`–`3.13` matrix on every push and PR, which is what guards the cross-platform fallbacks (session-id seeding, `watch` polling) from regressing.
 
 ## Architecture
 

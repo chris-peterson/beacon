@@ -11,7 +11,7 @@ A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces ses
 | Deliverable | Path | Owns |
 |:---|:---|:---|
 | **CLI** | `bin/beacon-iterm` | Translating subcommands to iTerm2 control operations — OSC sequences for painted surfaces, Apple Events (`focus`) to raise a window. **Stateless.** No Claude awareness. |
-| **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `skills/` | Hook handlers, COR resolver for signals, slash command. Invokes the CLI for every iTerm2 write. |
+| **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `skills/`, `rules/` | Hook handlers, COR resolver for signals, slash command. `rules/` holds ambient rules emitted at SessionStart by `hooks/emit-rules.sh` (e.g. `keep-session-labeled` — proactive task upkeep so the fleet view has signal standalone). Invokes the CLI for every iTerm2 write. |
 | **Shell** | `shell/beacon.zsh` | Project / branch / cwd / URL — refreshed every prompt. Calls the CLI directly; never goes through the plugin. |
 
 The plugin and shell write to **disjoint user-var slots** so they never overwrite each other. Don't blur this boundary.
@@ -50,7 +50,7 @@ Status maps to a logical color state (`ready` / `busy` / `blocked`) which then m
 - Per-session shell handoff files (read by status-bar action buttons): `<DATA_DIR>/cache/{url,cwd}-$ITERM_SESSION_ID.txt`
 - Always-on serve service logs (launchd `StandardOut/ErrorPath`): `<DATA_DIR>/logs/serve.{out,err}.log`
 
-Session hash is SHA-1 of `$ITERM_SESSION_ID` truncated; collisions are not a security concern.
+Session hash is SHA-1 (truncated) of the session seed: `$ITERM_SESSION_ID` on iTerm2, else `claude-session:$CLAUDE_CODE_SESSION_ID` (the id Claude Code sets in every in-session subprocess on any OS, so a bare `beacon set` on Windows/non-iTerm lands in the same bucket as its hooks), else the tty name, else `default`. See `_session_seed()`. Collisions are not a security concern.
 
 ## No iTerm2 prefs written — profile activated at runtime
 
@@ -80,7 +80,7 @@ Clicking a session in the dashboard raises its iTerm2 window. The chain: dashboa
 | Bootstrap install | `python3 scripts/beacon install` |
 | Focus an iTerm2 session window by its id | `python3 bin/beacon-iterm focus <session-id>` |
 | List active work streams across all sessions (last 24h) | `python3 scripts/beacon wip [--json] [--since 1d] [--all]` |
-| Serve the wip snapshot for the goals dashboard | `python3 scripts/beacon serve [--port 8787]` |
+| Serve the bundled dashboard (`/`) + wip snapshot (`/wip.json`) | `python3 scripts/beacon serve [--port 8787]` |
 | Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon serve <install\|uninstall\|status>` |
 | GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Delete per-session state for one session | `python3 scripts/beacon forget <hash>` |

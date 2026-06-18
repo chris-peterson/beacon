@@ -394,6 +394,17 @@ class WipTest(_WipBase):
             payload = json.loads(resp.read())
         self.assertEqual([s["project"] for s in payload["sessions"]], ["served"])
 
+    def test_serve_root_returns_dashboard_html(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3) as resp:
+            self.assertTrue(resp.headers["Content-Type"].startswith("text/html"))
+            body = resp.read().decode()
+        self.assertIn("beacon fleet", body)
+        self.assertIn("/wip.json", body)
+
 
 class IconTest(_WipBase):
     """PROV-08 / WIP-08: project-icon discovery, the `icon` field in the wip
@@ -551,6 +562,12 @@ class WatchViewTest(unittest.TestCase):
         row = self._body(self._rows([self._session(description="line one\nline two")], cols=200))[0]
         self.assertIn("line one", row)
         self.assertNotIn("line two", row)
+
+    def test_supports_raw_false_without_termios(self):
+        # A None entry in sys.modules makes `import termios` raise ImportError,
+        # mirroring Windows where the module doesn't exist — watch then polls.
+        with mock.patch.dict(sys.modules, {"termios": None}):
+            self.assertFalse(self.beacon._watch_supports_raw())
 
 
 class ColorControlTest(unittest.TestCase):

@@ -14,13 +14,33 @@ A glance across the windows tells you which session needs you:
 > [!TIP]
 > Read the full behavioral spec on the [Specification](/spec) page.
 
+## Platform support
+
+The fleet view reads session state and paints no pane, so it runs anywhere Python 3 does. The per-pane painting is an iTerm2 render adapter, so it's macOS + iTerm2 only. A coworker on Windows or a non-iTerm terminal gets the whole fleet view and skips only the decorations.
+
+| Capability | Where it works |
+|:---|:---|
+| Fleet dashboard — `wip`, `watch`, `serve`, and the browser dashboard | Any OS, any terminal (needs Python 3) |
+| Per-pane painting — badge, status bar, tab color | macOS + iTerm2 |
+| Click a dashboard card to raise its window | macOS + iTerm2 |
+| Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
+
+### On Windows or a non-iTerm terminal
+
+1. Install the plugin (see [Install](#install)) — the hooks populate session state on any platform.
+2. Run `beacon serve` and open `http://127.0.0.1:8787/` in a browser.
+
+That's the full fleet view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The badge / status bar / tab color need iTerm2 and are skipped automatically.
+
 ## Fleet dashboard (any terminal)
 
 `wip` / `watch` / `serve` read every beacon session's state and paint no pane, so they need no iTerm2 — anywhere Python 3 runs.
 
 - **`beacon wip`** — a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
 - **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own fleet.
-- **`beacon serve`** — serves the `wip` payload at `http://127.0.0.1:8787/wip.json` (loopback only) for an external dashboard to poll. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+- **`beacon serve`** — serves a bundled reference dashboard at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your fleet — the page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+
+  The bundled dashboard (`dashboard/index.html`) is a self-contained starting point — no build, no dependencies. Clone and restyle it, or point your own dashboard at the same `/wip.json` + `/focus` + `/forget` contract; both work from any browser regardless of the session's terminal.
 
 Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …); to point it elsewhere, set one with `beacon icon <path-or-url>`. A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
 
@@ -124,6 +144,12 @@ beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), 
 The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly — `gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts — and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
 Prefer Linear, Jira, GitHub Issues, or a custom provider? Override `_beacon_resolve_url()` in your `.zshrc` after sourcing `beacon.zsh`. The function returns a `<url>\t<label>` line and slots into PROV-07; see [PROV-07](/spec) and [BADGE-08](/spec) for the full contract.
+
+## Standalone (no tack, no recipes)
+
+beacon works on its own. The hooks set the fields they can observe — project, branch, and the ready / busy / blocked status color — without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the fleet view worth a glance.
+
+To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the fleet view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it — tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
 
 ## Upgrade
 

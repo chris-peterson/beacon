@@ -9,10 +9,12 @@
   "icon": "docs/favicon.svg",
   "license": "MIT",
   "keywords": [
-    "iterm2",
-    "macos",
     "dashboard",
+    "session-management",
+    "fleet",
+    "cross-platform",
     "workflow",
-    "session-management"
+    "iterm2",
+    "macos"
   ]
 }

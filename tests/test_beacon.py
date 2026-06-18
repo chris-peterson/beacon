@@ -797,6 +797,66 @@ class EmptyItermIdIsolatesSessions(BeaconTest):
         )
 
 
+class SessionSeedFallback(BeaconTest):
+    """Without ITERM_SESSION_ID (non-iTerm terminal, any OS — Windows, plain
+    Linux), session_hash() seeds from CLAUDE_CODE_SESSION_ID, which Claude Code
+    sets in every in-session tool subprocess. That way a bare `beacon set` and
+    the hooks that ran alongside it resolve to one bucket instead of colliding
+    on the shared "default"."""
+
+    def setUp(self):
+        super().setUp()
+        self._saved_env = {
+            k: os.environ.get(k)
+            for k in ("ITERM_SESSION_ID", "CLAUDE_CODE_SESSION_ID")
+        }
+        self.addCleanup(self._restore_env)
+
+    def _restore_env(self):
+        for k, v in self._saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_claude_session_id_seeds_hash(self):
+        os.environ.pop("ITERM_SESSION_ID", None)
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-X"
+        expected = self.beacon.hashlib.sha1(b"claude-session:sess-X").hexdigest()[:16]
+        self.assertEqual(self.beacon.session_hash(), expected)
+
+    def test_cli_and_hook_share_bucket(self):
+        # The hook fires with an empty ITERM id and synthesizes the session key
+        # from the payload's session_id; a later bare CLI call has only
+        # CLAUDE_CODE_SESSION_ID in its env. Both must hash to the same bucket.
+        os.environ["ITERM_SESSION_ID"] = ""
+        os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-Y"
+        args = mock.Mock(event="SessionStart")
+        payload = {"session_id": "sess-Y", "cwd": "/work/widget", "source": "startup"}
+        with mock.patch.object(self.beacon, "_publish_chips", side_effect=lambda cwd: None):
+            with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+                self.beacon.cmd_hook(args)
+        os.environ.pop("ITERM_SESSION_ID", None)
+        cli_bucket = self.beacon.session_hash()
+        anchor = self.beacon.STATE_DIR / f"{cli_bucket}.anchor.cwd"
+        self.assertTrue(anchor.exists(), "CLI bucket must match the hook's bucket")
+        self.assertEqual(anchor.read_text(), "/work/widget")
+
+    def test_tty_name_tolerates_missing_ttyname(self):
+        # os.ttyname is absent on Windows; the lookup raises AttributeError.
+        with mock.patch.object(self.beacon.os, "ttyname", side_effect=AttributeError):
+            self.assertIsNone(self.beacon._tty_name())
+
+    def test_no_ids_falls_back_to_default(self):
+        os.environ.pop("ITERM_SESSION_ID", None)
+        os.environ.pop("CLAUDE_CODE_SESSION_ID", None)
+        with mock.patch.object(self.beacon, "_tty_name", return_value=None):
+            self.assertEqual(
+                self.beacon.session_hash(),
+                self.beacon.hashlib.sha1(b"default").hexdigest()[:16],
+            )
+
+
 class InstallGating(unittest.TestCase):
     """CMD-08: install always runs the terminal-agnostic steps (wrapper,
     completions) and runs the iTerm2 render-adapter steps only when iTerm2 is

@@ -25,6 +25,8 @@ The badge reads `project: task` when both are set, just `project` when task is a
 
 ## When to invoke beacon
 
+**Proactive task upkeep** is governed by the `keep-session-labeled` ambient rule (emitted at SessionStart from `rules/`), not this skill: keep the session's `task` current as the work focus shifts so the fleet view has signal, defer to tack when a route is bound, and don't re-set it every turn. This skill covers the user-driven labeling below.
+
 **Badge labeling.** When the user wants the badge to show a custom project label, run:
 
 ```bash
