@@ -513,7 +513,10 @@ class SessionAnchor(BeaconTest):
         self.chip_cwds: list[str] = []
         p = mock.patch.object(
             self.beacon, "_publish_chips",
-            side_effect=lambda cwd: self.chip_cwds.append(str(cwd)),
+            # Normalize separators: str(Path("/x")) is "\\x" on Windows, and the
+            # fixtures below use POSIX paths. The tests verify anchor logic, not
+            # path formatting.
+            side_effect=lambda cwd: self.chip_cwds.append(str(cwd).replace("\\", "/")),
         )
         p.start()
         self.addCleanup(p.stop)
@@ -525,7 +528,8 @@ class SessionAnchor(BeaconTest):
 
     def test_session_start_persists_anchor(self):
         self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
-        self.assertEqual(self.beacon.read_state("anchor.cwd"), "/work/acme/widget")
+        self.assertEqual(self.beacon.read_state("anchor.cwd").replace("\\", "/"),
+                         "/work/acme/widget")
         # _project_name_at is mocked to "acme/widget" in BeaconTest.
         self.assertEqual(self.beacon.read_state("anchor.project"), "acme/widget")
 
@@ -788,7 +792,7 @@ class EmptyItermIdIsolatesSessions(BeaconTest):
         self._fire_start_with_empty_id("sess-A", "/work/ai-sdlc")
         self._fire_start_with_empty_id("sess-B", "/work/beacon")
         anchors = sorted(
-            p.read_text() for p in self.beacon.STATE_DIR.glob("*.anchor.cwd")
+            p.read_text().replace("\\", "/") for p in self.beacon.STATE_DIR.glob("*.anchor.cwd")
         )
         self.assertEqual(
             anchors, ["/work/ai-sdlc", "/work/beacon"],
@@ -840,11 +844,14 @@ class SessionSeedFallback(BeaconTest):
         cli_bucket = self.beacon.session_hash()
         anchor = self.beacon.STATE_DIR / f"{cli_bucket}.anchor.cwd"
         self.assertTrue(anchor.exists(), "CLI bucket must match the hook's bucket")
-        self.assertEqual(anchor.read_text(), "/work/widget")
+        self.assertEqual(anchor.read_text().replace("\\", "/"), "/work/widget")
 
     def test_tty_name_tolerates_missing_ttyname(self):
         # os.ttyname is absent on Windows; the lookup raises AttributeError.
-        with mock.patch.object(self.beacon.os, "ttyname", side_effect=AttributeError):
+        # create=True so the patch works on Windows too (where there's no attr
+        # to replace) — that's the very platform this guard exists for.
+        with mock.patch.object(self.beacon.os, "ttyname", create=True,
+                               side_effect=AttributeError):
             self.assertIsNone(self.beacon._tty_name())
 
     def test_no_ids_falls_back_to_default(self):
@@ -919,6 +926,7 @@ class InstallGating(unittest.TestCase):
         self.assertNotIn("DEFERRED", out)
 
 
+@unittest.skipIf(sys.platform == "win32", "launchd/systemd service is POSIX-only")
 class ServiceUnit(unittest.TestCase):
     """WIP-07: `serve install` writes a supervised unit that runs `serve` via
     the stable wrapper, restart-on-failure; `serve uninstall` removes it."""
