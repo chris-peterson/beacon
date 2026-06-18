@@ -12,7 +12,7 @@ A glance across the windows tells you which session needs you:
 <div class="cw-session" data-cw-session="session"></div>
 
 > [!TIP]
-> Read the full behavioral spec on the [Specification](/spec) page.
+> Want to see it first? [Try the demo](/demo) — one command seeds a fictional fleet and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
 
 ## Platform support
 
@@ -70,11 +70,9 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane:
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`↖ web · project │ branch · ↗ code`, whose buttons open the resolved PR/MR/issue and the cwd in VS Code), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
-- **Badge** (always on) — project name, optionally followed by `: <task>` when a task is set, plus a status-driven color: green when idle, amber when Claude is working, red when waiting on you or paused. The badge stays readable in Mission Control / Exposé, so a glance across many windows tells you which sessions need attention.
-- **Status bar** (in the beacon profile) — a fixed-layout strip with `↖ web` + project identity flush left, branch + `↗ code` flush right: `↖ web · project │ branch · ↗ code`. The project chip abbreviates known forge hosts (`gh:acme/widgets`, `gl:acmecorp/platform/auth-svc`) and appends `#42` / `!17` when the resolved URL points at a deliverable. The `↖ web` button opens the resolved URL — a CR/PR/issue when [tack](https://github.com/chris-peterson/tack) is on `$PATH` and matches the branch, or when `gh`/`glab` finds an open PR/MR for the current branch (see [Tack integration](#tack-integration-optional)) — otherwise a branch URL or the project URL; the `↗ code` button opens the cwd in VS Code.
-- **Pause / status notes** — `/beacon pause "leaving for lunch"` flips the badge to a de-emphasized gray (distinct from waiting red). The free-text note isn't painted on the pane; it surfaces in the fleet dashboard as recall context. Any user-set status takes an optional note the same way (`/beacon status waiting "bg refresh ~30 min"`).
+See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
 
 ## Install
 

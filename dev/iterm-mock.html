@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>beacon · iTerm2 surface mockups</title>
+<!--
+  Hand-drawn HTML mockups of beacon's iTerm2 per-pane surfaces (badge + status
+  bar), for the docs site. These surfaces only exist on macOS + iTerm2, so they
+  can't be captured from the cross-platform demo — they're synthesized here from
+  the spec palette (THEME-02 / THEME-03) instead of screenshotted.
+
+  This file is the source of record. The same markup + scoped CSS is embedded
+  live into docs/iterm.md; edit both together. Open this file directly to preview.
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+body {
+  background: #15161c;
+  margin: 0;
+  padding: 2.5rem;
+  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #f8f8f2;
+}
+h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
+
+/* ── beacon iTerm2 surface mockups — scope everything under .bcn ─────────── */
+.bcn {
+  --abyss: #21222c;
+  --body: #282a36;
+  --bar: #30323e;
+  --fg: #f8f8f2;
+  --identity: #9aa3c0;   /* project chip — de-emphasized identity, ≥4.5:1 on --bar */
+  --sep: #7e8290;
+  --pink: #ff79c6;       /* ↖ web / ↗ code action affordance */
+  --ready: #50fa7b;      /* idle · branch synced */
+  --busy: #ffb86c;       /* working · branch diverged */
+  --blocked: #ff5555;    /* waiting on you */
+  --paused: #6272a4;     /* paused · branch untracked */
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  max-width: 760px;
+}
+.bcn-win {
+  border: 1px solid rgba(139, 233, 253, 0.14);
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--body);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.bcn-title {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: var(--abyss);
+  border-bottom: 1px solid rgba(248, 248, 242, 0.07);
+  padding: 0.6rem 0.85rem;
+}
+.bcn-dots { display: inline-flex; gap: 0.45rem; }
+.bcn-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.bcn-dots i:nth-child(1) { background: #ff5f57; }
+.bcn-dots i:nth-child(2) { background: #febc2e; }
+.bcn-dots i:nth-child(3) { background: #28c840; }
+.bcn-ttl {
+  font: 12px var(--mono); color: var(--identity);
+  letter-spacing: 0.04em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.bcn-bar {
+  display: flex; align-items: center; gap: 0.55rem;
+  background: var(--bar);
+  font: 13px var(--mono);
+  padding: 0.4rem 0.7rem;
+  white-space: nowrap;
+}
+.bcn-act { color: var(--pink); font-weight: 700; }
+.bcn-sep { color: var(--sep); }
+.bcn-proj { color: var(--identity); }
+.bcn-proj b { color: var(--ready); font-weight: 700; }   /* deliverable suffix #42 / !17 */
+.bcn-spring { flex: 1 1 auto; }
+.bcn-branch { color: var(--ready); }
+.bcn-branch.diverged { color: var(--busy); }
+.bcn-branch.untracked { color: var(--paused); }
+.bcn-body {
+  position: relative;
+  font: 13px var(--mono); color: var(--fg);
+  padding: 0.85rem 0.9rem 1.1rem;
+  min-height: 96px;
+}
+.bcn-body .prompt { color: var(--ready); }
+.bcn-body .dim { color: #6272a4; }
+.bcn-badge {
+  position: absolute; right: 0.95rem; top: 0.85rem;
+  font: 700 28px/1 var(--mono); letter-spacing: 0.01em;
+}
+.bcn-badge.ready { color: var(--ready); }
+.bcn-badge.busy { color: var(--busy); }
+.bcn-badge.blocked { color: var(--blocked); }
+.bcn-badge.paused { color: var(--paused); }
+.bcn-badge .task { font-weight: 400; opacity: 0.92; }
+
+/* numbered anatomy markers + legend */
+.bcn-mk {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.05em; height: 1.05em; margin-left: 0.3em;
+  border-radius: 50%; background: #8be9fd; color: #21222c;
+  font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif;
+  vertical-align: super; position: relative; top: -0.15em;
+}
+.bcn-badge .bcn-mk { background: #f8f8f2; }
+.bcn-legend {
+  list-style: none; counter-reset: bcn; margin: 0.9rem 0 0; padding: 0;
+  display: grid; gap: 0.5rem;
+}
+.bcn-legend li {
+  counter-increment: bcn;
+  display: grid; grid-template-columns: 1.4rem 1fr; align-items: start;
+  font-size: 0.9rem; color: inherit;   /* adapt to docsify light/dark theme */
+}
+.bcn-legend li::before {
+  content: counter(bcn);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.15rem; height: 1.15rem; border-radius: 50%;
+  background: #8be9fd; color: #21222c; font-weight: 700; font-size: 0.72rem;
+}
+.bcn-legend b { color: inherit; font-weight: 600; }
+.bcn code {
+  font: 0.85em var(--mono); background: rgba(128,128,128,0.18) !important;
+  padding: 0.05em 0.35em; border-radius: 4px; color: inherit !important;
+}
+
+/* compact status-bar-only strips for the variant gallery */
+.bcn-striprow { display: grid; gap: 0.75rem; margin-top: 0.5rem; }
+.bcn-strip {
+  border: 1px solid rgba(139, 233, 253, 0.14); border-radius: 9px; overflow: hidden;
+}
+.bcn-strip .bcn-bar { border-radius: 0; }
+.bcn-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
+
+/* badge-state gallery */
+.bcn-badges { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+.bcn-chip {
+  border: 1px solid rgba(139, 233, 253, 0.14); border-radius: 10px;
+  background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center;
+}
+.bcn-chip .b { font: 700 19px/1.15 var(--mono); }
+.bcn-chip .b .task { font-weight: 400; opacity: 0.9; }
+.bcn-chip .ready { color: var(--ready); }
+.bcn-chip .busy { color: var(--busy); }
+.bcn-chip .blocked { color: var(--blocked); }
+.bcn-chip .paused { color: var(--paused); }
+.bcn-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
+</style>
+</head>
+<body>
+
+<h2>Anatomy</h2>
+<div class="bcn">
+  <div class="bcn-win">
+    <div class="bcn-title">
+      <span class="bcn-dots"><i></i><i></i><i></i></span>
+      <span class="bcn-ttl">✳ Redesign frontend plugin installation interface<span class="bcn-mk">1</span></span>
+    </div>
+    <div class="bcn-bar">
+      <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
+      <span class="bcn-spring"></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
+    </div>
+    <div class="bcn-body">
+      <div><span class="prompt">›</span> run just build</div>
+      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">6</span></span>
+    </div>
+  </div>
+  <ol class="bcn-legend">
+    <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
+    <li><span><b><code>↖ web</code> button</b> — opens the URL resolved for this session: an open PR/MR/issue when one matches the branch, else the branch or repo page.</span></li>
+    <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
+    <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
+    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in VS Code.</span></li>
+    <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
+  </ol>
+</div>
+
+<h2>Badge: the traffic light</h2>
+<div class="bcn bcn-badges">
+  <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
+  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task"> : refunds</span></div><div class="cap">Claude is working</div></div>
+  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting on you</div></div>
+  <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
+</div>
+
+<h2>Status bar: what the project chip tells you</h2>
+<div class="bcn bcn-striprow">
+  <div class="bcn-strip">
+    <div class="bcn-bar">
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
+      <span class="bcn-proj">gh:acme/widgets</span>
+      <span class="bcn-spring"></span>
+      <span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+    </div>
+    <div class="cap">In a repo, no tracked deliverable — <code>↖ web</code> opens the repo.</div>
+  </div>
+  <div class="bcn-strip">
+    <div class="bcn-bar">
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
+      <span class="bcn-proj">gh:acme/widgets<b>#42</b></span>
+      <span class="bcn-spring"></span>
+      <span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+    </div>
+    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream), <code>↖ web</code> opens the PR.</div>
+  </div>
+  <div class="bcn-strip">
+    <div class="bcn-bar">
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
+      <span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span>
+      <span class="bcn-spring"></span>
+      <span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+    </div>
+    <div class="cap">On a GitLab MR — chip shows <code>!17</code>, <code>↖ web</code> opens the MR.</div>
+  </div>
+</div>
+
+</body>
+</html>

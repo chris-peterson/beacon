@@ -1,2 +1,5 @@
 - [Home](/)
+- Preview
+  - [iTerm2](/iterm)
+  - [Browser (Demo)](/demo)
 - [Specification](/spec)
