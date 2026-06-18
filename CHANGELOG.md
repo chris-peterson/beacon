@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.8.0
+
+Makes the fleet view a first-class cross-platform surface, so beacon is useful beyond macOS + iTerm2. The per-pane painting stays iTerm2-only by design; everything below works in any terminal on any OS.
+
+### Cross-platform fleet view
+
+- `beacon watch` now runs on Windows and other terminals that lack POSIX terminal control, via a polling fallback (Ctrl-C to quit).
+- Session identity seeds from `CLAUDE_CODE_SESSION_ID` when there's no iTerm pane id or tty, so concurrent windows on Windows / non-iTerm terminals no longer collide on a shared state bucket.
+
+### Reference dashboard
+
+- `beacon serve` now hosts a self-contained reference dashboard at `http://127.0.0.1:8787/` (data still at `/wip.json`). Open it in any browser to see your fleet — no dashboard of your own required. Clone and restyle it, or point your own consumer at the same `/wip.json` + `/focus` + `/forget` contract.
+
+### Standalone labeling
+
+- A `keep-session-labeled` ambient rule (emitted at SessionStart) keeps each session's task label current as the work shifts, so the fleet view has signal without tack or recipes — and defers to tack when a route is bound.
+
+### Tooling
+
+- Cross-platform CI matrix: ubuntu / macOS / Windows × Python 3.9–3.13.
+- `just demo` (`dev/demo.py`) seeds an isolated fleet and serves a live simulation, so you can demo beacon without real Claude Code sessions.
+
+Docs and the spec (WIP-10) updated to match.
+
 ## 1.7.0
 
 ### Features
