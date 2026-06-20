@@ -3,10 +3,10 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-17
+**Last audit:** 2026-06-20
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.8.0
-**Coverage:** 131 Covered, 0 Partial, 0 Missing/Contradicts.
+**Plugin version:** 1.9.0
+**Coverage:** 132 Covered, 0 Partial, 0 Missing/Contradicts.
 
 Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
 `paused` — mapping to three logical badge color states (`ready` / `busy` /
@@ -35,7 +35,7 @@ sweeps the per-state profiles a pre-1.0 install left behind.
 | STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree` |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
 | CMD-01..09, 13..18 (gap 10, 11; CMD-12 retired) | 15 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; CMD-18 is the dedicated `/beacon:pause` shim (`commands/pause.md`, no model pin) |
-| WIP-01..10 | 10 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`) |
+| WIP-01..11 | 11 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
@@ -56,6 +56,12 @@ STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-20 — Coverage refresh (spec-status)
+
++1 ID for the 1.9.0 release: WIP-11 (auto-derived `latest_turn` in the wip
+payload — the session's most recent human/agent turn, written at hook time and
+ellipsized to card width by the dashboard). 131 → 132 Covered.
 
 ### 2026-06-17 — Coverage refresh (spec-status)
 
