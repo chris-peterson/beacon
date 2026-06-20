@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.0
+
+Each fleet card now shows what a session is actually doing — not just its project and status — without relying on the agent to label itself.
+
+### Features
+
+- **The fleet view surfaces each session's most recent turn.** Every card now carries a `latest_turn` line — the latest human prompt (`›`) or agent reply (`↳`) — derived automatically from the session's transcript at hook time, so a session that never sets a task label still shows live context. The dashboard ellipsizes the line to the card's width. The task label becomes the durable headline layered over this play-by-play (WIP-11).
+
+### Other
+
+- The test suite is now portable to Windows CI.
+- Added end-user docs for the `just demo` fleet and the iTerm2 per-pane views.
+
 ## 1.8.0
 
 Makes the fleet view a first-class cross-platform surface, so beacon is useful beyond macOS + iTerm2. The per-pane painting stays iTerm2-only by design; everything below works in any terminal on any OS.
