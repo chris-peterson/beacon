@@ -138,6 +138,26 @@ class WipTest(_WipBase):
         task = next(s for s in self._sessions() if s["hash"] == "snap")["task"]
         self.assertEqual(task, "from-branch")
 
+    def test_latest_turn_in_payload(self):
+        # WIP-11: latest_turn surfaces as a parsed object, and the key is
+        # present (null) even when no turn is recorded.
+        self._write("withturn", "anchor.project", "alpha")
+        self._write("withturn", "latest_turn", json.dumps(
+            {"role": "agent", "text": "wired the hook", "at": "2026-06-20T00:00:00+00:00"}))
+        self._write("noturn", "anchor.project", "beta")
+        by_hash = {s["hash"]: s for s in self._sessions()}
+        self.assertEqual(by_hash["withturn"]["latest_turn"]["role"], "agent")
+        self.assertEqual(by_hash["withturn"]["latest_turn"]["text"], "wired the hook")
+        self.assertIn("latest_turn", by_hash["noturn"])
+        self.assertIsNone(by_hash["noturn"]["latest_turn"])
+
+    def test_latest_turn_null_on_corrupt_json(self):
+        # A malformed state file must not crash the scan — it resolves to null.
+        self._write("bad", "anchor.project", "alpha")
+        self._write("bad", "latest_turn", "{not json")
+        rec = next(s for s in self._sessions() if s["hash"] == "bad")
+        self.assertIsNone(rec["latest_turn"])
+
     def test_drops_sessions_without_a_location(self):
         # Only a claude_session_id, no project/cwd anchor → not a work stream.
         self._write("ghost", "claude_session_id", "sid-ghost")

@@ -98,6 +98,16 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .task { color: var(--cyan); font-weight: 400; }
+    /* The auto-derived latest turn (WIP-11): one scannable line, ellipsized
+       at the card's trailing edge — width-driven, never a fixed cut. */
+    .turn {
+      margin: 0.4rem 0 0.1rem;
+      color: var(--muted); font-size: 0.82rem;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .turn .tglyph { opacity: 0.8; margin-right: 0.15rem; }
+    .turn[data-role="human"] .tglyph { color: var(--cyan); }
+    .turn[data-role="agent"] .tglyph { color: var(--accent); }
     .desc {
       color: var(--fg); opacity: 0.85;
       margin: 0.45rem 0 0.1rem;
@@ -163,6 +173,7 @@
           <span class="dot"></span>
           <span class="project"></span>
         </div>
+        <div class="turn" hidden><span class="tglyph"></span><span class="ttext"></span></div>
         <div class="desc"></div>
         <div class="sub">
           <span class="route"></span>
@@ -201,6 +212,18 @@
         t.className = "task";
         t.textContent = " : " + s.task;
         proj.appendChild(t);
+      }
+      const turn = el.querySelector(".turn");
+      const lt = s.latest_turn;
+      if (lt && lt.text) {
+        const glyph = lt.role === "human" ? "›" : "↳";
+        const g = turn.querySelector(".tglyph"), t = turn.querySelector(".ttext");
+        if (g.textContent !== glyph) g.textContent = glyph;
+        if (t.textContent !== lt.text) t.textContent = lt.text;
+        turn.dataset.role = lt.role || "";
+        turn.hidden = false;
+      } else {
+        turn.hidden = true;
       }
       setText(el, ".desc", s.description);
       setText(el, ".route", s.route ? "[" + s.route + "]" : "");

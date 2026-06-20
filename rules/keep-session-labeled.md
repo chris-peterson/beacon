@@ -1,8 +1,8 @@
 # Keep this session's beacon work label current
 
-beacon shows every concurrent Claude Code session in one fleet view — `beacon wip`, or the dashboard `beacon serve` opens at `http://127.0.0.1:8787/`. A session is only as useful there as its label. The hooks already set the fields they can observe on any platform: the project, the git branch, and the ready / busy / blocked status color. What they can't observe is *what this session is actually working on*. Keep that current so a glance at the fleet tells the user which window is doing what — without them having to ask you to label it.
+beacon shows every concurrent Claude Code session in one fleet view — `beacon wip`, or the dashboard `beacon serve` opens at `http://127.0.0.1:8787/`. A session is only as useful there as its label. The hooks already set the fields they can observe on any platform: the project, the git branch, the ready / busy / blocked status color, and the most recent turn (the `latest_turn` play-by-play, derived from the transcript with no help from you). What they can't observe is *the durable headline* — the unit of work this session is on, which outlives any single turn. Keep that current so a glance at the fleet tells the user which window is doing what — without them having to ask you to label it.
 
-- When the focus of your work becomes clear or **meaningfully shifts** — a new feature, bug, file, or phase — set the work label:
+- `task` is the headline, not a turn-by-turn log — `latest_turn` already carries the play-by-play. When the focus of your work becomes clear or **meaningfully shifts** — a new feature, bug, file, or phase — set the work label:
 
   ```bash
   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" set task "<short phrase>"

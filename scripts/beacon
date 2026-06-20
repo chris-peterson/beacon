@@ -1167,11 +1167,20 @@ def _resolve_session(sh: str, session_index: dict | None = None,
             except (ValueError, TypeError):
                 task = None
 
+    lt_raw = _read_state_for(sh, "latest_turn")
+    latest_turn = None
+    if lt_raw:
+        try:
+            latest_turn = json.loads(lt_raw)
+        except (ValueError, TypeError):
+            latest_turn = None
+
     return {
         "session": claude_session,
         "hash": sh,
         "project": project,
         "task": task or None,
+        "latest_turn": latest_turn,
         "route": route,
         "route_group": route_group,
         "tacks": tacks,
@@ -2798,6 +2807,68 @@ def cmd_resume(_args):
     render()
 
 
+# Trailing bytes of the transcript to scan for the last assistant turn. The
+# newest message sits at EOF, so a bounded tail finds it without reading a
+# multi-MB session front-to-back on every Stop hook.
+_TRANSCRIPT_TAIL_BYTES = 65536
+
+# Upper bound on a stored turn excerpt — purely to keep the wip.json payload
+# small. Visual truncation (the trailing ellipsis) is the dashboard's job
+# (WIP-11); this never decides where the "…" lands.
+TURN_EXCERPT_MAX = 240
+
+# Leading block-level markdown markers (heading, blockquote, list bullet,
+# ordered-list number) stripped from a turn's first line so the excerpt reads
+# as prose. Inline emphasis is left alone — stripping it mangles code snippets.
+_MD_PREFIX_RE = re.compile(r"^(?:[#>]+\s+|[-*+]\s+|\d+[.)]\s+)+")
+
+
+def _tail_text(p: Path, max_bytes: int = _TRANSCRIPT_TAIL_BYTES) -> str:
+    """Trailing `max_bytes` of a file as text, with a leading partial line
+    dropped so JSONL parsing starts on a clean record boundary."""
+    try:
+        size = p.stat().st_size
+        with p.open("rb") as f:
+            if size > max_bytes:
+                f.seek(size - max_bytes)
+            data = f.read()
+    except OSError:
+        return ""
+    chunk = data.decode("utf-8", errors="replace")
+    if size > max_bytes:
+        nl = chunk.find("\n")
+        chunk = chunk[nl + 1:] if nl != -1 else chunk
+    return chunk
+
+
+def _excerpt(text: str | None) -> str:
+    """Collapse a turn's text to one scannable line for the fleet view: first
+    non-empty line, leading markdown markers stripped, whitespace collapsed,
+    capped at TURN_EXCERPT_MAX. The cap bounds the payload, not the display —
+    the dashboard ellipsizes to the card width (WIP-11)."""
+    if not text:
+        return ""
+    for raw in text.splitlines():
+        s = raw.strip()
+        if s:
+            line = _MD_PREFIX_RE.sub("", s)
+            return re.sub(r"\s+", " ", line).strip()[:TURN_EXCERPT_MAX]
+    return ""
+
+
+def _write_latest_turn(role: str, text: str | None) -> None:
+    """Persist the session's most recent turn (WIP-11) as JSON for the fleet
+    view. Written at hook time so the cross-session scan never touches a
+    transcript. A turn with no usable text (e.g. a pure tool_use turn) leaves
+    the prior value in place rather than blanking the signal."""
+    excerpt = _excerpt(text)
+    if not excerpt:
+        return
+    write_state("latest_turn", json.dumps(
+        {"role": role, "text": excerpt, "at": _iso(time.time())}
+    ))
+
+
 def _last_assistant_text() -> str | None:
     """Tail of the most recent assistant message text in this session's
     transcript. Returns None when no transcript is known or no assistant
@@ -2805,7 +2876,8 @@ def _last_assistant_text() -> str | None:
     Claude Code conversation event. Assistant entries carry message.content
     as either a string or a list of content blocks; we want the trailing
     text block of the last assistant entry that has any text (skipping
-    pure tool_use turns)."""
+    pure tool_use turns). Only the trailing tail is scanned — the newest
+    message is at EOF."""
     path = read_state("transcript_path")
     if not path:
         return None
@@ -2814,27 +2886,26 @@ def _last_assistant_text() -> str | None:
         return None
     try:
         last_text = None
-        with p.open() as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except Exception:
-                    continue
-                if obj.get("type") != "assistant":
-                    continue
-                content = (obj.get("message") or {}).get("content")
-                if isinstance(content, str):
-                    if content.strip():
-                        last_text = content
-                elif isinstance(content, list):
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            t = (block.get("text") or "").strip()
-                            if t:
-                                last_text = t
+        for line in _tail_text(p).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if obj.get("type") != "assistant":
+                continue
+            content = (obj.get("message") or {}).get("content")
+            if isinstance(content, str):
+                if content.strip():
+                    last_text = content
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        t = (block.get("text") or "").strip()
+                        if t:
+                            last_text = t
         return last_text
     except Exception:
         return None
@@ -2874,6 +2945,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("override.icon")
     remove_state("signal.status")
     remove_state("pending-attention")
+    remove_state("latest_turn")
     _clear_description()
 
 
@@ -3167,6 +3239,7 @@ def cmd_hook(args):
 
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
+        _write_latest_turn("human", prompt_text)
         if prompt_text and PAUSE_RE.match(prompt_text):
             # NL pause-intent: the prompt itself becomes the description.
             # Don't touch signal.status — _apply_status writes override.status=paused.
@@ -3205,6 +3278,7 @@ def cmd_hook(args):
         # the anchor is fixed for the session even as chip values evolve.
         cwd_str = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
         _publish_chips(Path(cwd_str))
+        _write_latest_turn("agent", _last_assistant_text())
 
     elif event == "Notification":
         write_state("signal.status", "waiting")

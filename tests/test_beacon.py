@@ -564,6 +564,89 @@ class SessionAnchor(BeaconTest):
         self.assertIsNone(self.beacon.read_state("anchor.icon"))
 
 
+class LatestTurn(BeaconTest):
+    """WIP-11: latest_turn is auto-derived at hook time from observable events
+    — the submitted prompt (human) and the last assistant text (agent) — with
+    no agent cooperation, and cleared on a fresh start."""
+
+    def _fire(self, event: str, payload: dict):
+        args = mock.Mock(event=event, type=None)
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def _turn(self):
+        raw = self.beacon.read_state("latest_turn")
+        return json.loads(raw) if raw else None
+
+    def test_user_prompt_records_human_turn(self):
+        self._fire("UserPromptSubmit", {"prompt": "fix the flaky test"})
+        t = self._turn()
+        self.assertEqual(t["role"], "human")
+        self.assertEqual(t["text"], "fix the flaky test")
+        self.assertIn("at", t)
+
+    def test_stop_records_agent_turn_from_transcript(self):
+        with mock.patch.object(self.beacon, "_publish_chips"), \
+                mock.patch.object(self.beacon, "_last_assistant_text",
+                                  return_value="Done — all green."):
+            self._fire("Stop", {})
+        t = self._turn()
+        self.assertEqual(t["role"], "agent")
+        self.assertEqual(t["text"], "Done — all green.")
+
+    def test_empty_turn_leaves_prior_value(self):
+        # A pure tool-use turn yields no assistant text; the prior turn stands
+        # rather than the signal blanking.
+        self._fire("UserPromptSubmit", {"prompt": "go"})
+        with mock.patch.object(self.beacon, "_publish_chips"), \
+                mock.patch.object(self.beacon, "_last_assistant_text", return_value=None):
+            self._fire("Stop", {})
+        self.assertEqual(self._turn()["text"], "go")
+
+    def test_fresh_start_clears_latest_turn(self):
+        self.beacon.write_state("latest_turn", json.dumps(
+            {"role": "agent", "text": "stale", "at": "x"}))
+        with mock.patch.object(self.beacon, "_publish_chips"):
+            self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
+        self.assertIsNone(self.beacon.read_state("latest_turn"))
+
+
+class ExcerptHelper(BeaconTest):
+    """_excerpt: the single-line, payload-bounded turn excerpt (WIP-11).
+    Display truncation is the dashboard's job, so this only normalizes text."""
+
+    def test_first_nonempty_line(self):
+        self.assertEqual(self.beacon._excerpt("\n\nfirst line\nsecond"), "first line")
+
+    def test_strips_leading_markdown_markers(self):
+        self.assertEqual(self.beacon._excerpt("## Heading here"), "Heading here")
+        self.assertEqual(self.beacon._excerpt("- a bullet"), "a bullet")
+        self.assertEqual(self.beacon._excerpt("> quoted"), "quoted")
+        self.assertEqual(self.beacon._excerpt("1. step one"), "step one")
+
+    def test_collapses_whitespace_and_caps_length(self):
+        out = self.beacon._excerpt("word  \t " * 100)
+        self.assertLessEqual(len(out), self.beacon.TURN_EXCERPT_MAX)
+        self.assertNotIn("  ", out)
+
+    def test_empty_for_blank_input(self):
+        self.assertEqual(self.beacon._excerpt(""), "")
+        self.assertEqual(self.beacon._excerpt(None), "")
+        self.assertEqual(self.beacon._excerpt("   \n  "), "")
+
+    def test_last_assistant_text_found_in_large_transcript_tail(self):
+        # A transcript larger than the tail window: the newest assistant reply
+        # sits at EOF and is still found, proving the bounded tail read.
+        tpath = self.data_dir / "transcript.jsonl"
+        filler = json.dumps({"type": "user", "message": {"content": "x" * 1000}})
+        lines = [filler] * 100  # ~100 KB, exceeds _TRANSCRIPT_TAIL_BYTES
+        lines.append(json.dumps({"type": "assistant",
+                                 "message": {"content": [{"type": "text", "text": "newest reply"}]}}))
+        tpath.write_text("\n".join(lines) + "\n")
+        self.beacon.write_state("transcript_path", str(tpath))
+        self.assertEqual(self.beacon._last_assistant_text(), "newest reply")
+
+
 class SessionEndDisengages(BeaconTest):
     """HOOK-09: when a session ends, the pane is no longer managed, so the
     plugin disengages (BADGE-14) — blanks the badge user vars, reverts color,

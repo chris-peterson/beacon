@@ -35,6 +35,7 @@ import re
 import shutil
 import threading
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -48,31 +49,39 @@ HOME = Path.home()
 SESSIONS = [
     dict(project="checkout-api", task="idempotency keys for refunds", status="working",
          age=3, route=("checkout", "payments"),
-         desc="stripe webhook retries were double-charging"),
+         desc="stripe webhook retries were double-charging",
+         turn=("agent", "Added the idempotency-key column and a unique index; wiring the refund handler to look it up before charging")),
     dict(project="checkout-api", task="rebase on main", status="waiting",
          age=95, route=("checkout", "payments"),
-         desc="merge conflict in the refund handler — needs you"),
+         desc="merge conflict in the refund handler — needs you",
+         turn=("agent", "Hit a conflict in refund_handler.py between your idempotency change and main's retry backoff — which side wins?")),
     dict(project="ledger-svc", task="double-entry migration", status="working",
-         age=240, route=("ledger", "payments")),
+         age=240, route=("ledger", "payments"),
+         turn=("human", "make sure the backfill is idempotent — it'll get re-run")),
     dict(project="storefront-web", task="PDP gallery redesign", status="idle",
          age=720, route=("storefront", "web"),
          desc="waiting on the Figma handoff"),
     dict(project="storefront-web", task="a/b test cleanup", status="working",
-         age=480, route=("storefront", "web")),
+         age=480, route=("storefront", "web"),
+         turn=("agent", "Removed the three expired experiment flags and their dead branches")),
     dict(project="search-indexer", task="embedding reindex", status="working",
-         age=1500, route=("search", "discovery")),
+         age=1500, route=("search", "discovery"),
+         turn=("agent", "Reindexing batch 14 of 60 — throughput is holding at ~8k docs/s")),
     dict(project="mobile-ios", task="deep-link QA", status="idle", age=2400),
     dict(project="data-pipeline", task="backfill stuck on warehouse quota",
          status="waiting", age=3600,
-         desc="bigquery slot exhaustion — escalated to data-platform"),
+         desc="bigquery slot exhaustion — escalated to data-platform",
+         turn=("human", "can you bump the slot reservation or do we need to wait?")),
     dict(project="auth-svc", task="passkey rollout", status="working",
-         age=300, route=("auth", "platform")),
+         age=300, route=("auth", "platform"),
+         turn=("agent", "Conditional-UI autofill works in Safari and Chrome; testing the Firefox fallback now")),
     dict(project="infra-terraform", task="vpc peering to the new region",
          status="paused", age=18000,
          desc="parked on a netops change ticket"),
     dict(project="notifications", task="digest email templates", status="idle", age=900),
     dict(project="analytics-dbt", task="revenue model v2", status="working",
-         age=160, route=("analytics", "discovery")),
+         age=160, route=("analytics", "discovery"),
+         turn=("agent", "Rebuilt the revenue mart; reconciling the v1/v2 totals — off by $1.2k in deferred revenue")),
 ]
 
 # Next state for a session the sim picks (waiting sessions are sticky — only a
@@ -140,6 +149,12 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
             _write(state / f"{sh}.override.task", s["task"], mt)
         if s.get("desc"):
             _write(state / f"{sh}.description", s["desc"], mt)
+        if s.get("turn"):
+            role, text = s["turn"]
+            _write(state / f"{sh}.latest_turn",
+                   json.dumps({"role": role, "text": text,
+                               "at": datetime.fromtimestamp(mt, timezone.utc).isoformat()}),
+                   mt)
         if s["status"] == "waiting":  # waiting-only markers: ring + clickable handle
             _write(state / f"{sh}.pending-attention", "permission", mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
