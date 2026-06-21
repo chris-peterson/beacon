@@ -1,6 +1,6 @@
 # beacon
 
-At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus per-pane painting in iTerm2.
+At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.
 
 **[Read the docs](https://chris-peterson.github.io/beacon/)** for install, usage, and the full behavioral spec.
 
@@ -15,7 +15,7 @@ git clone https://github.com/chris-peterson/beacon ~/src/beacon
 python3 ~/src/beacon/scripts/beacon install
 ```
 
-This wires up the shell side just like `/beacon install`, but pointed at your clone. To get the plugin side (slash command, hooks, skill) loaded into Claude Code, use the marketplace install path — `claude --plugin-dir` may not register hooks reliably across versions.
+This wires up the shell side just like `/beacon:beacon install`, but pointed at your clone. To get the plugin side (slash command, hooks, skill) loaded into Claude Code, use the marketplace install path — `claude --plugin-dir` may not register hooks reliably across versions.
 
 ## Dependencies
 

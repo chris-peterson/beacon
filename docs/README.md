@@ -46,7 +46,7 @@ Each session record carries an `icon` field so a dashboard can show the project'
 
 ## Always-on serve service (optional)
 
-If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon install`:
+If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon:beacon install`:
 
 ```bash
 beacon serve install      # launchd agent (macOS) / systemd user unit (Linux)
@@ -84,10 +84,10 @@ claude plugin install beacon@chris-peterson
 Then, inside a Claude Code session, bootstrap everything around the plugin:
 
 ```text
-/beacon install
+/beacon:beacon install
 ```
 
-The first two commands install the Claude plugin (hooks, slash command, skill, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon install` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion.
+The first two commands install the Claude plugin (hooks, slash command, skill, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon:beacon install` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion.
 
 On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profile (status bar + badge sizing). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
 
@@ -105,8 +105,8 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red when Claude is blocked on you (a permission or idle prompt)
-- `/beacon pause "checking lunch options"` flips the badge to gray; the note shows in the fleet dashboard, and sending the next prompt clears both
-- `/beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
+- `/beacon:pause "checking lunch options"` flips the badge to gray; the note shows in the fleet dashboard, and sending the next prompt clears both
+- `/beacon:beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
 
@@ -117,11 +117,11 @@ Labeling a pane and scanning the fleet, in motion:
 Inside Claude Code:
 
 ```text
-/beacon                                    # show resolved state (default)
-/beacon status waiting "bg refresh"        # set status with a description
-/beacon pause "leaving for lunch"          # shorthand for `status paused …`
-/beacon resume                             # clear all overrides + description
-/beacon clear status                       # clear just the status override
+/beacon:beacon                             # show resolved state (default)
+/beacon:beacon status waiting "bg refresh" # set status with a description
+/beacon:pause "leaving for lunch"          # shorthand for `status paused …`
+/beacon:beacon resume                      # clear all overrides + description
+/beacon:beacon clear status                # clear just the status override
 ```
 
 At the shell:
