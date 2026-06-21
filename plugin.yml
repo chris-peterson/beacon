@@ -21,6 +21,9 @@ suite:
   ac: "--orient"
   cli: true
   group: keep your bearings
+  # Optional runtime integration (authority: claude-marketplace docs/relationships.md):
+  # beacon shells out to tack to resolve the branch's CR/PR URL for the badge link.
+  soft_deps: [tack]
   # The plugin's docs site renders the live session preview, so the hub hands
   # its drill-in off to the spoke rather than showing the in-hub detail view.
   spoke: true
