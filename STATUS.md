@@ -3,24 +3,28 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-06-20
+**Last audit:** 2026-06-22
 **Spec version:** v1 (root-level, `docs/spec.md`)
 **Plugin version:** 1.9.0
-**Coverage:** 132 Covered, 0 Partial, 0 Missing/Contradicts.
+**Coverage:** 137 Covered, 0 Partial, 0 Missing/Contradicts.
 
-Status (`signal.status`) has four values — `idle`, `working`, `waiting`,
-`paused` — mapping to three logical badge color states (`ready` / `busy` /
-`blocked`), with `paused` adding a de-emphasized gray. Pause is a status value,
-not a separate concept (STATE).
+Status (`signal.status`) has five values — `idle`, `working`, `waiting`,
+`paused`, `wrapping`. The first three map to the `ready` / `busy` / `blocked`
+traffic light; `paused` and `wrapping` are **mode states** — each a de-emphasized
+badge color plus a dedicated dynamic profile (background) it swaps into (RENDER-05).
+Pause is a status value, not a separate concept (STATE).
 
 **1.0 pivot (landed).** The 1.0 spec retired the iTerm2 marginalia overlay, the
 `!` / `?` watermarks, the per-state dynamic profiles, `exclusive-configuration`,
 and all background-image machinery, and added dashboard-driven session focus
 (FOCUS, CLI-17). The code has converged: `focus` ships (`bin/beacon-iterm
 focus`, the `POST /focus` route, the recorded `iterm_session_id` handle), color
-is OSC `badge-color` / `tab-color` on the single base `beacon` profile switched
+is OSC `badge-color` / `tab-color` on the base `beacon` profile switched
 in via `set-profile`, and the retired surfaces are gone — `install_dynamic_profile`
-sweeps the per-state profiles a pre-1.0 install left behind.
+sweeps the per-state profiles a pre-1.0 install left behind. A bounded set of
+per-state profiles returns by design — the **mode profiles** (`beacon-paused`,
+`beacon-wrapping`): a mode state swaps into its profile for a background a color
+OSC can't express (RENDER-05); ready/busy/blocked stay OSC overlays on the base.
 
 ## Status by category
 
@@ -32,30 +36,44 @@ sweeps the per-state profiles a pre-1.0 install left behind.
 | PROV-08 | 1 | Covered | `icon` chain: override → discovered project favicon (`_discover_icon_at`), anchored at SessionStart |
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09 | 11 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-09 disengages the pane on SessionEnd |
 | OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
-| STATE-01..07 (incl. 04a) | 8 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree` |
+| STATE-01..08 (incl. 04a) | 9 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree`; STATE-08 is the `wrap` synonym for `status wrapping` (persists, no freeze, no auto-resume) |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
-| CMD-01..09, 13..18 (gap 10, 11; CMD-12 retired) | 15 | All Covered | CMD-08 install runs only the terminal-agnostic steps + the base dynamic profile; CMD-18 is the dedicated `/beacon:pause` shim (`commands/pause.md`, no model pin) |
-| WIP-01..11 | 11 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard |
+| CMD-01..09, 13..19 (gap 10, 11; CMD-12 retired) | 16 | All Covered | CMD-08 install writes the base + mode dynamic profiles; CMD-18 is the dedicated `/beacon:pause` shim (`commands/pause.md`, no model pin); CMD-19 is the `/beacon:wrap` shim (`commands/wrap.md`) |
+| WIP-01..12 | 12 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12 prefixes a paused session's reason with the `||` glyph in the human table, `watch`, and the dashboard |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
-| BADGE-01..10, 12..14 (incl. 09a; gap 11; BADGE-15 retired) | 14 | All Covered | Badge text + color + engagement; watermark removed |
-| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base profile) |
-| RENDER-01..04 | 4 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the single base profile, no per-state swap |
+| BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-11 prefixes the badge text with the `||` pause glyph while paused |
+| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles) |
+| RENDER-01..05 | 5 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base profile for ready/busy/blocked; RENDER-05: mode states (`paused`, `wrapping`) swap into a dedicated profile (de-emphasized background, paused also a faint `\|\|` image) and re-emit the wiped OSC; the `MODE_PROFILES` table owns the mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
 | THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed) |
 | NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus` |
 
-Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no BADGE-11, no
+Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no
 STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 (`exclusive-configuration`), CLI-04/05/15 (`bg-image` / `note` /
 `clear-screen`), BADGE-15 (watermark), NFR-02 (overlay caching), and the entire
 OVERLAY namespace — are removed, not missing coverage.
 
 ## Audit history
+
+### 2026-06-22 — Mode profiles: paused background + `||` glyph + wrapping (new-feature)
+
++5 IDs. Background-on-pause family: RENDER-05 (a **mode state** owns a dedicated
+dynamic profile — `MODE_PROFILES` — for a background a color OSC can't set; the
+swap re-emits the badge format, user vars, and badge/tab color it wipes), BADGE-11
+(the `||` pause glyph prefixes the badge text while paused), WIP-12 (the same glyph
+prefixes the paused reason across the human table, `watch`, and the dashboard).
+New `wrapping` mode (post-work follow-up / retro): STATE-08 (`wrap` synonym, persists,
+no freeze, no auto-resume) and CMD-19 (`/beacon:wrap` shim). `paused` gains a muted
+purple background `#3c3357` + a faint `||` background image (`iterm/paused-bg.png`);
+`wrapping` is a muted green `#2c4636` with a teal-green badge `#34c79d`. §4.1's
+do-not-paint list now scopes the background (color + image) as a mode-only exception.
+132 → 137 Covered.
 
 ### 2026-06-20 — Coverage refresh (spec-status)
 

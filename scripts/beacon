@@ -10,6 +10,7 @@ only writer to iTerm2. Status carries an optional free-text description
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -197,13 +198,13 @@ PAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 
-VALID_STATUSES = {"idle", "working", "waiting", "paused"}
+VALID_STATUSES = {"idle", "working", "waiting", "paused", "wrapping"}
 VALID_FIELDS = ("project", "task", "status", "url")
 
 # Shell-native completion script — installed by `beacon completions zsh`.
 ZSH_COMPLETION = r"""#compdef beacon
 
-_beacon_statuses() { compadd idle working waiting paused }
+_beacon_statuses() { compadd idle working waiting paused wrapping }
 _beacon_fields()   { compadd project task status url }
 
 _beacon() {
@@ -216,6 +217,7 @@ _beacon() {
     'icon:set the session icon override (local path or http(s) URL); no value clears it'
     'clear:clear one or all overrides'
     'pause:set status=paused with optional description'
+    'wrap:set status=wrapping (post-work follow-up/retro) with optional description'
     'resume:clear all overrides (full reset to provider chain)'
     'reset:clear all per-session state'
     'render:re-render current state'
@@ -258,7 +260,7 @@ _beacon() {
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    pause)
+    pause|wrap)
       (( CURRENT == 3 )) && _message 'description (optional)'
       ;;
     wip)
@@ -292,26 +294,63 @@ _beacon "$@"
 # Logical status states → badge color hex (no leading #). Logical names are
 # the contract (BADGE-09, BADGE-10); hex values come from the Dracula palette
 # (THEME-01, THEME-02) and are tunable here without touching call sites.
-# `paused` is de-emphasized (Dracula comment) so a parked session reads
-# distinct from one blocked on the user (BADGE-10).
+# `paused` / `wrapping` are de-emphasized mode colors, distinct from the
+# ready / busy / blocked traffic light and from each other.
 BADGE_COLOR_PALETTE = {
     "ready":        "50fa7b",
     "busy":         "ffb86c",
     "blocked":      "ff5555",
     "paused":       "6272a4",
+    "wrapping":     "34c79d",
 }
 
 STATUS_TO_BADGE_STATE = {
-    "idle":    "ready",
-    "working": "busy",
-    "waiting": "blocked",
-    "paused":  "paused",
+    "idle":     "ready",
+    "working":  "busy",
+    "waiting":  "blocked",
+    "paused":   "paused",
+    "wrapping": "wrapping",
 }
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries ": <task>" when set, "" when absent (BADGE-03). Both writers
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
+
+BASE_PROFILE_NAME = "beacon"
+
+# Mode profiles (RENDER-05): user/session-set modes that own a dedicated dynamic
+# profile because their cue — a background color, optionally a faint background
+# image — can't be expressed by the badge-color OSC, which only sets the badge.
+# Entering or leaving a mode swaps the session's profile; ready / busy / blocked
+# stay OSC overlays on the base profile. Keyed by logical state (== the status
+# value that selects it). Each entry:
+#   profile    — the dynamic-profile name switched into via set-profile (CLI-14)
+#   guid       — fixed Guid so re-installs replace the profile in place
+#   background — de-emphasized pane background hex (no leading #)
+#   image      — optional faint background-image watermark (file under iterm/)
+#   blend      — iTerm2 Blend for that image (lower = fainter); None when no image
+# Hexes are tunable here without touching call sites (THEME-01).
+MODE_PROFILES = {
+    "paused": {
+        "profile": "beacon-paused",
+        "guid": "7f3d8a1c-2b6e-4c5a-9f01-3e8d4a2b6c5f",
+        "background": "3c3357",
+        "image": "paused-bg.png",
+        "blend": 0.35,
+    },
+    "wrapping": {
+        "profile": "beacon-wrapping",
+        "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
+        "background": "2c4636",
+        "image": None,
+        "blend": None,
+    },
+}
+
+# The pause glyph that anchors a parked session on the badge (BADGE-11) and in
+# the fleet view (WIP-12), independent of color. Literal two-bar `||`.
+PAUSE_GLYPH = "||"
 
 
 def session_hash() -> str:
@@ -1264,7 +1303,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     survivors = []
     for s in no_sid + list(newest_by_sid.values()):
         epoch = s["_epoch"]
-        if since_epoch is not None and epoch < since_epoch and s.get("state") != "paused":
+        if since_epoch is not None and epoch < since_epoch and s.get("state") not in MODE_PROFILES:
             continue
         survivors.append(s)
     # Phase B — fill the per-cwd git branch (and the branch-dependent route
@@ -1302,8 +1341,18 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
 
 
 _WIP_DOT_COLOR = {
-    "ready": "32", "busy": "33", "blocked": "31", "paused": "34",
+    "ready": "32", "busy": "33", "blocked": "31", "paused": "34", "wrapping": "36",
 }
+
+
+def _wip_reason_segment(state: str, reason: str) -> str:
+    """WIP-12: format a fleet-view reason segment. A paused row is anchored with
+    the `||` pause glyph — shown even when it carries no reason, so a parked
+    session always reads as parked independently of its color dot. Other rows
+    use a `—` lead-in, present only when there is a reason."""
+    if state == "paused":
+        return f"{PAUSE_GLYPH} {reason}".rstrip()
+    return f"— {reason}" if reason else ""
 
 
 def _fmt_age(secs: int | None) -> str:
@@ -1337,7 +1386,8 @@ def _print_wip_human(payload: dict) -> None:
             dot = _color(_WIP_DOT_COLOR.get(s["state"], "37"), "●")
             branch = f" ({s['branch']})" if s.get("branch") else ""
             first_line = s["description"].splitlines()[0] if s["description"] else ""
-            desc = f"  — {first_line}" if first_line else ""
+            seg = _wip_reason_segment(s["state"], first_line)
+            desc = f"  {seg}" if seg else ""
             # Current focus is the last bound tack (WIP-09); tag it
             # existing/emerging so a glance distinguishes resumed tracked work
             # from work spun up this session.
@@ -1403,6 +1453,7 @@ def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
             "age": _fmt_age(s["age_seconds"]),
             "route": "" if echoes_project else f"[{route_slug}]",
             "desc": s["description"].splitlines()[0] if s["description"] else "",
+            "state": s["state"],
         })
     namew = max(len(r["name"]) for r in rows)
     statusw = max(len(r["status"]) for r in rows)
@@ -1420,11 +1471,13 @@ def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
         if routew:
             cells += "  " + _color("2", r["route"].ljust(routew))
         desc = ""
-        if r["desc"]:
+        if r["desc"] or r["state"] == "paused":
             avail = cols - used - 4
             if avail > 1:
                 d = r["desc"] if len(r["desc"]) <= avail else r["desc"][: avail - 1] + "…"
-                desc = _color("2", f"  — {d}")
+                seg = _wip_reason_segment(r["state"], d)
+                if seg:
+                    desc = _color("2", f"  {seg}")
         lines.append(f"{r['dot']} {cells}{desc}")
     return lines
 
@@ -2446,10 +2499,29 @@ def _is_iterm_installed() -> bool:
         return False
 
 
+def _hex_to_color_components(hex_str: str) -> dict:
+    """Convert a 6-digit hex color (no leading #) to iTerm2's dynamic-profile
+    color dict — sRGB float components, opaque. Mirrors the float form the
+    base template uses for chip text (THEME-03), so a mode background stays
+    single-sourced from its MODE_PROFILES hex."""
+    r = int(hex_str[0:2], 16) / 255.0
+    g = int(hex_str[2:4], 16) / 255.0
+    b = int(hex_str[4:6], 16) / 255.0
+    return {
+        "Red Component": r,
+        "Green Component": g,
+        "Blue Component": b,
+        "Color Space": "sRGB",
+        "Alpha Component": 1.0,
+    }
+
+
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the single base beacon profile (status bar layout + badge sizing,
-    §6.6) into iTerm2's DynamicProfiles directory. iTerm2 watches the directory
-    and reloads on change without restart, so the write needs no quit.
+    """Write the base beacon profile (status bar layout + badge sizing, §6.6)
+    and one derived mode profile per MODE_PROFILES entry (beacon-paused,
+    beacon-wrapping; RENDER-05) into iTerm2's DynamicProfiles directory. iTerm2
+    watches the directory and reloads on change without restart, so the write
+    needs no quit.
 
     Substitutions in `iterm/profile.json.template`:
       __BEACON_SCRIPT__     — script path for the non-interactive coprocess
@@ -2483,6 +2555,35 @@ def install_dynamic_profile() -> tuple[bool, str]:
     except OSError as e:
         return False, f"failed to write {target}: {e}"
 
+    # Derive each mode profile from the just-rendered base (RENDER-05): same
+    # status-bar layout / badge sizing, differing only in a de-emphasized
+    # background (and, for paused, a faint background-image watermark). Deriving
+    # rather than hand-maintaining sibling templates keeps the layout
+    # single-sourced so the profiles never drift.
+    written = [str(target)]
+    try:
+        base_profile = json.loads(content)["Profiles"][0]
+    except (ValueError, KeyError, IndexError) as e:
+        return False, f"failed to parse base profile {target}: {e}"
+    for mode, spec in MODE_PROFILES.items():
+        mode_target = target_dir / f"{spec['profile']}.json"
+        try:
+            mode_profile = copy.deepcopy(base_profile)
+            mode_profile["Name"] = spec["profile"]
+            mode_profile["Guid"] = spec["guid"]
+            mode_profile["Background Color"] = _hex_to_color_components(spec["background"])
+            if spec["image"]:
+                # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
+                # asset stays centered and proportional on any pane size. Blend
+                # dials the watermark down so the background color still reads.
+                mode_profile["Background Image Location"] = str(PLUGIN_ROOT / "iterm" / spec["image"])
+                mode_profile["Background Image Mode"] = 3
+                mode_profile["Blend"] = spec["blend"]
+            mode_target.write_text(json.dumps({"Profiles": [mode_profile]}, indent=2))
+            written.append(str(mode_target))
+        except (OSError, ValueError, KeyError) as e:
+            return False, f"failed to write {mode_target}: {e}"
+
     # Sweep the retired per-state profiles (and the old drifted profile) so a
     # pre-1.0 upgrade stops loading them as orphaned rows in the UI.
     for retired in ("beacon-ready.json", "beacon-busy.json",
@@ -2493,7 +2594,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
         except OSError:
             pass
 
-    return True, f"wrote {target}"
+    return True, "wrote " + " + ".join(written)
 
 
 # --- apply ---
@@ -2531,19 +2632,28 @@ def remove_engagement_marker() -> None:
 
 def _logical_state_for(state: dict) -> str:
     """Resolve the logical color state per BADGE-09a precedence:
-    `status == paused` > `pending_attention` > `status` — pause is the
-    most explicit user intent, pending attention demands action, status
-    reflects what hooks have observed.
+    mode status (`paused` / `wrapping`) > `pending_attention` > `status` — an
+    explicit mode is the most deliberate user/session intent, pending attention
+    demands action, status reflects what hooks have observed.
 
-    - `paused` (BADGE-10): de-emphasized, distinct from waiting so a
-      parked session doesn't compete with one blocked on the user.
-    - `pending_attention` → `blocked` (red): a permission or idle prompt
-      both read as "needs the user"; beacon no longer distinguishes them."""
-    if state.get("status") == "paused":
-        return "paused"
+    - mode states (BADGE-10, RENDER-05): de-emphasized and each distinct, so a
+      parked or wrapping-up session doesn't compete with one blocked on the user.
+    - `pending_attention` → `blocked` (red): a permission or idle prompt both
+      read as "needs the user"; beacon no longer distinguishes them."""
+    status = state.get("status")
+    if status in MODE_PROFILES:
+        return status
     if state.get("pending_attention"):
         return "blocked"
-    return STATUS_TO_BADGE_STATE.get(state["status"], "ready")
+    return STATUS_TO_BADGE_STATE.get(status, "ready")
+
+
+def _badge_project_text(project: str, logical: str) -> str:
+    """BADGE-11: the badge text carries a leading `||` glyph while paused, as a
+    paused anchor that reads independently of color. Presentation-only — the
+    resolved snapshot keeps the raw project. Other modes (wrapping) carry their
+    cue in the profile/color, not the badge text."""
+    return f"{PAUSE_GLYPH} {project}" if logical == "paused" else project
 
 
 def apply(state: dict):
@@ -2554,37 +2664,46 @@ def apply(state: dict):
     # BADGE-14: marker presence is the shell snippet's engagement gate.
     place_engagement_marker()
 
-    # First render of this session: switch into the base beacon profile
-    # (status bar layout + badge sizing, §6.6) and set the badge format.
-    # set-profile must precede badge-format — SetProfile wipes session OSC
-    # overrides including SetBadgeFormat (§6.10 caveat). Subsequent renders
-    # skip both; the OSC color below layers on top of the profile.
-    if not prev:
-        _cli("set-profile", "beacon")
+    # BADGE-09 / -09a: resolve the logical color state, then the profile it
+    # implies. A mode state (paused / wrapping) owns a dedicated profile
+    # (RENDER-05): its background can't be expressed by the badge-color OSC, so
+    # it swaps profiles. Every other state is an OSC overlay on the base profile.
+    logical = _logical_state_for(state)
+    target_profile = (MODE_PROFILES[logical]["profile"]
+                      if logical in MODE_PROFILES else BASE_PROFILE_NAME)
+
+    # RENDER-05: switch profiles when the target changes — which also covers
+    # the first render (prev carries no profile). set-profile must precede the
+    # OSC below: SetProfile wipes the session's OSC overrides including
+    # SetBadgeFormat (§6.10), so a switch re-emits the badge format here and
+    # forces the user vars + badge/tab color further down.
+    switched = target_profile != prev.get("profile")
+    if switched:
+        _cli("set-profile", target_profile)
         _cli("badge-format", BADGE_FORMAT)
 
-    # BADGE-09 / -09a / RENDER-04: state color is a per-session OSC overlay on
-    # the single base profile — no per-state profile switch. Repaint badge and
-    # tab only when the logical state actually changed.
-    logical = _logical_state_for(state)
-    if logical != prev.get("logical_state"):
+    # RENDER-04: badge + tab color for the logical state. Repaint when the
+    # state changed, or unconditionally after a profile switch wiped the OSC.
+    if switched or logical != prev.get("logical_state"):
         hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["ready"])
         _cli("badge-color", hex_color)
         _cli("tab-color", hex_color)
 
-    # BADGE-02 / -12: plugin is sole writer of beacon_project. First render
-    # must publish or CLI engagement leaves the badge empty (the shell no
-    # longer republishes from cwd). SessionStart's _publish_anchor also
-    # publishes; the duplicate is harmless.
+    # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. Republish
+    # when the displayed value changed (raw project, or the `||` paused prefix
+    # appearing/clearing); a profile swap wiped the var, so restore a non-empty
+    # value — an empty one already matches the wiped slot.
     project_text = state["project"]
-    if prev.get("project") != project_text:
-        _cli("uservar", "beacon_project", project_text)
+    badge_project = _badge_project_text(project_text, logical)
+    prev_badge_project = _badge_project_text(prev.get("project", ""), prev.get("logical_state", ""))
+    if badge_project != prev_badge_project or (switched and badge_project):
+        _cli("uservar", "beacon_project", badge_project)
 
     # BADGE-03: the user-var value carries its own ": " separator so an
     # empty task collapses the slot without leaving a trailing colon on
-    # the badge.
+    # the badge. Same swap-restore rule as the project above.
     task_text = state["task"]
-    if prev.get("task") != task_text:
+    if task_text != prev.get("task") or (switched and task_text):
         _cli("uservar", "beacon_task", f": {task_text}" if task_text else "")
 
     snapshot = {
@@ -2594,6 +2713,7 @@ def apply(state: dict):
         "description": state.get("description", ""),
         "pending_attention": state.get("pending_attention", False),
         "logical_state": logical,
+        "profile": target_profile,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
 
@@ -2787,15 +2907,28 @@ def _apply_status(value: str, description: str) -> None:
         write_state("description", description)
 
 
+def _note_from(words) -> str:
+    """Join an argparse nargs list into a single trimmed note string."""
+    return " ".join(words).strip() if words else ""
+
+
 def cmd_status(args):
-    description = " ".join(args.description).strip() if args.description else ""
-    _apply_status(args.value, description)
+    _apply_status(args.value, _note_from(args.description))
     render()
 
 
 def cmd_pause(args):
-    note = " ".join(args.note).strip() if args.note else ""
-    _apply_status("paused", note)
+    _apply_status("paused", _note_from(args.note))
+    render()
+
+
+def cmd_wrap(args):
+    """Enter wrapping mode (RENDER-05): a post-work follow-up / retro phase a
+    session or skill declares. Unlike pause it does not freeze the badge
+    identity (the session is still active) and does not auto-resume on the next
+    prompt (STATE-04 is paused-only) — it persists until `resume` / `clear` or
+    the session ends."""
+    _apply_status("wrapping", _note_from(args.note))
     render()
 
 
@@ -3350,6 +3483,10 @@ def main(argv=None):
     sp = sub.add_parser("pause", help="set status=paused with optional description")
     sp.add_argument("note", nargs="*")
 
+    sp = sub.add_parser("wrap",
+                        help="set status=wrapping (post-work follow-up/retro) with optional description")
+    sp.add_argument("note", nargs="*")
+
     sub.add_parser("resume", help="clear all overrides (full reset to provider chain)")
     sub.add_parser("reset", help="clear all session state")
     sub.add_parser("render", help="re-render current state")
@@ -3430,7 +3567,7 @@ def main(argv=None):
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
         "status": cmd_status, "project": cmd_project, "icon": cmd_icon,
         "clear": cmd_clear,
-        "pause": cmd_pause, "resume": cmd_resume, "reset": cmd_reset,
+        "pause": cmd_pause, "wrap": cmd_wrap, "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,

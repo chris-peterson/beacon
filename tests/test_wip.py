@@ -583,6 +583,28 @@ class WatchViewTest(unittest.TestCase):
         self.assertIn("line one", row)
         self.assertNotIn("line two", row)
 
+    def test_paused_reason_carries_glyph(self):
+        # WIP-12: a paused row's reason is anchored with the || pause glyph.
+        row = self._body(self._rows([
+            self._session(state="paused", status="paused", description="stepping away"),
+        ], cols=200))[0]
+        self.assertIn("|| stepping away", row)
+
+    def test_paused_without_reason_still_anchored(self):
+        # WIP-12: the glyph shows even with no reason, so a parked session
+        # always reads as parked beyond its color dot.
+        row = self._body(self._rows([
+            self._session(state="paused", status="paused", description=""),
+        ], cols=200))[0]
+        self.assertIn("||", row)
+
+    def test_non_paused_uses_dash_not_glyph(self):
+        row = self._body(self._rows([
+            self._session(state="ready", description="working on it"),
+        ], cols=200))[0]
+        self.assertIn("— working on it", row)
+        self.assertNotIn("||", row)
+
     def test_supports_raw_false_without_termios(self):
         # A None entry in sys.modules makes `import termios` raise ImportError,
         # mirroring Windows where the module doesn't exist — watch then polls.

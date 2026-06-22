@@ -30,6 +30,7 @@
       --busy: #ffb86c;
       --blocked: #ff5555;
       --paused: #6272a4;
+      --wrapping: #34c79d;
       --radius: 0.6rem;
     }
     * { box-sizing: border-box; }
@@ -83,6 +84,7 @@
     .card.state-busy    { border-left-color: var(--busy); }
     .card.state-blocked { border-left-color: var(--blocked); }
     .card.state-paused  { border-left-color: var(--paused); }
+    .card.state-wrapping { border-left-color: var(--wrapping); }
     .card.attention { box-shadow: 0 0 0 1px var(--blocked); }
     .row { display: flex; align-items: center; gap: 0.5rem; }
     .dot {
@@ -93,6 +95,7 @@
     .state-busy    .dot { background: var(--busy); box-shadow: 0 0 6px var(--busy); }
     .state-blocked .dot { background: var(--blocked); box-shadow: 0 0 6px var(--blocked); }
     .state-paused  .dot { background: var(--paused); }
+    .state-wrapping .dot { background: var(--wrapping); box-shadow: 0 0 6px var(--wrapping); }
     .project {
       font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -153,7 +156,7 @@
     const grid = document.getElementById("grid");
     const cards = new Map(); // hash -> card element
 
-    const STATES = ["ready", "busy", "blocked", "paused"];
+    const STATES = ["ready", "busy", "blocked", "paused", "wrapping"];
 
     function fmtAge(s) {
       if (s == null) return "";
@@ -198,6 +201,14 @@
       node.hidden = !v;
     }
 
+    // WIP-12: a paused card's reason is anchored with the || pause glyph, shown
+    // even with no reason — mirrors the plugin's _wip_reason_segment.
+    function descText(state, description) {
+      const reason = description || "";
+      if (state !== "paused") return reason;
+      return reason ? "|| " + reason : "||";
+    }
+
     function updateCard(el, s) {
       el.classList.remove(...STATES.map((x) => "state-" + x));
       el.classList.add("state-" + (s.state || "paused"));
@@ -225,7 +236,7 @@
       } else {
         turn.hidden = true;
       }
-      setText(el, ".desc", s.description);
+      setText(el, ".desc", descText(s.state, s.description));
       setText(el, ".route", s.route ? "[" + s.route + "]" : "");
       setText(el, ".branch", s.branch);
       setText(el, ".status", s.status);
