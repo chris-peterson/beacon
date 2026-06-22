@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.10.0
+
+### Features
+- Paused sessions now dim the whole pane: the background switches to a muted
+  purple with a faint `||` watermark, so a parked pane is recognizable at a
+  glance — not just by its badge color. The `||` glyph also anchors the session
+  on the badge and in the fleet view (`wip` / `watch` / dashboard).
+- New `wrapping` mode for a post-work follow-up / retro phase. `beacon wrap
+  [note]` (or `/beacon:wrap`) gives the session a muted-green pane background
+  and a teal badge. Unlike pause, it persists until you `resume` or the session
+  ends.
+
+### Other
+- Both modes are delivered by dedicated iTerm2 dynamic profiles
+  (`beacon-paused`, `beacon-wrapping`) derived from the base profile at install,
+  so a mode can paint a pane background the badge-color signal can't express.
+
 ## 1.9.0
 
 Each fleet card now shows what a session is actually doing — not just its project and status — without relying on the agent to label itself.
