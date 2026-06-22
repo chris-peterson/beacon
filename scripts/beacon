@@ -2547,9 +2547,15 @@ def install_dynamic_profile() -> tuple[bool, str]:
 
     if not template.is_file():
         return False, f"profile template not found: {template}"
+    # The placeholders sit inside JSON string literals, so a path with
+    # backslashes (Windows) would otherwise emit invalid JSON escapes. Encode
+    # each value for string-literal context — json.dumps quotes and escapes,
+    # the slice drops the surrounding quotes the template already supplies.
+    def _json_inner(value: str) -> str:
+        return json.dumps(value)[1:-1]
     content = (template.read_text()
-               .replace("__BEACON_SCRIPT__", beacon_script)
-               .replace("__BEACON_CACHE_DIR__", str(CACHE_DIR)))
+               .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
+               .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
     try:
         target.write_text(content)
     except OSError as e:
