@@ -24,7 +24,7 @@ fp="${fp#"$root/"}"
 [ "$fp" = "scripts/beacon" ] || exit 0
 
 # Fire once per session to avoid reminder fatigue during batch edits.
-marker="/tmp/beacon-remind-completions-${CLAUDE_SESSION_ID:-$$}"
+marker="/tmp/beacon-remind-completions-${CLAUDE_CODE_SESSION_ID:-$$}"
 [ -f "$marker" ] && exit 0
 touch "$marker"
 
