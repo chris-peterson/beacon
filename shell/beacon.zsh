@@ -27,6 +27,18 @@ fi
 # wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 
+# tack's route directory, mirroring the plugin's `TACK_HOME or ~/.tack`
+# resolution (scripts/beacon) so a relocated tack home keeps the url-cache
+# signal correct. Each route lives at `<dir>/<slug>.yaml`; the precmd folds
+# the matching route file's mtime into the url cache key so a mid-session
+# tack write (which bumps that mtime) forces one re-resolve without a `cd`
+# or branch switch.
+typeset -g _BEACON_TACK_ROUTES="${TACK_HOME:-$HOME/.tack}/routes"
+
+# `zstat` for the per-prompt route-file mtime probe — a pure-zsh stat that
+# keeps the hot path free of an extra subprocess.
+zmodload -F zsh/stat b:zstat
+
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
 #
@@ -252,10 +264,20 @@ _beacon_precmd() {
   fi
 
   # URL resolution is heavier (python startup + possible tack subprocess).
-  # Only re-resolve when cwd or branch changed; otherwise the cached URL is
-  # still valid. Resolving here (before project_full publish) lets the chip
+  # Only re-resolve when the signal changed; otherwise the cached URL is still
+  # valid. Resolving here (before project_full publish) lets the chip
   # contextualize itself with the deliverable suffix via _beacon_deliverable_suffix.
-  local url_signal="${lp}@${b}"
+  #
+  # cwd and branch don't move when a deliverable/link is recorded on the route
+  # mid-session, but the route file's mtime does — every tack write bumps it.
+  # Folding that mtime into the key lets the badge upgrade to the route URL
+  # within one prompt cycle, while the heavy resolve still fires only on a real
+  # change. The route lives at `<routes>/<branch>.yaml` because the tack step
+  # matches the route slug to the branch, so this adds signal exactly where the
+  # tack step can produce a URL and is a no-op (empty mtime) elsewhere.
+  local tack_mtime=""
+  zstat -A tack_mtime +mtime -- "${_BEACON_TACK_ROUTES}/${b}.yaml" 2>/dev/null
+  local url_signal="${lp}@${b}@${tack_mtime[1]:-}"
   if [[ "$url_signal" != "$_BEACON_LAST_URL_SIGNAL" ]]; then
     local raw="$(_beacon_resolve_url)"
     _BEACON_RESOLVED_URL="${raw%%	*}"
