@@ -743,6 +743,40 @@ class SessionAnchor(BeaconTest):
         self.assertIsNone(self.beacon.read_state("anchor.icon"))
 
 
+class WebButtonHandoffFile(BeaconTest):
+    """Issue #5: the `↖ web` button reads `cache/url-<id>.txt`, a separate
+    source from the chip. The file must stay consistent with the resolved url
+    the chip shows, or the button drifts to its search-engine fallback while
+    the chip still reads the deliverable. `_publish_chips` is one writer of
+    that file; the shell precmd is the other (not unit-tested here)."""
+
+    def _publish(self, url: str):
+        with mock.patch.object(self.beacon, "resolve_url", return_value=(url, "")), \
+                mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+                mock.patch.object(self.beacon, "_detect_branch_info",
+                                  return_value=("feat", "clean", "")):
+            self.beacon._publish_chips(Path("/work/acme/widget"))
+
+    def _url_file(self):
+        return self.beacon.CACHE_DIR / "url-test-session.txt"
+
+    def test_handoff_file_matches_resolved_url(self):
+        url = "https://gitlab.com/acme/widget/-/merge_requests/3515"
+        self._publish(url)
+        self.assertEqual(self._url_file().read_text().strip(), url)
+
+    def test_deleted_file_is_rewritten_on_next_publish(self):
+        url = "https://gitlab.com/acme/widget/-/merge_requests/3515"
+        self._publish(url)
+        self._url_file().unlink()
+        # Each plugin hook runs as a fresh process, so the chip change-gate
+        # resets and the file is healed on the next invocation. Reset the
+        # in-process sentinel to model that fresh-process state.
+        self.beacon._LAST_CHIP_PAIRS = None
+        self._publish(url)
+        self.assertEqual(self._url_file().read_text().strip(), url)
+
+
 class LatestTurn(BeaconTest):
     """WIP-11: latest_turn is auto-derived at hook time from observable events
     — the submitted prompt (human) and the last assistant text (agent) — with

@@ -295,9 +295,20 @@ _beacon_precmd() {
 
   if [[ "$url" != "$_BEACON_LAST_URL" ]]; then
     "$_BEACON_ITERM" uservar beacon_url "$url"
-    _beacon_write_session_file url "$url"
     _BEACON_LAST_URL="$url"
   fi
+
+  # The handoff file the `↖ web` button reads is rewritten every prompt,
+  # ungated by the change sentinel above. The uservar publish can stay
+  # gated — it re-sends a value iTerm2 already holds — but the file is
+  # external state that a prune, a stale-id clobber, or a deleted cache can
+  # empty out from under us. Once that happens, the resolved url no longer
+  # changes, so a change-gated write never heals the file and the chip
+  # (which keeps its own resolved value) drifts from the button, which then
+  # falls back to its search-engine landing. The write is a local
+  # `print > file`, so refreshing it each prompt keeps the button reading
+  # the same url the chip shows.
+  _beacon_write_session_file url "$url"
 }
 
 _beacon_chpwd() {
