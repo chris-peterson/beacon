@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.1
+
+### Fixes
+- The `↖ web` button's per-session URL handoff file is now rewritten every prompt, so if it is emptied out-of-band (a cache prune, a deleted file, a stale-id clobber) the button heals within one prompt cycle instead of falling back to a search-engine landing while the status chip still shows the deliverable.
+- Paths substituted into the iTerm2 profile are now escaped, so a path with special characters no longer breaks the profile.
+- The shell-completions freshness reminder is now keyed on `CLAUDE_CODE_SESSION_ID`.
+
 ## 1.10.0
 
 ### Features
