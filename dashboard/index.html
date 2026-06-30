@@ -31,6 +31,7 @@
       --blocked: #ff5555;
       --paused: #6272a4;
       --wrapping: #34c79d;
+      --done: #8b78c4;
       --radius: 0.6rem;
     }
     * { box-sizing: border-box; }
@@ -85,6 +86,7 @@
     .card.state-blocked { border-left-color: var(--blocked); }
     .card.state-paused  { border-left-color: var(--paused); }
     .card.state-wrapping { border-left-color: var(--wrapping); }
+    .card.state-done    { border-left-color: var(--done); }
     .card.attention { box-shadow: 0 0 0 1px var(--blocked); }
     .row { display: flex; align-items: center; gap: 0.5rem; }
     .dot {
@@ -96,6 +98,7 @@
     .state-blocked .dot { background: var(--blocked); box-shadow: 0 0 6px var(--blocked); }
     .state-paused  .dot { background: var(--paused); }
     .state-wrapping .dot { background: var(--wrapping); box-shadow: 0 0 6px var(--wrapping); }
+    .state-done    .dot { background: var(--done); }
     .project {
       font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -156,7 +159,7 @@
     const grid = document.getElementById("grid");
     const cards = new Map(); // hash -> card element
 
-    const STATES = ["ready", "busy", "blocked", "paused", "wrapping"];
+    const STATES = ["ready", "busy", "blocked", "paused", "wrapping", "done"];
 
     function fmtAge(s) {
       if (s == null) return "";

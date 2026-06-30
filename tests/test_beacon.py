@@ -374,6 +374,56 @@ class WrappingMode(BeaconTest):
                          "wrapping is a deliberate mode — it persists until cleared")
 
 
+class DoneMode(BeaconTest):
+    """RENDER-05: done is the terminal "session complete, ready to hand off" mode
+    with its own profile (beacon-done, near-black "powered off"), set via `done`.
+    Like wrapping it freezes no identity, persists across a prompt, and carries no
+    badge text glyph — its cue is the powered-off profile background and color."""
+
+    def test_done_swaps_to_done_profile_and_color(self):
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+
+        self.beacon.apply({**_base_state(), "status": "done"})
+
+        self.assertIn(("set-profile", "beacon-done"), self.cli_calls,
+                      "entering done must swap into the beacon-done profile")
+        done_hex = self.beacon.BADGE_COLOR_PALETTE["done"]
+        self.assertIn(("badge-color", done_hex), self.cli_calls)
+        self.assertIn(("tab-color", done_hex), self.cli_calls)
+
+    def test_done_badge_has_no_glyph(self):
+        self.beacon.apply({**_base_state(), "status": "done"})
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_project"),
+            [("uservar", "beacon_project", "acme/widget")],
+            "done carries its cue in the profile/background, not a badge glyph",
+        )
+
+    def test_done_command_sets_status_without_freezing_identity(self):
+        # Like wrap (and unlike pause/STATE-03), done does not snapshot overrides.
+        self.beacon.write_state("resolved", json.dumps({
+            "project": "shown-proj", "project_provider": "git-remote",
+            "task": "shown-task", "task_provider": "pr",
+        }))
+        self.beacon.cmd_done(mock.Mock(note=["handing", "off"]))
+        self.assertEqual(self.beacon.read_state("override.status"), "done")
+        self.assertEqual(self.beacon.read_state("description"), "handing off")
+        self.assertIsNone(self.beacon.read_state("override.project"),
+                          "done must not freeze the badge identity (paused-only)")
+        self.assertIsNone(self.beacon.read_state("override.task"))
+
+    def test_done_persists_across_prompt(self):
+        # STATE-04 auto-resume is paused-only; a returning prompt must not clear
+        # done (a handed-off session stays complete until explicitly resumed).
+        self.beacon.write_state("override.status", "done")
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "one more thing"}))):
+            self.beacon.cmd_hook(args)
+        self.assertEqual(self.beacon.read_state("override.status"), "done",
+                         "done is a deliberate terminal mode — it persists until cleared")
+
+
 class ModeProfileDerivation(unittest.TestCase):
     """RENDER-05 / §6.6: install derives one mode profile per MODE_PROFILES entry
     from the rendered base — same layout, a de-emphasized Dracula background (and,
@@ -426,9 +476,11 @@ class ModeProfileDerivation(unittest.TestCase):
             else:
                 self.assertNotIn("Background Image Location", prof)
 
-    def test_paused_carries_image_wrapping_does_not(self):
-        # The faint || watermark is paused's "asleep" cue; wrapping is color-only.
+    def test_mode_images_match_their_cue(self):
+        # paused (|| watermark) and done (⏻ power-off watermark) carry an image;
+        # wrapping is color-only.
         self.assertTrue(self.beacon.MODE_PROFILES["paused"]["image"])
+        self.assertTrue(self.beacon.MODE_PROFILES["done"]["image"])
         self.assertIsNone(self.beacon.MODE_PROFILES["wrapping"]["image"])
 
 

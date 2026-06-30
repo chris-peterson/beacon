@@ -209,13 +209,13 @@ PAUSE_RE = re.compile(
 # reminder still counts as a turn.
 SYNTHETIC_PROMPT_RE = re.compile(r"^\s*<[a-z][a-z0-9-]*>")
 
-VALID_STATUSES = {"idle", "working", "waiting", "paused", "wrapping"}
+VALID_STATUSES = {"idle", "working", "waiting", "paused", "wrapping", "done"}
 VALID_FIELDS = ("project", "task", "status", "url")
 
 # Shell-native completion script — installed by `beacon completions zsh`.
 ZSH_COMPLETION = r"""#compdef beacon
 
-_beacon_statuses() { compadd idle working waiting paused wrapping }
+_beacon_statuses() { compadd idle working waiting paused wrapping done }
 _beacon_fields()   { compadd project task status url }
 
 _beacon() {
@@ -229,6 +229,7 @@ _beacon() {
     'clear:clear one or all overrides'
     'pause:set status=paused with optional description'
     'wrap:set status=wrapping (post-work follow-up/retro) with optional description'
+    'done:set status=done (session complete, ready to hand off) with optional description'
     'resume:clear all overrides (full reset to provider chain)'
     'reset:clear all per-session state'
     'render:re-render current state'
@@ -271,7 +272,7 @@ _beacon() {
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    pause|wrap)
+    pause|wrap|done)
       (( CURRENT == 3 )) && _message 'description (optional)'
       ;;
     wip)
@@ -305,7 +306,7 @@ _beacon "$@"
 # Logical status states → badge color hex (no leading #). Logical names are
 # the contract (BADGE-09, BADGE-10); hex values come from the Dracula palette
 # (THEME-01, THEME-02) and are tunable here without touching call sites.
-# `paused` / `wrapping` are de-emphasized mode colors, distinct from the
+# `paused` / `wrapping` / `done` are de-emphasized mode colors, distinct from the
 # ready / busy / blocked traffic light and from each other.
 BADGE_COLOR_PALETTE = {
     "ready":        "50fa7b",
@@ -313,6 +314,7 @@ BADGE_COLOR_PALETTE = {
     "blocked":      "ff5555",
     "paused":       "6272a4",
     "wrapping":     "34c79d",
+    "done":         "8b78c4",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -321,6 +323,7 @@ STATUS_TO_BADGE_STATE = {
     "waiting":  "blocked",
     "paused":   "paused",
     "wrapping": "wrapping",
+    "done":     "done",
 }
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
@@ -357,10 +360,23 @@ MODE_PROFILES = {
         "image": None,
         "blend": None,
     },
+    # `done` is the terminal "session complete, ready to hand off" mode (the
+    # counterpart a closing-out skill like retro reaches for instead of pause):
+    # a near-black "powered off" background with a faint power-symbol watermark,
+    # the dimmest of the three modes so a finished pane reads as lights-out.
+    "done": {
+        "profile": "beacon-done",
+        "guid": "b4e2f6a0-1c3d-4e5f-8a90-2b6c7d8e9f01",
+        "background": "1a1622",
+        "image": "done-bg.png",
+        "blend": 0.30,
+    },
 }
 
 # The pause glyph that anchors a parked session on the badge (BADGE-11) and in
-# the fleet view (WIP-12), independent of color. Literal two-bar `||`.
+# the fleet view (WIP-12), independent of color. Literal two-bar `||`. `done`
+# deliberately carries no text glyph (like `wrapping`) — its cue is the
+# powered-off profile background (with a faint `⏻` watermark) and badge color.
 PAUSE_GLYPH = "||"
 
 
@@ -1352,7 +1368,8 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
 
 
 _WIP_DOT_COLOR = {
-    "ready": "32", "busy": "33", "blocked": "31", "paused": "34", "wrapping": "36",
+    "ready": "32", "busy": "33", "blocked": "31",
+    "paused": "34", "wrapping": "36", "done": "35",
 }
 
 
@@ -2668,8 +2685,8 @@ def _logical_state_for(state: dict) -> str:
 def _badge_project_text(project: str, logical: str) -> str:
     """BADGE-11: the badge text carries a leading `||` glyph while paused, as a
     paused anchor that reads independently of color. Presentation-only — the
-    resolved snapshot keeps the raw project. Other modes (wrapping) carry their
-    cue in the profile/color, not the badge text."""
+    resolved snapshot keeps the raw project. Other modes (wrapping, done) carry
+    their cue in the profile/color, not the badge text."""
     return f"{PAUSE_GLYPH} {project}" if logical == "paused" else project
 
 
@@ -2946,6 +2963,18 @@ def cmd_wrap(args):
     prompt (STATE-04 is paused-only) — it persists until `resume` / `clear` or
     the session ends."""
     _apply_status("wrapping", _note_from(args.note))
+    render()
+
+
+def cmd_done(args):
+    """Enter done mode (RENDER-05): the session is complete and ready to hand off
+    to another. The terminal counterpart to `wrap` a closing-out skill (e.g.
+    retro) reaches for instead of `pause`. Like wrapping it does not freeze the
+    badge identity and does not auto-resume on the next prompt (STATE-04 is
+    paused-only) — it persists until `resume` / `clear` or the session ends. The
+    pane goes to the dimmest 'powered off' profile (near-black background with a
+    faint `⏻` power-symbol watermark); the badge carries no text glyph."""
+    _apply_status("done", _note_from(args.note))
     render()
 
 
@@ -3510,6 +3539,10 @@ def main(argv=None):
                         help="set status=wrapping (post-work follow-up/retro) with optional description")
     sp.add_argument("note", nargs="*")
 
+    sp = sub.add_parser("done",
+                        help="set status=done (session complete, ready to hand off) with optional description")
+    sp.add_argument("note", nargs="*")
+
     sub.add_parser("resume", help="clear all overrides (full reset to provider chain)")
     sub.add_parser("reset", help="clear all session state")
     sub.add_parser("render", help="re-render current state")
@@ -3590,7 +3623,8 @@ def main(argv=None):
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
         "status": cmd_status, "project": cmd_project, "icon": cmd_icon,
         "clear": cmd_clear,
-        "pause": cmd_pause, "wrap": cmd_wrap, "resume": cmd_resume, "reset": cmd_reset,
+        "pause": cmd_pause, "wrap": cmd_wrap, "done": cmd_done,
+        "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,

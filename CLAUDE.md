@@ -28,10 +28,10 @@ The CLI must remain unaware of Claude — it's usable from CI, ad-hoc terminal s
 
 Per docs/spec.md §4.1 — these and only these:
 
-- **Badge** — text (project, prefixed with `||` when paused per BADGE-11) + color (status-driven: ready / busy / blocked traffic light, plus the mode colors paused / wrapping), set via OSC on top of the active profile
+- **Badge** — text (project, prefixed with `||` when paused per BADGE-11; `done`/`wrapping` carry no badge glyph) + color (status-driven: ready / busy / blocked traffic light, plus the mode colors paused / wrapping / done), set via OSC on top of the active profile
 - **Status bar** — the beacon dynamic profile only (never the user's profile)
 - **Tab color** — mirrors the badge color (same logical state) on the tab strip; intended for tabs-not-panes workflows
-- **Pane background** — **mode states only** (`paused`, `wrapping`), and only by swapping into that mode's profile (RENDER-05), never an ad-hoc background OSC. Outside a mode, the background is the user's profile's.
+- **Pane background** — **mode states only** (`paused`, `wrapping`, `done`), and only by swapping into that mode's profile (RENDER-05), never an ad-hoc background OSC. Outside a mode, the background is the user's profile's.
 
 The session `description` is no longer painted on the pane — it surfaces in the fleet view (`wip` / `watch` / dashboard) as recall context, prefixed there with the same `||` glyph when paused (WIP-12).
 
@@ -41,7 +41,7 @@ beacon profiles also explicitly **disable** iTerm2's notification-center deliver
 
 ## Logical states are the contract
 
-Status maps to a logical color state (`ready` / `busy` / `blocked`, plus the mode states `paused` / `wrapping`) which then maps to hex. Two-step indirection is intentional — call sites speak in logical names so the palette can be tuned in one place. See `BADGE_COLOR_PALETTE` and `STATUS_TO_BADGE_STATE` in `scripts/beacon`. Mode states additionally map to a dedicated dynamic profile (background) via `MODE_PROFILES` — the same indirection, so call sites never name iTerm profiles.
+Status maps to a logical color state (`ready` / `busy` / `blocked`, plus the mode states `paused` / `wrapping` / `done`) which then maps to hex. Two-step indirection is intentional — call sites speak in logical names so the palette can be tuned in one place. See `BADGE_COLOR_PALETTE` and `STATUS_TO_BADGE_STATE` in `scripts/beacon`. Mode states additionally map to a dedicated dynamic profile (background) via `MODE_PROFILES` — the same indirection, so call sites never name iTerm profiles.
 
 ## State and cache locations
 
@@ -57,8 +57,8 @@ Session hash is SHA-1 (truncated) of the session seed: `$ITERM_SESSION_ID` on iT
 
 beacon makes **no** `defaults write com.googlecode.iterm2 ...` and is not iTerm2's default profile, so it sidesteps the plist-cache trap entirely (iTerm2 caches prefs in memory and clobbers any `defaults write` on quit). Instead:
 
-- The base `beacon` dynamic profile and one mode profile per `MODE_PROFILES` entry (`beacon-paused`, `beacon-wrapping`) live in `DynamicProfiles/`; iTerm2 watches the directory and reloads them live, so `install` needs no iTerm2 restart. Each mode profile is derived from the base at install time (same layout, de-emphasized background — paused also gets a faint `||` background image) so they never drift.
-- Each session is switched *into* the base profile at runtime via `set-profile` (OSC `SetProfile=`): the plugin at SessionStart, the shell snippet on source. Badge/tab color then layer on via OSC `SetColors=`. The per-state profiles are the **mode profiles** — a mode state (`paused`, `wrapping`) swaps into its profile for the background change a color OSC can't express (RENDER-05); ready/busy/blocked stay OSC overlays on the base. The logical-mode → profile mapping lives in `MODE_PROFILES`, so call sites never name iTerm profiles.
+- The base `beacon` dynamic profile and one mode profile per `MODE_PROFILES` entry (`beacon-paused`, `beacon-wrapping`, `beacon-done`) live in `DynamicProfiles/`; iTerm2 watches the directory and reloads them live, so `install` needs no iTerm2 restart. Each mode profile is derived from the base at install time (same layout, de-emphasized background — paused gets a faint `||` background image, done a faint `⏻` power-off one) so they never drift.
+- Each session is switched *into* the base profile at runtime via `set-profile` (OSC `SetProfile=`): the plugin at SessionStart, the shell snippet on source. Badge/tab color then layer on via OSC `SetColors=`. The per-state profiles are the **mode profiles** — a mode state (`paused`, `wrapping`, `done`) swaps into its profile for the background change a color OSC can't express (RENDER-05); ready/busy/blocked stay OSC overlays on the base. The logical-mode → profile mapping lives in `MODE_PROFILES`, so call sites never name iTerm profiles.
 - Because nothing requires an iTerm2-dead window, there is no `exclusive-configuration` command and no deferred-action install step.
 
 ## Session focus (FOCUS)

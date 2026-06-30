@@ -230,6 +230,20 @@ class WipTest(_WipBase):
         self.assertEqual(by_proj["parked-proj"]["state"], "paused")
         self.assertNotIn("stale-proj", by_proj)
 
+    def test_since_exempts_done_sessions(self):
+        # WIP-03: a done session is a mode state — deliberately set aside for
+        # handoff — so it too survives past the window, like paused.
+        old = time.time() - 86400 * 3
+        self._write("finished", "anchor.project", "done-proj", mtime=old)
+        self._write("finished", "override.status", "done", mtime=old)
+        self._write("stale", "anchor.project", "stale-proj", mtime=old)
+
+        cutoff = time.time() - 3600
+        by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
+        self.assertIn("done-proj", by_proj)
+        self.assertEqual(by_proj["done-proj"]["state"], "done")
+        self.assertNotIn("stale-proj", by_proj)
+
     def test_since_accepts_durations(self):
         now = time.time()
         self.assertAlmostEqual(self.beacon._parse_since("1d", True), now - 86400, delta=2)
