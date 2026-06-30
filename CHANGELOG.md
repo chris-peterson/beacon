@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.12.0
+
+### Features
+- Sessions can now be marked **done** — a "session complete, ready to hand off" mode for a session that has finished and delegated (e.g. a retro that stands down). The pane drops to a near-black "powered off" look with a faint power-symbol watermark and a dim purple badge. Set it with `beacon done [note]` or `/beacon:done`. Like `wrap`, it persists until you `resume`/`clear` rather than auto-resuming on the next prompt, and it stays pinned in the fleet view as deliberately set aside.
+
 ## 1.11.1
 
 ### Other
