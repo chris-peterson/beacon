@@ -1,6 +1,6 @@
 ---
 name: beacon
-description: Label sessions (project / task) and ensure the beacon CLI wrapper is fresh. Triggers when the user asks to label a pane or set a project/task, and on first invocation per session for the freshness check.
+description: Label a session's project/task on the iTerm2 badge, and check the beacon CLI wrapper is current on first use per session.
 ---
 
 # beacon — labeling and CLI freshness backstop
