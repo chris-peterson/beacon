@@ -1,6 +1,7 @@
 ---
 name: beacon
 description: Label a session's project/task on the iTerm2 badge, and check the beacon CLI wrapper is current on first use per session.
+disable-model-invocation: true
 ---
 
 # beacon — labeling and CLI freshness backstop

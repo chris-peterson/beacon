@@ -1,6 +1,7 @@
 ---
 description: Enter wrapup mode for this session — set status to wrapping (post-work follow-up/retro), with an optional note
 argument-hint: "[note]"
+disable-model-invocation: true
 ---
 
 Move this session's beacon into wrapup mode (post-work follow-up / retro). This is a fast, single-action wrapper — run the command below, then reply with one short line confirming it (echo the note if one was given). Do no other work: no preamble, no status checks, no follow-up suggestions.

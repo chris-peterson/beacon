@@ -1,6 +1,7 @@
 ---
 description: Pause this session's beacon — set status to paused, with an optional note
 argument-hint: "[note]"
+disable-model-invocation: true
 ---
 
 Park this session's beacon. This is a fast, single-action wrapper — run the command below, then reply with one short line confirming the pause (echo the note if one was given). Do no other work: no preamble, no status checks, no follow-up suggestions.
