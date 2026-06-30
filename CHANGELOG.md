@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.11.0
+
+### Fixes
+- Fleet view no longer shows a raw `<task-notification>` as a session's latest turn. Harness wake-ups (prompts that arrive with a leading angle-bracket tag) are skipped at UserPromptSubmit, so the play-by-play keeps showing the prior real turn; the status still flips to working.
+- Clicking a fleet-view card now focuses a session whose window was minimized to the Dock — the window is de-miniaturized before select/activate (a no-op when it wasn't minimized).
+
+### Other
+- Trimmed the `beacon` skill's `description` frontmatter to cut the always-resident context cost; the trigger enumeration is dropped in favor of one what/when sentence.
+
 ## 1.10.1
 
 ### Fixes
