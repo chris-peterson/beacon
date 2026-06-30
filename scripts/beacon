@@ -198,6 +198,17 @@ PAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Harness-injected prompts that aren't a human turn: a finished background task
+# waking the agent (<task-notification>), an out-of-band <system-reminder>, and
+# the like. They all arrive on UserPromptSubmit wrapped in an angle-bracket tag,
+# and a genuine human turn is prose or a /slash-command — never a leading tag
+# (slash commands reach the hook as plain "/cmd" text, per FRESH_START_RE). So
+# matching any leading XML-style tag, rather than a fixed allowlist, drops the
+# raw wrapper from latest_turn (WIP-11) and covers wrappers added later too.
+# Anchored at the start so a real prompt that merely *ends* with a trailing
+# reminder still counts as a turn.
+SYNTHETIC_PROMPT_RE = re.compile(r"^\s*<[a-z][a-z0-9-]*>")
+
 VALID_STATUSES = {"idle", "working", "waiting", "paused", "wrapping"}
 VALID_FIELDS = ("project", "task", "status", "url")
 
@@ -3378,7 +3389,13 @@ def cmd_hook(args):
 
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
-        _write_latest_turn("human", prompt_text)
+        # A <task-notification> (and kin) is the harness waking the agent to
+        # process finished background work, not a human turn — let the prior
+        # turn stand and the agent's next Stop overwrite it, rather than
+        # surfacing the raw tag as the latest turn. The status flip below still
+        # runs: the session is resuming work.
+        if not SYNTHETIC_PROMPT_RE.match(prompt_text):
+            _write_latest_turn("human", prompt_text)
         if prompt_text and PAUSE_RE.match(prompt_text):
             # NL pause-intent: the prompt itself becomes the description.
             # Don't touch signal.status — _apply_status writes override.status=paused.

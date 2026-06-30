@@ -160,7 +160,9 @@ def cmd_clear(_args):
 # Apple Events via osascript. The script captures the target with no side
 # effects and only then selects it — selecting a window mid-enumeration
 # reorders iTerm2's window list and invalidates the in-flight reference
-# (Invalid index -1719) on nested splits. Indented with spaces, not tabs:
+# (Invalid index -1719) on nested splits. A minimized window sits in the Dock
+# where select/activate can't reach it, so de-miniaturize the captured window
+# first (a no-op when it isn't minimized). Indented with spaces, not tabs:
 # AppleScript is whitespace-insensitive and spaces survive string embedding.
 _FOCUS_APPLESCRIPT = '''
 tell application "iTerm2"
@@ -183,6 +185,7 @@ tell application "iTerm2"
     if targetSession is not missing value then exit repeat
   end repeat
   if targetSession is missing value then error "no session" number 3
+  if miniaturized of targetWindow then set miniaturized of targetWindow to false
   select targetSession
   select targetTab
   select targetWindow

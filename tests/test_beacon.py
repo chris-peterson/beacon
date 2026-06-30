@@ -782,6 +782,38 @@ class LatestTurn(BeaconTest):
             self._fire("Stop", {})
         self.assertEqual(self._turn()["text"], "go")
 
+    def test_synthetic_prompt_leaves_prior_turn(self):
+        # Any leading angle-bracket tag is a harness wrapper (a finished
+        # background task waking the agent, a system reminder, or a wrapper
+        # added later) — not a human turn, so it must not clobber the latest
+        # turn with its raw tag; the prior turn stands.
+        for wrapper in (
+            "<task-notification>\nBackground task done</task-notification>",
+            "<system-reminder>some injected note</system-reminder>",
+            "<future-harness-tag>whatever</future-harness-tag>",
+        ):
+            with self.subTest(wrapper=wrapper):
+                self._fire("UserPromptSubmit", {"prompt": "deploy the service"})
+                self._fire("UserPromptSubmit", {"prompt": wrapper})
+                t = self._turn()
+                self.assertEqual(t["role"], "human")
+                self.assertEqual(t["text"], "deploy the service")
+
+    def test_real_prompt_is_not_treated_as_synthetic(self):
+        # The skip must not swallow genuine turns: prose and /slash-commands
+        # (which reach the hook as plain "/cmd" text) are real human turns and
+        # still register.
+        for prompt in ("fix the flaky test", "/commit the changes"):
+            with self.subTest(prompt=prompt):
+                self._fire("UserPromptSubmit", {"prompt": prompt})
+                self.assertEqual(self._turn()["text"], prompt)
+
+    def test_synthetic_prompt_still_resumes_working(self):
+        # Skipping the turn write doesn't skip the status flip: the session is
+        # resuming work, so the signal goes back to working.
+        self._fire("UserPromptSubmit", {"prompt": "<task-notification>done</task-notification>"})
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
     def test_fresh_start_clears_latest_turn(self):
         self.beacon.write_state("latest_turn", json.dumps(
             {"role": "agent", "text": "stale", "at": "x"}))
