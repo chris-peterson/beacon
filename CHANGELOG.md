@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.1
+
+### Other
+- The `beacon` skill (and the `wrap` / `pause` commands) are now marked `disable-model-invocation`, dropping their descriptions from every session's always-resident context. Still available via `/`; Claude no longer auto-loads them.
+
 ## 1.11.0
 
 ### Fixes
