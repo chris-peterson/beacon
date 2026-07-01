@@ -132,6 +132,16 @@ beacon status paused "afk"
 beacon pause "afk"
 ```
 
+### Claude Code's own `/rename` and `/color`
+
+If reaching for beacon's own commands feels heavier than the built-ins, beacon also picks up Claude Code's native slash commands:
+
+- **`/rename <label>`** becomes the session's `task` — sitting just below an explicit `beacon task` override, above the PR-title/branch fallbacks. It shows on the badge (`project: <label>`) and in the fleet view.
+- **`/color <name>`** is surfaced in the fleet view (a swatch on the dashboard card) as your own tag. It does **not** repaint the badge — that color stays the ready/busy/blocked status light.
+- Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
+
+An explicit `beacon task` / `pause` / `wrap` always wins over these.
+
 ## Tack integration (optional)
 
 beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon asks it for the URL most relevant to the current branch and surfaces that URL in two places:

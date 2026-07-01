@@ -103,6 +103,14 @@
       font-weight: 600;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    /* The user's own /color, surfaced as a tag distinct from the status dot.
+       Its background is the raw color name from the payload (a CSS-valid name
+       like "pink"); an unrecognized value simply renders no fill. */
+    .swatch {
+      width: 0.6rem; height: 0.6rem; border-radius: 2px;
+      flex: none; margin-left: auto;
+      border: 1px solid var(--muted);
+    }
     .task { color: var(--cyan); font-weight: 400; }
     /* The auto-derived latest turn (WIP-11): one scannable line, ellipsized
        at the card's trailing edge — width-driven, never a fixed cut. */
@@ -178,6 +186,7 @@
         <div class="row">
           <span class="dot"></span>
           <span class="project"></span>
+          <span class="swatch" hidden></span>
         </div>
         <div class="turn" hidden><span class="tglyph"></span><span class="ttext"></span></div>
         <div class="desc"></div>
@@ -226,6 +235,14 @@
         t.className = "task";
         t.textContent = " : " + s.task;
         proj.appendChild(t);
+      }
+      const swatch = el.querySelector(".swatch");
+      if (s.agent_color) {
+        swatch.style.background = s.agent_color;
+        swatch.title = "/color " + s.agent_color;
+        swatch.hidden = false;
+      } else {
+        swatch.hidden = true;
       }
       const turn = el.querySelector(".turn");
       const lt = s.latest_turn;

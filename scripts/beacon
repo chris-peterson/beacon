@@ -1259,6 +1259,7 @@ def _resolve_session(sh: str, session_index: dict | None = None,
         "_epoch": epoch if epoch is not None else _session_last_activity(sh),
         "pending_attention": pending,
         "focusable": bool(_read_state_for(sh, "iterm_session_id")),
+        "agent_color": _read_state_for(sh, "cc.agent_color") or None,
     }
 
 
@@ -2154,8 +2155,10 @@ def resolve(cwd: Path | None = None) -> dict:
 
     task, p_task = chain([
         ("override", lambda: p_override("task")),
+        ("rename",   lambda: read_state("cc.custom_title")),
         ("pr",       lambda: p_pr_title(cwd)),
         ("branch",   lambda: p_branch(cwd)),
+        ("ai-title", lambda: read_state("cc.ai_title")),
     ])
 
     status, p_status = chain([
@@ -2769,10 +2772,11 @@ def _resolve_for_display() -> dict:
     # PROV-02a: when the session has wandered into a different project root than
     # its anchor, prefix the task slot with an @<wandered-project> location
     # marker as secondary spatial context. The project slot stays pinned to the
-    # anchor (BADGE-02). The task text after the marker is the explicit override
-    # when one is set; with no override, the task chain (PR title → branch) is
-    # re-resolved at the wandered cwd so the marker carries what's happening
-    # there. With neither, the marker stands alone. Gating on project root (not
+    # anchor (BADGE-02). The task text after the marker is the pinned label
+    # (explicit override or /rename) when one is set; without one, the task
+    # chain (PR title → branch) is re-resolved at the wandered cwd so the marker
+    # carries what's happening there. With neither, the marker stands alone —
+    # ai-title is skipped here as too weak to caption a wander. Gating on project root (not
     # raw cwd) keeps subdirectory navigation within the anchored project from
     # displacing the badge. The live cwd must resolve to a recognized project
     # (a marker-bearing root, not find_project_root's bare-cwd fallback): a
@@ -2791,7 +2795,7 @@ def _resolve_for_display() -> dict:
         live_cwd = Path.cwd()
         live_root = _project_root(live_cwd)
         if live_root is not None and live_root != find_project_root(anchor_cwd):
-            if state["task_provider"] == "override":
+            if state["task_provider"] in ("override", "rename"):
                 wandered_task = state["task"]
             else:
                 wandered_task, _ = chain([
@@ -2892,10 +2896,19 @@ def _disengage() -> None:
     remove_state("pending-attention")
     if read_state("signal.status") == "waiting":
         remove_state("signal.status")
+    _clear_cc_signals()
     remove_engagement_marker()
     remove_state("resolved")
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
+    # A mode state (paused/wrapping/done) swapped the pane into a mode profile
+    # whose de-emphasized background the color-only `clear` below cannot undo
+    # (RENDER-05). apply() swaps back to the base profile when *transitioning*
+    # to a non-mode state, but disengagement bypasses apply(), so a session that
+    # ends (or is cleared) mid-mode would keep its "powered off" / paused
+    # background. Swap back to base here so the pane reads as unmanaged. Harmless
+    # no-op when already on the base profile.
+    _cli("set-profile", BASE_PROFILE_NAME)
     _cli("clear")
 
 
@@ -3090,6 +3103,55 @@ def _last_assistant_text() -> str | None:
         return None
 
 
+# The Claude Code transcript records the user's own /color and /rename edits
+# (and Claude's auto-generated title) as dedicated single-line JSONL records.
+# beacon has no hook for those slash commands, so it harvests them from the
+# transcript tail at hook time — the same transport that feeds latest_turn.
+# This is a soft dependency on a Claude-Code-internal format: if a record type
+# disappears the signal simply goes quiet, never crashing a hook.
+_CC_SIGNAL_FIELDS = {
+    "custom-title": ("customTitle", "cc.custom_title"),  # /rename
+    "agent-color":  ("agentColor",  "cc.agent_color"),   # /color
+    "ai-title":     ("aiTitle",     "cc.ai_title"),       # auto-generated
+}
+
+
+def _read_cc_signals() -> None:
+    """Harvest the latest /rename (custom-title), /color (agent-color), and
+    auto ai-title from this session's transcript tail and persist each. A
+    value set once early in a long session eventually scrolls out of the tail
+    window, so a field absent from the tail leaves its prior persisted value in
+    place (mirrors _write_latest_turn) rather than blanking a still-current
+    signal."""
+    path = read_state("transcript_path")
+    if not path:
+        return
+    p = Path(path)
+    if not p.is_file():
+        return
+    latest: dict[str, str] = {}
+    try:
+        for line in _tail_text(p).splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            spec = _CC_SIGNAL_FIELDS.get(obj.get("type"))
+            if not spec:
+                continue
+            key, _field = spec
+            val = obj.get(key)
+            if isinstance(val, str) and val.strip():
+                latest[obj["type"]] = val.strip()
+    except Exception:
+        return
+    for rtype, val in latest.items():
+        write_state(_CC_SIGNAL_FIELDS[rtype][1], val)
+
+
 def _looks_idle(text: str | None) -> bool:
     if not text:
         return False
@@ -3125,7 +3187,16 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("signal.status")
     remove_state("pending-attention")
     remove_state("latest_turn")
+    _clear_cc_signals()
     _clear_description()
+
+
+def _clear_cc_signals() -> None:
+    """Drop the harvested /color, /rename, and ai-title so a reused pane or a
+    fresh session in the same bucket doesn't inherit a prior tenant's title or
+    color."""
+    for _key, field in _CC_SIGNAL_FIELDS.values():
+        remove_state(field)
 
 
 def cmd_reset(_args):
@@ -3388,6 +3459,10 @@ def cmd_hook(args):
     transcript_path = payload.get("transcript_path") or ""
     if transcript_path:
         write_state("transcript_path", transcript_path)
+        # Pick up any /color, /rename, or auto ai-title the user ran since the
+        # last hook (PROV-02 task tiers + fleet-view color). Slash commands
+        # fire no hook of their own, so the next hook is the harvest point.
+        _read_cc_signals()
 
     if event == "SessionEnd":
         # HOOK-09: the session is over, so the pane is no longer managed —

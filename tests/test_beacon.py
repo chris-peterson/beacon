@@ -615,6 +615,15 @@ class EngagementMarker(BeaconTest):
                       "clear (no field) must empty the task slot so a stale "
                       "task doesn't linger on the badge after disengagement")
 
+    def test_clear_mid_mode_reverts_profile(self):
+        # Clearing while in a mode state must swap back to the base profile —
+        # the color-only `clear` OSC can't undo the mode profile's background.
+        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.cli_calls.clear()
+        self.beacon.cmd_clear(mock.Mock(field=None))
+        self.assertIn(("set-profile", "beacon"), self.cli_calls,
+                      "clear (no field) mid-mode must swap back to the base profile")
+
     def test_clear_with_field_keeps_engagement(self):
         self.beacon.apply({**_base_state(), "status": "working"})
         marker = self.beacon._engagement_marker_path()
@@ -937,6 +946,20 @@ class SessionEndDisengages(BeaconTest):
         )
         self.assertIn(("clear",), self.cli_calls, "Exit must revert badge/tab color")
         self.assertIsNone(self.beacon.read_state("resolved"))
+
+    def test_exit_mid_mode_reverts_profile(self):
+        # A session that ends while in a mode state (done/wrapping/paused) sits
+        # on that mode's profile — the color-only `clear` can't undo its
+        # background, so disengage must swap back to base or the pane keeps its
+        # "powered off" look after exit.
+        self.beacon.apply({**_base_state(), "status": "done"})
+        self.assertTrue(self._engaged())
+        self.cli_calls.clear()
+        self._fire({"reason": "other"})
+        self.assertIn(
+            ("set-profile", "beacon"), self.cli_calls,
+            "Exit mid-mode must swap the pane back to the base profile",
+        )
 
     def test_clear_reason_keeps_engagement(self):
         # `/clear` ends the session with reason=clear but a fresh SessionStart
@@ -1436,6 +1459,105 @@ class ServiceUnit(unittest.TestCase):
     def test_is_iterm_installed_false_off_darwin(self):
         with mock.patch("sys.platform", "linux"):
             self.assertFalse(self.beacon._is_iterm_installed())
+
+
+class TaskChainCcSignals(BeaconTest):
+    """PROV-02: /rename (custom-title) is a strong task provider below an
+    explicit beacon override; ai-title is the weakest fallback, below branch."""
+
+    def test_rename_beats_pr_and_branch(self):
+        self.beacon.write_state("cc.custom_title", "find me")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value="a PR"), \
+             mock.patch.object(self.beacon, "p_branch", return_value="a-branch"):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "find me")
+        self.assertEqual(state["task_provider"], "rename")
+
+    def test_override_beats_rename(self):
+        self.beacon.write_state("override.task", "explicit")
+        self.beacon.write_state("cc.custom_title", "find me")
+        state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "explicit")
+        self.assertEqual(state["task_provider"], "override")
+
+    def test_branch_beats_ai_title(self):
+        self.beacon.write_state("cc.ai_title", "Auto summary")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=None), \
+             mock.patch.object(self.beacon, "p_branch", return_value="feature-x"):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "feature-x")
+        self.assertEqual(state["task_provider"], "branch")
+
+    def test_ai_title_is_last_resort(self):
+        self.beacon.write_state("cc.ai_title", "Auto summary")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=None), \
+             mock.patch.object(self.beacon, "p_branch", return_value=None):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "Auto summary")
+        self.assertEqual(state["task_provider"], "ai-title")
+
+
+class ReadCcSignals(BeaconTest):
+    """Harvesting /color, /rename, ai-title from the transcript tail."""
+
+    def _write_transcript(self, records):
+        p = self.data_dir / "transcript.jsonl"
+        p.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+        self.beacon.write_state("transcript_path", str(p))
+        return p
+
+    def test_harvests_latest_of_each_type(self):
+        self._write_transcript([
+            {"type": "agent-color", "agentColor": "blue"},
+            {"type": "custom-title", "customTitle": "old name"},
+            {"type": "agent-color", "agentColor": "pink"},
+            {"type": "custom-title", "customTitle": "find me"},
+            {"type": "ai-title", "aiTitle": "Auto summary"},
+        ])
+        self.beacon._read_cc_signals()
+        self.assertEqual(self.beacon.read_state("cc.agent_color"), "pink")
+        self.assertEqual(self.beacon.read_state("cc.custom_title"), "find me")
+        self.assertEqual(self.beacon.read_state("cc.ai_title"), "Auto summary")
+
+    def test_absent_type_keeps_prior_value(self):
+        self.beacon.write_state("cc.custom_title", "kept")
+        self._write_transcript([{"type": "agent-color", "agentColor": "red"}])
+        self.beacon._read_cc_signals()
+        self.assertEqual(self.beacon.read_state("cc.custom_title"), "kept",
+                         "A type missing from the tail must not blank its prior value")
+        self.assertEqual(self.beacon.read_state("cc.agent_color"), "red")
+
+    def test_no_transcript_is_noop(self):
+        self.beacon._read_cc_signals()
+        self.assertIsNone(self.beacon.read_state("cc.custom_title"))
+
+    def test_fresh_start_wipes_cc_signals(self):
+        for f in ("cc.custom_title", "cc.agent_color", "cc.ai_title"):
+            self.beacon.write_state(f, "x")
+        self.beacon._wipe_session_for_fresh_start()
+        for f in ("cc.custom_title", "cc.agent_color", "cc.ai_title"):
+            self.assertIsNone(self.beacon.read_state(f))
+
+
+class FleetPayloadColor(BeaconTest):
+    """The /color signal is fleet-view metadata exposed in the wip payload."""
+
+    def _seed_session(self):
+        sh = self.beacon.session_hash()
+        self.beacon.write_state("anchor.project", "acme/widget")
+        self.beacon.write_state("anchor.cwd", "/tmp/x")
+        return sh
+
+    def test_agent_color_in_payload(self):
+        sh = self._seed_session()
+        self.beacon.write_state("cc.agent_color", "pink")
+        row = self.beacon._resolve_session(sh, compute_branch=False)
+        self.assertEqual(row["agent_color"], "pink")
+
+    def test_no_color_is_none(self):
+        sh = self._seed_session()
+        row = self.beacon._resolve_session(sh, compute_branch=False)
+        self.assertIsNone(row["agent_color"])
 
 
 def _base_state() -> dict:
