@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.13.0
+
+### Features
+- **`/rename` and `/color` are now beacon signals.** Renaming a session with Claude Code's `/rename` sets its fleet-view **task** — ranked just below an explicit `beacon task`, above the PR-title and branch fallbacks — so the label you reach for naturally shows up across the fleet without a separate `beacon` command. Claude's auto-generated session title becomes the *weakest* task fallback, so a session you never labeled still carries a readable headline. Setting a session's **`/color`** surfaces that color in the fleet view (a swatch on each dashboard card, and an `agent_color` field in `/wip.json`); it does **not** repaint the badge, which stays the ready / busy / blocked status light.
+
+### Fixes
+- A Claude session that ends (or is cleared with `beacon clear`) while in a mode state (`paused` / `wrapping` / `done`) now restores its pane background instead of keeping the mode's darkened background.
+
 ## 1.12.0
 
 ### Features
