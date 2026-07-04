@@ -48,7 +48,7 @@ zmodload -F zsh/stat b:zstat
 # A non-iTerm terminal silently ignores the sequence.
 printf '\e]1337;SetProfile=beacon\a'
 # Badge format: project + optional task suffix. The task slot self-collapses
-# when empty (beacon_task carries ": <task>" when set). The badge renders
+# when empty (beacon_task carries " · <task>" when set). The badge renders
 # only after engagement (BADGE-14) populates beacon_project; until then both
 # user vars are empty and the format evaluates to nothing, so a fresh
 # terminal shows no badge. Set after SetProfile, which wipes session OSC

@@ -327,7 +327,7 @@ STATUS_TO_BADGE_STATE = {
 }
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
-# carries ": <task>" when set, "" when absent (BADGE-03). Both writers
+# carries " · <task>" when set, "" when absent (BADGE-03). Both writers
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
@@ -960,9 +960,24 @@ def _read_route(name: str) -> tuple[str, str | None] | None:
 # so its mere presence counts; a plain link counts only when its URL matches.
 _TRACKER_URL_RE = re.compile(r"/(pull|issues)/\d+|/-/(merge_requests|issues)/\d+")
 
+# Finer classification for the fleet view (WIP-09): a change request (GitHub
+# pull / GitLab merge request) ranks above an issue, above anything else — the
+# order the dashboard emphasizes tack references in.
+_CR_URL_RE = re.compile(r"/pull/\d+|/-/merge_requests/\d+")
+_ISSUE_URL_RE = re.compile(r"/issues/\d+")  # matches GitHub /issues/ and GitLab /-/issues/
+
 
 def _is_tracker_url(url: str) -> bool:
     return bool(_TRACKER_URL_RE.search(url))
+
+
+def _ref_type(url: str) -> str:
+    """Classify a tack reference URL as a change request, an issue, or other."""
+    if _CR_URL_RE.search(url):
+        return "cr"
+    if _ISSUE_URL_RE.search(url):
+        return "issue"
+    return "other"
 
 
 def _yv(s: str) -> str:
@@ -972,8 +987,10 @@ def _yv(s: str) -> str:
 
 def _parse_route_index(text: str):
     """Parse one route YAML into (slug, group, tacks, sessions) for the
-    session→tack join. tacks: {tid: {summary, status, kind}} where kind is
-    `existing` (carries a deliverable or forge tracker link) or `emerging`.
+    session→tack join. tacks: {tid: {summary, status, kind, refs}} where kind
+    is `existing` (carries a deliverable or forge tracker link) or `emerging`,
+    and refs is the tack's reference URLs each classified `cr` / `issue` /
+    `other` (WIP-09), in appearance order.
     sessions: [{id, started_at, tacks: [tid,...]}] — the bound tacks per
     RT-11, in touch order. Hand-rolled line scan rather than `tack … --json`:
     beacon reads the source-of-record files directly so the join never depends
@@ -982,6 +999,7 @@ def _parse_route_index(text: str):
     tacks: dict[str, dict] = {}
     has_deliverable: dict[str, bool] = {}
     has_tracker: dict[str, bool] = {}
+    refs: dict[str, list] = {}
     sessions: list[dict] = []
     section = None          # "tacks" | "sessions" | None
     cur_tid = None
@@ -1009,6 +1027,7 @@ def _parse_route_index(text: str):
                 cur_tid = _yv(m.group(1))
                 tacks[cur_tid] = {"summary": "", "status": ""}
                 has_deliverable[cur_tid] = has_tracker[cur_tid] = False
+                refs[cur_tid] = []
                 sub = None
                 continue
             if cur_tid is None:
@@ -1025,14 +1044,19 @@ def _parse_route_index(text: str):
                 elif key == "deliverable":
                     has_deliverable[cur_tid] = True
                     sub = "deliverable"
+                    if val:  # inline `deliverable: <url>` form
+                        refs[cur_tid].append({"type": _ref_type(val), "url": val})
                 elif key == "links":
                     sub = "links"
                 else:
                     sub = None
                 continue
             m = re.match(r"\s{6,}.*url:\s*(\S+)", line)
-            if m and sub == "links" and _is_tracker_url(_yv(m.group(1))):
-                has_tracker[cur_tid] = True
+            if m and sub in ("deliverable", "links"):
+                url = _yv(m.group(1))
+                refs[cur_tid].append({"type": _ref_type(url), "url": url})
+                if _is_tracker_url(url):
+                    has_tracker[cur_tid] = True
             continue
 
         if section == "sessions":
@@ -1064,6 +1088,7 @@ def _parse_route_index(text: str):
             "summary": m["summary"],
             "status": m["status"],
             "kind": "existing" if (has_deliverable[tid] or has_tracker[tid]) else "emerging",
+            "refs": refs[tid],
         }
         for tid, m in tacks.items()
     }
@@ -1109,6 +1134,7 @@ def _tack_session_index() -> dict:
                     "summary": tm["summary"],
                     "status": tm["status"],
                     "kind": tm["kind"],
+                    "refs": tm["refs"],
                 })
             chosen[sid] = started
             index[sid] = {"route": slug, "group": group, "tacks": qualified}
@@ -1767,6 +1793,11 @@ def wip_http_server(port: int):
     like wip.json. The `icon` field of a record points here when the icon is
     a local file; an online (http) icon is in the field directly.
 
+    GET /turn/<hash> — the session's most recent turn with its *full* text
+    (WIP-14), the on-demand enrichment the dashboard fetches when a card is
+    expanded. The bulk /wip.json carries only the single-line excerpt (WIP-11);
+    this reads the companion `latest_turn_full` state, CORS-open like wip.json.
+
     POST /forget — delete a session's per-session state (FORGET-01), the
     dashboard's close button on a timed-out card. Mutating, so it shares the
     FOCUS-04 access model with /focus.
@@ -1840,6 +1871,30 @@ def wip_http_server(port: int):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_turn(self, sh: str) -> None:
+            # Same slash/dot-free token guard as /icon — the segment is only a
+            # state-file lookup key, never a path.
+            if not re.fullmatch(r"[A-Za-z0-9_-]+", sh or ""):
+                self._send(404, json.dumps({"error": "not found"}))
+                return
+            lt_raw = _read_state_for(sh, "latest_turn")
+            try:
+                lt = json.loads(lt_raw) if lt_raw else None
+            except Exception:
+                lt = None
+            if not lt:
+                self._send(404, json.dumps({"error": "no turn"}))
+                return
+            # Full text when present; fall back to the excerpt so a turn stored
+            # before this field existed still enriches to *something*.
+            full = _read_state_for(sh, "latest_turn_full")
+            self._send(200, json.dumps({
+                "hash": sh,
+                "role": lt.get("role"),
+                "text": full or lt.get("text") or "",
+                "at": lt.get("at"),
+            }))
+
         def _send_dashboard(self) -> None:
             try:
                 data = DASHBOARD_HTML.read_bytes()
@@ -1864,6 +1919,8 @@ def wip_http_server(port: int):
                 self._send(200, json.dumps(collect_sessions(since)))
             elif parsed.path.startswith("/icon/"):
                 self._send_icon(parsed.path[len("/icon/"):])
+            elif parsed.path.startswith("/turn/"):
+                self._send_turn(parsed.path[len("/turn/"):])
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
@@ -2736,12 +2793,13 @@ def apply(state: dict):
     if badge_project != prev_badge_project or (switched and badge_project):
         _cli("uservar", "beacon_project", badge_project)
 
-    # BADGE-03: the user-var value carries its own ": " separator so an
-    # empty task collapses the slot without leaving a trailing colon on
-    # the badge. Same swap-restore rule as the project above.
+    # BADGE-03: the user-var value carries its own " · " separator so an
+    # empty task collapses the slot without leaving a trailing separator on
+    # the badge. The middle dot mirrors the fleet dashboard's project · task
+    # separator. Same swap-restore rule as the project above.
     task_text = state["task"]
     if task_text != prev.get("task") or (switched and task_text):
-        _cli("uservar", "beacon_task", f": {task_text}" if task_text else "")
+        _cli("uservar", "beacon_task", f" · {task_text}" if task_text else "")
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
@@ -3009,6 +3067,12 @@ _TRANSCRIPT_TAIL_BYTES = 65536
 # (WIP-11); this never decides where the "…" lands.
 TURN_EXCERPT_MAX = 240
 
+# Upper bound on the stored *full* turn (WIP-14) — the on-demand enrichment the
+# dashboard fetches when a card is expanded. Larger than the excerpt (it's a
+# read-a-paragraph view, not a scan line) but still bounded: past this, the "…"
+# says "open the session for the rest". Kept out of the bulk wip.json payload.
+FULL_TURN_MAX = 2000
+
 # Leading block-level markdown markers (heading, blockquote, list bullet,
 # ordered-list number) stripped from a turn's first line so the excerpt reads
 # as prose. Inline emphasis is left alone — stripping it mangles code snippets.
@@ -3048,17 +3112,38 @@ def _excerpt(text: str | None) -> str:
     return ""
 
 
+def _full_turn(text: str | None) -> str:
+    """The turn's full text for on-demand fleet-view enrichment (WIP-14): the
+    dashboard fetches this when a card is expanded, since the bulk payload
+    carries only the single-line _excerpt (WIP-11). Trailing whitespace is
+    trimmed per line and blank runs collapsed, but line breaks are kept (the
+    dashboard renders it pre-wrap) — unlike the excerpt, which flattens to one
+    line. Capped at FULL_TURN_MAX with a trailing ellipsis when clipped."""
+    if not text:
+        return ""
+    lines: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        if not line and lines and not lines[-1]:
+            continue  # collapse a run of blank lines to a single separator
+        lines.append(line)
+    s = "\n".join(lines).strip()
+    return (s[: FULL_TURN_MAX - 1] + "…") if len(s) > FULL_TURN_MAX else s
+
+
 def _write_latest_turn(role: str, text: str | None) -> None:
     """Persist the session's most recent turn (WIP-11) as JSON for the fleet
-    view. Written at hook time so the cross-session scan never touches a
-    transcript. A turn with no usable text (e.g. a pure tool_use turn) leaves
-    the prior value in place rather than blanking the signal."""
+    view, plus the full turn text (WIP-14) in a companion field the on-demand
+    /turn route serves on expand. Written at hook time so the cross-session
+    scan never touches a transcript. A turn with no usable text (e.g. a pure
+    tool_use turn) leaves the prior values in place rather than blanking."""
     excerpt = _excerpt(text)
     if not excerpt:
         return
     write_state("latest_turn", json.dumps(
         {"role": role, "text": excerpt, "at": _iso(time.time())}
     ))
+    write_state("latest_turn_full", _full_turn(text))
 
 
 def _last_assistant_text() -> str | None:
@@ -3187,6 +3272,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("signal.status")
     remove_state("pending-attention")
     remove_state("latest_turn")
+    remove_state("latest_turn_full")
     _clear_cc_signals()
     _clear_description()
 
