@@ -7,167 +7,527 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23bd93f9'/%3E%3C/svg%3E">
 
   <!--
-    Reference fleet dashboard. Self-contained (no build, no dependencies) so any
-    coworker can run `beacon serve` and open it — beacon serves this file at /
-    and the data at /wip.json. It is a *reference*: clone and restyle it, or
-    point your own dashboard at the same /wip.json + /focus + /forget contract
-    (docs/spec.md, WIP-04 / FOCUS / FORGET). Cross-platform — the fleet view
-    needs no iTerm2 or macOS; only the click-to-focus action is iTerm2-only, and
-    cards that can't be focused say so.
+    Reference fleet dashboard. Self-contained (no build, no dependencies, no
+    network fonts) so any coworker can run `beacon serve` and open it — beacon
+    serves this file at / and the data at /wip.json. It is a *reference*: clone
+    and restyle it, or point your own dashboard at the same /wip.json + /focus +
+    /forget contract (docs/spec.md, WIP-04 / FOCUS / FORGET). Cross-platform —
+    the fleet view needs no iTerm2 or macOS; only click-to-focus is iTerm2-only,
+    and cards that can't be focused say so.
+
+    Design POV — a signal-tower console. Visual noise is proportional to how
+    much a session needs you: sessions blocked on you (or flagged for attention)
+    are pulled into a loud, glowing top band; the idle fleet recedes into quiet
+    flat tiles below. A session's /color (agent_color) is honored as a first-
+    class identity pill, mirroring Claude Code's own session frame.
   -->
   <style>
     :root {
-      /* Dracula — mirrors BADGE_COLOR_PALETTE in scripts/beacon so a card's dot
-         matches the same session's iTerm2 badge. */
-      --bg: #282a36;
-      --surface: #343746;
-      --surface-hi: #44475a;
-      --fg: #f8f8f2;
-      --muted: #6272a4;
-      --accent: #bd93f9;
-      --cyan: #8be9fd;
-      --ready: #50fa7b;
-      --busy: #ffb86c;
-      --blocked: #ff5555;
-      --paused: #6272a4;
+      /* Status hexes MIRROR BADGE_COLOR_PALETTE in scripts/beacon so a card's
+         dot matches the same session's iTerm2 badge — do not drift these. */
+      --ready:    #50fa7b;
+      --busy:     #ffb86c;
+      --blocked:  #ff5555;
+      --paused:   #6272a4;
       --wrapping: #34c79d;
-      --done: #8b78c4;
-      --radius: 0.6rem;
+      --done:     #8b78c4;
+
+      /* Console chrome — free to tune; not part of the badge contract. */
+      --bg:       #0d0e15;
+      --bg-2:     #10111a;
+      --panel:    #171925;
+      --panel-hi: #1e2130;
+      --line:     #2a2e40;
+      --line-hi:  #39405a;
+      --fg:       #e8e8f4;
+      --muted:    #808ab4;
+      --faint:    #565f80;
+      --accent:   #bd93f9;
+      --cyan:     #8be9fd;
+
+      --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", "Fira Code", Menlo, Consolas, monospace;
+      --radius: 10px;
     }
+
     * { box-sizing: border-box; }
+
+    html, body { min-height: 100%; }
+
     body {
       margin: 0;
-      background: var(--bg);
       color: var(--fg);
-      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      padding: 1.25rem;
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+      letter-spacing: 0.01em;
+      background-color: var(--bg);
+      /* Atmosphere: a beacon glow raking down from the top, a whisper of grid
+         texture, and a floor vignette — all low-opacity so the tiles read. */
+      background-image:
+        radial-gradient(120% 60% at 50% -8%, rgba(189, 147, 249, 0.14), transparent 60%),
+        radial-gradient(90% 50% at 50% -4%, rgba(139, 233, 253, 0.06), transparent 55%),
+        linear-gradient(var(--bg-2) 1px, transparent 1px),
+        linear-gradient(90deg, var(--bg-2) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+      background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+      background-attachment: fixed;
+      padding: 0 clamp(1rem, 3vw, 2.5rem) 3rem;
     }
+
+    /* ── Masthead ─────────────────────────────────────────────── */
     header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
       display: flex;
-      align-items: baseline;
-      gap: 0.75rem;
-      margin-bottom: 1.25rem;
+      align-items: center;
+      gap: 1.1rem;
       flex-wrap: wrap;
+      padding: 1.15rem 0 1rem;
+      margin-bottom: 1.4rem;
+      background: linear-gradient(var(--bg) 62%, rgba(13, 14, 21, 0));
+      border-bottom: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: baseline; gap: 0.6rem; }
+    .beacon-glyph {
+      position: relative;
+      width: 1.05rem; height: 1.05rem;
+      align-self: center;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(189, 147, 249, 0.55);
+      animation: beaconPulse 2.6s ease-out infinite;
+    }
+    @keyframes beaconPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(189, 147, 249, 0.5), 0 0 10px 1px rgba(189, 147, 249, 0.6); }
+      70%  { box-shadow: 0 0 0 12px rgba(189, 147, 249, 0), 0 0 10px 1px rgba(189, 147, 249, 0.6); }
+      100% { box-shadow: 0 0 0 0 rgba(189, 147, 249, 0), 0 0 10px 1px rgba(189, 147, 249, 0.6); }
     }
     h1 {
-      font-size: 1.1rem;
-      font-weight: 600;
+      font-size: 1.05rem;
+      font-weight: 700;
       margin: 0;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
     }
-    h1 .pulse {
-      color: var(--accent);
+    h1 .dim { color: var(--faint); font-weight: 400; }
+
+    .spacer { flex: 1 1 auto; }
+
+    .freshness { color: var(--faint); font-size: 0.76rem; white-space: nowrap; }
+    .freshness .live { color: var(--ready); }
+    .freshness .live::before {
+      content: "●"; margin-right: 0.3rem; font-size: 0.7em;
+      animation: blink 2s steps(1) infinite;
     }
-    .meta { color: var(--muted); font-size: 0.85rem; }
-    .meta .live { color: var(--ready); }
-    .meta .stale { color: var(--busy); }
-    #grid {
+    .freshness .stale { color: var(--busy); }
+    @keyframes blink { 50% { opacity: 0.3; } }
+
+    /* Grouping toggle (segmented, in the masthead) + per-group sub-sections. */
+    .group-toggle {
+      flex: none; display: inline-flex; gap: 2px;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 7px; padding: 2px;
+    }
+    .group-toggle button {
+      font: inherit; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--faint); background: none; border: none; border-radius: 5px;
+      padding: 0.16rem 0.5rem; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .group-toggle button:hover { color: var(--muted); }
+    .group-toggle button.on { background: var(--panel-hi); color: var(--fg); }
+    .group-section { margin-bottom: 1.15rem; }
+    .group-section:last-child { margin-bottom: 0; }
+    .group-head {
+      display: flex; align-items: baseline; gap: 0.5rem;
+      margin: 0 0 0.55rem; padding-left: 0.15rem;
+      font-size: 0.75rem; color: var(--muted);
+    }
+    .group-head[hidden] { display: none; }
+    .group-head .glabel {
+      font-weight: 700; letter-spacing: 0.04em; color: var(--fg);
+      text-transform: none;
+    }
+    .group-head .gn { color: var(--faint); font-variant-numeric: tabular-nums; }
+    .group-head .grule { flex: 1; height: 1px; background: var(--line); }
+
+    .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
       gap: 0.85rem;
+      align-items: start; /* an expanded card grows alone — don't stretch its row */
+      grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
     }
+
+    /* ── Card (shared shell; .needs-you adds the waiting emphasis) ─ */
     .card {
       position: relative;
-      background: var(--surface);
-      border: 1px solid var(--surface-hi);
-      border-left: 3px solid var(--muted);
+      background: var(--panel);
+      border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 0.8rem 0.9rem;
-      transition: border-color 0.15s, transform 0.1s, box-shadow 0.15s;
+      --pad-x: 0.95rem; --pad-top: 0.85rem;
+      padding: var(--pad-top) var(--pad-x) 0.8rem;
+      overflow: hidden;
+      transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
+      animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
     }
-    .card[data-focusable="true"] { cursor: pointer; }
-    .card[data-focusable="true"]:hover {
-      border-color: var(--accent);
-      transform: translateY(-1px);
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: none; }
     }
-    .card.state-ready   { border-left-color: var(--ready); }
-    .card.state-busy    { border-left-color: var(--busy); }
-    .card.state-blocked { border-left-color: var(--blocked); }
-    .card.state-paused  { border-left-color: var(--paused); }
-    .card.state-wrapping { border-left-color: var(--wrapping); }
-    .card.state-done    { border-left-color: var(--done); }
-    .card.attention { box-shadow: 0 0 0 1px var(--blocked); }
-    .row { display: flex; align-items: center; gap: 0.5rem; }
+    /* Status accent — a bar along the BOTTOM edge, where the eye rests during a
+       session. Carries the logical state color (ready/busy/blocked + mode
+       states); the full-width title band owns the top, so identity and status
+       never compete for the same hairline. Active states glow to pull focus. */
+    .card::after {
+      content: "";
+      position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+      background: var(--state-color, var(--line-hi));
+      opacity: 0.85;
+    }
+    .card.state-busy::after,
+    .card.state-blocked::after,
+    .card.state-wrapping::after { opacity: 1; box-shadow: 0 0 10px var(--state-color); }
+    .card.state-ready    { --state-color: var(--ready); }
+    .card.state-busy     { --state-color: var(--busy); }
+    .card.state-blocked  { --state-color: var(--blocked); }
+    .card.state-paused   { --state-color: var(--paused); }
+    .card.state-wrapping { --state-color: var(--wrapping); }
+    .card.state-done     { --state-color: var(--done); }
+
+    .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
+    .card:hover {
+      border-color: var(--line-hi);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+    }
+
+    /* Header row: status dot + project (or /color pill) + task */
+    .head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
     .dot {
-      width: 0.6rem; height: 0.6rem; border-radius: 50%;
-      flex: none; background: var(--muted);
+      width: 0.62rem; height: 0.62rem; border-radius: 50%;
+      flex: none; background: var(--state-color, var(--muted));
     }
-    .state-ready   .dot { background: var(--ready); }
-    .state-busy    .dot { background: var(--busy); box-shadow: 0 0 6px var(--busy); }
-    .state-blocked .dot { background: var(--blocked); box-shadow: 0 0 6px var(--blocked); }
-    .state-paused  .dot { background: var(--paused); }
-    .state-wrapping .dot { background: var(--wrapping); box-shadow: 0 0 6px var(--wrapping); }
-    .state-done    .dot { background: var(--done); }
+    .state-busy    .dot,
+    .state-blocked .dot,
+    .state-wrapping .dot { box-shadow: 0 0 7px var(--state-color); }
+    /* Project icon (PROV-08) stands in for the dot when the project ships one;
+       the top bar still carries the status color. */
+    .icon {
+      width: 1.05rem; height: 1.05rem; border-radius: 4px;
+      flex: none; object-fit: cover;
+    }
+    .icon[hidden], .dot[hidden] { display: none; }
+
+    /* project + task share one label; the session's /color (agent_color) fills
+       its background (RENDER — the status color — stays on the top bar/dot). */
+    .label {
+      flex: 0 1 auto; min-width: 0;
+      display: inline-flex; align-items: baseline; gap: 0.4rem;
+    }
+    /* agent_color fills the whole title row (the head) edge-to-edge, behind the
+       icon and text. Status lives on the bottom bar (::after) and the dot/icon,
+       so the title band runs clean to the top edge. */
+    .card.has-color .head {
+      background: var(--agent-color);
+      color: var(--agent-fg);
+      margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 0.6rem;
+      padding: 0.5rem var(--pad-x) 0.45rem;
+    }
     .project {
-      font-weight: 600;
+      font-weight: 700; letter-spacing: 0.02em;
+      /* The project is the identity — it holds its width (up to a cap); the
+         (secondary) task truncates first. */
+      flex: 0 0 auto; min-width: 0; max-width: 24ch;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    /* The user's own /color, surfaced as a tag distinct from the status dot.
-       Its background is the raw color name from the payload (a CSS-valid name
-       like "pink"); an unrecognized value simply renders no fill. */
-    .swatch {
-      width: 0.6rem; height: 0.6rem; border-radius: 2px;
-      flex: none; margin-left: auto;
-      border: 1px solid var(--muted);
+    .task {
+      color: var(--cyan);
+      flex: 0 1 auto; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .task { color: var(--cyan); font-weight: 400; }
-    /* The auto-derived latest turn (WIP-11): one scannable line, ellipsized
-       at the card's trailing edge — width-driven, never a fixed cut. */
+    .task::before { content: "· "; color: var(--faint); }
+    .card.has-color .project,
+    .card.has-color .task { color: var(--agent-fg, #000); }
+    .card.has-color .task::before { color: var(--agent-fg); opacity: 0.65; }
+
+    /* Latest turn (WIP-11): collapsed = one scannable, width-ellipsized line;
+       expanded = the full turn, wrapped. The whole point of expand. */
     .turn {
-      margin: 0.4rem 0 0.1rem;
+      margin: 0.5rem 0 0;
       color: var(--muted); font-size: 0.82rem;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .turn .tglyph { opacity: 0.8; margin-right: 0.15rem; }
+    .turn .tglyph { margin-right: 0.3rem; opacity: 0.9; }
     .turn[data-role="human"] .tglyph { color: var(--cyan); }
     .turn[data-role="agent"] .tglyph { color: var(--accent); }
+    /* Expanded: the full turn (WIP-14), fetched on demand from /turn/<hash>.
+       pre-wrap keeps the turn's own line breaks; anywhere breaks long tokens. */
+    .card.expanded .turn {
+      white-space: pre-wrap; overflow: visible; text-overflow: clip;
+      overflow-wrap: anywhere;
+      color: var(--fg); opacity: 0.9;
+    }
+
+    /* Recall note / pause reason */
     .desc {
-      color: var(--fg); opacity: 0.85;
-      margin: 0.45rem 0 0.1rem;
+      color: var(--fg); opacity: 0.7;
+      margin: 0.45rem 0 0; font-size: 0.82rem;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .sub {
-      display: flex; flex-wrap: wrap; gap: 0.4rem 0.9rem;
-      color: var(--muted); font-size: 0.8rem; margin-top: 0.5rem;
+    .card.expanded .desc { display: block; overflow: visible; }
+
+    /* Expanding un-truncates the project · task so the full text shows (the
+       `…` was the cue that there's more) — wrapped within the card's normal
+       width, not by widening the card. */
+    .card.expanded .project { max-width: none; }
+    .card.expanded .task { white-space: normal; overflow: visible; }
+
+    /* Bound-tack references (WIP-09): the change requests / issues / other the
+       session is driving — the signal tack alone contributes. Ordered and
+       colored by emphasis: change request (accent) → issue (cyan) → other. */
+    .tacks { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.5rem 0 0; }
+    .tref {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-size: 0.72rem; line-height: 1.3;
+      padding: 0.08rem 0.45rem; border-radius: 999px;
+      border: 1px solid var(--line-hi); color: var(--muted);
+      text-decoration: none;
     }
+    .tref .tg { opacity: 0.85; }
+    a.tref { transition: background 0.15s, border-color 0.15s, color 0.15s; }
+    a.tref:hover { color: var(--fg); }
+    .tref.cr { color: var(--accent); border-color: rgba(189, 147, 249, 0.45); font-weight: 700; }
+    a.tref.cr:hover { background: rgba(189, 147, 249, 0.14); border-color: var(--accent); }
+    .tref.issue { color: var(--cyan); border-color: rgba(139, 233, 253, 0.35); }
+    a.tref.issue:hover { background: rgba(139, 233, 253, 0.12); border-color: var(--cyan); }
+    .tref.other { color: var(--muted); }
+    a.tref.other:hover { border-color: var(--line-hi); background: var(--panel-hi); }
+
+    /* Expand-only detail block: the fields too verbose for the resting card. */
+    .details {
+      margin: 0.6rem 0 0; padding-top: 0.55rem;
+      border-top: 1px dashed var(--line);
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    .card.expanded .details { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    .details .kv { display: flex; align-items: start; gap: 0.7rem; font-size: 0.75rem; margin: 0.2rem 0; }
+    .details dt { color: var(--faint); flex: none; width: 4.5rem; text-align: right; }
+    .details dd { color: var(--muted); margin: 0; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+    .details dd.sess { color: var(--faint); font-size: 0.72rem; }
+    .copy {
+      flex: none; margin-left: auto;
+      width: 1.2rem; height: 1.2rem; padding: 0;
+      display: inline-grid; place-items: center;
+      background: none; border: 1px solid var(--line); border-radius: 4px;
+      color: var(--faint); cursor: pointer; font-size: 0.72rem; line-height: 1;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .copy::before { content: "⧉"; }
+    .copy:hover { color: var(--fg); border-color: var(--line-hi); }
+    .copy.copied { color: var(--ready); border-color: var(--ready); }
+    .copy.copied::before { content: "✓"; }
+
+    /* Footer: meta on the left, expand chevron, dedicated go button lower-right. */
+    .foot {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-top: 0.65rem;
+    }
+    .chev {
+      flex: none; color: var(--faint); font-size: 0.9rem; line-height: 1;
+      user-select: none; transition: transform 0.18s ease, color 0.15s;
+    }
+    .card:hover .chev { color: var(--muted); }
+    .card.expanded .chev { transform: rotate(180deg); color: var(--muted); }
+    .sub {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.85rem;
+      color: var(--faint); font-size: 0.75rem;
+    }
+    .sub > span:empty { display: none; }
     .sub .route { color: var(--accent); }
-    .branch::before { content: "⎇ "; }
-    .age { margin-left: auto; }
+    .sub .branch::before { content: "⎇ "; opacity: 0.7; }
+    .sub .status { text-transform: lowercase; }
+    .sub .age { font-variant-numeric: tabular-nums; }
+    .go {
+      flex: none;
+      display: inline-flex; align-items: center; gap: 0.32rem;
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--line-hi); border-radius: 6px;
+      font: inherit; font-size: 0.74rem; letter-spacing: 0.05em;
+      padding: 0.22rem 0.6rem; cursor: pointer;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .go .arr { transition: transform 0.15s ease; }
+    .go:hover { color: #14151c; background: var(--accent); border-color: var(--accent); }
+    .go:hover .arr { transform: translateX(3px); }
+    .go[hidden] { display: none; }
+
     .forget {
-      position: absolute; top: 0.4rem; right: 0.5rem;
-      background: none; border: none; color: var(--muted);
-      font-size: 1rem; line-height: 1; cursor: pointer; padding: 0.15rem 0.3rem;
-      border-radius: 0.3rem; opacity: 0; transition: opacity 0.15s, color 0.15s;
+      position: absolute; top: 0.35rem; right: 0.4rem; z-index: 3;
+      width: 1.35rem; height: 1.35rem;
+      display: grid; place-items: center;
+      background: none; border: none; color: var(--faint);
+      font-size: 1.05rem; line-height: 1; cursor: pointer;
+      border-radius: 6px; opacity: 0;
+      transition: opacity 0.15s, color 0.15s, background 0.15s;
     }
     .card:hover .forget { opacity: 1; }
-    .forget:hover { color: var(--blocked); background: var(--surface-hi); }
-    #empty {
-      color: var(--muted); padding: 3rem 1rem; text-align: center;
+    .forget:hover { color: #fff; background: var(--blocked); }
+
+    /* Waiting-for-you ornaments — hidden by default, shown on .needs-you cards. */
+    .attn-flag { display: none; }
+    .wait-time { display: none; }
+
+    /* ── Needs-you emphasis (per card, anywhere in the grouped view) ──
+       A session blocked on the user (or flagged for attention) keeps this
+       treatment wherever it sorts — sorted first within its group, and its
+       group floats up — so it stays unmissable without a dedicated band. */
+    .card.needs-you {
+      background:
+        radial-gradient(120% 140% at 100% 0%, rgba(255, 85, 85, 0.12), transparent 55%),
+        var(--panel-hi);
+      border-color: rgba(255, 85, 85, 0.5);
+      --pad-x: 1.1rem; --pad-top: 1rem;
+      padding: var(--pad-top) var(--pad-x) 0.9rem;
+      box-shadow: 0 0 0 1px rgba(255, 85, 85, 0.14), 0 8px 30px rgba(0, 0, 0, 0.4);
+      animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both, attnGlow 2.4s ease-in-out infinite;
     }
+    @keyframes attnGlow {
+      0%, 100% { box-shadow: 0 0 0 1px rgba(255, 85, 85, 0.14), 0 8px 30px rgba(0, 0, 0, 0.4); }
+      50%      { box-shadow: 0 0 0 1px rgba(255, 85, 85, 0.4),  0 8px 34px rgba(255, 85, 85, 0.15); }
+    }
+    .card.needs-you::after { height: 4px; opacity: 1; }
+    .card.needs-you:hover {
+      border-color: var(--blocked);
+      box-shadow: 0 0 0 1px var(--blocked), 0 14px 40px rgba(255, 85, 85, 0.22);
+    }
+    .card.needs-you .go:hover { color: #1a0606; background: var(--blocked); border-color: var(--blocked); }
+    .card.needs-you .project { font-size: 1.08rem; }
+    .card.needs-you .head { gap: 0.55rem; }
+    .card.needs-you .dot { width: 0.72rem; height: 0.72rem; }
+    .card.needs-you .turn { font-size: 0.85rem; margin-top: 0.6rem; }
+
+    .card.needs-you .attn-flag {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      margin-left: auto; flex: none;
+      padding: 0.16rem 0.55rem;
+      border-radius: 999px;
+      background: var(--blocked);
+      color: #1a0606;
+      font-size: 0.68rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .card.needs-you .attn-flag::before {
+      content: ""; width: 0.4rem; height: 0.4rem; border-radius: 50%;
+      background: #1a0606; animation: blink 1.2s steps(1) infinite;
+    }
+    /* pending_attention that is *not* a live block reads amber, not red. */
+    .card.needs-you.soft-attn {
+      border-color: rgba(255, 184, 108, 0.5);
+      animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+      box-shadow: 0 0 0 1px rgba(255, 184, 108, 0.14), 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+    .card.needs-you.soft-attn .attn-flag { background: var(--busy); color: #241503; }
+    .card.needs-you.soft-attn .attn-flag::before { background: #241503; }
+    .card.needs-you.soft-attn::after { background: var(--busy); }
+
+    .card.needs-you .wait-time {
+      display: block;
+      margin-top: 0.55rem;
+      color: #ffb0b0; font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .card.needs-you.soft-attn .wait-time { color: #ffd3a6; }
+    /* wait-time already states the status + duration up top — don't repeat it. */
+    .card.needs-you .sub .status,
+    .card.needs-you .sub .age { display: none; }
+
+    /* ── Empty & error ────────────────────────────────────────── */
+    #empty {
+      color: var(--faint); padding: 4rem 1rem; text-align: center;
+      border: 1px dashed var(--line); border-radius: var(--radius);
+    }
+    #empty .big { display: block; font-size: 1.6rem; margin-bottom: 0.6rem; opacity: 0.6; }
     #err {
-      display: none; color: var(--blocked); font-size: 0.85rem;
-      margin-bottom: 0.75rem;
+      display: none; color: #ffb3b3;
+      background: rgba(255, 85, 85, 0.1); border: 1px solid rgba(255, 85, 85, 0.4);
+      border-radius: 8px; padding: 0.5rem 0.75rem;
+      font-size: 0.8rem; margin-bottom: 0.9rem;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.001s !important; animation-iteration-count: 1 !important; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1><span class="pulse">◉</span> beacon fleet</h1>
-    <span class="meta"><span id="count">0</span> sessions</span>
-    <span class="meta" id="freshness"></span>
+    <div class="brand">
+      <span class="beacon-glyph" aria-hidden="true"></span>
+      <h1>beacon <span class="dim">/ fleet</span></h1>
+    </div>
+    <span class="spacer"></span>
+    <div class="group-toggle" id="group-toggle" title="Group the whole fleet">
+      <button type="button" data-g="none">flat</button>
+      <button type="button" data-g="group">group</button>
+      <button type="button" data-g="project">project</button>
+    </div>
+    <span class="freshness" id="freshness"></span>
   </header>
+
   <div id="err"></div>
-  <div id="grid"></div>
-  <div id="empty" hidden>No active beacon sessions in the window. Sessions appear here as Claude Code works.</div>
+
+  <div id="groups"></div>
+
+  <div id="empty" hidden>
+    <span class="big">◍</span>
+    No active beacon sessions in the window.<br>
+    Sessions appear here as Claude Code works.
+  </div>
 
   <script>
     const POLL_MS = 2000;
-    const grid = document.getElementById("grid");
-    const cards = new Map(); // hash -> card element
+    const groupsEl = document.getElementById("groups");
+    const cards = new Map(); // hash -> card element (reused across polls)
+    const groupSections = new Map(); // group key -> {section, grid, head} (reused)
+
+    // How the whole fleet is organized: 'none' (flat), 'group' (route_group), or
+    // 'project'. Persisted so a reload keeps the user's choice.
+    let groupBy = "none";
+    try { groupBy = localStorage.getItem("beacon.groupBy") || "none"; } catch (e) {}
+    // hash -> {at, text}: the full turn (WIP-14) fetched on expand from
+    // /turn/<hash>, keyed by turn timestamp so a newer turn invalidates it.
+    const turnCache = new Map();
 
     const STATES = ["ready", "busy", "blocked", "paused", "wrapping", "done"];
+
+    // Resolve a CSS color name to {css, fg, ok}. fg is a contrast-picked text
+    // color for the /color pill. A hidden probe lets the browser do the parsing;
+    // an unrecognized name resolves to the inherited fg, which we treat as ok
+    // (the payload's agent_color comes from Claude Code's /color, always valid).
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;pointer-events:none";
+    document.body.appendChild(probe);
+    const colorCache = new Map();
+    function resolveColor(name) {
+      if (colorCache.has(name)) return colorCache.get(name);
+      probe.style.color = "";
+      probe.style.color = name;
+      const rgb = getComputedStyle(probe).color.match(/\d+(\.\d+)?/g);
+      let out = { css: name, fg: "#fff" };
+      if (rgb) {
+        const [r, g, b] = rgb.map(Number);
+        const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        out.fg = L > 0.62 ? "#141018" : "#fff";
+      }
+      colorCache.set(name, out);
+      return out;
+    }
 
     function fmtAge(s) {
       if (s == null) return "";
@@ -176,6 +536,17 @@
       if (s < 86400) return Math.floor(s / 3600) + "h";
       return Math.floor(s / 86400) + "d";
     }
+    function fmtWait(s) {
+      if (s == null) return "waiting";
+      return "waiting " + fmtAge(s);
+    }
+
+    // A session lands in the attention band when Claude is blocked on the user
+    // (state === "blocked", i.e. status "waiting") or a sticky attention marker
+    // is set (HOOK-03b). The band is the loud one — everything else is fleet.
+    function needsYou(s) {
+      return s.state === "blocked" || !!s.pending_attention;
+    }
 
     function buildCard(hash) {
       const el = document.createElement("div");
@@ -183,25 +554,55 @@
       el.dataset.hash = hash;
       el.innerHTML = `
         <button class="forget" title="Forget this session">×</button>
-        <div class="row">
+        <div class="head">
           <span class="dot"></span>
-          <span class="project"></span>
-          <span class="swatch" hidden></span>
+          <img class="icon" alt="" hidden>
+          <span class="label"><span class="project"></span><span class="task"></span></span>
+          <span class="attn-flag">waiting</span>
         </div>
         <div class="turn" hidden><span class="tglyph"></span><span class="ttext"></span></div>
+        <div class="tacks" hidden></div>
+        <div class="wait-time"></div>
         <div class="desc"></div>
-        <div class="sub">
-          <span class="route"></span>
-          <span class="branch"></span>
-          <span class="status"></span>
-          <span class="age"></span>
+        <dl class="details">
+          <div class="kv"><dt>cwd</dt><dd class="cwd"></dd><button class="copy" title="Copy cwd"></button></div>
+          <div class="kv kv-branch"><dt>branch</dt><dd class="branch-d"></dd><button class="copy" title="Copy branch"></button></div>
+          <div class="kv"><dt>turn at</dt><dd class="turn-at"></dd></div>
+          <div class="kv"><dt>session</dt><dd class="sess"></dd><button class="copy" title="Copy session id"></button></div>
+        </dl>
+        <div class="foot">
+          <span class="chev" aria-hidden="true">⌄</span>
+          <div class="sub">
+            <span class="route"></span>
+            <span class="branch"></span>
+            <span class="status"></span>
+            <span class="age"></span>
+          </div>
+          <button class="go" hidden>go <span class="arr">→</span></button>
         </div>`;
       el.addEventListener("click", () => {
-        if (el.dataset.focusable === "true") focus(hash);
+        if (el.classList.toggle("expanded")) fetchFull(hash);
+      });
+      el.querySelector(".go").addEventListener("click", (e) => {
+        e.stopPropagation();
+        focus(hash);
       });
       el.querySelector(".forget").addEventListener("click", (e) => {
         e.stopPropagation();
         forget(hash, el.querySelector(".project").textContent);
+      });
+      el.querySelectorAll(".copy").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation(); // copy, don't toggle expand
+          const dd = btn.parentElement.querySelector("dd");
+          const val = dd ? dd.textContent.trim() : "";
+          if (!val || val === "—") return;
+          try {
+            await navigator.clipboard.writeText(val);
+            btn.classList.add("copied");
+            setTimeout(() => btn.classList.remove("copied"), 1200);
+          } catch (_) { /* clipboard unavailable */ }
+        });
       });
       return el;
     }
@@ -210,7 +611,6 @@
       const node = el.querySelector(sel);
       const v = value || "";
       if (node.textContent !== v) node.textContent = v;
-      node.hidden = !v;
     }
 
     // WIP-12: a paused card's reason is anchored with the || pause glyph, shown
@@ -221,73 +621,265 @@
       return reason ? "|| " + reason : "||";
     }
 
+    // Bound-tack references (WIP-09): the change requests / issues / other the
+    // session is driving. Chips ordered by emphasis (cr → issue → other) and
+    // deduped by URL; rebuilt only when the set changes (signature guard) so
+    // steady polling doesn't churn the DOM.
+    const REF_RANK = { cr: 0, issue: 1, other: 2 };
+    function renderTacks(el, s) {
+      const wrap = el.querySelector(".tacks");
+      const chips = [];
+      for (const t of (s.tacks || [])) {
+        const refs = t.refs || [];
+        const summary = t.summary || t.tack_id || "tack";
+        if (refs.length) {
+          for (const r of refs) chips.push({ type: r.type || "other", url: r.url || "", summary });
+        } else {
+          chips.push({ type: "other", url: "", summary }); // emerging tack — no link yet
+        }
+      }
+      chips.sort((a, b) => (REF_RANK[a.type] ?? 3) - (REF_RANK[b.type] ?? 3));
+      const seen = new Set();
+      const uniq = chips.filter((c) => {
+        const k = c.url || "sum:" + c.summary;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+      const sig = JSON.stringify(uniq.map((c) => [c.type, c.url, c.summary]));
+      if (wrap.dataset.sig === sig) return;
+      wrap.dataset.sig = sig;
+      wrap.replaceChildren(...uniq.map(tackChip));
+      wrap.hidden = uniq.length === 0;
+    }
+
+    function tackChip(c) {
+      const el = document.createElement(c.url ? "a" : "span");
+      el.className = "tref " + c.type;
+      if (c.url) {
+        el.href = c.url;
+        el.target = "_blank";
+        el.rel = "noopener";
+        el.addEventListener("click", (e) => e.stopPropagation()); // open link, don't toggle expand
+      }
+      const num = (c.url.match(/(\d+)\D*$/) || [])[1] || "";
+      let glyph, label;
+      if (c.type === "cr") {
+        glyph = "⇅"; label = (/\/-\/merge_requests\//.test(c.url) ? "MR " : "PR ") + num;
+      } else if (c.type === "issue") {
+        glyph = "◇"; label = "#" + num;
+      } else {
+        glyph = c.url ? "↗" : "•"; label = c.summary;
+      }
+      const g = document.createElement("span"); g.className = "tg"; g.textContent = glyph;
+      const l = document.createElement("span"); l.className = "tl"; l.textContent = label;
+      el.append(g, l);
+      el.title = c.summary && c.summary !== label ? label + " · " + c.summary : label;
+      return el;
+    }
+
     function updateCard(el, s) {
       el.classList.remove(...STATES.map((x) => "state-" + x));
       el.classList.add("state-" + (s.state || "paused"));
-      el.classList.toggle("attention", !!s.pending_attention);
+      // Waiting-for-you emphasis, applied per card (no separate band). Amber
+      // (soft) attention = flagged but not a live block; red = blocked now.
+      el.classList.toggle("needs-you", needsYou(s));
+      el.classList.toggle("soft-attn", s.state !== "blocked" && !!s.pending_attention);
       el.dataset.focusable = s.focusable ? "true" : "false";
-      el.title = s.focusable ? "Click to raise this window" : "This session can't be focused (not an iTerm2 pane)";
+      el.title = "Click to expand";
+      const go = el.querySelector(".go");
+      go.hidden = !s.focusable;
+      go.title = "Raise this iTerm2 window";
 
-      const proj = el.querySelector(".project");
-      proj.textContent = s.project || s.hash;
-      if (s.task) {
-        const t = document.createElement("span");
-        t.className = "task";
-        t.textContent = " : " + s.task;
-        proj.appendChild(t);
-      }
-      const swatch = el.querySelector(".swatch");
-      if (s.agent_color) {
-        swatch.style.background = s.agent_color;
-        swatch.title = "/color " + s.agent_color;
-        swatch.hidden = false;
+      setText(el, ".project", s.project || s.hash);
+      setText(el, ".task", s.task || "");
+
+      // The project icon (PROV-08/WIP-08) stands in for the status dot when the
+      // project ships one; the top bar keeps carrying the status color.
+      const dot = el.querySelector(".dot"), icon = el.querySelector(".icon");
+      if (s.icon) {
+        if (icon.getAttribute("src") !== s.icon) icon.src = s.icon;
+        icon.hidden = false; dot.hidden = true;
       } else {
-        swatch.hidden = true;
+        icon.hidden = true; dot.hidden = false;
       }
+
+      // /color: fill the project+task label background with the session's color.
+      if (s.agent_color) {
+        const c = resolveColor(s.agent_color);
+        el.classList.add("has-color");
+        el.style.setProperty("--agent-color", c.css);
+        el.style.setProperty("--agent-fg", c.fg);
+      } else {
+        el.classList.remove("has-color");
+        el.style.removeProperty("--agent-color");
+        el.style.removeProperty("--agent-fg");
+      }
+
       const turn = el.querySelector(".turn");
       const lt = s.latest_turn;
       if (lt && lt.text) {
         const glyph = lt.role === "human" ? "›" : "↳";
         const g = turn.querySelector(".tglyph"), t = turn.querySelector(".ttext");
         if (g.textContent !== glyph) g.textContent = glyph;
-        if (t.textContent !== lt.text) t.textContent = lt.text;
+        el.dataset.turnAt = lt.at || "";
+        // When expanded, prefer the fetched full turn — but only if it's for
+        // this same turn (matching `at`). `have` is set even on a failed fetch
+        // (negative cache), so a 404 fetches once per turn, not every poll; a
+        // newer turn (changed `at`) invalidates it and refetches once.
+        const expanded = el.classList.contains("expanded");
+        const cached = turnCache.get(s.hash);
+        const have = cached && cached.at === (lt.at || "");
+        const show = (expanded && have && cached.text) ? cached.text : lt.text;
+        if (t.textContent !== show) t.textContent = show;
         turn.dataset.role = lt.role || "";
         turn.hidden = false;
+        if (expanded && !have) fetchFull(s.hash);
       } else {
         turn.hidden = true;
       }
+
+      renderTacks(el, s);
+
+      setText(el, ".wait-time", fmtWait(s.age_seconds));
       setText(el, ".desc", descText(s.state, s.description));
-      setText(el, ".route", s.route ? "[" + s.route + "]" : "");
-      setText(el, ".branch", s.branch);
-      setText(el, ".status", s.status);
+      // Show the route only when it carries signal the project doesn't — a
+      // route resolved by matching the project just echoes the title (mirrors
+      // _watch_frame_lines' echoes_project in scripts/beacon).
+      const proj = (s.project || "").toLowerCase();
+      const rt = (s.route || "").toLowerCase();
+      const echoesProject = !rt || rt === proj || rt === proj.split("/").pop();
+      setText(el, ".route", !echoesProject && s.route ? "[" + s.route + "]" : "");
+      setText(el, ".branch", s.branch || "");
+      setText(el, ".status", s.status || "");
       setText(el, ".age", fmtAge(s.age_seconds));
+
+      // Expand-only detail. `at` is the turn timestamp; `session` is the Claude
+      // session id (what you'd pass to `claude --resume`), falling back to the
+      // beacon hash for non-Claude panes.
+      setText(el, ".cwd", s.cwd || "—");
+      setText(el, ".branch-d", s.branch || "");
+      el.querySelector(".kv-branch").hidden = !s.branch;
+      setText(el, ".turn-at", lt && lt.at ? new Date(lt.at).toLocaleString() : "—");
+      setText(el, ".sess", s.session || s.hash || "");
+    }
+
+    // Place `list` into `container` in order, reusing/moving existing nodes.
+    // insertBefore reparents a node across containers for free, so a session
+    // moving between the attention and fleet bands is a cheap move, not a
+    // rebuild — animations, focus, and scroll survive (buffer-dom-rerenders).
+    function place(container, list) {
+      let prev = null;
+      for (const s of list) {
+        let el = cards.get(s.hash);
+        if (!el) { el = buildCard(s.hash); cards.set(s.hash, el); }
+        updateCard(el, s);
+        const anchor = prev ? prev.nextSibling : container.firstChild;
+        if (el.parentNode !== container || el !== anchor) {
+          container.insertBefore(el, anchor);
+        }
+        prev = el;
+      }
+    }
+
+    const ageOf = (s) => s.age_seconds ?? 1e12;
+
+    // Partition ALL sessions into ordered groups per the toggle. Within a group,
+    // waiting-for-you sessions sort first (then by recency); groups that contain
+    // any waiting session float to the top (then by their freshest member). So a
+    // blocked session is always near the top of the view — no separate band.
+    // 'none' is one unlabeled group (a single flat grid).
+    function computeGroups(list) {
+      const keyOf = (s) => groupBy === "project" ? (s.project || s.hash)
+        : groupBy === "group" ? (s.route_group || "— ungrouped")
+        : "__all__";
+      const map = new Map();
+      for (const s of list) {
+        const k = keyOf(s);
+        (map.get(k) || map.set(k, []).get(k)).push(s);
+      }
+      const groups = [...map.entries()].map(([key, sessions]) => {
+        sessions.sort((a, b) =>
+          (Number(needsYou(b)) - Number(needsYou(a))) || (ageOf(a) - ageOf(b)));
+        return {
+          key, label: key, sessions,
+          waiting: sessions.some(needsYou),
+          minAge: Math.min(...sessions.map(ageOf)),
+        };
+      });
+      groups.sort((a, b) =>
+        (Number(b.waiting) - Number(a.waiting)) || (a.minAge - b.minAge));
+      return groups;
+    }
+
+    // Render the grouped view, reusing section wrappers and cards across renders
+    // (buffer-dom-rerenders — cards are moved, never rebuilt, so animations and
+    // expand state survive a regroup).
+    function placeGroups(sessions) {
+      const groups = computeGroups(sessions);
+      const seen = new Set();
+      let prevSection = null;
+      for (const g of groups) {
+        seen.add(g.key);
+        let gs = groupSections.get(g.key);
+        if (!gs) {
+          const section = document.createElement("section");
+          section.className = "group-section";
+          section.innerHTML =
+            '<div class="group-head"><span class="glabel"></span>' +
+            '<span class="gn"></span><span class="grule"></span></div>' +
+            '<div class="grid ggrid"></div>';
+          gs = {
+            section,
+            grid: section.querySelector(".ggrid"),
+            head: section.querySelector(".group-head"),
+          };
+          groupSections.set(g.key, gs);
+        }
+        gs.head.hidden = groupBy === "none";
+        setText(gs.section, ".glabel", g.label);
+        setText(gs.section, ".gn", String(g.sessions.length));
+        const anchor = prevSection ? prevSection.nextSibling : groupsEl.firstChild;
+        if (gs.section.parentNode !== groupsEl || gs.section !== anchor) {
+          groupsEl.insertBefore(gs.section, anchor);
+        }
+        prevSection = gs.section;
+        place(gs.grid, g.sessions);
+      }
+      for (const [k, gs] of groupSections) {
+        if (!seen.has(k)) { gs.section.remove(); groupSections.delete(k); }
+      }
     }
 
     function render(payload) {
-      const sessions = (payload.sessions || []).slice().sort(
-        (a, b) => (a.age_seconds ?? 1e12) - (b.age_seconds ?? 1e12)
-      );
-      const seen = new Set();
-      let prev = null;
-      for (const s of sessions) {
-        seen.add(s.hash);
-        let el = cards.get(s.hash);
-        if (!el) {
-          el = buildCard(s.hash);
-          cards.set(s.hash, el);
-        }
-        updateCard(el, s);
-        // Place in sorted order without rebuilding the list: insertBefore moves
-        // an existing node cheaply and leaves untouched cards in place.
-        const anchor = prev ? prev.nextSibling : grid.firstChild;
-        if (el !== anchor) grid.insertBefore(el, anchor);
-        prev = el;
-      }
+      const sessions = payload.sessions || [];
+      const seen = new Set(sessions.map((s) => s.hash));
+
+      placeGroups(sessions);
+
       for (const [hash, el] of cards) {
         if (!seen.has(hash)) { el.remove(); cards.delete(hash); }
       }
-      document.getElementById("count").textContent = sessions.length;
+
       document.getElementById("empty").hidden = sessions.length > 0;
+    }
+
+    // Enrich an expanded card with the full turn text (WIP-14). Cached by turn
+    // timestamp so re-expanding the same turn is free; a failed fetch simply
+    // leaves the excerpt in place (the collapsed content is never worse).
+    async function fetchFull(hash) {
+      const el = cards.get(hash);
+      const at = el ? (el.dataset.turnAt || "") : "";
+      try {
+        const r = await fetch("/turn/" + hash, { cache: "no-store" });
+        if (!r.ok) { turnCache.set(hash, { at, text: null }); return; }
+        const j = await r.json();
+        turnCache.set(hash, { at: j.at || at, text: j.text || null });
+        if (el && el.classList.contains("expanded") && j.text) {
+          const t = el.querySelector(".ttext");
+          if (t.textContent !== j.text) t.textContent = j.text;
+        }
+      } catch (e) { turnCache.set(hash, { at, text: null }); } // negative cache
     }
 
     async function focus(hash) {
@@ -345,9 +937,23 @@
           'updated <span class="live">' + ts.toLocaleTimeString() + "</span>";
       } catch (e) {
         document.getElementById("freshness").innerHTML =
-          '<span class="stale">serve unreachable — is `beacon serve` running?</span>';
+          '<span class="stale">⚠ serve unreachable — is `beacon serve` running?</span>';
       } finally { inFlight = false; }
     }
+
+    const groupToggle = document.getElementById("group-toggle");
+    function syncToggle() {
+      for (const b of groupToggle.children) b.classList.toggle("on", b.dataset.g === groupBy);
+    }
+    groupToggle.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      groupBy = b.dataset.g;
+      try { localStorage.setItem("beacon.groupBy", groupBy); } catch (e) {}
+      syncToggle();
+      if (latest) render(latest);
+    });
+    syncToggle();
 
     poll();
     setInterval(poll, POLL_MS);

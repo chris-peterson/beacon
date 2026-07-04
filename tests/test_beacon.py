@@ -127,8 +127,8 @@ class ApplyRepublishesBadgeText(BeaconTest):
         )
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", ": different")],
-            "Task change must publish beacon_task with leading ': ' separator",
+            [("uservar", "beacon_task", " · different")],
+            "Task change must publish beacon_task with leading ' · ' separator",
         )
 
     def test_first_render_emits_empty_beacon_task_when_task_absent(self):
@@ -148,7 +148,7 @@ class ApplyRepublishesBadgeText(BeaconTest):
 
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", ": my work")],
+            [("uservar", "beacon_task", " · my work")],
         )
 
     def test_unchanged_task_does_not_republish_beacon_task(self):
@@ -206,7 +206,7 @@ class CmdSetPropagatesToBadge(BeaconTest):
         )
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", ": my-task")],
+            [("uservar", "beacon_task", " · my-task")],
             "set task must publish beacon_task so the badge shows the new value",
         )
 
@@ -282,7 +282,7 @@ class PausedSwapsProfile(BeaconTest):
         )
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", ": wiring")],
+            [("uservar", "beacon_task", " · wiring")],
         )
 
     def test_resume_swaps_back_to_base_and_drops_glyph(self):
@@ -882,6 +882,23 @@ class LatestTurn(BeaconTest):
             self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
         self.assertIsNone(self.beacon.read_state("latest_turn"))
 
+    def test_stop_stores_full_turn_alongside_excerpt(self):
+        # WIP-14: the full multi-line text is persisted for on-demand fetch,
+        # while latest_turn keeps only the single-line excerpt (WIP-11).
+        long_turn = "First line of the reply.\nSecond line with detail.\nThird."
+        with mock.patch.object(self.beacon, "_publish_chips"), \
+                mock.patch.object(self.beacon, "_last_assistant_text",
+                                  return_value=long_turn):
+            self._fire("Stop", {})
+        self.assertEqual(self._turn()["text"], "First line of the reply.")
+        self.assertEqual(self.beacon.read_state("latest_turn_full"), long_turn)
+
+    def test_fresh_start_clears_full_turn(self):
+        self.beacon.write_state("latest_turn_full", "stale full text")
+        with mock.patch.object(self.beacon, "_publish_chips"):
+            self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
+        self.assertIsNone(self.beacon.read_state("latest_turn_full"))
+
 
 class ExcerptHelper(BeaconTest):
     """_excerpt: the single-line, payload-bounded turn excerpt (WIP-11).
@@ -917,6 +934,28 @@ class ExcerptHelper(BeaconTest):
         tpath.write_text("\n".join(lines) + "\n")
         self.beacon.write_state("transcript_path", str(tpath))
         self.assertEqual(self.beacon._last_assistant_text(), "newest reply")
+
+
+class FullTurnHelper(BeaconTest):
+    """_full_turn (WIP-14): the multi-line, generously-bounded companion to the
+    single-line _excerpt — line breaks kept, blank runs collapsed, length capped."""
+
+    def test_keeps_line_breaks(self):
+        self.assertEqual(self.beacon._full_turn("a\nb\nc"), "a\nb\nc")
+
+    def test_collapses_blank_runs_and_trims(self):
+        self.assertEqual(self.beacon._full_turn("\n\nfirst\n\n\nsecond\n\n"),
+                         "first\n\nsecond")
+
+    def test_caps_length_with_ellipsis(self):
+        out = self.beacon._full_turn("x" * (self.beacon.FULL_TURN_MAX + 500))
+        self.assertEqual(len(out), self.beacon.FULL_TURN_MAX)
+        self.assertTrue(out.endswith("…"))
+
+    def test_empty_for_blank_input(self):
+        self.assertEqual(self.beacon._full_turn(""), "")
+        self.assertEqual(self.beacon._full_turn(None), "")
+        self.assertEqual(self.beacon._full_turn("   \n  "), "")
 
 
 class SessionEndDisengages(BeaconTest):
@@ -1035,7 +1074,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         # stands alone: @<wandered-project-basename>.
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", f": @{self.live_dir.name}")],
+            [("uservar", "beacon_task", f" · @{self.live_dir.name}")],
             "Wandered location must surface in the task slot as an @ marker",
         )
 
@@ -1055,7 +1094,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         self.beacon.render()
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", f": @{self.live_dir.name}: my-task")],
+            [("uservar", "beacon_task", f" · @{self.live_dir.name}: my-task")],
             "An override must survive a wander as the text behind the @ marker",
         )
 

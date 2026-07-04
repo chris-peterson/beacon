@@ -372,6 +372,36 @@ class WipTest(_WipBase):
         self.assertEqual(by_id["t1"]["kind"], "existing")
         self.assertEqual(by_id["t2"]["kind"], "emerging")
 
+    def test_bound_tack_refs_classified_cr_issue_other(self):
+        # WIP-09: a tack's deliverable + links surface as classified refs so the
+        # fleet view can emphasize change requests, then issues, then other.
+        self._route_file(
+            "feat",
+            tacks=[{
+                "id": "t1",
+                "deliverable": "https://github.com/o/r/pull/7",
+                "links": ["https://gitlab.com/o/r/-/issues/5",
+                          "https://example.com/design-doc"],
+            }],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        refs = self._sessions()[0]["tacks"][0]["refs"]
+        self.assertEqual([r["type"] for r in refs], ["cr", "issue", "other"])
+        self.assertEqual(refs[0]["url"], "https://github.com/o/r/pull/7")
+
+    def test_gitlab_merge_request_ref_is_cr(self):
+        self._route_file(
+            "feat",
+            tacks=[{"id": "t1", "deliverable": "https://gitlab.com/o/r/-/merge_requests/2"}],
+            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
+        )
+        self._write("s1", "claude_session_id", "sid-1")
+        self._write("s1", "anchor.project", "feat")
+        refs = self._sessions()[0]["tacks"][0]["refs"]
+        self.assertEqual(refs[0]["type"], "cr")
+
     def test_bound_tacks_preserve_touch_order_last_is_current(self):
         self._route_file(
             "feat",
@@ -436,8 +466,47 @@ class WipTest(_WipBase):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3) as resp:
             self.assertTrue(resp.headers["Content-Type"].startswith("text/html"))
             body = resp.read().decode()
-        self.assertIn("beacon fleet", body)
+        self.assertIn("beacon · fleet", body)
         self.assertIn("/wip.json", body)
+
+    def test_serve_turn_returns_full_text(self):
+        # WIP-14: /turn/<hash> serves the full multi-line turn, not the excerpt,
+        # with role/at mirroring the record's latest_turn.
+        self._write("t1", "latest_turn", json.dumps(
+            {"role": "agent", "text": "line one", "at": "2026-07-03T00:00:00Z"}))
+        self._write("t1", "latest_turn_full", "line one\nline two\nline three")
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/turn/t1", timeout=3) as resp:
+            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+            body = json.loads(resp.read())
+        self.assertEqual(body["role"], "agent")
+        self.assertEqual(body["text"], "line one\nline two\nline three")
+        self.assertEqual(body["at"], "2026-07-03T00:00:00Z")
+
+    def test_serve_turn_falls_back_to_excerpt_without_full(self):
+        # A turn stored before latest_turn_full existed still enriches to the
+        # excerpt rather than 404ing.
+        self._write("t2", "latest_turn", json.dumps(
+            {"role": "human", "text": "just the excerpt", "at": "x"}))
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/turn/t2", timeout=3) as resp:
+            body = json.loads(resp.read())
+        self.assertEqual(body["text"], "just the excerpt")
+
+    def test_serve_turn_404_for_unknown_session(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/turn/nope", timeout=3)
+        self.assertEqual(cm.exception.code, 404)
 
 
 class IconTest(_WipBase):
