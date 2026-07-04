@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.15.0
+
+### Fleet dashboard: rich turn rendering
+
+- Expanded session cards render Claude's replies as markdown — bold, inline &
+  fenced code, bulleted/numbered lists, headings, and GFM tables — in a quoted
+  transcript panel; the collapsed one-liner renders inline bold/code too. All
+  rendering escapes before it formats, so turn text can't inject markup.
+- The session description renders its own _italic_ and line breaks (beacon's
+  status-overlay convention) instead of raw underscores; underscore-italic is
+  word-boundaried so `snake_case` and paths in a recall note stay intact.
+
+### Card layout & de-duplication
+
+- `/color` reads as a compact identity pill on the project name rather than a
+  full saturated header band that shouted over the status colors.
+- The expanded quote block's left accent encodes role (you/claude); status
+  stays on the dot + bottom bar, so the two no longer double-encode.
+- The waiting badge moved to its own row above the title (short tasks no longer
+  wrap) and absorbed the elapsed time; the standalone wait line is gone.
+- Elapsed time in the footer gets a clock glyph; branch moved from a duplicated
+  footer label to a copyable detail row; dropped the redundant footer status
+  word and the turn-at detail.
+- The grid caps at 4 columns on wide screens.
+
 ## 1.14.0
 
 ### Features
