@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.0
+
+### Features
+- **Fleet dashboard overhaul.** Visual weight now tracks how much a session needs you: a blocked or attention-flagged session keeps its red glow + `WAITING` flag wherever it sits, sorts first within its group, and floats its group to the top — no separate band. A grouping toggle (flat / group / project) in the masthead governs the whole view.
+- **`/color` as the card's identity.** `agent_color` fills the whole title row behind the project icon (which stands in for the status dot); the status color moves to a bottom bar so identity and status don't compete.
+- **Click-to-expand.** Reveals the full task, the full turn, and a detail block (cwd, turn time, session id) with copy buttons; a dedicated `go →` button focuses the window; the route chip is dropped when it just echoes the project.
+- **Full turn on demand (WIP-14).** The plugin persists each turn's full text (`latest_turn_full`) and serves it at `GET /turn/<hash>`; the dashboard fetches it on expand. The bulk `/wip.json` stays single-line (WIP-11), so the cross-session feed stays small.
+- **Bound-tack references (WIP-09).** Each bound tack carries its deliverable/link URLs classified `cr` / `issue` / `other`, rendered on the card as links emphasized change request → issue → other.
+
+### Other
+- The iTerm2 badge's project/task separator is now ` · ` (middle dot), matching the dashboard's `project · task` separator.
+
 ## 1.13.0
 
 ### Features
