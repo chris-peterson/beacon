@@ -154,9 +154,13 @@
 
     .grid {
       display: grid;
-      gap: 0.85rem;
+      --gap: 0.85rem;
+      gap: var(--gap);
       align-items: start; /* an expanded card grows alone — don't stretch its row */
-      grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+      /* Responsive auto-fill, capped at 4 across: each column is at least a
+         quarter of the row (minus the 3 inter-column gaps), so a wide screen
+         never packs a 5th; below that the 19rem floor takes over. */
+      grid-template-columns: repeat(auto-fill, minmax(max(19rem, (100% - 3 * var(--gap)) / 4), 1fr));
     }
 
     /* ── Card (shared shell; .needs-you adds the waiting emphasis) ─ */
@@ -219,20 +223,9 @@
     }
     .icon[hidden], .dot[hidden] { display: none; }
 
-    /* project + task share one label; the session's /color (agent_color) fills
-       its background (RENDER — the status color — stays on the top bar/dot). */
     .label {
       flex: 0 1 auto; min-width: 0;
       display: inline-flex; align-items: baseline; gap: 0.4rem;
-    }
-    /* agent_color fills the whole title row (the head) edge-to-edge, behind the
-       icon and text. Status lives on the bottom bar (::after) and the dot/icon,
-       so the title band runs clean to the top edge. */
-    .card.has-color .head {
-      background: var(--agent-color);
-      color: var(--agent-fg);
-      margin: calc(-1 * var(--pad-top)) calc(-1 * var(--pad-x)) 0.6rem;
-      padding: 0.5rem var(--pad-x) 0.45rem;
     }
     .project {
       font-weight: 700; letter-spacing: 0.02em;
@@ -247,9 +240,14 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .task::before { content: "· "; color: var(--faint); }
-    .card.has-color .project,
-    .card.has-color .task { color: var(--agent-fg, #000); }
-    .card.has-color .task::before { color: var(--agent-fg); opacity: 0.65; }
+    /* The session's /color (agent_color) reads as a compact identity pill around
+       the project name (README: a "first-class identity pill") — it marks whose
+       session this is without a full color band shouting over the status colors,
+       which stay on the dot + bottom bar. */
+    .card.has-color .project {
+      background: var(--agent-color); color: var(--agent-fg);
+      padding: 0.05rem 0.5rem; border-radius: 999px;
+    }
 
     /* Latest turn (WIP-11): collapsed = one scannable, width-ellipsized line;
        expanded = the full turn, wrapped. The whole point of expand. */
@@ -261,13 +259,86 @@
     .turn .tglyph { margin-right: 0.3rem; opacity: 0.9; }
     .turn[data-role="human"] .tglyph { color: var(--cyan); }
     .turn[data-role="agent"] .tglyph { color: var(--accent); }
-    /* Expanded: the full turn (WIP-14), fetched on demand from /turn/<hash>.
-       pre-wrap keeps the turn's own line breaks; anywhere breaks long tokens. */
+    /* Expanded: the full turn (WIP-14), fetched on demand from /turn/<hash> and
+       rendered as lightweight markdown (bold, inline + fenced code, lists,
+       headings) — the shape Claude's replies actually arrive in. renderMarkdown()
+       escapes before it formats, so no turn text can inject markup. The block
+       reads as a quoted transcript panel and the glyph grows into a role label. */
     .card.expanded .turn {
-      white-space: pre-wrap; overflow: visible; text-overflow: clip;
-      overflow-wrap: anywhere;
-      color: var(--fg); opacity: 0.9;
+      display: block;
+      white-space: normal; /* undo the collapsed one-liner's nowrap so prose wraps */
+      overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+      margin-top: 0.6rem;
+      padding: 0.5rem 0.7rem 0.6rem;
+      border: 1px solid var(--line);
+      /* Left accent encodes WHO spoke (role), not status — status already owns
+         the bottom bar + dot, so the two never double-encode the same signal. */
+      border-left: 2px solid var(--turn-accent, var(--line-hi));
+      border-radius: 8px;
+      background: var(--bg-2);
+      color: var(--fg); opacity: 1;
+      font-size: 0.8rem; line-height: 1.55;
     }
+    .card.expanded .turn .tglyph {
+      display: block; margin: 0 0 0.4rem;
+      font-size: 0.63rem; letter-spacing: 0.16em; text-transform: uppercase;
+      opacity: 0.75;
+    }
+    .card.expanded .turn[data-role="human"] { --turn-accent: var(--cyan); }
+    .card.expanded .turn[data-role="agent"] { --turn-accent: var(--accent); }
+    .card.expanded .turn[data-role="human"] .tglyph::after { content: " you"; }
+    .card.expanded .turn[data-role="agent"] .tglyph::after { content: " claude"; }
+    .card.expanded .ttext { display: block; }
+
+    /* Rendered-markdown primitives, scoped to .ttext so they never touch the
+       collapsed one-liner (which stays plain textContent). */
+    .ttext > :first-child { margin-top: 0; }
+    .ttext > :last-child { margin-bottom: 0; }
+    .ttext .md-p { margin: 0.5rem 0; }
+    .ttext .md-h { margin: 0.75rem 0 0.35rem; font-weight: 700; color: var(--fg); }
+    .ttext .md-h1 { font-size: 1rem; letter-spacing: 0.01em; }
+    .ttext .md-h2 { font-size: 0.92rem; }
+    .ttext .md-h3, .ttext .md-h4, .ttext .md-h5, .ttext .md-h6 {
+      font-size: 0.84rem; color: var(--muted); letter-spacing: 0.02em;
+    }
+    .ttext strong { color: #fff; font-weight: 700; }
+    .ttext em { font-style: italic; }
+    .ttext .md-ul, .ttext .md-ol { margin: 0.45rem 0; padding-left: 1.3rem; }
+    .ttext .md-ul { list-style: none; }
+    .ttext .md-ul > li { position: relative; }
+    .ttext .md-ul > li::before {
+      content: "▸"; position: absolute; left: -1.05rem;
+      color: var(--accent); opacity: 0.8;
+    }
+    .ttext .md-ol { list-style: decimal; }
+    .ttext .md-ol > li::marker { color: var(--faint); }
+    .ttext li { margin: 0.18rem 0; }
+    .ttext code {
+      font-family: var(--mono); font-size: 0.92em;
+      background: var(--panel-hi); color: var(--cyan);
+      border: 1px solid var(--line); border-radius: 4px;
+      padding: 0.02em 0.34em;
+    }
+    .ttext .md-pre {
+      margin: 0.5rem 0; padding: 0.55rem 0.65rem;
+      background: #0a0b12; border: 1px solid var(--line);
+      border-radius: 6px; overflow-x: auto;
+    }
+    .ttext .md-pre code {
+      background: none; border: none; padding: 0; color: var(--fg);
+      font-size: 0.82rem; line-height: 1.5; white-space: pre;
+    }
+    /* Tables scroll horizontally inside their own wrapper — the card never
+       widens to fit a wide table (matches the code-block treatment). */
+    .ttext .md-tw { margin: 0.5rem 0; overflow-x: auto; }
+    .ttext .md-table { border-collapse: collapse; font-size: 0.78rem; }
+    .ttext .md-table th, .ttext .md-table td {
+      border: 1px solid var(--line); padding: 0.28rem 0.55rem; white-space: nowrap;
+    }
+    .ttext .md-table th {
+      background: var(--panel-hi); color: var(--fg); font-weight: 700; letter-spacing: 0.02em;
+    }
+    .ttext .md-table tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.025); }
 
     /* Recall note / pause reason */
     .desc {
@@ -350,9 +421,8 @@
     }
     .sub > span:empty { display: none; }
     .sub .route { color: var(--accent); }
-    .sub .branch::before { content: "⎇ "; opacity: 0.7; }
-    .sub .status { text-transform: lowercase; }
     .sub .age { font-variant-numeric: tabular-nums; }
+    .sub .age::before { content: "◷ "; opacity: 0.7; }
     .go {
       flex: none;
       display: inline-flex; align-items: center; gap: 0.32rem;
@@ -381,7 +451,7 @@
 
     /* Waiting-for-you ornaments — hidden by default, shown on .needs-you cards. */
     .attn-flag { display: none; }
-    .wait-time { display: none; }
+    .wait-time:empty { display: none; } /* no trailing gap in the badge when age is unknown */
 
     /* ── Needs-you emphasis (per card, anywhere in the grouped view) ──
        A session blocked on the user (or flagged for attention) keeps this
@@ -412,9 +482,12 @@
     .card.needs-you .dot { width: 0.72rem; height: 0.72rem; }
     .card.needs-you .turn { font-size: 0.85rem; margin-top: 0.6rem; }
 
+    /* The badge sits on its OWN row above the title (not inside the head flex
+       row) so it never steals width from project · task — a short task stays on
+       one line; the badge just pushes the title down. */
     .card.needs-you .attn-flag {
       display: inline-flex; align-items: center; gap: 0.4rem;
-      margin-left: auto; flex: none;
+      margin: 0 0 0.55rem;
       padding: 0.16rem 0.55rem;
       border-radius: 999px;
       background: var(--blocked);
@@ -436,15 +509,15 @@
     .card.needs-you.soft-attn .attn-flag::before { background: #241503; }
     .card.needs-you.soft-attn::after { background: var(--busy); }
 
-    .card.needs-you .wait-time {
-      display: block;
-      margin-top: 0.55rem;
-      color: #ffb0b0; font-size: 0.75rem;
-      font-variant-numeric: tabular-nums;
+    /* The waiting duration rides inside the badge (e.g. "● WAITING · 5m"); the
+       flex gap separates it from the label. text-transform:none keeps "5m"
+       lowercase against the uppercased label; it inherits the badge's text color. */
+    .attn-flag .wait-time {
+      text-transform: none; font-weight: 700;
+      font-variant-numeric: tabular-nums; opacity: 0.9;
     }
-    .card.needs-you.soft-attn .wait-time { color: #ffd3a6; }
-    /* wait-time already states the status + duration up top — don't repeat it. */
-    .card.needs-you .sub .status,
+    .attn-flag .wait-time::before { content: "· "; opacity: 0.55; }
+    /* the badge already states the duration up top — don't repeat age below. */
     .card.needs-you .sub .age { display: none; }
 
     /* ── Empty & error ────────────────────────────────────────── */
@@ -536,10 +609,6 @@
       if (s < 86400) return Math.floor(s / 3600) + "h";
       return Math.floor(s / 86400) + "d";
     }
-    function fmtWait(s) {
-      if (s == null) return "waiting";
-      return "waiting " + fmtAge(s);
-    }
 
     // A session lands in the attention band when Claude is blocked on the user
     // (state === "blocked", i.e. status "waiting") or a sticky attention marker
@@ -548,40 +617,167 @@
       return s.state === "blocked" || !!s.pending_attention;
     }
 
+    // Lightweight markdown for the expanded turn (WIP-14). Claude's replies are
+    // lightly formatted — bold, inline/fenced code, bulleted or numbered lists,
+    // the occasional heading — and the stored full text keeps those markers
+    // (unlike the flattened excerpt). We render exactly that subset. Everything
+    // is HTML-escaped before any formatting runs, so turn text can never inject
+    // markup; unrecognized syntax falls through as plain (escaped) text.
+    function escapeHtml(s) {
+      return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+    }
+
+    // Inline spans on one line's text. Code spans are split out first so their
+    // contents aren't re-formatted; bold (**) is matched before italic (*), and
+    // both require non-space edges so a stray asterisk or list marker is left
+    // alone. Underscore emphasis is opt-in (underscoreEm) and word-boundaried:
+    // off for turns (so snake_case identifiers aren't mangled), on for the
+    // description, where beacon's status overlay emits _x_ for italic.
+    function renderInline(s, underscoreEm) {
+      return escapeHtml(s).split(/(`[^`]+`)/g).map((p) => {
+        if (p.length > 1 && p[0] === "`" && p[p.length - 1] === "`") {
+          return "<code>" + p.slice(1, -1) + "</code>";
+        }
+        p = p
+          .replace(/\*\*(\S(?:.*?\S)?)\*\*/g, "<strong>$1</strong>")
+          .replace(/\*(\S(?:.*?\S)?)\*/g, "<em>$1</em>");
+        if (underscoreEm) {
+          // Only when a leading boundary (start/space/paren) and a trailing one
+          // (space/punct/end) bracket the pair — so a path or snake_case token
+          // in a recall note keeps its underscores.
+          p = p.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+        }
+        return p;
+      }).join("");
+    }
+
+    function renderMarkdown(src) {
+      const lines = src.split("\n");
+      const out = [];
+      let i = 0;
+      const isUl = (l) => /^\s*[-*+]\s+/.test(l);
+      const isOl = (l) => /^\s*\d+[.)]\s+/.test(l);
+      const isH = (l) => /^#{1,6}\s+/.test(l);
+      const isFence = (l) => /^\s*```/.test(l);
+      // A GFM table is a header row plus a dash-delimiter row (:--: cells set
+      // alignment); isTableStart peeks at the next line so the header isn't
+      // swallowed by the paragraph branch.
+      const isTableSep = (l) => /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(l);
+      const isTableStart = (idx) =>
+        idx + 1 < lines.length && lines[idx].includes("|") && isTableSep(lines[idx + 1]);
+      const splitRow = (l) => l.trim().replace(/^\|/, "").replace(/\|$/, "")
+        .split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
+      while (i < lines.length) {
+        const line = lines[i];
+        if (isFence(line)) {
+          const buf = [];
+          i++;
+          while (i < lines.length && !isFence(lines[i])) { buf.push(lines[i]); i++; }
+          i++; // consume the closing fence (or fall off EOF)
+          out.push('<pre class="md-pre"><code>' + escapeHtml(buf.join("\n")) + "</code></pre>");
+        } else if (isH(line)) {
+          const m = line.match(/^(#{1,6})\s+(.*)$/);
+          out.push('<div class="md-h md-h' + m[1].length + '">' + renderInline(m[2]) + "</div>");
+          i++;
+        } else if (isUl(line)) {
+          const items = [];
+          while (i < lines.length && isUl(lines[i])) {
+            items.push("<li>" + renderInline(lines[i].replace(/^\s*[-*+]\s+/, "")) + "</li>");
+            i++;
+          }
+          out.push('<ul class="md-ul">' + items.join("") + "</ul>");
+        } else if (isOl(line)) {
+          const items = [];
+          while (i < lines.length && isOl(lines[i])) {
+            items.push("<li>" + renderInline(lines[i].replace(/^\s*\d+[.)]\s+/, "")) + "</li>");
+            i++;
+          }
+          out.push('<ol class="md-ol">' + items.join("") + "</ol>");
+        } else if (isTableStart(i)) {
+          const header = splitRow(line);
+          const aligns = splitRow(lines[i + 1]).map((c) => {
+            const l = c.startsWith(":"), r = c.endsWith(":");
+            return l && r ? "center" : r ? "right" : "left";
+          });
+          i += 2;
+          const rows = [];
+          while (i < lines.length && lines[i].trim() && lines[i].includes("|") && !isFence(lines[i])) {
+            rows.push(splitRow(lines[i])); i++;
+          }
+          const cell = (tag, txt, x) =>
+            "<" + tag + ' style="text-align:' + (aligns[x] || "left") + '">' + renderInline(txt || "") + "</" + tag + ">";
+          const thead = "<thead><tr>" + header.map((c, x) => cell("th", c, x)).join("") + "</tr></thead>";
+          const tbody = "<tbody>" + rows.map((r) =>
+            "<tr>" + header.map((_, x) => cell("td", r[x] || "", x)).join("") + "</tr>").join("") + "</tbody>";
+          out.push('<div class="md-tw"><table class="md-table">' + thead + tbody + "</table></div>");
+        } else if (!line.trim()) {
+          i++; // blank line — paragraph separator
+        } else {
+          const para = [];
+          while (i < lines.length && lines[i].trim()
+              && !isFence(lines[i]) && !isH(lines[i]) && !isUl(lines[i]) && !isOl(lines[i])
+              && !isTableStart(i)) {
+            para.push(lines[i]);
+            i++;
+          }
+          out.push('<p class="md-p">' + para.map(renderInline).join("<br>") + "</p>");
+        }
+      }
+      return out.join("");
+    }
+
+    // Paint the turn body. Collapsed (or full text not yet fetched) → the plain
+    // single-line excerpt. Expanded with the full turn cached for this same `at`
+    // → the markdown-rendered full text. A signature guard skips no-op repaints
+    // so steady polling never re-parses an unchanged turn.
+    function paintTurn(t, text, rich) {
+      const sig = (rich ? "md " : "tx ") + text;
+      if (t.dataset.sig === sig) return;
+      t.dataset.sig = sig;
+      // Both paths escape-then-format, so **bold** and `code` render even on the
+      // collapsed one-liner instead of showing literal markers.
+      t.innerHTML = rich ? renderMarkdown(text) : renderInline(text);
+    }
+    function paintTurnFor(el, hash) {
+      const t = el.querySelector(".ttext");
+      if (!t) return;
+      const cached = turnCache.get(hash);
+      const have = cached && cached.at === (el.dataset.turnAt || "");
+      const rich = el.classList.contains("expanded") && have && !!cached.text;
+      paintTurn(t, rich ? cached.text : (t.dataset.excerpt || ""), rich);
+    }
+
     function buildCard(hash) {
       const el = document.createElement("div");
       el.className = "card";
       el.dataset.hash = hash;
       el.innerHTML = `
         <button class="forget" title="Forget this session">×</button>
+        <span class="attn-flag">waiting<span class="wait-time"></span></span>
         <div class="head">
           <span class="dot"></span>
           <img class="icon" alt="" hidden>
           <span class="label"><span class="project"></span><span class="task"></span></span>
-          <span class="attn-flag">waiting</span>
         </div>
         <div class="turn" hidden><span class="tglyph"></span><span class="ttext"></span></div>
         <div class="tacks" hidden></div>
-        <div class="wait-time"></div>
         <div class="desc"></div>
         <dl class="details">
           <div class="kv"><dt>cwd</dt><dd class="cwd"></dd><button class="copy" title="Copy cwd"></button></div>
           <div class="kv kv-branch"><dt>branch</dt><dd class="branch-d"></dd><button class="copy" title="Copy branch"></button></div>
-          <div class="kv"><dt>turn at</dt><dd class="turn-at"></dd></div>
           <div class="kv"><dt>session</dt><dd class="sess"></dd><button class="copy" title="Copy session id"></button></div>
         </dl>
         <div class="foot">
           <span class="chev" aria-hidden="true">⌄</span>
           <div class="sub">
             <span class="route"></span>
-            <span class="branch"></span>
-            <span class="status"></span>
             <span class="age"></span>
           </div>
           <button class="go" hidden>go <span class="arr">→</span></button>
         </div>`;
       el.addEventListener("click", () => {
         if (el.classList.toggle("expanded")) fetchFull(hash);
+        paintTurnFor(el, hash); // switch the body to/from rendered markdown now
       });
       el.querySelector(".go").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -619,6 +815,15 @@
       const reason = description || "";
       if (state !== "paused") return reason;
       return reason ? "|| " + reason : "||";
+    }
+
+    // The description carries beacon's status-overlay formatting — _italic_ and
+    // newlines for a second line (e.g. "Shipping\n_Phase 3: release_"). The
+    // iTerm2 pane badge honors those; render them here too rather than showing
+    // the raw markers. Escape-first via renderInline, with underscore-italic on.
+    function renderDescHtml(state, description) {
+      const raw = descText(state, description);
+      return raw ? renderInline(raw, true).replace(/\n/g, "<br>") : "";
     }
 
     // Bound-tack references (WIP-09): the change requests / issues / other the
@@ -723,26 +928,28 @@
         const g = turn.querySelector(".tglyph"), t = turn.querySelector(".ttext");
         if (g.textContent !== glyph) g.textContent = glyph;
         el.dataset.turnAt = lt.at || "";
-        // When expanded, prefer the fetched full turn — but only if it's for
-        // this same turn (matching `at`). `have` is set even on a failed fetch
-        // (negative cache), so a 404 fetches once per turn, not every poll; a
-        // newer turn (changed `at`) invalidates it and refetches once.
-        const expanded = el.classList.contains("expanded");
-        const cached = turnCache.get(s.hash);
-        const have = cached && cached.at === (lt.at || "");
-        const show = (expanded && have && cached.text) ? cached.text : lt.text;
-        if (t.textContent !== show) t.textContent = show;
+        t.dataset.excerpt = lt.text; // collapsed one-liner + expand fallback
         turn.dataset.role = lt.role || "";
         turn.hidden = false;
-        if (expanded && !have) fetchFull(s.hash);
+        // Paint from the excerpt, or the markdown-rendered full turn when expanded
+        // and cached for this same `at`.
+        paintTurnFor(el, s.hash);
+        // `have` is set even on a failed fetch (negative cache), so a 404 fetches
+        // once per turn, not every poll; a newer turn (changed `at`) invalidates
+        // it and refetches once.
+        const cached = turnCache.get(s.hash);
+        const have = cached && cached.at === (lt.at || "");
+        if (el.classList.contains("expanded") && !have) fetchFull(s.hash);
       } else {
         turn.hidden = true;
       }
 
       renderTacks(el, s);
 
-      setText(el, ".wait-time", fmtWait(s.age_seconds));
-      setText(el, ".desc", descText(s.state, s.description));
+      setText(el, ".wait-time", s.age_seconds != null ? fmtAge(s.age_seconds) : "");
+      const descEl = el.querySelector(".desc");
+      const descHtml = renderDescHtml(s.state, s.description);
+      if (descEl.dataset.html !== descHtml) { descEl.dataset.html = descHtml; descEl.innerHTML = descHtml; }
       // Show the route only when it carries signal the project doesn't — a
       // route resolved by matching the project just echoes the title (mirrors
       // _watch_frame_lines' echoes_project in scripts/beacon).
@@ -750,17 +957,15 @@
       const rt = (s.route || "").toLowerCase();
       const echoesProject = !rt || rt === proj || rt === proj.split("/").pop();
       setText(el, ".route", !echoesProject && s.route ? "[" + s.route + "]" : "");
-      setText(el, ".branch", s.branch || "");
-      setText(el, ".status", s.status || "");
       setText(el, ".age", fmtAge(s.age_seconds));
 
-      // Expand-only detail. `at` is the turn timestamp; `session` is the Claude
-      // session id (what you'd pass to `claude --resume`), falling back to the
-      // beacon hash for non-Claude panes.
+      // Expand-only detail. `session` is the Claude session id (what you'd pass
+      // to `claude --resume`), falling back to the beacon hash for non-Claude
+      // panes. Branch repeats the footer's glance value but carries a copy
+      // affordance the footer lacks.
       setText(el, ".cwd", s.cwd || "—");
       setText(el, ".branch-d", s.branch || "");
       el.querySelector(".kv-branch").hidden = !s.branch;
-      setText(el, ".turn-at", lt && lt.at ? new Date(lt.at).toLocaleString() : "—");
       setText(el, ".sess", s.session || s.hash || "");
     }
 
@@ -875,10 +1080,7 @@
         if (!r.ok) { turnCache.set(hash, { at, text: null }); return; }
         const j = await r.json();
         turnCache.set(hash, { at: j.at || at, text: j.text || null });
-        if (el && el.classList.contains("expanded") && j.text) {
-          const t = el.querySelector(".ttext");
-          if (t.textContent !== j.text) t.textContent = j.text;
-        }
+        if (el && el.classList.contains("expanded") && j.text) paintTurnFor(el, hash);
       } catch (e) { turnCache.set(hash, { at, text: null }); } // negative cache
     }
 
