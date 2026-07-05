@@ -303,6 +303,12 @@
     }
     .ttext strong { color: #fff; font-weight: 700; }
     .ttext em { font-style: italic; }
+    /* Rendered markdown links (turn + description). */
+    .ttext a, .desc a {
+      color: var(--cyan); text-decoration: underline; text-underline-offset: 2px;
+      text-decoration-color: rgba(139, 233, 253, 0.5);
+    }
+    .ttext a:hover, .desc a:hover { color: var(--fg); text-decoration-color: currentColor; }
     .ttext .md-ul, .ttext .md-ol { margin: 0.45rem 0; padding-left: 1.3rem; }
     .ttext .md-ul { list-style: none; }
     .ttext .md-ul > li { position: relative; }
@@ -627,28 +633,34 @@
       return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     }
 
-    // Inline spans on one line's text. Code spans are split out first so their
-    // contents aren't re-formatted; bold (**) is matched before italic (*), and
-    // both require non-space edges so a stray asterisk or list marker is left
-    // alone. Underscore emphasis is opt-in (underscoreEm) and word-boundaried:
-    // off for turns (so snake_case identifiers aren't mangled), on for the
-    // description, where beacon's status overlay emits _x_ for italic.
+    // Inline formatting for one line of text. Code spans are pulled to
+    // placeholders FIRST so their contents are never re-formatted — and so bold
+    // can wrap a code span (**`x`** renders as bold code, which splitting on
+    // backticks couldn't do). Everything else is escaped, then links / bold /
+    // italic run, then the code spans are restored (escaped). Links accept only
+    // http(s) / relative / anchor hrefs and quote-escape the URL, so a
+    // javascript:/data: URL or an attribute-breakout falls through as plain
+    // text. Bold (**) is matched before italic (*), both requiring non-space
+    // edges so a stray marker is left alone. Underscore emphasis is opt-in
+    // (underscoreEm) and word-boundaried: off for turns (so snake_case isn't
+    // mangled), on for the description (beacon's status overlay emits _x_).
     function renderInline(s, underscoreEm) {
-      return escapeHtml(s).split(/(`[^`]+`)/g).map((p) => {
-        if (p.length > 1 && p[0] === "`" && p[p.length - 1] === "`") {
-          return "<code>" + p.slice(1, -1) + "</code>";
-        }
-        p = p
-          .replace(/\*\*(\S(?:.*?\S)?)\*\*/g, "<strong>$1</strong>")
-          .replace(/\*(\S(?:.*?\S)?)\*/g, "<em>$1</em>");
-        if (underscoreEm) {
-          // Only when a leading boundary (start/space/paren) and a trailing one
-          // (space/punct/end) bracket the pair — so a path or snake_case token
-          // in a recall note keeps its underscores.
-          p = p.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
-        }
-        return p;
-      }).join("");
+      const codes = [];
+      s = s.replace(/`([^`]+)`/g, (_, c) => "\x00" + (codes.push(c) - 1) + "\x00");
+      let out = escapeHtml(s)
+        .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, text, url) => {
+          if (!/^(https?:\/\/|\/|#)/i.test(url.replace(/&amp;/g, "&"))) return m;
+          return '<a href="' + url.replace(/"/g, "&quot;") + '" target="_blank" rel="noopener">' + text + "</a>";
+        })
+        .replace(/\*\*(\S(?:.*?\S)?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(\S(?:.*?\S)?)\*/g, "<em>$1</em>");
+      if (underscoreEm) {
+        // Only when a leading boundary (start/space/paren) and a trailing one
+        // (space/punct/end) bracket the pair — so a path or snake_case token in
+        // a recall note keeps its underscores.
+        out = out.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+      }
+      return out.replace(/\x00(\d+)\x00/g, (_, i) => "<code>" + escapeHtml(codes[+i]) + "</code>");
     }
 
     function renderMarkdown(src) {
@@ -775,7 +787,8 @@
           </div>
           <button class="go" hidden>go <span class="arr">→</span></button>
         </div>`;
-      el.addEventListener("click", () => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("a")) return; // let a rendered link open; don't toggle
         if (el.classList.toggle("expanded")) fetchFull(hash);
         paintTurnFor(el, hash); // switch the body to/from rendered markdown now
       });
