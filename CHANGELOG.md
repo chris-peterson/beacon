@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.17.0
+
+### Branch review
+
+- New `beacon review` subcommand diffs the whole branch against the default
+  branch (`origin/HEAD` → `main` → `master`) through git's configured difftool
+  with `MOOR_CONTEXT` set, relaying [moor](https://github.com/chris-peterson/moor)'s
+  sidecar verdict (comments + exit code) on stdout. On the default branch, or
+  outside a git repo, it reports there's nothing to review instead of opening an
+  empty diff.
+- The status bar gains a centered **`⇄ review`** action chip — an iTerm2 Send
+  Text action that types `beacon review` into the pane. In a shell it opens moor
+  for a manual review; in a live Claude session Claude runs it and acts on the
+  `fix-now` comments, closing the review loop from one click. `bin/beacon-iterm`
+  stays unaware of moor and Claude. (#11)
+
 ## 1.16.0
 
 ### Fleet dashboard
