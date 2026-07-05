@@ -24,6 +24,9 @@ suite:
     - name: tack
       required: false
       reason: resolves the branch's CR/PR URL for the badge link
+    - name: moor
+      required: false
+      reason: powers beacon review — the branch-vs-default diff and its sidecar feedback
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]
@@ -35,6 +38,7 @@ suite:
     - ["/beacon:beacon", "Label a pane, or set status with a note"]
     - ["/beacon:pause", "Park this session fast — status paused, optional note"]
     - ["beacon", "Read the resolved project / task / status anywhere"]
+    - ["beacon review", "Review the branch vs its default (moor-aware) — or click ⇄ review"]
   # Skill-anchored previews shown live on the docs site; the session: below is
   # the at-a-glance flow the hub also reads.
   examples:
