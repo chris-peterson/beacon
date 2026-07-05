@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.16.0
+
+### Fleet dashboard
+
+- Turn cards now render markdown **links** — `[text](url)` becomes a clickable
+  link (new tab), including code chips inside links (`[`sha`](url)`) and links
+  in table cells. Hrefs are scheme-sanitized (http(s)/relative/anchor only) and
+  quote-escaped, so a `javascript:`/`data:` URL falls through as plain text.
+- **Bold-wrapped inline code** (`` **`x`** ``) now renders as bold code, in the
+  collapsed one-liner, the expanded panel, and table cells.
+
+### Session control
+
+- `beacon pause --clear-screen` clears the iTerm2 session's screen **and**
+  scrollback (the Cmd+K / "Clear Buffer" equivalent) alongside pausing — for a
+  clean stand-down, e.g. the retro launcher parking a spent session. It degrades
+  gracefully outside iTerm2 or with no reachable tty: the pause still applies,
+  the clear is skipped. (#8)
+
 ## 1.15.0
 
 ### Fleet dashboard: rich turn rendering
