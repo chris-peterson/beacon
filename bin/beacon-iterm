@@ -156,6 +156,18 @@ def cmd_clear(_args):
     _osc("1337;SetColors=tab=default")
 
 
+def cmd_clear_screen(_args):
+    # Clear the session's visible screen AND scrollback — the Cmd+K / "Clear
+    # Buffer" equivalent, for a clean stand-down. CSI H (cursor home) + 2J (erase
+    # display) + 3J (erase scrollback, the xterm E3 capability iTerm2 honors).
+    # Written straight to /dev/tty like every other surface, so it reaches the
+    # real terminal even when the caller's stdout is captured (e.g. a hook); when
+    # there's no tty it degrades to stdout, a harmless no-op for the buffer.
+    f = _tty()
+    f.write("\x1b[H\x1b[2J\x1b[3J")
+    f.flush()
+
+
 # iTerm2 has no escape sequence to raise *another* session, so focus drives
 # Apple Events via osascript. The script captures the target with no side
 # effects and only then selects it — selecting a window mid-enumeration
@@ -245,6 +257,9 @@ def main(argv=None):
 
     sp = sub.add_parser("clear", help="restore badge + tab color to profile defaults")
     sp.set_defaults(func=cmd_clear)
+
+    sp = sub.add_parser("clear-screen", help="clear the session's screen + scrollback (Cmd+K equivalent)")
+    sp.set_defaults(func=cmd_clear_screen)
 
     sp = sub.add_parser("focus", help="bring an iTerm2 session to the foreground by its session id")
     sp.add_argument("session_id")

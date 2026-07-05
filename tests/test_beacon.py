@@ -1599,6 +1599,23 @@ class FleetPayloadColor(BeaconTest):
         self.assertIsNone(row["agent_color"])
 
 
+class PauseClearScreen(BeaconTest):
+    """#8: `pause --clear-screen` sets status=paused AND drives the CLI's
+    clear-screen; without the flag it must not clear."""
+
+    def test_clear_screen_flag_invokes_cli(self):
+        args = self.beacon.argparse.Namespace(note=[], clear_screen=True)
+        self.beacon.cmd_pause(args)
+        self.assertIn(("clear-screen",), self.cli_calls)
+        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+
+    def test_without_flag_does_not_clear(self):
+        args = self.beacon.argparse.Namespace(note=[], clear_screen=False)
+        self.beacon.cmd_pause(args)
+        self.assertNotIn(("clear-screen",), self.cli_calls)
+        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+
+
 def _base_state() -> dict:
     """Default state dict acceptable to apply(). Tests override individual fields."""
     return {

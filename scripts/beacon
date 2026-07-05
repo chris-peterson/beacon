@@ -3025,6 +3025,12 @@ def cmd_status(args):
 def cmd_pause(args):
     _apply_status("paused", _note_from(args.note))
     render()
+    # --clear-screen (#8): a clean stand-down wipes the terminal too. The agent
+    # can't clear its own buffer (captured stdout), but the CLI writes straight
+    # to /dev/tty; outside iTerm2 or with no tty it's a harmless no-op, so the
+    # pause always applies regardless.
+    if getattr(args, "clear_screen", False):
+        _cli("clear-screen")
 
 
 def cmd_wrap(args):
@@ -3695,6 +3701,8 @@ def main(argv=None):
 
     sp = sub.add_parser("pause", help="set status=paused with optional description")
     sp.add_argument("note", nargs="*")
+    sp.add_argument("--clear-screen", action="store_true",
+                    help="also clear the iTerm2 session's screen + scrollback for a clean stand-down")
 
     sp = sub.add_parser("wrap",
                         help="set status=wrapping (post-work follow-up/retro) with optional description")
