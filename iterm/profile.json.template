@@ -102,6 +102,55 @@
             }
           },
           {
+            "class": "iTermStatusBarActionComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 150,
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 1.0,
+                  "Green Component": 0.4745,
+                  "Blue Component": 0.7765,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                },
+                "action": {
+                  "applyMode": 0,
+                  "escaping": 1,
+                  "title": "⇄ review",
+                  "parameter": "beacon review\r",
+                  "action": 12,
+                  "version": 2
+                }
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "Menlo-Regular 18",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
+            "class": "iTermStatusBarSpringComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
+                "iTermStatusBarSpringComponentSizeMultipleKey": 1
+              },
+              "layout advanced configuration dictionary value": {
+                "algorithm": 1,
+                "remove empty components": false,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {

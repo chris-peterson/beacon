@@ -248,6 +248,8 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. This is the back-end for the `↖ web` action chip's coprocess (STATUS-BAR-02). When invoked as `open-url`, the plugin shall open the resolved `url` in the user's default browser. Both subcommands read from the per-session handoff files written by the shell integration (STATUS-BAR-05).
 
+**CMD-16.** When the user invokes `review`, the plugin shall diff the whole current branch against the default branch, the way a reviewer sees a CR/PR, through git's configured difftool. It shall resolve the default branch as `origin/HEAD` (symbolic), then `origin/main`, then `origin/master`; diff the three-dot range `<default>...HEAD` under `git difftool --no-prompt --dir-diff`; and set the `MOOR_CONTEXT` env var to a sidecar file it pre-populates with the review header, so that when the difftool is [moor](https://github.com/chris-peterson/moor) the review feedback (comments + exit code) is written back and relayed on stdout as `REVIEW_VERDICT` / `REVIEW_OUTPUT` (moor's sidecar contract). On the default branch, or outside a git repository, it shall report there is nothing to review rather than open an empty diff. This is the back-end for the `⇄ review` action chip (STATUS-BAR-02); the chip types `beacon review` into the pane, so the review runs in the reader's context (a shell, or a Claude session that consumes the relayed verdict). The subcommand is moor-*aware* only insofar as it sets the sidecar env var and relays the result — it is otherwise Claude-unaware, honoring the CLI/plugin boundary (§2): the difftool, and whether a reader acts on the verdict, are not its concern.
+
 **CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, description) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
 
 **CMD-16.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
@@ -350,7 +352,7 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window — three on 
 
 ```text
 ┌─[ tab ]─────────────────────────────────────────┐ ← §4.6 tab color
-│ STATUS BAR  ↖ web · project   branch   cwd ↗    │ ← §4.4 fixed layout, two springs
+│ STATUS BAR  ↖ web · project  ⇄ review  branch cwd↗│ ← §4.4 fixed layout, two springs
 ├─────────────────────────────────────────────────┤
 │                                       ┌────────┐│
 │   pane content                        │ project││ ← §4.3 badge
@@ -361,7 +363,7 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window — three on 
 | Area | Section | Namespace | Purpose | Mechanism |
 |:---|:---|:---|:---|:---|
 | Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color | OSC `SetBadgeFormat` + `SetUserVar` for text; OSC `SetColors=badge=` for the status traffic-light color. The base profile (§6.6) carries badge sizing |
-| Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + cross-session actions (`↖ web`, `↗ code`) | Base profile status-bar layout + `SetUserVar` + Action component |
+| Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + cross-session actions (`↖ web`, `⇄ review`, `↗ code`) | Base profile status-bar layout + `SetUserVar` + Action component |
 | Tab color | §4.6 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | OSC `SetColors=tab=` for the status traffic-light color |
 | Pane background | §4.5 | `RENDER` | Whole-pane mode cue — **mode states (`paused`, `wrapping`, `done`) only** | Swap into the mode's dynamic profile (§6.6), which carries a de-emphasized background (and, for `paused` / `done`, a faint background image); leaving the mode swaps back (RENDER-05) |
 
@@ -499,17 +501,19 @@ flowchart TB
 
 beacon does **not** make the beacon profile iTerm2's default — that would require quitting iTerm2 to write `Default Bookmark Guid`. Instead, each session is switched into the `beacon` profile at runtime via `set-profile` (CLI-14): the plugin switches Claude panes at SessionStart, and the shell integration switches interactive panes on source (§6.6). This activates the profile without touching the user's default and without any pref write that needs iTerm2 quit.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **`↖ web` action + project identity** flush left and the **branch + `↗ code` action** flush right, with a single spring absorbing the slack between them — each end pairs an action chip with the data chip it acts on.
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **`↖ web` action + project identity** flush left and the **branch + `↗ code` action** flush right, with the **`⇄ review` action centered between two springs** that absorb the slack on either side of it — each edge pairs an action chip with the data chip it acts on, and the branch-review affordance sits in the middle, tied to neither edge.
 
 Chip-by-chip behavior:
 
 1. **`↖ web` action button** — link-blue. Always visible. Clicking shall navigate to the URL resolved for the session (PROV-07); when no URL has been resolved, clicking shall navigate to a generic search-engine landing page so the click is never a no-op.
 2. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in a dimmer link-blue so the action chip reads as the bright control and the identity reads as its target. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved `↖ web` URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable.
-3. **Spring** — pushes the trailing branch + `↗ code` cluster to the right edge.
-4. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
-5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
-6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
-7. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
+3. **Spring** — the leading spring; together with the trailing spring it centers the `⇄ review` action.
+4. **`⇄ review` action button** — magenta, centered. Always visible. Unlike the other action chips (coprocess `open`), this is an iTerm2 **Send Text** action: clicking shall type `beacon review` into the pane and submit it (CMD-16). It thus runs in the reader's context — a shell (moor opens for a manual review) or a live Claude session (Claude runs it and consumes the sidecar verdict), so a review of the branch against its default branch is one click from any painted pane. Off a git repo, or on the default branch, `beacon review` reports there is nothing to review rather than opening an empty diff.
+5. **Spring** — the trailing spring; pushes the branch + `↗ code` cluster to the right edge.
+6. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
+7. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
+8. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
+9. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
 
 Action-chip color matches the data cluster it anchors so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
 

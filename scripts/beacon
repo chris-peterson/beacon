@@ -17,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -242,6 +243,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'copy-url:copy the resolved URL to the clipboard'
+    'review:review the whole branch vs the default branch (moor-aware)'
   )
 
   if (( CURRENT == 2 )); then
@@ -778,6 +780,111 @@ def cmd_open_url(_args):
     except FileNotFoundError:
         sys.exit("open not found — open-url requires macOS")
     print(f"opened: {url}")
+
+
+def _default_branch_ref(root: Path) -> str | None:
+    """The branch a reviewer diffs against — `origin/HEAD` (symbolic), else the
+    conventional `origin/main` / `origin/master`. Returns the remote-qualified
+    ref (`origin/main`) or None when none resolves."""
+    out = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        cwd=root, capture_output=True, text=True, timeout=2, check=False,
+    )
+    head = out.stdout.strip()
+    if head and _git_rev_ok(root, head):
+        return head
+    for candidate in ("origin/main", "origin/master"):
+        if _git_rev_ok(root, candidate):
+            return candidate
+    return None
+
+
+def _git_rev_ok(root: Path, ref: str) -> bool:
+    return subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", ref],
+        cwd=root, capture_output=True, timeout=2, check=False,
+    ).returncode == 0
+
+
+def cmd_review(_args):
+    """Review the whole branch against the default branch, the way a reviewer
+    sees a CR/PR (CMD-16). Backs the status-bar `⇄ review` button (Send Text,
+    STATUS-BAR-02): it types `beacon review` into the pane, so this runs in the
+    reader's context — a human's shell (moor opens for a manual review) or a
+    Claude session (Claude runs it via Bash and consumes the printed verdict).
+
+    Launches git's configured difftool (`--dir-diff`) over `<default>...HEAD`
+    with `MOOR_CONTEXT` set, so when the difftool is moor the review feedback
+    (comments + exit code) is written to the sidecar and echoed here as
+    REVIEW_VERDICT / REVIEW_OUTPUT — the same contract anchor's review wrapper
+    emits. Claude/moor-unaware beyond setting the env var: it only translates
+    "review this branch" into a difftool invocation and relays the sidecar."""
+    root = find_project_root(Path.cwd())
+    branch = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=root, capture_output=True, text=True, timeout=2, check=False,
+    )
+    if branch.returncode != 0:
+        sys.exit("not a git repository")
+    branch_name = branch.stdout.strip()
+
+    base = _default_branch_ref(root)
+    if not base:
+        sys.exit("could not resolve a default branch (no origin/HEAD, origin/main, or origin/master)")
+
+    # Inert on the default branch: diffing it against itself is empty. Report
+    # rather than open an empty review (issue #11 — "absent or inert").
+    if branch_name in DEFAULT_BRANCHES or branch_name == base.split("/", 1)[-1]:
+        print(f"on the default branch ({branch_name}) — nothing to review against {base}")
+        return
+
+    diff_range = f"{base}...HEAD"
+    count = subprocess.run(
+        ["git", "rev-list", "--count", f"{base}..HEAD"],
+        cwd=root, capture_output=True, text=True, timeout=2, check=False,
+    ).stdout.strip() or "?"
+    repo = root.name
+    context = {"input": {
+        "title": f"Full diff vs {base}",
+        "details": [
+            {"label": "repo", "value": repo},
+            {"label": "branch", "value": branch_name},
+            {"label": "base", "value": base},
+            {"label": "range", "value": diff_range},
+            {"label": "commits", "value": count},
+        ],
+    }}
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", prefix="beacon-review-", delete=False,
+    ) as fh:
+        json.dump(context, fh)
+        context_path = fh.name
+
+    env = {**os.environ, "MOOR_CONTEXT": context_path}
+    # No timeout: a GUI difftool (moor) blocks until the reviewer closes it. The
+    # verdict lives in the sidecar's output section, not the exit code, so a
+    # non-zero difftool exit is expected — don't treat it as failure.
+    subprocess.run(
+        ["git", "difftool", "--no-prompt", "--dir-diff", diff_range],
+        cwd=root, env=env, check=False,
+    )
+
+    try:
+        written = json.loads(Path(context_path).read_text())
+        output = written.get("output")
+    except (OSError, ValueError):
+        output = None
+    finally:
+        try:
+            Path(context_path).unlink()
+        except OSError:
+            pass
+
+    if not output:
+        print("REVIEW_VERDICT=absent")
+        return
+    print(f"REVIEW_VERDICT={output.get('exitCode', 'absent')}")
+    print(f"REVIEW_OUTPUT={json.dumps(output, separators=(',', ':'))}")
 
 
 def cmd_data_dir(_args):
@@ -3740,6 +3847,8 @@ def main(argv=None):
 
     sub.add_parser("open-url", help="open the resolved URL in the default browser via `open`")
 
+    sub.add_parser("review", help="review the whole branch vs the default branch through the configured difftool (moor-aware)")
+
     sub.add_parser("json", help="print the resolved session state as JSON")
 
     sp = sub.add_parser("wip", help="list active work streams across all beacon sessions (+ tack routes)")
@@ -3798,7 +3907,7 @@ def main(argv=None):
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
-        "open-url": cmd_open_url, "json": cmd_json,
+        "open-url": cmd_open_url, "review": cmd_review, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "data-dir": cmd_data_dir,
     }

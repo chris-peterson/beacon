@@ -1616,6 +1616,120 @@ class PauseClearScreen(BeaconTest):
         self.assertEqual(self.beacon.read_state("override.status"), "paused")
 
 
+class ReviewButtonInProfile(unittest.TestCase):
+    """STATUS-BAR-02: the `⇄ review` action chip sends `beacon review` into the
+    pane via iTerm2's Send Text action (enum 12), not a coprocess — so the
+    driving session (or a shell) runs the review and consumes its output."""
+
+    def _layout(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        rendered = (template
+                    .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
+                    .replace("__BEACON_CACHE_DIR__", "/x/cache"))
+        return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]["components"]
+
+    def _action_titles(self):
+        return [c["configuration"]["knobs"]["action"]["title"]
+                for c in self._layout()
+                if c["class"] == "iTermStatusBarActionComponent"]
+
+    def test_review_button_is_send_text(self):
+        review = next(
+            c["configuration"]["knobs"]["action"] for c in self._layout()
+            if c["class"] == "iTermStatusBarActionComponent"
+            and c["configuration"]["knobs"]["action"]["title"] == "⇄ review"
+        )
+        # Send Text = KEY_ACTION_TEXT (12), NOT Run Coprocess (35): the point is
+        # to type the command into the session, so Claude runs it and reads the
+        # sidecar verdict back. \r submits the line (both a shell prompt and the
+        # Claude Code TUI treat Return as \r).
+        self.assertEqual(review["action"], 12)
+        self.assertEqual(review["parameter"], "beacon review\r")
+
+    def test_review_button_is_centered_between_springs(self):
+        # The review chip is flanked by two springs so it centers between the
+        # left (web · project) and right (branch · code) clusters —
+        # … project ←spring→ ⇄ review ←spring→ branch …
+        comps = self._layout()
+        self.assertEqual(
+            [c["class"] for c in comps].count("iTermStatusBarSpringComponent"), 2)
+        idx = next(i for i, c in enumerate(comps)
+                   if c["class"] == "iTermStatusBarActionComponent"
+                   and c["configuration"]["knobs"]["action"]["title"] == "⇄ review")
+        self.assertEqual(comps[idx - 1]["class"], "iTermStatusBarSpringComponent")
+        self.assertEqual(comps[idx + 1]["class"], "iTermStatusBarSpringComponent")
+        # Action chips left-to-right: web (far left), review (center), code (far right).
+        self.assertEqual(self._action_titles(), ["↖ web", "⇄ review", "↗ code"])
+
+
+class ReviewCommand(unittest.TestCase):
+    """CMD-16: `beacon review` diffs the whole branch against the default
+    branch through the configured difftool, relaying moor's sidecar verdict."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = tempfile.TemporaryDirectory()
+        self.addCleanup(self.repo.cleanup)
+        self._cwd = os.getcwd()
+        self.addCleanup(lambda: os.chdir(self._cwd))
+        os.chdir(self.repo.name)
+        self._git("init", "-q", "-b", "main")
+        self._git("config", "user.email", "t@t.co")
+        self._git("config", "user.name", "t")
+        Path("f").write_text("a\n")
+        self._git("add", "f")
+        self._git("commit", "-qm", "init")
+        self._git("update-ref", "refs/remotes/origin/main", "main")
+        self._git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+    def _git(self, *args):
+        subprocess.run(["git", *args], cwd=self.repo.name, check=True,
+                       capture_output=True, text=True)
+
+    def _run_review(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon.cmd_review(None)
+        return buf.getvalue()
+
+    def test_inert_on_default_branch(self):
+        out = self._run_review()
+        self.assertIn("on the default branch", out)
+        self.assertNotIn("REVIEW_VERDICT", out)
+
+    def test_errors_outside_a_repo(self):
+        os.chdir(self._tmp.name)  # a non-repo dir
+        with self.assertRaises(SystemExit):
+            self.beacon.cmd_review(None)
+
+    def test_relays_sidecar_verdict(self):
+        self._git("checkout", "-q", "-b", "feature")
+        Path("f").write_text("a\nb\n")
+        self._git("commit", "-qam", "change")
+        # Fake difftool: write an output section into MOOR_CONTEXT, as moor does.
+        tool = Path(self.repo.name) / "faketool.py"
+        tool.write_text(
+            "import json,os,sys\n"
+            "p=os.environ['MOOR_CONTEXT']\n"
+            "d=json.load(open(p))\n"
+            "d['output']={'reviewer':'t','exitCode':1,"
+            "'comments':[{'body':'x','action':'fix-now','file':'f'}]}\n"
+            "json.dump(d,open(p,'w'))\n"
+        )
+        self._git("config", "diff.tool", "faketool")
+        self._git("config", "difftool.faketool.cmd",
+                  f'python3 {tool} "$LOCAL" "$REMOTE"')
+        self._git("config", "difftool.prompt", "false")
+        out = self._run_review()
+        self.assertIn("REVIEW_VERDICT=1", out)
+        self.assertIn('"action":"fix-now"', out)
+        # The sidecar temp file is cleaned up after relaying.
+        leftovers = list(Path(tempfile.gettempdir()).glob("beacon-review-*.json"))
+        self.assertEqual(leftovers, [])
+
+
 def _base_state() -> dict:
     """Default state dict acceptable to apply(). Tests override individual fields."""
     return {

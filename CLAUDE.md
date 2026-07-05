@@ -82,6 +82,7 @@ Clicking a session in the dashboard raises its iTerm2 window. The chain: dashboa
 | Focus an iTerm2 session window by its id | `python3 bin/beacon-iterm focus <session-id>` |
 | List active work streams across all sessions (last 24h) | `python3 scripts/beacon wip [--json] [--since 1d] [--all]` |
 | Serve the bundled dashboard (`/`) + wip snapshot (`/wip.json`) | `python3 scripts/beacon serve [--port 8787]` |
+| Review the whole branch vs the default branch (moor-aware; backs the `⇄ review` status-bar button) | `python3 scripts/beacon review` |
 | Manage the always-on serve service (launchd/systemd) | `python3 scripts/beacon serve <install\|uninstall\|status>` |
 | GC per-session state for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Delete per-session state for one session | `python3 scripts/beacon forget <hash>` |
