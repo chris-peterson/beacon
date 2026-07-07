@@ -123,20 +123,25 @@
     .freshness .stale { color: var(--busy); }
     @keyframes blink { 50% { opacity: 0.3; } }
 
-    /* Grouping toggle (segmented, in the masthead) + per-group sub-sections. */
-    .group-toggle {
-      flex: none; display: inline-flex; gap: 2px;
-      background: var(--panel); border: 1px solid var(--line);
-      border-radius: 7px; padding: 2px;
+    /* ── Needs-you band: waiting / flagged sessions are hoisted out of the fleet
+       into a pinned top band (WIP-10 — "a prominent band above the calmer
+       fleet"), so a blocked session is never buried in a group or a z-stack. */
+    #attn { margin-bottom: 1.6rem; }
+    #attn[hidden] { display: none; }
+    .attn-head {
+      display: flex; align-items: center; gap: 0.55rem;
+      margin: 0 0 0.6rem; padding-left: 0.15rem;
+      font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.12em; text-transform: uppercase; color: var(--blocked);
     }
-    .group-toggle button {
-      font: inherit; font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase;
-      color: var(--faint); background: none; border: none; border-radius: 5px;
-      padding: 0.16rem 0.5rem; cursor: pointer;
-      transition: background 0.15s, color 0.15s;
+    .attn-head::before {
+      content: ""; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+      background: var(--blocked); box-shadow: 0 0 8px var(--blocked);
+      animation: blink 1.2s steps(1) infinite;
     }
-    .group-toggle button:hover { color: var(--muted); }
-    .group-toggle button.on { background: var(--panel-hi); color: var(--fg); }
+    .attn-head .grule { flex: 1; height: 1px; background: rgba(255, 85, 85, 0.28); }
+
+    /* per-group sub-sections. */
     .group-section { margin-bottom: 1.15rem; }
     .group-section:last-child { margin-bottom: 0; }
     .group-head {
@@ -163,6 +168,57 @@
       grid-template-columns: repeat(auto-fill, minmax(max(19rem, (100% - 3 * var(--gap)) / 4), 1fr));
     }
 
+    /* ── Project z-stack: same-project sessions overlap, newest in front ──
+       A lone session is a plain card (no .stacked, no chrome). Multiple sessions
+       share one grid cell so the stack sizes to the front card; the peeking ones
+       recede down-and-right by --depth. Reserved padding keeps the peek inside
+       the cell so it never overruns the neighbouring column. */
+    .stack { position: relative; }
+    .stack.stacked {
+      display: grid;
+      padding: 0 1.9rem 1.9rem 0;
+    }
+    .stack.stacked > .card {
+      grid-area: 1 / 1;
+      z-index: calc(5 - var(--depth)); /* front on top; each peeks past the one below */
+      /* Animate the raise: --depth and .front flip on raiseStack, so translate /
+         scale / filter slide the cards into their new positions rather than
+         snapping. (transform stays out of it — the cardIn entrance owns that.) */
+      transition: translate 0.26s cubic-bezier(0.2, 0.7, 0.3, 1),
+                  scale 0.26s cubic-bezier(0.2, 0.7, 0.3, 1),
+                  filter 0.22s ease, box-shadow 0.22s ease;
+    }
+    .stack.stacked > .card.front {
+      translate: 0 0; scale: 1; /* explicit endpoints so the raise animates cleanly */
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); /* lift the front off the pile */
+    }
+    /* Offset via the independent `translate`/`scale` properties, NOT the
+       `transform` shorthand: the base card's `cardIn` entrance animates
+       `transform` with fill-mode:both, whose final `transform:none` would
+       otherwise override a shorthand offset here and flatten the pile. */
+    .stack.stacked > .card:not(.front) {
+      translate: calc(var(--depth) * 0.9rem) calc(var(--depth) * 0.85rem);
+      scale: 0.98;
+      filter: brightness(0.8) saturate(0.9);
+    }
+    .stack.stacked > .card:not(.front):hover {
+      translate: calc(var(--depth) * 1.1rem) calc(var(--depth) * 1.05rem);
+      scale: 1;
+      filter: none;
+    }
+    /* Hover preview for a peeking card — one shared fixed element, positioned in
+       JS under the hovered card (showStackTip). It lives on <body>, outside the
+       card's overflow:hidden, so unlike a ::before it isn't clipped. */
+    #stack-tip {
+      position: fixed; z-index: 200; max-width: 22rem;
+      background: var(--panel-hi); border: 1px solid var(--line-hi);
+      border-radius: 8px; padding: 0.4rem 0.65rem;
+      font-size: 0.72rem; line-height: 1.4; color: var(--fg);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+      pointer-events: none; white-space: normal;
+      animation: fcIn 0.12s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    }
+    #stack-tip[hidden] { display: none; }
     /* ── Card (shared shell; .needs-you adds the waiting emphasis) ─ */
     .card {
       position: relative;
@@ -198,6 +254,29 @@
     .card.state-paused   { --state-color: var(--paused); }
     .card.state-wrapping { --state-color: var(--wrapping); }
     .card.state-done     { --state-color: var(--done); }
+
+    /* Mode-state cards echo their iTerm2 pane background (RENDER-05): a muted tint
+       in the mode's hue plus a large, faint, centered watermark of the same glyph
+       the pane paints (|| pause bars, ⏻ power-off ring) — the direct fleet analog
+       of the pane's mode background, readable at a glance with the content still
+       legible on top. wrapping's pane paints no image, so it is tint-only. */
+    .card.state-paused {
+      background-color: color-mix(in srgb, #3c3357 26%, var(--panel));
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='7.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/><rect x='13.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/></svg>");
+      background-position: center;
+      background-size: 6rem 6rem;
+      background-repeat: no-repeat;
+    }
+    .card.state-wrapping {
+      background: color-mix(in srgb, #2c4636 20%, var(--panel));
+    }
+    .card.state-done {
+      background-color: color-mix(in srgb, var(--bg) 55%, var(--panel));
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b78c4' stroke-opacity='0.42' stroke-width='2' stroke-linecap='round'><path d='M12 3v8'/><path d='M7.4 6.6a6.6 6.6 0 1 0 9.2 0'/></svg>");
+      background-position: center;
+      background-size: 6rem 6rem;
+      background-repeat: no-repeat;
+    }
 
     .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
     .card:hover {
@@ -453,7 +532,40 @@
       transition: opacity 0.15s, color 0.15s, background 0.15s;
     }
     .card:hover .forget { opacity: 1; }
+    /* Only the front/top card exposes its controls — a behind card is
+       click-anywhere-to-raise, so its close (×) and go buttons are hidden (a
+       behind card's confirm fly-out would open buried under the front anyway). */
+    .card:not(.front) .forget,
+    .card:not(.front) .go { display: none; }
     .forget:hover { color: #fff; background: var(--blocked); }
+    .card.confirming .forget { opacity: 0; pointer-events: none; }
+
+    /* Inline forget confirmation — a localized fly-out at the card corner that
+       replaces the browser confirm() dialog. Dismisses on Keep / Esc / click-away. */
+    .forget-confirm {
+      position: absolute; top: 0.3rem; right: 0.35rem; z-index: 6;
+      display: flex; align-items: center; gap: 0.35rem;
+      padding: 0.25rem 0.3rem 0.25rem 0.6rem;
+      background: var(--panel-hi); border: 1px solid var(--line-hi);
+      border-radius: 8px; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+      font-size: 0.72rem; white-space: nowrap;
+      transform-origin: top right;
+      animation: fcIn 0.13s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    }
+    .forget-confirm[hidden] { display: none; }
+    @keyframes fcIn {
+      from { opacity: 0; transform: scale(0.92) translateY(-3px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .forget-confirm .fc-label { color: var(--muted); }
+    .forget-confirm button {
+      font: inherit; font-size: 0.7rem; border: none; border-radius: 5px;
+      padding: 0.2rem 0.5rem; cursor: pointer; transition: background 0.12s, color 0.12s, filter 0.12s;
+    }
+    .forget-confirm .fc-yes { background: var(--blocked); color: #1a0606; font-weight: 700; }
+    .forget-confirm .fc-yes:hover { filter: brightness(1.12); }
+    .forget-confirm .fc-no { background: none; color: var(--muted); }
+    .forget-confirm .fc-no:hover { color: var(--fg); background: var(--line); }
 
     /* Waiting-for-you ornaments — hidden by default, shown on .needs-you cards. */
     .attn-flag { display: none; }
@@ -523,6 +635,10 @@
       font-variant-numeric: tabular-nums; opacity: 0.9;
     }
     .attn-flag .wait-time::before { content: "· "; opacity: 0.55; }
+    /* The pill doubles as a focus trigger on focusable cards (== the go button);
+       give it the affordance only there, so a non-focusable pill stays a label. */
+    .card[data-focusable="true"] .attn-flag { cursor: pointer; }
+    .card[data-focusable="true"] .attn-flag:hover { filter: brightness(1.12); }
     /* the badge already states the duration up top — don't repeat age below. */
     .card.needs-you .sub .age { display: none; }
 
@@ -551,15 +667,15 @@
       <h1>beacon <span class="dim">/ fleet</span></h1>
     </div>
     <span class="spacer"></span>
-    <div class="group-toggle" id="group-toggle" title="Group the whole fleet">
-      <button type="button" data-g="none">flat</button>
-      <button type="button" data-g="group">group</button>
-      <button type="button" data-g="project">project</button>
-    </div>
     <span class="freshness" id="freshness"></span>
   </header>
 
   <div id="err"></div>
+
+  <div id="attn" hidden>
+    <div class="attn-head">needs you<span class="grule"></span></div>
+    <div class="grid attn-grid"></div>
+  </div>
 
   <div id="groups"></div>
 
@@ -572,13 +688,19 @@
   <script>
     const POLL_MS = 2000;
     const groupsEl = document.getElementById("groups");
+    const attnEl = document.getElementById("attn");
     const cards = new Map(); // hash -> card element (reused across polls)
     const groupSections = new Map(); // group key -> {section, grid, head} (reused)
 
-    // How the whole fleet is organized: 'none' (flat), 'group' (route_group), or
-    // 'project'. Persisted so a reload keeps the user's choice.
-    let groupBy = "none";
-    try { groupBy = localStorage.getItem("beacon.groupBy") || "none"; } catch (e) {}
+    // Grouping has no toggle: the fleet always groups by the route group signal
+    // when a session carries one, and sessions with none degrade silently into an
+    // unlabeled section at the bottom (computeGroups). Same-project sessions
+    // within a group collapse into a z-stack (placeStack).
+
+    // project -> hash the user pulled to the front of its z-stack. Persists
+    // across polls so a manual raise survives re-renders (buffer-dom-rerenders);
+    // stale entries (raised session gone) are dropped in placeStack.
+    const raised = new Map();
     // hash -> {at, text}: the full turn (WIP-14) fetched on expand from
     // /turn/<hash>, keyed by turn timestamp so a newer turn invalidates it.
     const turnCache = new Map();
@@ -619,7 +741,15 @@
     // A session lands in the attention band when Claude is blocked on the user
     // (state === "blocked", i.e. status "waiting") or a sticky attention marker
     // is set (HOOK-03b). The band is the loud one — everything else is fleet.
+    // A session in a deliberate mode state (paused / wrapping / done) is never
+    // "needs you": the mode is an explicit set-aside that outranks a lingering
+    // pending-attention marker, exactly as the pane's logical state does (mode >
+    // pending_attention). So a parked session reads as parked — it keeps its
+    // mode-card treatment in the fleet instead of being hoisted into the band
+    // (whose red glow would paint over that treatment).
+    const MODE_STATES = new Set(["paused", "wrapping", "done"]);
     function needsYou(s) {
+      if (MODE_STATES.has(s.state)) return false;
       return s.state === "blocked" || !!s.pending_attention;
     }
 
@@ -765,6 +895,11 @@
       el.dataset.hash = hash;
       el.innerHTML = `
         <button class="forget" title="Forget this session">×</button>
+        <div class="forget-confirm" hidden>
+          <span class="fc-label">Forget?</span>
+          <button class="fc-yes" type="button">Forget</button>
+          <button class="fc-no" type="button">Keep</button>
+        </div>
         <span class="attn-flag">waiting<span class="wait-time"></span></span>
         <div class="head">
           <span class="dot"></span>
@@ -789,16 +924,47 @@
         </div>`;
       el.addEventListener("click", (e) => {
         if (e.target.closest("a")) return; // let a rendered link open; don't toggle
+        if (openForget) { closeForgetConfirm(); return; } // a click-away dismisses the fly-out
+        // A card behind the front of its z-stack: click raises it, doesn't expand.
+        if (!el.classList.contains("front")) { raiseStack(el.dataset.project, hash); return; }
         if (el.classList.toggle("expanded")) fetchFull(hash);
         paintTurnFor(el, hash); // switch the body to/from rendered markdown now
       });
+      // Keyboard reach for stacked-behind cards (tab to a peeking card, Enter to
+      // raise) — the accessible path to the same raise the click above does.
+      el.addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === " ") && !el.classList.contains("front")) {
+          e.preventDefault();
+          raiseStack(el.dataset.project, hash);
+        }
+      });
+      el.addEventListener("mouseenter", () => showStackTip(el)); // preview a peeking card
+      el.addEventListener("mouseleave", hideStackTip);
       el.querySelector(".go").addEventListener("click", (e) => {
+        e.stopPropagation();
+        focus(hash);
+      });
+      // The waiting pill is a second affordance for the same focus action as
+      // go — a big click target on the card's loudest element. Gated on
+      // focusability like go (dataset set at render), so a non-focusable
+      // blocked card's pill stays an inert label, not a dead button.
+      el.querySelector(".attn-flag").addEventListener("click", (e) => {
+        if (el.dataset.focusable !== "true") return;
         e.stopPropagation();
         focus(hash);
       });
       el.querySelector(".forget").addEventListener("click", (e) => {
         e.stopPropagation();
-        forget(hash, el.querySelector(".project").textContent);
+        openForgetConfirm(el);
+      });
+      el.querySelector(".fc-yes").addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeForgetConfirm();
+        forget(hash);
+      });
+      el.querySelector(".fc-no").addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeForgetConfirm();
       });
       el.querySelectorAll(".copy").forEach((btn) => {
         btn.addEventListener("click", async (e) => {
@@ -822,21 +988,15 @@
       if (node.textContent !== v) node.textContent = v;
     }
 
-    // WIP-12: a paused card's reason is anchored with the || pause glyph, shown
-    // even with no reason — mirrors the plugin's _wip_reason_segment.
-    function descText(state, description) {
-      const reason = description || "";
-      if (state !== "paused") return reason;
-      return reason ? "|| " + reason : "||";
-    }
-
     // The description carries beacon's status-overlay formatting — _italic_ and
     // newlines for a second line (e.g. "Shipping\n_Phase 3: release_"). The
     // iTerm2 pane badge honors those; render them here too rather than showing
     // the raw markers. Escape-first via renderInline, with underscore-italic on.
-    function renderDescHtml(state, description) {
-      const raw = descText(state, description);
-      return raw ? renderInline(raw, true).replace(/\n/g, "<br>") : "";
+    // A paused card needs no || text glyph (WIP-12): the mode-card watermark is
+    // the dashboard's pause cue — the analog of the pane's paused background.
+    // The || prefix stays in the text-only fleet views (wip table, watch).
+    function renderDescHtml(description) {
+      return description ? renderInline(description, true).replace(/\n/g, "<br>") : "";
     }
 
     // Bound-tack references (WIP-09): the change requests / issues / other the
@@ -899,8 +1059,9 @@
     function updateCard(el, s) {
       el.classList.remove(...STATES.map((x) => "state-" + x));
       el.classList.add("state-" + (s.state || "paused"));
-      // Waiting-for-you emphasis, applied per card (no separate band). Amber
-      // (soft) attention = flagged but not a live block; red = blocked now.
+      // Waiting-for-you emphasis (these cards live in the pinned needs-you band,
+      // placeAttention). Amber (soft) attention = flagged but not a live block;
+      // red = blocked now.
       el.classList.toggle("needs-you", needsYou(s));
       el.classList.toggle("soft-attn", s.state !== "blocked" && !!s.pending_attention);
       el.dataset.focusable = s.focusable ? "true" : "false";
@@ -961,7 +1122,7 @@
 
       setText(el, ".wait-time", s.age_seconds != null ? fmtAge(s.age_seconds) : "");
       const descEl = el.querySelector(".desc");
-      const descHtml = renderDescHtml(s.state, s.description);
+      const descHtml = renderDescHtml(s.description);
       if (descEl.dataset.html !== descHtml) { descEl.dataset.html = descHtml; descEl.innerHTML = descHtml; }
       // Show the route only when it carries signal the project doesn't — a
       // route resolved by matching the project just echoes the title (mirrors
@@ -982,51 +1143,137 @@
       setText(el, ".sess", s.session || s.hash || "");
     }
 
-    // Place `list` into `container` in order, reusing/moving existing nodes.
-    // insertBefore reparents a node across containers for free, so a session
-    // moving between the attention and fleet bands is a cheap move, not a
-    // rebuild — animations, focus, and scroll survive (buffer-dom-rerenders).
-    function place(container, list) {
-      let prev = null;
+    // Place `list` into `container` as per-project z-stacks (WIP-10: same-project
+    // sessions collapse into one overlapping stack, newest in front). `list`
+    // arrives urgency-then-recency sorted, so first-appearance order gives each
+    // project's slot the priority of its most urgent/fresh member. Stacks and
+    // cards are reused/moved, never rebuilt — insertBefore reparents for free, so
+    // a session moving bands or a stack changing group is a cheap move and
+    // animations / expand state survive (buffer-dom-rerenders). `stackStore` is
+    // the group's own project->stack map, so a project can't collide across groups.
+    function place(container, list, stackStore) {
+      const order = [];
+      const byProject = new Map();
       for (const s of list) {
+        const k = s.project || s.hash;
+        if (!byProject.has(k)) { byProject.set(k, []); order.push(k); }
+        byProject.get(k).push(s);
+      }
+      let prev = null;
+      const seen = new Set();
+      for (const k of order) {
+        seen.add(k);
+        let stack = stackStore.get(k);
+        if (!stack) {
+          stack = document.createElement("div");
+          stack.className = "stack";
+          stackStore.set(k, stack);
+        }
+        placeStack(stack, k, byProject.get(k));
+        const anchor = prev ? prev.nextSibling : container.firstChild;
+        if (stack.parentNode !== container || stack !== anchor) {
+          container.insertBefore(stack, anchor);
+        }
+        prev = stack;
+      }
+      for (const [k, stack] of stackStore) {
+        if (!seen.has(k)) { stack.remove(); stackStore.delete(k); }
+      }
+    }
+
+    // Order one project's sessions within its stack: the user-raised session (or
+    // else the newest) sits in front; the rest recede by recency, offset via
+    // --depth (see .stack.stacked CSS). Only the front card expands/focuses on a
+    // plain click; a peeking card raises to front instead (buildCard handlers).
+    function placeStack(stack, project, sessions) {
+      const ranked = [...sessions].sort(byRank); // waiting-then-newest in front
+      const raisedHash = raised.get(project);
+      let front = ranked.find((s) => s.hash === raisedHash);
+      if (!front) {
+        raised.delete(project);
+        // An expanded card holds the front slot so a sibling's newer turn can't
+        // demote it — a demoted card is collapsed below, which would yank away
+        // what the user is reading mid-poll.
+        front = ranked.find((s) => cards.get(s.hash)?.classList.contains("expanded"))
+          || ranked[0];
+      }
+      const ordered = [front, ...ranked.filter((s) => s !== front)];
+
+      const stacked = ordered.length > 1;
+      stack.classList.toggle("stacked", stacked);
+      stack.title = stacked
+        ? ordered.length + " " + project + " sessions — click a peeking card to raise it"
+        : "";
+
+      let prev = null;
+      ordered.forEach((s, i) => {
         let el = cards.get(s.hash);
         if (!el) { el = buildCard(s.hash); cards.set(s.hash, el); }
         updateCard(el, s);
-        const anchor = prev ? prev.nextSibling : container.firstChild;
-        if (el.parentNode !== container || el !== anchor) {
-          container.insertBefore(el, anchor);
+        el.dataset.project = project;
+        el.classList.toggle("front", i === 0);
+        el.style.setProperty("--depth", Math.min(i, 2)); // cap the peek offset
+        if (i !== 0) el.classList.remove("expanded"); // only the front card expands
+        if (stacked && i !== 0) {
+          el.tabIndex = 0;
+          el.setAttribute("aria-label", "Raise this " + project + " session to the front");
+          // A peeking card's content is hidden under the front — its task + latest
+          // turn drive the custom hover tooltip (showStackTip). Clear the native
+          // title so updateCard's "Click to expand" doesn't compete.
+          el.dataset.preview = [s.task, s.latest_turn && s.latest_turn.text].filter(Boolean).join(" — ") || "Raise this session";
+          el.title = "";
+        } else {
+          el.removeAttribute("tabindex");
+          el.removeAttribute("aria-label");
+          delete el.dataset.preview;
         }
+        const anchor = prev ? prev.nextSibling : stack.firstChild;
+        if (el.parentNode !== stack || el !== anchor) stack.insertBefore(el, anchor);
         prev = el;
-      }
+      });
+    }
+
+    // Pull a stacked-behind session to the front of its project stack, then
+    // re-render so placement honors it. Persists via `raised` across polls.
+    function raiseStack(project, hash) {
+      if (!project) return;
+      raised.set(project, hash);
+      if (latest) render(latest);
     }
 
     const ageOf = (s) => s.age_seconds ?? 1e12;
 
-    // Partition ALL sessions into ordered groups per the toggle. Within a group,
-    // waiting-for-you sessions sort first (then by recency); groups that contain
-    // any waiting session float to the top (then by their freshest member). So a
-    // blocked session is always near the top of the view — no separate band.
-    // 'none' is one unlabeled group (a single flat grid).
+    // The one ordering rule, used everywhere sessions are sorted: a waiting /
+    // flagged session always ranks as "newer" than an ordinary update (the
+    // guarantee that a blocked session surfaces), then ties break by real
+    // recency. So a waiting session is never buried behind a fresher idle one.
+    const byRank = (a, b) =>
+      (Number(needsYou(b)) - Number(needsYou(a))) || (ageOf(a) - ageOf(b));
+
+    // Sentinel group for sessions carrying no route-group signal — rendered
+    // headerless and always last (silent degrade, no "ungrouped" label).
+    const NO_GROUP = " nogroup";
+
+    // Partition the fleet into ordered groups by the route-group signal. A group
+    // with a signal gets a labeled header; sessions without one fall into the
+    // NO_GROUP bucket, which renders headerless and sorts to the bottom. Within a
+    // group, byRank orders; groups float by their freshest member.
     function computeGroups(list) {
-      const keyOf = (s) => groupBy === "project" ? (s.project || s.hash)
-        : groupBy === "group" ? (s.route_group || "— ungrouped")
-        : "__all__";
       const map = new Map();
       for (const s of list) {
-        const k = keyOf(s);
+        const k = s.route_group || NO_GROUP;
         (map.get(k) || map.set(k, []).get(k)).push(s);
       }
       const groups = [...map.entries()].map(([key, sessions]) => {
-        sessions.sort((a, b) =>
-          (Number(needsYou(b)) - Number(needsYou(a))) || (ageOf(a) - ageOf(b)));
+        sessions.sort(byRank);
         return {
-          key, label: key, sessions,
-          waiting: sessions.some(needsYou),
-          minAge: Math.min(...sessions.map(ageOf)),
+          key, hasGroup: key !== NO_GROUP, label: key === NO_GROUP ? "" : key,
+          sessions, minAge: Math.min(...sessions.map(ageOf)),
         };
       });
       groups.sort((a, b) =>
-        (Number(b.waiting) - Number(a.waiting)) || (a.minAge - b.minAge));
+        (Number(a.key === NO_GROUP) - Number(b.key === NO_GROUP)) // groupless last
+        || (a.minAge - b.minAge));
       return groups;
     }
 
@@ -1051,10 +1298,11 @@
             section,
             grid: section.querySelector(".ggrid"),
             head: section.querySelector(".group-head"),
+            stacks: new Map(), // project -> z-stack element, scoped to this group
           };
           groupSections.set(g.key, gs);
         }
-        gs.head.hidden = groupBy === "none";
+        gs.head.hidden = !g.hasGroup;
         setText(gs.section, ".glabel", g.label);
         setText(gs.section, ".gn", String(g.sessions.length));
         const anchor = prevSection ? prevSection.nextSibling : groupsEl.firstChild;
@@ -1062,18 +1310,47 @@
           groupsEl.insertBefore(gs.section, anchor);
         }
         prevSection = gs.section;
-        place(gs.grid, g.sessions);
+        place(gs.grid, g.sessions, gs.stacks);
       }
       for (const [k, gs] of groupSections) {
         if (!seen.has(k)) { gs.section.remove(); groupSections.delete(k); }
       }
     }
 
+    // Place sessions flat (no z-stack — the action queue must never hide one
+    // waiting session behind another). Reuses the same card elements as the
+    // fleet; a session that stops waiting is reparented out by placeGroups, one
+    // that starts waiting is reparented in here (insertBefore moves the node).
+    function placeFlat(container, list) {
+      let prev = null;
+      for (const s of list) {
+        let el = cards.get(s.hash);
+        if (!el) { el = buildCard(s.hash); cards.set(s.hash, el); }
+        updateCard(el, s);
+        el.classList.add("front");           // a band card is a top card: it expands
+        el.style.removeProperty("--depth");  // on click, never raises (shed stack chrome)
+        el.removeAttribute("tabindex");
+        el.removeAttribute("aria-label");
+        el.dataset.project = s.project || s.hash;
+        const anchor = prev ? prev.nextSibling : container.firstChild;
+        if (el.parentNode !== container || el !== anchor) container.insertBefore(el, anchor);
+        prev = el;
+      }
+    }
+
+    function placeAttention(list) {
+      attnEl.hidden = list.length === 0;
+      placeFlat(attnEl.querySelector(".attn-grid"), [...list].sort(byRank));
+    }
+
     function render(payload) {
       const sessions = payload.sessions || [];
       const seen = new Set(sessions.map((s) => s.hash));
 
-      placeGroups(sessions);
+      // Waiting/flagged sessions are hoisted OUT of the fleet into the pinned top
+      // band; the grouped fleet below shows only the calm rest (WIP-10).
+      placeAttention(sessions.filter(needsYou));
+      placeGroups(sessions.filter((s) => !needsYou(s)));
 
       for (const [hash, el] of cards) {
         if (!seen.has(hash)) { el.remove(); cards.delete(hash); }
@@ -1109,8 +1386,46 @@
       } catch (e) { flashError("Focus request failed"); }
     }
 
-    async function forget(hash, label) {
-      if (!confirm(`Forget "${label || hash}"? This clears its beacon state.`)) return;
+    // The card whose inline forget-confirm fly-out is open (at most one). A
+    // background click (the document listener) or Esc dismisses it; the card's
+    // own handlers stopPropagation so opening/confirming don't self-dismiss.
+    let openForget = null;
+    function openForgetConfirm(el) {
+      if (openForget === el) { closeForgetConfirm(); return; } // second × click toggles off
+      closeForgetConfirm();
+      el.querySelector(".forget-confirm").hidden = false;
+      el.classList.add("confirming");
+      openForget = el;
+    }
+    function closeForgetConfirm() {
+      if (!openForget) return;
+      openForget.classList.remove("confirming");
+      const fc = openForget.querySelector(".forget-confirm");
+      if (fc) fc.hidden = true;
+      openForget = null;
+    }
+    document.addEventListener("click", closeForgetConfirm);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeForgetConfirm(); });
+
+    // Hover preview for peeking cards: one shared fixed tooltip on <body> (escapes
+    // the card's overflow:hidden), positioned under the hovered behind-card.
+    const stackTip = document.createElement("div");
+    stackTip.id = "stack-tip";
+    stackTip.hidden = true;
+    document.body.appendChild(stackTip);
+    function showStackTip(el) {
+      if (el.classList.contains("front") || !el.dataset.preview) return;
+      stackTip.textContent = el.dataset.preview;
+      stackTip.hidden = false;
+      const r = el.getBoundingClientRect();
+      const w = stackTip.offsetWidth;
+      stackTip.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px";
+      stackTip.style.top = Math.min(r.bottom + 6, window.innerHeight - stackTip.offsetHeight - 8) + "px";
+    }
+    function hideStackTip() { stackTip.hidden = true; }
+    window.addEventListener("scroll", hideStackTip, true); // fixed tip goes stale on scroll
+
+    async function forget(hash) {
       try {
         await fetch("/forget", {
           method: "POST",
@@ -1155,20 +1470,6 @@
           '<span class="stale">⚠ serve unreachable — is `beacon serve` running?</span>';
       } finally { inFlight = false; }
     }
-
-    const groupToggle = document.getElementById("group-toggle");
-    function syncToggle() {
-      for (const b of groupToggle.children) b.classList.toggle("on", b.dataset.g === groupBy);
-    }
-    groupToggle.addEventListener("click", (e) => {
-      const b = e.target.closest("button");
-      if (!b) return;
-      groupBy = b.dataset.g;
-      try { localStorage.setItem("beacon.groupBy", groupBy); } catch (e) {}
-      syncToggle();
-      if (latest) render(latest);
-    });
-    syncToggle();
 
     poll();
     setInterval(poll, POLL_MS);
