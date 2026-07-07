@@ -3,7 +3,7 @@
 # the marketplace SPA (the suite: block).
 
 name: beacon
-version: 1.18.0
+version: 1.19.0
 description: At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.
 author: chris-peterson
 repository: https://github.com/chris-peterson/beacon
@@ -31,9 +31,9 @@ suite:
   # session start.
   activations: [agent, user, session]
   gloss: A lighthouse you can read from across the harbor.
-  pitch: "Running several Claude windows? Each gets a badge showing whether it's working or waiting on you."
+  pitch: "Running several Claude windows? Each gets a badge showing whether it's working or waiting for you."
   with: tack
-  what: "Puts a colored badge on each terminal window so you can tell what every Claude session is doing at a glance: green idle, amber working, red waiting on you. The badge is iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
+  what: "Puts a colored badge on each terminal window so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The badge is iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
   cmds:
     - ["/beacon:beacon", "Label a pane, or set status with a note"]
     - ["/beacon:pause", "Park this session fast — status paused, optional note"]
@@ -57,4 +57,4 @@ suite:
   session:
     - { t: note, text: "Three Claude windows running; you're heads-down in one." }
     - { t: event, text: "a glance across the windows" }
-    - { t: status, text: "window 3  ● red — it has been waiting on you while you weren't looking." }
+    - { t: status, text: "window 3  ● red — it has been waiting for you while you weren't looking." }

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate iterm/paused-bg.png — the faint `||` pause watermark baked into the
-beacon-paused dynamic profile (RENDER-05). Re-run to regenerate the asset:
+"""Generate iterm/pause-bg.png — the faint `||` pause watermark baked into the
+beacon-pause dynamic profile (RENDER-05). Re-run to regenerate the asset:
 
-    python3 iterm/make-paused-bg.py
+    python3 iterm/make-pause-bg.py
 
 The image is a transparent square with two rounded vertical bars centered. iTerm2
 scales it to fit (centered) and composites it over the paused background color at
-a low Blend, so the bars read as a faint watermark — the same `||` pause glyph
-that anchors the badge (BADGE-11) and the fleet view (WIP-12), at pane scale."""
+a low Blend, so the bars read as a faint `||` watermark — the pane-scale cue that
+a session is parked (BADGE-11 / RENDER-05)."""
 
 from pathlib import Path
 
@@ -32,7 +32,7 @@ def main() -> None:
     right_x = cx + GAP // 2
     for x in (left_x, right_x):
         draw.rounded_rectangle([x, top, x + BAR_W, bottom], radius=RADIUS, fill=BAR_RGBA)
-    out = Path(__file__).resolve().parent / "paused-bg.png"
+    out = Path(__file__).resolve().parent / "pause-bg.png"
     img.save(out)
     print(f"wrote {out}")
 

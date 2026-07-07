@@ -24,13 +24,16 @@
   <style>
     :root {
       /* Status hexes MIRROR BADGE_COLOR_PALETTE in scripts/beacon so a card's
-         dot matches the same session's iTerm2 badge — do not drift these. */
-      --ready:    #50fa7b;
+         dot matches the same session's iTerm2 badge — do not drift these.
+         SDLC cycles: dev (ready/busy/blocked) + the mode cycles. Green is
+         retired from the dev stoplight (ready is gray) and pins `release`. */
+      --ready:    #8b8fa0;
       --busy:     #ffb86c;
       --blocked:  #ff5555;
       --paused:   #6272a4;
-      --wrapping: #34c79d;
-      --done:     #8b78c4;
+      --release:  #50fa7b;
+      --retro:    #f8f8f2;
+      --done:     #5f6072;
 
       /* Console chrome — free to tune; not part of the badge contract. */
       --bg:       #0d0e15;
@@ -115,7 +118,7 @@
     .spacer { flex: 1 1 auto; }
 
     .freshness { color: var(--faint); font-size: 0.76rem; white-space: nowrap; }
-    .freshness .live { color: var(--ready); }
+    .freshness .live { color: var(--release); } /* green = live/good (ready is now a neutral gray) */
     .freshness .live::before {
       content: "●"; margin-right: 0.3rem; font-size: 0.7em;
       animation: blink 2s steps(1) infinite;
@@ -247,19 +250,22 @@
     }
     .card.state-busy::after,
     .card.state-blocked::after,
-    .card.state-wrapping::after { opacity: 1; box-shadow: 0 0 10px var(--state-color); }
-    .card.state-ready    { --state-color: var(--ready); }
-    .card.state-busy     { --state-color: var(--busy); }
-    .card.state-blocked  { --state-color: var(--blocked); }
-    .card.state-paused   { --state-color: var(--paused); }
-    .card.state-wrapping { --state-color: var(--wrapping); }
-    .card.state-done     { --state-color: var(--done); }
+    .card.state-retro::after,
+    .card.state-release::after { opacity: 1; box-shadow: 0 0 10px var(--state-color); }
+    .card.state-ready   { --state-color: var(--ready); }
+    .card.state-busy    { --state-color: var(--busy); }
+    .card.state-blocked { --state-color: var(--blocked); }
+    .card.state-paused  { --state-color: var(--paused); }
+    .card.state-release { --state-color: var(--release); }
+    .card.state-retro   { --state-color: var(--retro); }
+    .card.state-done    { --state-color: var(--done); }
 
     /* Mode-state cards echo their iTerm2 pane background (RENDER-05): a muted tint
-       in the mode's hue plus a large, faint, centered watermark of the same glyph
-       the pane paints (|| pause bars, ⏻ power-off ring) — the direct fleet analog
-       of the pane's mode background, readable at a glance with the content still
-       legible on top. wrapping's pane paints no image, so it is tint-only. */
+       in the mode's hue plus a large, faint, centered watermark of the same mark
+       the pane paints (|| pause bars, rocket for release, ⏻ power-off ring for
+       done) — the direct fleet analog of the pane's mode background, readable at a
+       glance with the content still legible on top. retro's pane paints no image,
+       so it is tint-only. Watermark fill mirrors the mode's badge hue. */
     .card.state-paused {
       background-color: color-mix(in srgb, #3c3357 26%, var(--panel));
       background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='7.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/><rect x='13.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/></svg>");
@@ -267,12 +273,19 @@
       background-size: 6rem 6rem;
       background-repeat: no-repeat;
     }
-    .card.state-wrapping {
+    .card.state-release {
+      background-color: color-mix(in srgb, #212c45 34%, var(--panel));
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2350fa7b' fill-opacity='0.42' fill-rule='evenodd'><path d='M12 3.4 14 8.4 14 12.6 15.8 16 14 15.4 12.9 15.4 12 19 11.1 15.4 10 15.4 8.2 16 10 12.6 10 8.4Z M12 9.3A1.35 1.35 0 1 0 12 12A1.35 1.35 0 1 0 12 9.3Z'/></svg>");
+      background-position: center;
+      background-size: 6rem 6rem;
+      background-repeat: no-repeat;
+    }
+    .card.state-retro {
       background: color-mix(in srgb, #2c4636 20%, var(--panel));
     }
     .card.state-done {
       background-color: color-mix(in srgb, var(--bg) 55%, var(--panel));
-      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b78c4' stroke-opacity='0.42' stroke-width='2' stroke-linecap='round'><path d='M12 3v8'/><path d='M7.4 6.6a6.6 6.6 0 1 0 9.2 0'/></svg>");
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6072' stroke-opacity='0.55' stroke-width='2' stroke-linecap='round'><path d='M12 3v8'/><path d='M7.4 6.6a6.6 6.6 0 1 0 9.2 0'/></svg>");
       background-position: center;
       background-size: 6rem 6rem;
       background-repeat: no-repeat;
@@ -293,7 +306,8 @@
     }
     .state-busy    .dot,
     .state-blocked .dot,
-    .state-wrapping .dot { box-shadow: 0 0 7px var(--state-color); }
+    .state-retro   .dot,
+    .state-release .dot { box-shadow: 0 0 7px var(--state-color); }
     /* Project icon (PROV-08) stands in for the dot when the project ships one;
        the top bar still carries the status color. */
     .icon {
@@ -485,7 +499,7 @@
     }
     .copy::before { content: "⧉"; }
     .copy:hover { color: var(--fg); border-color: var(--line-hi); }
-    .copy.copied { color: var(--ready); border-color: var(--ready); }
+    .copy.copied { color: var(--release); border-color: var(--release); } /* green = success */
     .copy.copied::before { content: "✓"; }
 
     /* Footer: meta on the left, expand chevron, dedicated go button lower-right. */
@@ -705,7 +719,7 @@
     // /turn/<hash>, keyed by turn timestamp so a newer turn invalidates it.
     const turnCache = new Map();
 
-    const STATES = ["ready", "busy", "blocked", "paused", "wrapping", "done"];
+    const STATES = ["ready", "busy", "blocked", "paused", "release", "retro", "done"];
 
     // Resolve a CSS color name to {css, fg, ok}. fg is a contrast-picked text
     // color for the /color pill. A hidden probe lets the browser do the parsing;
@@ -741,13 +755,13 @@
     // A session lands in the attention band when Claude is blocked on the user
     // (state === "blocked", i.e. status "waiting") or a sticky attention marker
     // is set (HOOK-03b). The band is the loud one — everything else is fleet.
-    // A session in a deliberate mode state (paused / wrapping / done) is never
-    // "needs you": the mode is an explicit set-aside that outranks a lingering
-    // pending-attention marker, exactly as the pane's logical state does (mode >
-    // pending_attention). So a parked session reads as parked — it keeps its
-    // mode-card treatment in the fleet instead of being hoisted into the band
-    // (whose red glow would paint over that treatment).
-    const MODE_STATES = new Set(["paused", "wrapping", "done"]);
+    // A session in a mode state (paused / release / retro / done) is never
+    // "needs you": the mode is a deliberate user/session declaration that
+    // outranks a lingering pending-attention marker, exactly as the pane's
+    // logical state does (mode > pending_attention). So a parked or shipping
+    // session keeps its mode-card treatment in the fleet instead of being
+    // hoisted into the band (whose red glow would paint over that treatment).
+    const MODE_STATES = new Set(["paused", "release", "retro", "done"]);
     function needsYou(s) {
       if (MODE_STATES.has(s.state)) return false;
       return s.state === "blocked" || !!s.pending_attention;
@@ -1058,7 +1072,7 @@
 
     function updateCard(el, s) {
       el.classList.remove(...STATES.map((x) => "state-" + x));
-      el.classList.add("state-" + (s.state || "paused"));
+      el.classList.add("state-" + (s.state || "ready"));
       // Waiting-for-you emphasis (these cards live in the pinned needs-you band,
       // placeAttention). Amber (soft) attention = flagged but not a live block;
       // red = blocked now.

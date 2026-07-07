@@ -666,22 +666,24 @@ class WatchViewTest(unittest.TestCase):
         self.assertIn("line one", row)
         self.assertNotIn("line two", row)
 
-    def test_paused_reason_carries_glyph(self):
-        # WIP-12: a paused row's reason is anchored with the || pause glyph.
+    def test_paused_reason_uses_dash_no_glyph(self):
+        # WIP-12: no state carries a text glyph — a paused row reads by its color
+        # dot and `paused` status, its reason using the plain `—` lead-in.
         row = self._body(self._rows([
             self._session(state="paused", status="paused", description="stepping away"),
         ], cols=200))[0]
-        self.assertIn("|| stepping away", row)
+        self.assertIn("— stepping away", row)
+        self.assertNotIn("||", row)
 
-    def test_paused_without_reason_still_anchored(self):
-        # WIP-12: the glyph shows even with no reason, so a parked session
-        # always reads as parked beyond its color dot.
+    def test_paused_without_reason_has_no_glyph(self):
+        # WIP-12: with no description a paused row carries no reason segment at
+        # all — the `paused` status label and color dot are the cue.
         row = self._body(self._rows([
             self._session(state="paused", status="paused", description=""),
         ], cols=200))[0]
-        self.assertIn("||", row)
+        self.assertNotIn("||", row)
 
-    def test_non_paused_uses_dash_not_glyph(self):
+    def test_any_state_uses_dash_not_glyph(self):
         row = self._body(self._rows([
             self._session(state="ready", description="working on it"),
         ], cols=200))[0]

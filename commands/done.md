@@ -17,4 +17,4 @@ This command runs on the session's model so the prompt cache stays warm; keep it
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" done ${ARGUMENTS}
 ```
 
-The CLI swaps the pane into the done profile (near-black "powered off" background with a faint `⏻` power-symbol watermark, plus a dim purple badge color) as it runs, so the user sees the change immediately; your one-line reply just confirms it. Done persists until the session runs `resume` / `clear` or ends — it does not auto-clear on the next prompt.
+The CLI swaps the pane into the done profile (near-black "powered off" background with a faint `⏻` power-symbol watermark, under a dim-gray badge) as it runs, and drops the task from the badge so it shows the project alone; the user sees the change immediately, and your one-line reply just confirms it. Done persists until the session runs `resume` / `clear` or ends — it does not auto-clear on the next prompt.

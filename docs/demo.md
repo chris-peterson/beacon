@@ -28,14 +28,14 @@ python3 dev/demo.py --seed-only      # write a static fleet and exit (no serve)
 
 ## What you'll see
 
-A grid of cards, one per session, colored by what each session is doing right now — the same traffic light beacon paints on an iTerm2 pane:
+A card per session, colored by what each is doing right now — the same colors beacon paints on an iTerm2 pane. Sessions that need you (waiting, or flagged) rise into a loud **Needs you** band at the top; the rest of the fleet sits quietly below:
 
-![The beacon fleet dashboard: a grid of session cards colored green for idle, amber for working, red for waiting, and gray for paused.](images/demo-fleet.png)
+![The beacon fleet dashboard: a Needs-you band of red waiting cards above a grid of the rest — gray idle, amber working, and mode cards (a green release with a rocket, a dim done with a power-off mark, a purple paused).](images/demo-fleet.png)
 
-- **Green** — idle, waiting for its next prompt
+- **Gray** — idle, at rest, waiting for its next prompt
 - **Amber** — Claude is working
-- **Red** — waiting on you (a permission or idle prompt), or a status you set yourself
-- **Gray** — paused
+- **Red** — waiting for you (a permission or idle prompt), or a status you set yourself
+- **Mode colors** — a session you've moved into a cycle: `pause` (purple), `release` (green), `retro` (white on green), `done` (dim gray). See [The beacon palette](/palette).
 
 Each card carries the recall context a glance needs: the project, the current task, the [tack](https://github.com/chris-peterson/tack) route chip, the branch, and a free-text note about *why* it's in this state.
 

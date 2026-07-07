@@ -1,4 +1,5 @@
 - [Home](/)
+- [The beacon palette](/palette)
 - Preview
   - [iTerm2](/iterm)
   - [Browser (Demo)](/demo)

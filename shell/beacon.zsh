@@ -42,11 +42,12 @@ zmodload -F zsh/stat b:zstat
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
 #
-# Switch this pane into the beacon profile (STATUS-BAR-01): it carries the
-# status bar layout and badge sizing. beacon is not iTerm2's default profile,
-# so interactive panes activate it here; Claude panes do it at SessionStart.
-# A non-iTerm terminal silently ignores the sequence.
-printf '\e]1337;SetProfile=beacon\a'
+# Switch this pane into the beacon-dev profile (STATUS-BAR-01): it carries the
+# status bar layout and badge sizing, and is the dev cycle's base profile.
+# beacon-dev is not iTerm2's default profile, so interactive panes activate it
+# here; Claude panes do it at SessionStart. A non-iTerm terminal silently
+# ignores the sequence.
+printf '\e]1337;SetProfile=beacon-dev\a'
 # Badge format: project + optional task suffix. The task slot self-collapses
 # when empty (beacon_task carries " · <task>" when set). The badge renders
 # only after engagement (BADGE-14) populates beacon_project; until then both

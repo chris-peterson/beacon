@@ -1,7 +1,7 @@
 {
   "Profiles": [
     {
-      "Name": "beacon",
+      "Name": "beacon-dev",
       "Guid": "ec2933e2-0e56-4d96-9a63-245d5ec7c527",
       "Dynamic Profile Parent Name": "Default",
       "Show Status Bar": true,

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.19.0
+
+### SDLC cycle profiles
+
+- **Statuses are now SDLC cycles.** The everyday **dev** cycle (`idle` /
+  `working` / `waiting`) rides the base `beacon-dev` profile with a dynamic
+  badge stoplight; the mode cycles — `pause`, `release`, `retro`, `done` — each
+  own a dedicated profile. `wrapping` is renamed **`retro`** and `releasing` is
+  renamed **`release`**; the base profile is renamed `beacon` → `beacon-dev` and
+  the mode profiles to `beacon-pause` / `beacon-release` / `beacon-retro` /
+  `beacon-done` (an upgrade sweeps the old profile files).
+- **`release` mode** — a new cycle for a ship-it / release flow (`beacon release`
+  or `/beacon:release`): a deep launch-sky navy pane with a faint rocket
+  watermark under a pinned **green** badge.
+- **Green leaves the dev stoplight.** At rest the badge is now a neutral **gray**
+  (a session's known default before its first turn), so green is reserved for
+  `release` and reads unambiguously as "shipping."
+- **`done` drops the task.** A completed session shows its project alone —
+  the task slot is suppressed while `done` (reversibly, STATE-12) — plus a
+  dim-gray badge and the powered-off pane.
+- **`retro` recolored** to a white badge on its muted-green pane.
+- **No more `||` badge glyph.** Every cycle now reads by background + color
+  alone, consistently across the pane, the dashboard card, and the fleet list;
+  the pause text glyph is gone.
+- **New docs page — [The beacon palette](https://chris-peterson.github.io/beacon/#/palette)** — the cycle
+  taxonomy and every color, plus refreshed fleet screenshots.
+
+### Spec & internals
+
+- New requirements STATE-11 (the `release` synonym), STATE-12 (`done` suppresses
+  the task, keeps the project), and STATE-13 (the SDLC cycle vocabulary); the
+  pre-existing STATE-10 (`pause --clear-screen`) is unchanged. BADGE-09 stoplight recolored (gray at
+  rest), BADGE-11 rewritten (no glyph), and the `wrapping`/`releasing` →
+  `retro`/`release` and `beacon` → `beacon-dev` renames threaded through STATE,
+  CMD, RENDER, THEME, WIP, and §6.6. Colors stay Dracula-sourced (THEME-01), the
+  `release` navy being a darkened `comment`.
+
 ## 1.18.0
 
 ### Fleet dashboard: grouping, project stacks, and a needs-you band

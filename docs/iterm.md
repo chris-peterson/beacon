@@ -14,7 +14,8 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn {
   --abyss: #21222c; --body: #282a36; --bar: #30323e; --fg: #f8f8f2;
   --identity: #9aa3c0; --sep: #7e8290; --pink: #ff79c6;
-  --ready: #50fa7b; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4;
+  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4;
+  --green: #50fa7b;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   max-width: 720px; margin: 1rem 0;
 }
@@ -30,12 +31,12 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-act { color: var(--pink); font-weight: 700; }
 .bcn-sep { color: var(--sep); }
 .bcn-proj { color: var(--identity); }
-.bcn-proj b { color: var(--ready); font-weight: 700; }
+.bcn-proj b { color: var(--green); font-weight: 700; }
 .bcn-spring { flex: 1 1 auto; }
-.bcn-branch { color: var(--ready); }
+.bcn-branch { color: var(--green); }
 .bcn-branch.diverged { color: var(--busy); }
 .bcn-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
-.bcn-body .prompt { color: var(--ready); }
+.bcn-body .prompt { color: var(--green); }
 .bcn-badge { position: absolute; right: 0.95rem; top: 0.85rem; font: 700 28px/1 var(--mono); letter-spacing: 0.01em; }
 .bcn-badge.ready { color: var(--ready); }
 .bcn-badge .task { font-weight: 400; opacity: 0.92; }
@@ -97,16 +98,16 @@ The badge sits top-right, the status bar runs across the top, and everything els
 
 ## The badge: a traffic light
 
-The badge is always on, and its color is the highest-leverage signal beacon paints — it's the only surface large enough to read in Mission Control / Exposé, so a glance across many windows tells you which session needs you. The color is the same traffic light as a [dashboard card](/demo): green idle, amber working, red waiting on you, gray paused. The **tab color** mirrors it, so a row of tabs carries the same state without opening any of them.
+The badge is always on, and its color is the highest-leverage signal beacon paints — it's the only surface large enough to read in Mission Control / Exposé, so a glance across many windows tells you which session needs you. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set. The **tab color** mirrors it, so a row of tabs carries the same state without opening any of them.
 
 <div class="bcn bcn-badges">
   <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
   <div class="bcn-chip"><div class="b busy">checkout-api<span class="task"> : refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting on you</div></div>
+  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting for you</div></div>
   <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 
-The text is the project name, optionally followed by `: <task>` when a task is set. The hooks own the green / amber / red transitions; you drive gray yourself with `/beacon pause "leaving for lunch"` (or any `/beacon status …`). A pause note isn't painted on the pane — it surfaces in the [fleet dashboard](/demo) as recall context, and the next prompt clears it.
+The text is the project name, optionally followed by `: <task>` when a task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon pause "leaving for lunch"`, `/beacon release`, `/beacon retro`, `/beacon done` (or any `/beacon status …`). A pause note isn't painted on the pane — it surfaces in the [fleet dashboard](/demo) as recall context, and the next prompt clears it.
 
 ## The status bar
 

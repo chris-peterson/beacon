@@ -33,9 +33,10 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   --identity: #9aa3c0;   /* project chip — de-emphasized identity, ≥4.5:1 on --bar */
   --sep: #7e8290;
   --pink: #ff79c6;       /* ↖ web / ↗ code action affordance */
-  --ready: #50fa7b;      /* idle · branch synced */
+  --ready: #8b8fa0;      /* idle — at rest (dev, neutral gray) */
+  --green: #50fa7b;      /* branch synced · deliverable · prompt (not a badge state) */
   --busy: #ffb86c;       /* working · branch diverged */
-  --blocked: #ff5555;    /* waiting on you */
+  --blocked: #ff5555;    /* waiting for you */
   --paused: #6272a4;     /* paused · branch untracked */
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   max-width: 760px;
@@ -73,9 +74,9 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 .bcn-act { color: var(--pink); font-weight: 700; }
 .bcn-sep { color: var(--sep); }
 .bcn-proj { color: var(--identity); }
-.bcn-proj b { color: var(--ready); font-weight: 700; }   /* deliverable suffix #42 / !17 */
+.bcn-proj b { color: var(--green); font-weight: 700; }   /* deliverable suffix #42 / !17 */
 .bcn-spring { flex: 1 1 auto; }
-.bcn-branch { color: var(--ready); }
+.bcn-branch { color: var(--green); }
 .bcn-branch.diverged { color: var(--busy); }
 .bcn-branch.untracked { color: var(--paused); }
 .bcn-body {
@@ -84,7 +85,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   padding: 0.85rem 0.9rem 1.1rem;
   min-height: 96px;
 }
-.bcn-body .prompt { color: var(--ready); }
+.bcn-body .prompt { color: var(--green); }
 .bcn-body .dim { color: #6272a4; }
 .bcn-badge {
   position: absolute; right: 0.95rem; top: 0.85rem;
@@ -187,7 +188,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 <div class="bcn bcn-badges">
   <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
   <div class="bcn-chip"><div class="b busy">checkout-api<span class="task"> : refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting on you</div></div>
+  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting for you</div></div>
   <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 

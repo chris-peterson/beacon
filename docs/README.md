@@ -104,8 +104,8 @@ beacon <TAB>        # subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the badge color flips to amber while Claude is processing, back to green when the turn ends; it goes red when Claude is blocked on you (a permission or idle prompt)
-- `/beacon:pause "checking lunch options"` flips the badge to gray; the note shows in the fleet dashboard, and sending the next prompt clears both
+- the badge color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
+- `/beacon:pause "checking lunch options"` moves the badge to the muted-purple pause color (and dims the pane); the note shows in the fleet dashboard, and sending the next prompt clears both
 - `/beacon:beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
