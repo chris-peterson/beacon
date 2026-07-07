@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.18.0
+
+### Fleet dashboard: grouping, project stacks, and a needs-you band
+
+- **Automatic grouping** — the fleet view now groups sessions by their
+  correlated route group; the flat/group toggle is gone. Sessions with no route
+  group fall into an unlabeled section at the bottom.
+- **Same-project stacks** — multiple sessions for one project collapse into an
+  overlapping stack, newest in front, with the rest brought forward on click or
+  Tab (an animated raise). Only the front card exposes its controls; a behind
+  card is click-anywhere-to-raise and previews its task + latest turn on hover.
+  An expanded card holds the front slot so a sibling's newer turn can't collapse
+  what you're reading.
+- **Needs-you band** — genuinely blocked sessions are hoisted into a pinned band
+  above the calmer fleet. A parked/wrapping/done session stays in the fleet (its
+  mode outranks a lingering attention marker), so it reads as set-aside rather
+  than as needing you. Clicking a card's `waiting` pill focuses the session.
+- **Mode-card treatment** — a paused/done card echoes its iTerm2 pane: a muted
+  tint plus a large, faint, centered watermark (`||` for paused, a power-off ring
+  for done); wrapping is tint-only.
+- **Inline forget** — the card close (×) opens a small confirmation fly-out
+  instead of the browser `confirm()` dialog (Keep / Esc / click-away to dismiss).
+
+### Spec & internals
+
+- New requirements WIP-15 (project stacks), WIP-16 (route grouping), WIP-17
+  (mode-card treatment), RENDER-06 (suppress iTerm2's native notifications),
+  HOOK-10 (SessionStart emits the bundled ambient rules); WIP-12 narrowed to the
+  text-only views. Coverage ledger refreshed to 149 IDs; the duplicate CMD-16
+  (`data-dir`) is renumbered to CMD-21.
+- Removed the never-read pending-attention prompt-type plumbing (the `--type`
+  hook flag and its state field).
+
 ## 1.17.0
 
 ### Branch review
