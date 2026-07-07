@@ -1340,7 +1340,6 @@ def _resolve_session(sh: str, session_index: dict | None = None,
     state = _logical_state_for({
         "status": status,
         "pending_attention": pending,
-        "pending_attention_type": _read_state_for(sh, "pending-attention"),
     })
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
@@ -2332,7 +2331,6 @@ def resolve(cwd: Path | None = None) -> dict:
     if not status:
         status, p_status = "idle", "default"
 
-    pending_attention_type = (read_state("pending-attention") or "").strip() or None
     description = (read_state("description") or "").strip()
     return {
         "project": project, "project_provider": p_proj,
@@ -2340,7 +2338,6 @@ def resolve(cwd: Path | None = None) -> dict:
         "status": status, "status_provider": p_status,
         "description": description,
         "pending_attention": _state_path("pending-attention").exists(),
-        "pending_attention_type": pending_attention_type,
     }
 
 
@@ -3743,10 +3740,10 @@ def cmd_hook(args):
         write_state("signal.status", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
-        # The stored value carries the prompt type so the renderer picks the
-        # right watermark (BADGE-15): `permission` → `!`, `idle` → `?`.
-        attention_type = getattr(args, "type", None) or "permission"
-        write_state("pending-attention", attention_type)
+        # Only its presence matters — permission and idle both read as "needs the
+        # user" and beacon does not distinguish them on any surface (HOOK-03), so
+        # the marker carries a constant, not the prompt type.
+        write_state("pending-attention", "1")
 
     elif event == "PreToolUse":
         # Tool activity means the agent is working, not waiting. This
@@ -3825,8 +3822,6 @@ def main(argv=None):
 
     sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
     sp.add_argument("event")
-    sp.add_argument("--type", choices=["permission", "idle"], default=None,
-                    help="Notification prompt subtype (set per-matcher in hooks.json)")
 
     sp = sub.add_parser("completions", help="install or print shell completions")
     sp.add_argument("shell", choices=["zsh"], nargs="?", default="zsh")

@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --type permission"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification"
           }
         ]
       },
@@ -63,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --type idle"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification"
           }
         ]
       }
