@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.22.0
+
+## Status-bar buttons survive pane moves
+
+- The ↖ web and ↗ code buttons stopped working once a pane was moved between windows, tabs, or splits: their handoff files keyed on the full `ITERM_SESSION_ID`, whose `wNtNpN` positional prefix iTerm2 rewrites on a move. The web button then opened a stale fallback and the code button silently did nothing.
+- The handoff cache files, the engagement marker, and the per-session state bucket now key on the stable pane **GUID** (the same handle focus and set-name already target), so a moved pane keeps working.
+
+## Web button follows the session's tack route
+
+- The ↖ web URL now resolves by the session→route pin — the same route the fleet-view chip shows — instead of matching only the git branch slug. A route pinned to the session whose slug differs from the branch (e.g. an issue tacked mid-session) previously resolved to the branch tree; it now opens the pinned deliverable.
+
+## Buttons report when there's nothing to open
+
+- When no URL or working directory has been resolved, the buttons now surface a beacon-named alert instead of opening a generic search page (web) or silently doing nothing (code).
+
+## Upgrade note
+
+- Because per-session state now keys on the pane GUID rather than the full session id, sessions that were already open before upgrading do not carry their prior task/status across — they re-establish it on their next turn. Newly started sessions are unaffected.
+
 ## 1.21.0
 
 ## Window title, /rename, and wander rendering
