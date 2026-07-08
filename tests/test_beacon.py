@@ -1911,8 +1911,13 @@ class ReviewCommand(unittest.TestCase):
             "json.dump(d,open(p,'w'))\n"
         )
         self._git("config", "diff.tool", "faketool")
+        # git runs the difftool cmd through `sh -c`, which eats the backslashes
+        # in a raw Windows path (C:\Users\… → C:Users…); use forward slashes.
+        # And invoke the exact interpreter running the suite — `python3` isn't
+        # guaranteed on PATH on Windows.
+        py = Path(sys.executable).as_posix()
         self._git("config", "difftool.faketool.cmd",
-                  f'python3 {tool} "$LOCAL" "$REMOTE"')
+                  f'"{py}" "{tool.as_posix()}" "$LOCAL" "$REMOTE"')
         self._git("config", "difftool.prompt", "false")
         out = self._run_review()
         self.assertIn("REVIEW_VERDICT=1", out)
