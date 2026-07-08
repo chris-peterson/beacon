@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.20.0
+
+## Window title
+
+A `/rename`d window kept losing its project context, leaving concurrent sessions hard to tell apart in Mission Control, the window switcher, and the Dock. The OS window title now carries `project · task` — the same as the badge — and it sticks.
+
+- **`project · task` in the title bar** — set via the iTerm2 session *name*, so it survives Claude Code's `/rename` and auto-titles. The profile disables terminal-set titles (`Allow Title Setting`), so nothing overwrites it; beacon owns the name out-of-band through Apple Events.
+- **Reuses the badge template** — the title and badge are one source, so they never drift, and the title re-evaluates live as the project / task change.
+- **Interactive shells get it too** — a plain `beacon-dev` pane shows its project in the title (project only; there's no task outside a Claude session).
+- **Profiles unchanged** — no profile renames, same switch keys, so nothing else moves.
+
+## Badge default
+
+- **At-rest badge is now gray by default** — a fresh pane reads the dev-cycle gray before its first status render, instead of inheriting the parent profile's badge color.
+
+Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md).
+
 ## 1.19.0
 
 ### SDLC cycle profiles
