@@ -1858,7 +1858,7 @@ def cmd_forget(args):
 
 # --- full-fidelity export / import (DUMP) ---
 #
-# Unlike `wip` (a derived, windowed, tack-joined *view*, DUMP-05), export is a
+# Unlike `wip` (a derived, windowed, tack-joined *view*), export is a
 # lossless backup: every `<hash>.<field>` file's raw text, verbatim, so import
 # reconstructs byte-for-byte what the plugin reads. The envelope mirrors tack's
 # backup shape (schemaVersion / exportedAt / generator / sessions[]) and surfaces

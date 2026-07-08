@@ -3,11 +3,20 @@
 Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-07-07
+**Last audit:** 2026-07-08
 **Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.19.0
-**Coverage:** 153 requirement IDs — all implemented (0 Missing, 0 Contradicts),
-0 open divergences. 1.19.0 adds STATE-11 / STATE-12 / STATE-13 and CMD-22 (see the audit history).
+**Plugin version:** 1.21.0
+**Coverage:** 158 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+1.21.0 adds the TITLE (§4.8 window title) and DUMP (export/import) domains and
+folds `/rename` into the task chain (PROV-02).
+
+> **Partial hand-reconciliation (2026-07-08).** `/sextant:spec-status` is
+> model-invocation-disabled, so this pass was done by hand: the TITLE and DUMP
+> rows below were added and the header bumped to 1.21.0. A full `spec-status`
+> pass is still owed — the per-domain row counts predate this and don't tally to
+> 158 (the `PERF-01..04` row has no matching spec IDs, and the `CLI` row count is
+> one short of the spec's CLI defs). Headline count is the authoritative spec ID
+> total; the row-level bookkeeping needs the tool.
 
 Status (`signal.status`) has seven values, organized into **SDLC cycles**
 (STATE-13): the **dev** cycle — `idle` / `working` / `waiting` — maps to the
@@ -47,12 +56,14 @@ a mode state swaps into its profile for a background a color OSC can't express
 | CMD-01..09, 13..22 (gap 10, 11; CMD-12 retired) | 19 | All Covered | CMD-08 install writes the base + mode dynamic profiles; CMD-16 is `review` (backs the `⇄ review` status-bar button); CMD-18/19/20/22 are the `/beacon:pause` / `retro` / `done` / `release` shims (no model pin); CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16) |
 | WIP-01..17 | 17 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12: no state carries a text glyph — every fleet row reads by its color dot and `status` (the dashboard conveys a mode via the WIP-17 card treatment); WIP-13 emits `agent_color` (fleet-view identity pill only, never painted); WIP-14 persists `latest_turn_full` + serves it at `GET /turn/<hash>` for card expansion; WIP-15 collapses same-project sessions into a z-stack (newest front, raise on demand); WIP-16 auto-groups the fleet by route group (groupless in an unlabeled bottom section, no toggle); WIP-17 gives mode-state cards the pane-analog treatment (muted tint + centered `||` / rocket / ⏻ watermark) and keeps a mode session out of the attention band |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
+| DUMP-01..04 | 4 | All Covered | `export` / `import` full-fidelity per-session state backup (`_export_payload`, `cmd_export`, `cmd_import`); versioned JSON envelope, gzip optional, mtimes preserved (DUMP-03), hex-hash + path-traversal guard on import; DUMP-04 treats the dump as sensitive (raw payload is the product, not shape-only) |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
+| TITLE-01..04 | 4 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write |
 | STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles) |
 | RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
@@ -112,6 +123,19 @@ above the calmer fleet") — recent code realigned to it, not drift.
   contract gain). Revisit if the spec ever moves to strict EARS.
 
 ## Audit history
+
+### 2026-07-08 — TITLE + DUMP domains, /rename fold (hand reconciliation, 1.21.0)
+
+Ledger had drifted two releases behind (still read 1.19.0). Reconciled by hand
+because `/sextant:spec-status` is model-invocation-disabled. Added the **TITLE**
+row (TITLE-01..04, §4.8 window title — landed 1.20.0, never balanced into the
+table) and the **DUMP** row (DUMP-01..04, export/import — 1.21.0). PROV-02 now
+folds a `/rename` into the task override (recency-wins) and PROV-02a's wander
+marker became a ` @ ` separator; the PROV row notes were updated in 1.21.0.
+Fixed a dangling `DUMP-05` reference in `scripts/beacon` (the spec defines only
+DUMP-01..04). Still owed: a full `spec-status` pass to reconcile the per-domain
+row counts to 158 (the `PERF-01..04` row has no matching spec IDs; the `CLI` row
+undercounts by one) — flagged in the header.
 
 ### 2026-07-07 — SDLC cycle profiles (new-feature, hand audit for 1.19.0)
 
