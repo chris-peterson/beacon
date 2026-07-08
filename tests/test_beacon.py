@@ -887,6 +887,127 @@ class ResolveUrlForgeFallback(BeaconTest):
         self.assertEqual(url, "https://github.com/chris-peterson/beacon/tree/chip-best-url")
 
 
+class TackUrlHonorsSessionPin(BeaconTest):
+    """_tack_url_for resolves the route via the session→route pin, not the
+    branch slug alone, so the ↖ web button and the fleet-view chip read the
+    same route. A route pinned to the session whose slug differs from the
+    branch (a pin, not a branch-slug match) must still surface its deliverable
+    URL; location correlation (via _tack_route_for) is the fallback."""
+
+    ISSUE = "https://gitlab.getty.cloud/ecommerce/elasticache-toolbox/-/issues/2"
+
+    def _tack_url(self, routes, *, sid, branch, tack_route=("", None)):
+        def fake_run(cmd, *a, **k):
+            if cmd[:2] == ["tack", "list"]:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=json.dumps(routes), stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        patches = [
+            mock.patch.object(self.beacon, "_which",
+                              side_effect=lambda x: "/bin/tack" if x == "tack" else None),
+            mock.patch.object(self.beacon, "read_state",
+                              side_effect=lambda f: (sid or None) if f == "claude_session_id" else None),
+            mock.patch.object(self.beacon, "_tack_route_for", return_value=tack_route),
+            mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": ""}, clear=False),
+            mock.patch("subprocess.run", side_effect=fake_run),
+        ]
+        for p in patches: p.start()
+        try:
+            return self.beacon._tack_url_for(Path("/tmp/fake"), branch, "elasticache-toolbox")
+        finally:
+            for p in patches: p.stop()
+
+    def test_pin_resolves_even_when_slug_differs_from_branch(self):
+        routes = [{
+            "slug": "elasticache-maintenance-component",
+            "sessions": [{"id": "sid-1", "started_at": "2026-07-08T22:24:34Z"}],
+            "tacks": [{"status": "in_progress",
+                       "deliverable": {"label": "elasticache-toolbox#2", "url": self.ISSUE}}],
+        }]
+        url, _ = self._tack_url(routes, sid="sid-1",
+                                branch="add-maintenance-cicd-component")
+        self.assertEqual(url, self.ISSUE)
+
+    def test_most_recently_started_pin_wins(self):
+        routes = [
+            {"slug": "old", "sessions": [{"id": "sid-1", "started_at": "2026-07-01T00:00:00Z"}],
+             "tacks": [{"status": "in_progress", "deliverable": {"url": "https://x/old"}}]},
+            {"slug": "new", "sessions": [{"id": "sid-1", "started_at": "2026-07-08T00:00:00Z"}],
+             "tacks": [{"status": "in_progress", "deliverable": {"url": self.ISSUE}}]},
+        ]
+        url, _ = self._tack_url(routes, sid="sid-1", branch="whatever")
+        self.assertEqual(url, self.ISSUE)
+
+    def test_falls_back_to_location_route_when_no_pin(self):
+        routes = [{
+            "slug": "add-maintenance-cicd-component",
+            "sessions": [],
+            "tacks": [{"status": "in_progress", "deliverable": {"url": self.ISSUE}}],
+        }]
+        url, _ = self._tack_url(
+            routes, sid="", branch="add-maintenance-cicd-component",
+            tack_route=("add-maintenance-cicd-component", None))
+        self.assertEqual(url, self.ISSUE)
+
+
+class CacheKeyIsPaneStable(BeaconTest):
+    """The handoff cache files (cwd / url) and the engagement marker key on the
+    pane GUID, not the full ITERM_SESSION_ID: the `wNtNpN` positional prefix
+    changes when a pane is moved between windows/tabs/splits, and keying on it
+    left the status-bar buttons reading a file written under the pane's old
+    position — the ↖ web button hit its fallback, the ↗ code button no-op'd."""
+
+    def _key(self, iterm_id):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": iterm_id}):
+            return self.beacon._iterm_cache_key()
+
+    def test_strips_positional_prefix_to_guid(self):
+        self.assertEqual(self._key("w2t0p1:AB30E8DC-1234"), "AB30E8DC-1234")
+
+    def test_key_is_invariant_across_pane_moves(self):
+        self.assertEqual(self._key("w2t0p1:GUID-X"), self._key("w1t0p0:GUID-X"))
+
+    def test_synthesized_non_iterm_id_survives(self):
+        self.assertEqual(self._key("claude-session:uuid-9"), "uuid-9")
+
+    def test_no_pane_id_yields_none(self):
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ITERM_SESSION_ID", None)
+            self.assertIsNone(self.beacon._iterm_cache_key())
+
+    def test_engagement_marker_found_after_pane_move(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w2t0p1:GUID-Z"}):
+            self.beacon.place_engagement_marker()
+        # Pane moved: same GUID, new positional prefix.
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t3p2:GUID-Z"}):
+            self.assertTrue(
+                self.beacon._engagement_marker_path().exists(),
+                "engagement marker must survive a pane move (keyed on GUID)")
+
+
+class SessionSeedIsPaneStable(BeaconTest):
+    """The session seed (and thus the state-bucket hash) keys on the pane GUID,
+    not the full ITERM_SESSION_ID: iTerm2 rewrites the `wNtNpN` positional
+    prefix when a pane is moved, so seeding on the full id fragmented a pane's
+    state into a fresh bucket on every move. The synthesized `claude-session:`
+    form is kept whole so a bare `beacon set` and the hooks converge on it."""
+
+    def test_seed_strips_positional_prefix(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w2t0p1:GUID-A"}):
+            self.assertEqual(self.beacon._session_seed(), "GUID-A")
+
+    def test_seed_is_invariant_across_pane_moves(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w2t0p1:GUID-A"}):
+            moved_a = self.beacon.session_hash()
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w1t3p0:GUID-A"}):
+            moved_b = self.beacon.session_hash()
+        self.assertEqual(moved_a, moved_b)
+
+    def test_seed_keeps_synthesized_form_whole(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "claude-session:xyz"}):
+            self.assertEqual(self.beacon._session_seed(), "claude-session:xyz")
+
+
 class BadgeFormatReferencesTaskSlot(BeaconTest):
     """BADGE-03: the badge text must reflect the resolved task value, not just
     the project. The format string is the contract between the plugin (writer

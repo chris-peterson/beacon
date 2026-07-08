@@ -48,7 +48,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↖ web",
-                  "parameter": "url=$(cat \"__BEACON_CACHE_DIR__/url-$ITERM_SESSION_ID.txt\" 2>/dev/null); open \"${url:-https://www.google.com}\"",
+                  "parameter": "url=$(cat \"__BEACON_CACHE_DIR__/url-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$url\" ]; then open \"$url\"; else osascript -e 'display alert \"beacon\" message \"No URL resolved for this session.\"' >/dev/null 2>&1; fi",
                   "action": 35,
                   "version": 2
                 }
@@ -250,7 +250,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↗ code",
-                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-$ITERM_SESSION_ID.txt\" 2>/dev/null); [ -n \"$cwd\" ] && open -a \"Visual Studio Code\" \"$cwd\"",
+                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then open -a \"Visual Studio Code\" \"$cwd\" || osascript -e 'display alert \"beacon\" message \"Could not open Visual Studio Code.\"' >/dev/null 2>&1; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
                   "action": 35,
                   "version": 2
                 }

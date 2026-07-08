@@ -428,7 +428,19 @@ def _session_seed() -> str | None:
     # of these exist — without this, concurrent windows cross-wire their state.
     iterm = os.environ.get("ITERM_SESSION_ID")
     if iterm:
-        return iterm
+        # Real iTerm ids are `wNtNpN:GUID`; seed on the GUID, not the full id.
+        # iTerm2 rewrites the `wNtNpN` positional prefix when a pane is moved
+        # between windows/tabs/splits, so hashing the full id fragments a pane's
+        # state into a fresh bucket on every move (the fleet view then shows the
+        # pane as a new/duplicate session). The GUID is stable for the pane's
+        # life — the same handle focus / set-name target and the cache files key
+        # on (_iterm_cache_key). The synthesized `claude-session:<id>` form
+        # (cmd_hook, non-iTerm) is kept whole so a bare in-session `beacon set`
+        # and the hooks converge on it — stripping it would split them from the
+        # raw CLAUDE_CODE_SESSION_ID branch below.
+        if iterm.startswith("claude-session:"):
+            return iterm
+        return iterm.rsplit(":", 1)[-1]
     claude_sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
     if claude_sid:
         return f"claude-session:{claude_sid}"
@@ -442,6 +454,24 @@ def _tty_name() -> str | None:
         return os.ttyname(0)
     except (OSError, AttributeError):
         return None
+
+
+def _iterm_cache_key() -> str | None:
+    """Stable per-pane key for the handoff cache files (cwd / url) and the
+    engagement marker. ITERM_SESSION_ID is `wNtNpN:GUID`; the `wNtNpN`
+    positional prefix changes when the pane is moved between windows, tabs, or
+    splits, but the GUID after the last colon is stable for the pane's life.
+    Keying on the full id meant a moved pane's status-bar buttons read a file
+    the hook had written under the old prefix — so the ↖ web button hit its
+    fallback and the ↗ code button silently no-op'd. Mirror the GUID the CLI's
+    focus / set-name already target (rsplit on ':'), and the focus handle keyed
+    on (FOCUS-02). None when no pane id is set. The synthesized non-iTerm form
+    `claude-session:<id>` has no positional prefix, so the same strip leaves it
+    intact — a stable key there too."""
+    iterm_id = os.environ.get("ITERM_SESSION_ID")
+    if not iterm_id:
+        return None
+    return iterm_id.rsplit(":", 1)[-1]
 
 
 def _project_root(cwd: Path) -> Path | None:
@@ -651,10 +681,17 @@ def _branch_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     return f"{remote}{sep}{branch}", branch
 
 
-def _tack_url_for(cwd: Path, branch: str) -> tuple[str, str]:
-    """Look up tack route by branch slug; return first useful URL via the
-    in_progress-deliverable → done-deliverable → first-link sub-chain."""
-    if not _which("tack") or not branch:
+def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
+    """URL for the session's tack route via the in_progress-deliverable →
+    done-deliverable → first-link sub-chain.
+
+    Route selection mirrors the dashboard's _resolve_session so the ↖ web
+    button and the fleet-view reference chip never diverge: the session→route
+    pin (`sessions[].id`) is authoritative — matching the branch slug alone
+    missed a route pinned to the session whose slug differs from the branch.
+    Location correlation (`.tack` pin / branch / project, via _tack_route_for)
+    is the fallback when no pin binds this session."""
+    if not _which("tack"):
         return "", ""
     try:
         r = subprocess.run(["tack", "list", "--json"],
@@ -665,7 +702,25 @@ def _tack_url_for(cwd: Path, branch: str) -> tuple[str, str]:
     except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
         return "", ""
 
-    route = next((r for r in routes if r.get("slug") == branch), None)
+    sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    slug = None
+    if sid:
+        def _pin_started(route):
+            return max((s.get("started_at", "") for s in (route.get("sessions") or [])
+                        if s.get("id") == sid), default="")
+        pinned = [r for r in routes
+                  if any(s.get("id") == sid for s in (r.get("sessions") or []))]
+        if pinned:
+            # On several routes, the most recently started wins (the pane's
+            # current work) — mirrors _tack_session_index.
+            pinned.sort(key=_pin_started, reverse=True)
+            slug = pinned[0].get("slug")
+    if not slug:
+        slug, _group = _tack_route_for(cwd, branch, project)
+    if not slug:
+        return "", ""
+
+    route = next((r for r in routes if r.get("slug") == slug), None)
     if not route:
         return "", ""
     tacks = route.get("tacks", []) or []
@@ -754,7 +809,7 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     remote = _git_remote_url_normalized(cwd)
 
     # 2. tack-derived
-    url, label = _tack_url_for(cwd, branch)
+    url, label = _tack_url_for(cwd, branch, _project_name_at(cwd))
     if url:
         return url, label
 
@@ -2757,11 +2812,11 @@ def _publish_chips(cwd: Path) -> None:
     _LAST_CHIP_PAIRS = pairs
     _cli("uservar-batch", *pairs)
 
-    iterm_id = os.environ.get("ITERM_SESSION_ID")
-    if iterm_id:
+    key = _iterm_cache_key()
+    if key:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        (CACHE_DIR / f"cwd-{iterm_id}.txt").write_text(f"{cwd}\n")
-        (CACHE_DIR / f"url-{iterm_id}.txt").write_text(f"{url}\n")
+        (CACHE_DIR / f"cwd-{key}.txt").write_text(f"{cwd}\n")
+        (CACHE_DIR / f"url-{key}.txt").write_text(f"{url}\n")
 
 
 def _publish_anchor(cwd: Path) -> None:
@@ -2995,13 +3050,15 @@ def install_dynamic_profile() -> tuple[bool, str]:
 # --- apply ---
 
 def _engagement_marker_path() -> Path | None:
-    """BADGE-14: per-pane marker. Keyed by raw ITERM_SESSION_ID — not the
-    session hash — so the shell snippet can probe existence with a plain
-    `[[ -e ... ]]` test, no SHA-1 in the prompt hot path."""
-    iterm_id = os.environ.get("ITERM_SESSION_ID")
-    if not iterm_id:
+    """BADGE-14: per-pane marker. Keyed by the pane GUID (_iterm_cache_key) —
+    not the session hash — so the shell snippet can probe existence with a
+    plain `[[ -e ... ]]` test, no SHA-1 in the prompt hot path. The GUID (not
+    the full ITERM_SESSION_ID) so the marker survives a pane move, like the
+    cwd / url handoff files it sits beside."""
+    key = _iterm_cache_key()
+    if not key:
         return None
-    return CACHE_DIR / f"engaged-{iterm_id}"
+    return CACHE_DIR / f"engaged-{key}"
 
 
 def place_engagement_marker() -> None:
@@ -3918,12 +3975,13 @@ def cmd_hook(args):
 
     if event == "SessionStart":
         cwd_str = payload.get("cwd") or os.getcwd()
-        # State files key on ITERM_SESSION_ID, which is the iTerm pane and
-        # outlives any single Claude session. A fresh `claude` invocation
-        # (source=startup) or `/clear` (source=clear) in a pane that hosted
-        # a prior session would otherwise inherit that session's stale
-        # `signal.status=waiting` / `pending-attention` and render red. A
-        # resumed session (source=resume) continues prior state by design.
+        # State files key on the pane (the GUID of ITERM_SESSION_ID, per
+        # _session_seed), which outlives any single Claude session. A fresh
+        # `claude` invocation (source=startup) or `/clear` (source=clear) in a
+        # pane that hosted a prior session would otherwise inherit that
+        # session's stale `signal.status=waiting` / `pending-attention` and
+        # render red. A resumed session (source=resume) continues prior state
+        # by design.
         source = (payload.get("source") or "").lower()
         if source != "resume":
             _wipe_session_for_fresh_start()

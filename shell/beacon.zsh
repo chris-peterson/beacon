@@ -228,12 +228,15 @@ mkdir -p "$_BEACON_CACHE_DIR"
 
 _beacon_write_session_file() {
   # Skip when the pane id is unavailable (non-iTerm shell). Mirrors the
-  # plugin's `if iterm_id:` guard: an empty id would write the shared
+  # plugin's `if key:` guard: an empty id would write the shared
   # `cwd-.txt` / `url-.txt`, which the action buttons then serve to every
-  # empty-id session — and an empty `url-.txt` sends the web button to its
-  # google.com fallback.
+  # empty-id session.
   [[ -n "$ITERM_SESSION_ID" ]] || return 0
-  print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID}.txt"
+  # Key on the pane GUID (the segment after the last colon), not the full
+  # ITERM_SESSION_ID: the `wNtNpN` prefix changes when the pane is moved, so
+  # keying on it would leave the buttons reading a stale file after a move.
+  # Mirrors _iterm_cache_key() in scripts/beacon and the CLI's GUID targeting.
+  print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID##*:}.txt"
 }
 
 _beacon_precmd() {
