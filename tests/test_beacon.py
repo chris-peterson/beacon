@@ -1922,6 +1922,120 @@ class ReviewCommand(unittest.TestCase):
         self.assertEqual(leftovers, [])
 
 
+class ExportImport(BeaconTest):
+    """DUMP-01..DUMP-03: lossless backup/restore of the state-file directory."""
+
+    def _seed(self):
+        sd = self.beacon.STATE_DIR
+        sd.mkdir(parents=True, exist_ok=True)
+        h1, h2 = "aaaa11112222", "bbbb33334444"
+        (sd / f"{h1}.anchor.project").write_text("widget")
+        (sd / f"{h1}.claude_session_id").write_text("sid-one\n")
+        (sd / f"{h1}.latest_turn").write_text(json.dumps(
+            {"role": "agent", "text": "hi", "at": "2026-07-07T00:00:00+00:00"}))
+        (sd / f"{h1}.pending-attention").write_text("")  # empty marker must survive
+        (sd / f"{h2}.anchor.project").write_text("gadget")
+        old = 1_600_000_000.0
+        for p in sd.glob(f"{h1}.*"):
+            os.utime(p, (old, old))
+        return h1, h2, old
+
+    def _args(self, **kw):
+        return self.beacon.argparse.Namespace(**kw)
+
+    def test_export_envelope_surfaces_join_key_and_raw_fields(self):
+        h1, h2, _ = self._seed()
+        out = Path(self._tmp.name) / "dump.json"
+        self.beacon.cmd_export(self._args(out_file=str(out), compress=False))
+        d = json.loads(out.read_text())
+        self.assertEqual(d["schemaVersion"], 1)
+        self.assertTrue(d["generator"].startswith("beacon "))
+        byhash = {s["hash"]: s for s in d["sessions"]}
+        self.assertIn(h1, byhash)
+        self.assertIn(h2, byhash)
+        # claude_session_id is surfaced per record — the tack-export join key.
+        self.assertEqual(byhash[h1]["claude_session_id"], "sid-one")
+        # Raw field text is preserved verbatim, including the empty attention marker.
+        self.assertEqual(byhash[h1]["fields"]["pending-attention"], "")
+        self.assertEqual(byhash[h1]["fields"]["anchor.project"], "widget")
+
+    def test_roundtrip_restores_bytes_and_mtime(self):
+        h1, h2, old = self._seed()
+        sd = self.beacon.STATE_DIR
+        before = {p.name: p.read_text() for p in sd.glob(f"{h1}.*")}
+        out = Path(self._tmp.name) / "dump.json.gz"  # .gz suffix triggers gzip
+        self.beacon.cmd_export(self._args(out_file=str(out), compress=False))
+        for p in list(sd.glob(f"{h1}.*")) + list(sd.glob(f"{h2}.*")):
+            p.unlink()
+        self.beacon.cmd_import(self._args(file=str(out), force=False))
+        after = {p.name: p.read_text() for p in sd.glob(f"{h1}.*")}
+        self.assertEqual(before, after)
+        newest = max(os.stat(p).st_mtime for p in sd.glob(f"{h1}.*"))
+        self.assertAlmostEqual(newest, old, delta=1)
+
+    def test_import_is_nondestructive_until_force(self):
+        h1, _, _ = self._seed()
+        sd = self.beacon.STATE_DIR
+        out = Path(self._tmp.name) / "dump.json"
+        self.beacon.cmd_export(self._args(out_file=str(out), compress=False))
+        (sd / f"{h1}.anchor.project").write_text("MUTATED")
+        self.beacon.cmd_import(self._args(file=str(out), force=False))
+        self.assertEqual((sd / f"{h1}.anchor.project").read_text(), "MUTATED")
+        self.beacon.cmd_import(self._args(file=str(out), force=True))
+        self.assertEqual((sd / f"{h1}.anchor.project").read_text(), "widget")
+
+    def test_import_refuses_unknown_schema_version(self):
+        out = Path(self._tmp.name) / "bad.json"
+        out.write_text(json.dumps({"schemaVersion": 999, "sessions": []}))
+        with self.assertRaises(SystemExit):
+            self.beacon.cmd_import(self._args(file=str(out), force=False))
+
+    def test_import_rejects_path_traversal_field(self):
+        sd = self.beacon.STATE_DIR
+        sd.mkdir(parents=True, exist_ok=True)
+        out = Path(self._tmp.name) / "evil.json"
+        out.write_text(json.dumps({"schemaVersion": 1, "sessions": [
+            {"hash": "deadbeef1234", "mtime": None, "fields": {"../../pwned": "x"}},
+        ]}))
+        self.beacon.cmd_import(self._args(file=str(out), force=False))
+        self.assertFalse((Path(self._tmp.name) / "pwned").exists())
+        self.assertEqual(list(sd.glob("deadbeef1234.*")), [])
+
+
+class CompletionsMatchSubcommands(BeaconTest):
+    """CI guard: the zsh completion command list must cover every subcommand the
+    argparse parser accepts, minus the intentionally-hidden internal ones. Fails
+    on drift in either direction — a new command that skipped ZSH_COMPLETION, or
+    a completion entry for a command that no longer exists."""
+
+    def test_no_completion_drift(self):
+        b = self.beacon
+        sub = next(a for a in b._build_parser()._actions
+                   if isinstance(a, b.argparse._SubParsersAction))
+        parser_cmds = set(sub.choices)
+
+        # Anchor on the array's closing `)` — alone on its own line — so a
+        # literal `)` inside a description (e.g. "(project|task|status)") can't
+        # truncate the block.
+        block = b.re.search(r"commands=\((.*?)^\s*\)",
+                            b.ZSH_COMPLETION, b.re.S | b.re.M).group(1)
+        completion_cmds = set(b.re.findall(r"'([a-z][a-z-]*):", block))
+
+        expected = parser_cmds - b._UNCOMPLETED_COMMANDS
+        self.assertEqual(
+            completion_cmds, expected,
+            f"completion drift — missing from ZSH_COMPLETION: "
+            f"{sorted(expected - completion_cmds)}; "
+            f"stale (no such subcommand): {sorted(completion_cmds - expected)}",
+        )
+
+    def test_hidden_commands_are_real_subcommands(self):
+        b = self.beacon
+        sub = next(a for a in b._build_parser()._actions
+                   if isinstance(a, b.argparse._SubParsersAction))
+        self.assertLessEqual(b._UNCOMPLETED_COMMANDS, set(sub.choices))
+
+
 def _base_state() -> dict:
     """Default state dict acceptable to apply(). Tests override individual fields."""
     return {

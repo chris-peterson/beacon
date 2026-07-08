@@ -240,10 +240,14 @@ _beacon() {
     'serve:serve the wip payload over localhost, or manage the always-on unit'
     'prune:remove per-session state for long-idle sessions'
     'forget:remove per-session state for one session, by its per-pane hash'
+    'export:emit a lossless JSON backup of all per-session state'
+    'import:restore per-session state from a beacon export file'
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'copy-url:copy the resolved URL to the clipboard'
+    'open-url:open the resolved URL in the default browser'
+    'json:print the resolved session state as JSON'
     'review:review the whole branch vs the default branch (moor-aware)'
   )
 
@@ -293,6 +297,16 @@ _beacon() {
       ;;
     forget)
       (( CURRENT == 3 )) && _message 'session hash'
+      ;;
+    export)
+      compadd -- --out-file --compress
+      ;;
+    import)
+      if (( CURRENT == 3 )); then
+        _files
+      else
+        compadd -- --force
+      fi
       ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
@@ -1889,16 +1903,16 @@ def _export_payload() -> dict:
 
 def cmd_export(args):
     """Emit a lossless JSON backup of all per-session state (DUMP-01/02) — to
-    stdout, or to `--out FILE` (gzip when the path ends `.gz` or `--gzip` is
-    given, matching the tack-backup convention)."""
+    stdout by default, or to `--out-file FILE` (gzip when `--compress` is given
+    or the path ends `.gz`, matching the tack-backup convention)."""
     payload = _export_payload()
     data = json.dumps(payload, indent=2)
-    out = getattr(args, "out", None)
+    out = getattr(args, "out_file", None)
     if not out:
         sys.stdout.write(data + "\n")
         return
     dest = Path(out).expanduser()
-    if getattr(args, "gzip", False) or dest.suffix == ".gz":
+    if getattr(args, "compress", False) or dest.suffix == ".gz":
         import gzip
         with gzip.open(dest, "wt", encoding="utf-8") as fh:
             fh.write(data)
@@ -1939,7 +1953,6 @@ def cmd_import(args):
                  f"{EXPORT_SCHEMA_VERSION} (refusing to guess at the format)")
 
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    state_root = STATE_DIR.resolve()
     written = skipped = bad = 0
     for rec in payload.get("sessions") or []:
         sh = (rec.get("hash") or "").strip()
@@ -1951,20 +1964,25 @@ def cmd_import(args):
             skipped += 1
             continue
         mtime = rec.get("mtime")
+        wrote = 0
         for field, value in fields.items():
-            p = STATE_DIR / f"{sh}.{field}"
-            # Reject any field name that would escape the state bucket
-            # (path traversal in a crafted export); the hash is hex-guarded above.
-            if p.resolve().parent != state_root:
+            name = f"{sh}.{field}"
+            # State files are flat, single-segment names; a field carrying a
+            # path separator is a crafted export trying to write outside the
+            # bucket (a `x/../y` name even normalizes back inside it). Reject it.
+            if "/" in name or "\\" in name or "\x00" in name:
                 bad += 1
                 continue
+            p = STATE_DIR / name
             p.write_text(value if isinstance(value, str) else json.dumps(value))
             if mtime:
                 try:
                     os.utime(p, (mtime, mtime))
                 except OSError:
                     pass
-        written += 1
+            wrote += 1
+        if wrote:
+            written += 1
     tail = "" if args.force else " (pass --force to overwrite)"
     msg = f"imported {written} session(s); skipped {skipped} already present{tail}"
     if bad:
@@ -4004,7 +4022,7 @@ def cmd_hook(args):
 
 # --- argparse ---
 
-def main(argv=None):
+def _build_parser() -> "argparse.ArgumentParser":
     parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
     parser.add_argument("--version", "-v", action="version",
                         version=f"beacon {_plugin_version()}")
@@ -4121,7 +4139,33 @@ def main(argv=None):
     sp = sub.add_parser("forget", help="remove per-session state for one session, by its per-pane hash")
     sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
 
+    sp = sub.add_parser("export",
+                        help="emit a lossless JSON backup of all per-session state (joins to a tack export on claude_session_id)")
+    sp.add_argument("--out-file", metavar="FILE", default=None,
+                    help="write to FILE instead of stdout (the default)")
+    sp.add_argument("--compress", action="store_true",
+                    help="gzip the output (implied by an --out-file path ending .gz)")
+
+    sp = sub.add_parser("import",
+                        help="restore per-session state from a `beacon export` file (non-destructive unless --force)")
+    sp.add_argument("file", help="the export file to restore (plain or gzipped JSON)")
+    sp.add_argument("--force", action="store_true",
+                    help="overwrite sessions already present on disk (default: skip them)")
+
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
+
+    return parser
+
+
+# Subcommands intentionally absent from tab-completion (ZSH_COMPLETION): internal
+# hook entry points and shell-integration helpers a user never types by hand. The
+# CompletionsMatchSubcommands test asserts completion covers every *other*
+# subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
+_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir"}
+
+
+def main(argv=None):
+    parser = _build_parser()
 
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["help"]:
@@ -4144,7 +4188,8 @@ def main(argv=None):
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "review": cmd_review, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "forget": cmd_forget, "data-dir": cmd_data_dir,
+        "forget": cmd_forget, "export": cmd_export, "import": cmd_import,
+        "data-dir": cmd_data_dir,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)

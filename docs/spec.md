@@ -99,6 +99,7 @@ These requirements describe what beacon does conceptually. They would apply unch
 | `SKILL` | Skill responsibilities (CLI freshness) |
 | `CMD`   | Slash command surface |
 | `WIP`   | Cross-session introspection / export |
+| `DUMP`  | Full-fidelity state backup / restore |
 | `WATCH` | Live fleet view |
 | `COLOR` | Human-readable output coloring |
 | `FOCUS` | Dashboard-driven session focus |
@@ -358,6 +359,18 @@ The fleet scan behind `wip` / `serve` (WIP-01) and the dashboard's polling of `G
 **[PERF-03]** `beacon wip --timing` shall print a scan-timing breakdown to stderr — per-phase durations plus session and git-probe counts — and shall not alter the payload. It is the instrument for verifying PERF-01/02 and catching regressions.
 
 **[PERF-04]** Reference budget (not a hard gate; hardware- and fleet-dependent): on a warm filesystem the default-window `wip --json` should complete within a few hundred milliseconds for a fleet of several hundred sessions, dominated by the cheap read pass and a git probe per *emitted* cwd. The `--timing` breakdown (PERF-03) is the measurement of record.
+
+### 3.12 State backup / restore (DUMP)
+
+Where `wip` / `serve` (WIP) emit a *derived* fleet view — windowed (WIP-03), deduped per Claude session (WIP-01), tack-joined (WIP-02), and shaped into a display record that omits raw fields — `export` / `import` are a **lossless** backup and restore of the state-file directory (§6.2) itself. The two surfaces read the same files but answer different questions: WIP asks "what is being worked on right now," DUMP asks "reproduce this state store elsewhere." DUMP is the state store's own persistence contract; it is not a painted surface and, like WIP, invokes no render adapter.
+
+**DUMP-01.** When the user invokes `export`, the plugin shall emit a single JSON object `{ schemaVersion, exportedAt, generator, dataDir, sessions[] }` capturing **every** session with state on disk — no activity window, no per-session dedup, no project-anchor filter (unlike WIP-01/03). Each session record shall carry its per-pane `hash`, its `claude_session_id` (or null), a `last_activity` ISO timestamp and raw `mtime` (the newest across the session's state files), and a `fields` map of every `<hash>.<field>` file's **raw text, verbatim**. The `cache/` directory (§6.2) is excluded — it is regenerable shell-handoff state, not source-of-record. Rationale: a restore must reproduce byte-for-byte what the plugin reads, so the export stores raw content rather than the derived WIP record, which would lose overrides, staging, and attention markers.
+
+**DUMP-02.** `export` shall write to stdout by default, or to `--out-file FILE`; it shall gzip the output when `--compress` is given or the path ends `.gz` (matching the tack-backup convention, so a beacon and a tack backup sit side by side). The `schemaVersion` shall be an integer the importer checks, so a later privacy or shape change can tell pre-change full-fidelity dumps apart. The record's `claude_session_id` is the join key to a tack export's `sessions[].id` (WIP-02 tier 1): a beacon dump supplies the *observed* session layer (status, latest turn, cwd/branch, activity times, focus handle) over tack's *planned* layer (routes, tacks, deliverables), correlated on that field.
+
+**DUMP-03.** When the user invokes `import FILE`, the plugin shall read the export (transparently decompressing a gzipped file, detected by magic bytes) and restore each session record's `fields` to `<hash>.<field>`, setting each file's mtime to the record's recorded `mtime` so the restored fleet preserves the activity-window signal (WIP-03) rather than appearing freshly active. It shall be **non-destructive** by default: a session already present on disk is skipped (a restore cannot clobber a live fleet), and `--force` is required to overwrite; state files not named in the export are never removed. It shall refuse an unrecognized `schemaVersion` rather than guess at a format it cannot faithfully restore (per the no-fallbacks convention), and shall reject any record whose hash is not the expected hex form or whose field name would resolve outside the state directory (path-traversal defense on a crafted export), counting rather than writing them.
+
+**DUMP-04.** `export` and `import` are full-fidelity by design: the export contains raw conversation text (`latest_turn`, `latest_turn_full`, `description`) and local filesystem paths (`transcript_path`), so it is treated as a sensitive artifact — the raw payload *is* the product for a restore, so the control is how the artifact is stored and shared, not dropping fields. This is the deliberate exception to the shape-not-payload default that governs derived logs; a future shape-only export for analytics would be a separate surface with its own `schemaVersion`.
 
 ---
 
@@ -716,6 +729,8 @@ Session hash is derived from `$ITERM_SESSION_ID` (stable for the lifetime of an 
 State and cache live under `${CLAUDE_PLUGIN_DATA}` when set (Claude Code provides this for hook invocations) and otherwise under a path derived from `${CLAUDE_PLUGIN_ROOT}` to match Claude Code's `<plugin>-<owner>` data-dir convention. Falling back to env-only would scatter state across two directories — hooks see one, slash commands and the on-PATH wrapper see another — so the plugin computes a single canonical path regardless of how it was invoked.
 
 The shell side and the CLI are both stateless: each shell prompt recomputes project + branch and republishes via the CLI; each CLI invocation emits its escape sequence and exits.
+
+This directory is the unit of backup and restore: `export` / `import` (DUMP) serialize every `<hash>.<field>` file here verbatim and reconstruct them elsewhere, preserving each session's newest mtime so the restored fleet keeps its activity-window ordering (WIP-03). `cache/` is not backed up — it is regenerable shell handoff.
 
 ### 6.3 CLI: `beacon-iterm`
 
