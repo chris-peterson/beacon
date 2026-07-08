@@ -58,17 +58,19 @@ printf '\e]1337;SetProfile=beacon-dev\a'
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
 
-# Window title (TITLE-01): give an interactive pane its project as the OS window
+# Window title (TITLE-01): give an interactive pane its identity as the OS window
 # title, so a beacon-dev pane isn't left showing the profile name (the profile
 # disables OSC title-setting, so the shell can't printf a title like the badge).
-# A plain shell has no task, so it shows just the project (beacon_project_full,
-# the status-bar project var); Claude panes get project · task from the plugin.
-# This is the one python/osascript call at source — the session name has no OSC
-# verb (RENDER: TITLE-03), so it can't ride the raw-printf fast path above. It's
-# backgrounded (`&!`) so it never delays shell startup, and the name is an
-# interpolated string, so it renders once the first precmd publishes the var.
+# A plain shell has no task, so it shows the project when in one and its cwd
+# otherwise — beacon_title carries that "project else cwd" value (published each
+# precmd, mirroring the plugin's value-level badge fallback per BADGE-04); Claude
+# panes get project · task from the plugin. This is the one python/osascript call
+# at source — the session name has no OSC verb (RENDER: TITLE-03), so it can't
+# ride the raw-printf fast path above. It's backgrounded (`&!`) so it never delays
+# shell startup, and the name is an interpolated string, so it renders once the
+# first precmd publishes the var.
 [[ -n "$ITERM_SESSION_ID" ]] && \
-  "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_project_full)' &>/dev/null &!
+  "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_title)' &>/dev/null &!
 
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(
@@ -199,6 +201,7 @@ _beacon_deliverable_suffix() {
 # (e.g. shell starts in a non-project directory). Without this, an empty
 # resolved value would match the initial empty state and we'd skip the publish.
 typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
+typeset -g _BEACON_LAST_TITLE='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
 typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
@@ -306,6 +309,17 @@ _beacon_precmd() {
     _BEACON_LAST_PROJECT_FULL="$pf"
   fi
 
+  # Window title value (TITLE-01): the project identity when in one, else the
+  # cwd, so a plain shell outside any project shows where it is rather than a
+  # blank title. Kept separate from beacon_project_full — the status-bar chip
+  # collapses when empty, so it must NOT carry the cwd fallback. Local path is
+  # never empty (PWD always set), so the title never goes blank.
+  local title="${pf:-$lp}"
+  if [[ "$title" != "$_BEACON_LAST_TITLE" ]]; then
+    "$_BEACON_ITERM" uservar beacon_title "$title"
+    _BEACON_LAST_TITLE="$title"
+  fi
+
   if [[ "$url" != "$_BEACON_LAST_URL" ]]; then
     "$_BEACON_ITERM" uservar beacon_url "$url"
     _beacon_write_session_file url "$url"
@@ -317,6 +331,7 @@ _beacon_chpwd() {
   # Force re-publish on directory change — branch may have changed even if
   # project is the same, and project may have changed entirely.
   _BEACON_LAST_PROJECT_FULL='__unset__'
+  _BEACON_LAST_TITLE='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'
   _BEACON_LAST_BRANCH_CLEAN='__unset__'

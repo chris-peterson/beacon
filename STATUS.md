@@ -36,7 +36,7 @@ a mode state swaps into its profile for a background a color OSC can't express
 | Prefix | Covered | Status | Notes |
 |--------|--------:|--------|-------|
 | RES-01..05 | 5 | All Covered | Signal resolution model |
-| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02a prefixes the task slot with an @<wandered-project> marker while working, clearing it at rest |
+| PROV-01..03 (incl. 02a), 05, 06 | 6 | All Covered | Provider chains (no PROV-04); PROV-02 folds a `/rename` into the task override (recency-wins); PROV-02a joins the wandered project to home with a ` @ ` separator while working, clearing it at rest |
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
 | PROV-08 | 1 | Covered | `icon` chain: override → discovered project favicon (`_discover_icon_at`), anchored at SessionStart |
 | PROV-09 | 1 | Covered | Harvest Claude Code `/color` / `/rename` / `ai-title` from the transcript tail (`_read_cc_signals`); custom/ai-title feed the task chain, agent-color is fleet-view-only (WIP-13); wiped by HOOK-08a |

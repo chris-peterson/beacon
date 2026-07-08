@@ -1838,6 +1838,140 @@ def cmd_forget(args):
     print(f"forgot session {sh} ({files} state file(s) removed)")
 
 
+# --- full-fidelity export / import (DUMP) ---
+#
+# Unlike `wip` (a derived, windowed, tack-joined *view*, DUMP-05), export is a
+# lossless backup: every `<hash>.<field>` file's raw text, verbatim, so import
+# reconstructs byte-for-byte what the plugin reads. The envelope mirrors tack's
+# backup shape (schemaVersion / exportedAt / generator / sessions[]) and surfaces
+# `claude_session_id` per record — the join key tack records as `sessions[].id`,
+# so a beacon dump and a tack dump correlate on that field without guessing.
+
+EXPORT_SCHEMA_VERSION = 1
+
+
+def _export_payload() -> dict:
+    """Lossless snapshot of every per-session state file (DUMP-01). Each record
+    carries the raw text of every `<hash>.<field>` and the session's newest
+    mtime, so import restores both content and the activity-window signal
+    (WIP-03) the fleet scan reads. cache/ is excluded — it is regenerable shell
+    handoff, not source-of-record state."""
+    sessions = []
+    for sh in _all_session_hashes():
+        fields: dict[str, str] = {}
+        newest = 0.0
+        for p in sorted(STATE_DIR.glob(f"{sh}.*")):
+            if not p.is_file():
+                continue
+            field = p.name.split(".", 1)[1]
+            try:
+                fields[field] = p.read_text()
+                newest = max(newest, p.stat().st_mtime)
+            except OSError:
+                continue
+        if not fields:
+            continue
+        sessions.append({
+            "hash": sh,
+            "claude_session_id": (fields.get("claude_session_id") or "").strip() or None,
+            "last_activity": _iso(newest) if newest else None,
+            "mtime": newest or None,
+            "fields": fields,
+        })
+    return {
+        "schemaVersion": EXPORT_SCHEMA_VERSION,
+        "exportedAt": _iso(time.time()),
+        "generator": f"beacon {_plugin_version()}",
+        "dataDir": str(DATA_DIR),
+        "sessions": sessions,
+    }
+
+
+def cmd_export(args):
+    """Emit a lossless JSON backup of all per-session state (DUMP-01/02) — to
+    stdout, or to `--out FILE` (gzip when the path ends `.gz` or `--gzip` is
+    given, matching the tack-backup convention)."""
+    payload = _export_payload()
+    data = json.dumps(payload, indent=2)
+    out = getattr(args, "out", None)
+    if not out:
+        sys.stdout.write(data + "\n")
+        return
+    dest = Path(out).expanduser()
+    if getattr(args, "gzip", False) or dest.suffix == ".gz":
+        import gzip
+        with gzip.open(dest, "wt", encoding="utf-8") as fh:
+            fh.write(data)
+    else:
+        dest.write_text(data)
+    n = len(payload["sessions"])
+    print(f"exported {n} session{'s' if n != 1 else ''} to {dest}", file=sys.stderr)
+
+
+def _read_maybe_gzip(path: Path) -> str:
+    """Text of a file that may be gzip-compressed — detected by magic bytes, so
+    a `.json` or `.json.gz` (or misnamed) backup both read correctly."""
+    raw = path.read_bytes()
+    if raw[:2] == b"\x1f\x8b":
+        import gzip
+        return gzip.decompress(raw).decode("utf-8")
+    return raw.decode("utf-8")
+
+
+def cmd_import(args):
+    """Restore per-session state from an export (DUMP-03). Non-destructive by
+    default: a session already present on disk is skipped (so a restore can't
+    clobber a live fleet) unless `--force` overwrites it; state files not named
+    in the export are never touched. Refuses an unrecognized schemaVersion
+    rather than guessing at a format it can't faithfully restore."""
+    src = Path(args.file).expanduser()
+    try:
+        raw = _read_maybe_gzip(src)
+    except OSError as e:
+        sys.exit(f"import: cannot read {src} ({e})")
+    try:
+        payload = json.loads(raw)
+    except ValueError as e:
+        sys.exit(f"import: {src} is not valid JSON ({e})")
+    ver = payload.get("schemaVersion")
+    if ver != EXPORT_SCHEMA_VERSION:
+        sys.exit(f"import: unsupported schemaVersion {ver!r} — this beacon reads "
+                 f"{EXPORT_SCHEMA_VERSION} (refusing to guess at the format)")
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    state_root = STATE_DIR.resolve()
+    written = skipped = bad = 0
+    for rec in payload.get("sessions") or []:
+        sh = (rec.get("hash") or "").strip()
+        fields = rec.get("fields") or {}
+        if not re.fullmatch(r"[0-9a-f]{8,}", sh) or not fields:
+            bad += 1
+            continue
+        if any(STATE_DIR.glob(f"{sh}.*")) and not args.force:
+            skipped += 1
+            continue
+        mtime = rec.get("mtime")
+        for field, value in fields.items():
+            p = STATE_DIR / f"{sh}.{field}"
+            # Reject any field name that would escape the state bucket
+            # (path traversal in a crafted export); the hash is hex-guarded above.
+            if p.resolve().parent != state_root:
+                bad += 1
+                continue
+            p.write_text(value if isinstance(value, str) else json.dumps(value))
+            if mtime:
+                try:
+                    os.utime(p, (mtime, mtime))
+                except OSError:
+                    pass
+        written += 1
+    tail = "" if args.force else " (pass --force to overwrite)"
+    msg = f"imported {written} session(s); skipped {skipped} already present{tail}"
+    if bad:
+        msg += f"; {bad} malformed record(s)/field(s) rejected"
+    print(msg, file=sys.stderr)
+
+
 # Browser origins allowed to POST the mutating routes /focus and /forget
 # (FOCUS-04, FORGET-03), beyond loopback origins
 # (which origin_allowed permits unconditionally). The built-in entry is the
@@ -2333,9 +2467,13 @@ def resolve(cwd: Path | None = None) -> dict:
     if not project:
         project, p_proj = _local_path_at(cwd), "pwd"
 
+    # A user's /rename does not appear here as its own tier: it is shorthand
+    # for setting the task, so the harvest folds a new custom-title into
+    # `override.task` (see _read_cc_signals) and it competes as an override —
+    # recency-wins against `beacon set task`, rather than sitting permanently
+    # below it.
     task, p_task = chain([
         ("override", lambda: p_override("task")),
-        ("rename",   lambda: read_state("cc.custom_title")),
         ("pr",       lambda: p_pr_title(cwd)),
         ("branch",   lambda: p_branch(cwd)),
         ("ai-title", lambda: read_state("cc.ai_title")),
@@ -2943,13 +3081,16 @@ def apply(state: dict):
     if project_text != prev.get("project", "") or (switched and project_text):
         _cli("uservar", "beacon_project", project_text)
 
-    # BADGE-03: the user-var value carries its own " · " separator so an
-    # empty task collapses the slot without leaving a trailing separator on
-    # the badge. The middle dot mirrors the fleet dashboard's project · task
-    # separator. Same swap-restore rule as the project above.
+    # BADGE-03: the user-var value carries its own separator so an empty task
+    # collapses the slot without leaving a trailing separator on the badge. The
+    # middle dot mirrors the fleet dashboard's project · task separator. A wander
+    # (PROV-02a) swaps in " @ " — symmetric with " · " — so it reads
+    # "<home> @ <where> · <what>" rather than colliding a "· @" against a glued
+    # marker. Same swap-restore rule as the project above.
     task_text = state["task"]
     if task_text != prev.get("task") or (switched and task_text):
-        _cli("uservar", "beacon_task", f" · {task_text}" if task_text else "")
+        sep = " @ " if state.get("task_provider") == "wander" else " · "
+        _cli("uservar", "beacon_task", f"{sep}{task_text}" if task_text else "")
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
@@ -2978,10 +3119,13 @@ def _resolve_for_display() -> dict:
     state = resolve(anchor_cwd)
 
     # PROV-02a: when the session has wandered into a different project root than
-    # its anchor, prefix the task slot with an @<wandered-project> location
-    # marker as secondary spatial context. The project slot stays pinned to the
-    # anchor (BADGE-02). The task text after the marker is the pinned label
-    # (explicit override or /rename) when one is set; without one, the task
+    # its anchor, surface the wandered project root in the task slot as a
+    # location, joined to the pinned home project by a " @ " separator at render
+    # (apply()) — "<home> @ <where> · <what>" — secondary spatial context. The
+    # project slot stays pinned to the anchor (BADGE-02). The task text after the
+    # location is the pinned label
+    # (an explicit override, which now includes a /rename) when one is set;
+    # without one, the task
     # chain (PR title → branch) is re-resolved at the wandered cwd so the marker
     # carries what's happening there. With neither, the marker stands alone —
     # ai-title is skipped here as too weak to caption a wander. Gating on project root (not
@@ -3003,15 +3147,18 @@ def _resolve_for_display() -> dict:
         live_cwd = Path.cwd()
         live_root = _project_root(live_cwd)
         if live_root is not None and live_root != find_project_root(anchor_cwd):
-            if state["task_provider"] in ("override", "rename"):
+            if state["task_provider"] == "override":
                 wandered_task = state["task"]
             else:
                 wandered_task, _ = chain([
                     ("pr",     lambda: p_pr_title(live_cwd)),
                     ("branch", lambda: p_branch(live_cwd)),
                 ])
-            location = f"@{live_root.name}"
-            state["task"] = f"{location}: {wandered_task}" if wandered_task else location
+            # Bare location: the " @ " separator (applied at render, apply())
+            # marks it as "at <where>", and an inner task hangs off the normal
+            # " · " so the badge reads "<home> @ <where> · <what>".
+            state["task"] = (f"{live_root.name} · {wandered_task}"
+                             if wandered_task else live_root.name)
             state["task_provider"] = "wander"
 
     return state
@@ -3105,6 +3252,7 @@ def _disengage() -> None:
     if read_state("signal.status") == "waiting":
         remove_state("signal.status")
     _clear_cc_signals()
+    remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
     _cli("uservar", "beacon_project", "")
@@ -3403,8 +3551,19 @@ def _read_cc_signals() -> None:
                 latest[obj["type"]] = val.strip()
     except Exception:
         return
+    prev_custom = read_state("cc.custom_title")
     for rtype, val in latest.items():
         write_state(_CC_SIGNAL_FIELDS[rtype][1], val)
+    # PROV-02: a /rename is shorthand for setting the task, so fold a *changed*
+    # custom-title into `override.task` — exactly as `beacon set task` would.
+    # Sharing the one override slot makes /rename and `set task` recency-wins:
+    # a later `beacon set task` isn't clobbered back on the next harvest,
+    # because the custom-title is then unchanged and this no-ops. A custom-title
+    # absent from the tail (scrolled out) is not in `latest`, so it never blanks
+    # or re-applies a still-current label.
+    new_custom = latest.get("custom-title")
+    if new_custom and new_custom != prev_custom:
+        write_state("override.task", new_custom)
 
 
 def _looks_idle(text: str | None) -> bool:
@@ -3443,6 +3602,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("pending-attention")
     remove_state("latest_turn")
     remove_state("latest_turn_full")
+    remove_state("title_reasserted")
     _clear_cc_signals()
     _clear_description()
 
@@ -3824,6 +3984,22 @@ def cmd_hook(args):
         write_state("signal.status", "working")
 
     render()
+
+    # WINDOW-TITLE (TITLE-04): the interactive shell sets the session name once
+    # on source (shell/beacon.zsh), backgrounded — so its write can land AFTER
+    # the plugin's SessionStart set-name and revert an engaged pane's title to
+    # the shell's `\(user.beacon_project_full)` template. render() only (re)sets
+    # the name on a profile swap, so reclaim it once on the first turn boundary
+    # (by then the launch-time shell write has settled). It's a one-shot: after
+    # SessionStart nothing else clobbers the name (the shell never re-sources
+    # while Claude holds the pane, and swaps are covered in apply()), so a flag
+    # keeps this off every subsequent turn — an Apple Event is too costly to
+    # spend per turn for a launch-only race. A fresh start / disengage clears the
+    # flag so the next engagement re-arms it.
+    if (event in ("UserPromptSubmit", "Stop")
+            and not read_state("title_reasserted")):
+        _set_session_title()
+        write_state("title_reasserted", "1")
 
 
 # --- argparse ---

@@ -261,7 +261,9 @@ class WindowTitleSetName(BeaconTest):
     interpolated badge template via set-name — but only for real iTerm sessions
     (an addressable GUID), single-sourced with the badge (BADGE_FORMAT). A
     non-swap state change leaves the name in place; a non-iTerm session gets
-    none, and that is not an error."""
+    none, and that is not an error. cmd_hook additionally re-asserts the name on
+    the once-per-turn boundaries so the shell's backgrounded source-time
+    set-name can't leave an engaged pane on the shell's project_full template."""
 
     def _set_iterm_id(self, value):
         p = mock.patch.dict(os.environ, {"ITERM_SESSION_ID": value})
@@ -304,6 +306,66 @@ class WindowTitleSetName(BeaconTest):
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-name"], [],
             "a synthesized claude-session id has no addressable surface — no set-name",
+        )
+
+    def test_prompt_reasserts_name(self):
+        self._set_iterm_id("w0t0p0:ABC-123")
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
+            self.beacon.cmd_hook(args)
+        self.assertIn(
+            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            self.cli_calls,
+            "UserPromptSubmit must re-assert the title to beat the shell's launch write",
+        )
+
+    def test_stop_reasserts_name(self):
+        self._set_iterm_id("w0t0p0:ABC-123")
+        args = mock.Mock(event="Stop")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"stop_hook_active": False}))):
+            self.beacon.cmd_hook(args)
+        self.assertIn(
+            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            self.cli_calls,
+            "Stop must re-assert the title to beat the shell's launch write",
+        )
+
+    def test_reassert_is_one_shot(self):
+        # The re-assert exists to beat the shell's launch-time write; after the
+        # first turn boundary nothing re-clobbers, so a persisted flag keeps it
+        # off every subsequent turn (no per-turn Apple Event).
+        self._set_iterm_id("w0t0p0:ABC-123")
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
+            self.beacon.cmd_hook(args)
+        self.cli_calls.clear()
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "again"}))):
+            self.beacon.cmd_hook(args)
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "set-name"], [],
+            "a second turn boundary must not re-set the name — the re-assert is one-shot",
+        )
+
+    def test_fresh_start_rearms_reassert(self):
+        # A fresh-start wipe clears the flag so the next engagement reclaims the
+        # title after its own launch race.
+        self._set_iterm_id("w0t0p0:ABC-123")
+        self.beacon.write_state("title_reasserted", "1")
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertIsNone(self.beacon.read_state("title_reasserted"))
+
+    def test_tool_hook_does_not_reassert_name(self):
+        # PreToolUse/PostToolUse fire many times per turn; re-asserting there
+        # would spawn an osascript each time (the NFR-perf reason TITLE-04 cites).
+        self._set_iterm_id("w0t0p0:ABC-123")
+        self.beacon.apply({**_base_state(), "status": "working"})  # prime a snapshot
+        self.cli_calls.clear()
+        args = mock.Mock(event="PostToolUse")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({}))):
+            self.beacon.cmd_hook(args)
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "set-name"], [],
+            "a high-frequency tool hook must not re-assert the name",
         )
 
 
@@ -1179,12 +1241,12 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
             [("uservar", "beacon_project", "acme/widget")],
             "Project must stay pinned to the anchor when the agent wanders",
         )
-        # No override and the live tmp dir is not a git repo, so the marker
-        # stands alone: @<wandered-project-basename>.
+        # No override and the live tmp dir is not a git repo, so the location
+        # stands alone, joined by the " @ " separator: "<home> @ <where>".
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", f" · @{self.live_dir.name}")],
-            "Wandered location must surface in the task slot as an @ marker",
+            [("uservar", "beacon_task", f" @ {self.live_dir.name}")],
+            "Wandered location must surface in the task slot after the ' @ ' separator",
         )
 
     def test_no_wander_keeps_normal_task(self):
@@ -1203,8 +1265,8 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         self.beacon.render()
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", f" · @{self.live_dir.name}: my-task")],
-            "An override must survive a wander as the text behind the @ marker",
+            [("uservar", "beacon_task", f" @ {self.live_dir.name} · my-task")],
+            "An override must survive a wander as the task behind the ' · ' after the location",
         )
 
     def test_scratch_tmp_dir_is_not_a_wander(self):
@@ -1239,12 +1301,13 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
     def test_show_and_badge_share_wander_resolution(self):
         # CMD-01 / BADGE-12: `show` must report what the badge paints. Both go
         # through _resolve_for_display, so a wander reflects identically in both
-        # — the badge project stays pinned, the task carries the @ marker.
+        # — the badge project stays pinned, the task carries the bare location
+        # (the " @ " separator is applied at render, apply()).
         self._chdir(self.live_dir)
         state = self.beacon._resolve_for_display()
         self.assertEqual(state["project"], "acme/widget")
         self.assertEqual(state["task_provider"], "wander")
-        self.assertEqual(state["task"], f"@{self.live_dir.name}")
+        self.assertEqual(state["task"], self.live_dir.name)
 
     def test_wander_clears_at_rest(self):
         # PROV-02a: the marker is live working-state context. At rest (idle here,
@@ -1610,22 +1673,19 @@ class ServiceUnit(unittest.TestCase):
 
 
 class TaskChainCcSignals(BeaconTest):
-    """PROV-02: /rename (custom-title) is a strong task provider below an
-    explicit beacon override; ai-title is the weakest fallback, below branch."""
+    """PROV-02: the task chain is override → PR → branch → ai-title. A /rename
+    is not its own tier — the harvest folds it into `override.task` (see
+    ReadCcSignals), so it competes as an override. ai-title is the weakest
+    fallback, below branch."""
 
-    def test_rename_beats_pr_and_branch(self):
-        self.beacon.write_state("cc.custom_title", "find me")
+    def test_override_beats_pr_and_branch(self):
+        # The tier a harvested /rename lands in: an explicit task (whether from
+        # `beacon set task` or a /rename) wins over the derived PR/branch tiers.
+        self.beacon.write_state("override.task", "find me")
         with mock.patch.object(self.beacon, "p_pr_title", return_value="a PR"), \
              mock.patch.object(self.beacon, "p_branch", return_value="a-branch"):
             state = self.beacon.resolve(Path("/tmp"))
         self.assertEqual(state["task"], "find me")
-        self.assertEqual(state["task_provider"], "rename")
-
-    def test_override_beats_rename(self):
-        self.beacon.write_state("override.task", "explicit")
-        self.beacon.write_state("cc.custom_title", "find me")
-        state = self.beacon.resolve(Path("/tmp"))
-        self.assertEqual(state["task"], "explicit")
         self.assertEqual(state["task_provider"], "override")
 
     def test_branch_beats_ai_title(self):
@@ -1674,6 +1734,29 @@ class ReadCcSignals(BeaconTest):
         self.assertEqual(self.beacon.read_state("cc.custom_title"), "kept",
                          "A type missing from the tail must not blank its prior value")
         self.assertEqual(self.beacon.read_state("cc.agent_color"), "red")
+
+    def test_new_custom_title_folds_into_task_override(self):
+        # PROV-02: a /rename is shorthand for `beacon set task`, so a changed
+        # custom-title lands in override.task and thus wins the chain.
+        self._write_transcript([{"type": "custom-title", "customTitle": "renamed"}])
+        self.beacon._read_cc_signals()
+        self.assertEqual(self.beacon.read_state("override.task"), "renamed")
+
+    def test_unchanged_custom_title_does_not_clobber_task(self):
+        # Recency-wins: a later `beacon set task` must survive the next harvest.
+        # The custom-title is unchanged from the last harvest, so the fold is a
+        # no-op and the fresher agent label stands.
+        self.beacon.write_state("cc.custom_title", "renamed")
+        self.beacon.write_state("override.task", "agent label")
+        self._write_transcript([{"type": "custom-title", "customTitle": "renamed"}])
+        self.beacon._read_cc_signals()
+        self.assertEqual(self.beacon.read_state("override.task"), "agent label")
+
+    def test_absent_custom_title_leaves_task_untouched(self):
+        self.beacon.write_state("override.task", "agent label")
+        self._write_transcript([{"type": "agent-color", "agentColor": "red"}])
+        self.beacon._read_cc_signals()
+        self.assertEqual(self.beacon.read_state("override.task"), "agent label")
 
     def test_no_transcript_is_noop(self):
         self.beacon._read_cc_signals()

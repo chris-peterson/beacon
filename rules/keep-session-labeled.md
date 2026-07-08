@@ -12,6 +12,8 @@ beacon shows every concurrent Claude Code session in one fleet view — `beacon 
 
 - **Defer to tack.** If this work is tracked by a tack route (tack is installed and a route is bound to the session), tack already supplies the fleet-view label — leave the beacon task alone and let tack own it. Set a beacon task only when no tack route is driving the session.
 
+- **Defer to the user's `/rename`.** A Claude Code `/rename` is shorthand for setting the task — beacon folds it into the same label slot. If the user has renamed the session, treat that as their chosen headline: don't overwrite it with `set task` unless the work has *genuinely* shifted to something the rename no longer describes (a new feature, bug, or phase). Recency wins, so a needless relabel silently discards what the user typed.
+
 - **Don't set status.** The hooks own the ready / busy / blocked transitions. The user sets `paused` / `waiting` themselves; you don't.
 
 - Run the command silently — don't narrate it to the user.
