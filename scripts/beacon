@@ -895,8 +895,12 @@ def cmd_review(_args):
     # No timeout: a GUI difftool (moor) blocks until the reviewer closes it. The
     # verdict lives in the sidecar's output section, not the exit code, so a
     # non-zero difftool exit is expected — don't treat it as failure.
+    # --no-symlinks: with --dir-diff, git symlinks the working-tree side into the
+    # temp dir by default where the platform supports it. On Windows that symlink
+    # fails ("Function not implemented") and the difftool never launches; copying
+    # is correct cross-platform (the reviewer opens a throwaway snapshot anyway).
     subprocess.run(
-        ["git", "difftool", "--no-prompt", "--dir-diff", diff_range],
+        ["git", "difftool", "--no-prompt", "--no-symlinks", "--dir-diff", diff_range],
         cwd=root, env=env, check=False,
     )
 
@@ -1879,7 +1883,7 @@ def _export_payload() -> dict:
                 continue
             field = p.name.split(".", 1)[1]
             try:
-                fields[field] = p.read_text()
+                fields[field] = p.read_text(encoding="utf-8")
                 newest = max(newest, p.stat().st_mtime)
             except OSError:
                 continue
@@ -1917,7 +1921,7 @@ def cmd_export(args):
         with gzip.open(dest, "wt", encoding="utf-8") as fh:
             fh.write(data)
     else:
-        dest.write_text(data)
+        dest.write_text(data, encoding="utf-8")
     n = len(payload["sessions"])
     print(f"exported {n} session{'s' if n != 1 else ''} to {dest}", file=sys.stderr)
 
@@ -1974,7 +1978,8 @@ def cmd_import(args):
                 bad += 1
                 continue
             p = STATE_DIR / name
-            p.write_text(value if isinstance(value, str) else json.dumps(value))
+            p.write_text(value if isinstance(value, str) else json.dumps(value),
+                         encoding="utf-8")
             if mtime:
                 try:
                     os.utime(p, (mtime, mtime))
@@ -2925,7 +2930,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
     # the slice drops the surrounding quotes the template already supplies.
     def _json_inner(value: str) -> str:
         return json.dumps(value)[1:-1]
-    content = (template.read_text()
+    content = (template.read_text(encoding="utf-8")
                .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
                .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
     try:

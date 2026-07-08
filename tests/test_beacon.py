@@ -1814,7 +1814,7 @@ class ReviewButtonInProfile(unittest.TestCase):
     driving session (or a shell) runs the review and consumes its output."""
 
     def _layout(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         rendered = (template
                     .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
                     .replace("__BEACON_CACHE_DIR__", "/x/cache"))
@@ -1931,8 +1931,10 @@ class ExportImport(BeaconTest):
         h1, h2 = "aaaa11112222", "bbbb33334444"
         (sd / f"{h1}.anchor.project").write_text("widget")
         (sd / f"{h1}.claude_session_id").write_text("sid-one\n")
+        # Non-ASCII on purpose: catches any read/write that skips encoding="utf-8"
+        # (cp1252 on Windows would corrupt these glyphs and break the round-trip).
         (sd / f"{h1}.latest_turn").write_text(json.dumps(
-            {"role": "agent", "text": "hi", "at": "2026-07-07T00:00:00+00:00"}))
+            {"role": "agent", "text": "⇄ pushed 🚀", "at": "2026-07-07T00:00:00+00:00"}))
         (sd / f"{h1}.pending-attention").write_text("")  # empty marker must survive
         (sd / f"{h2}.anchor.project").write_text("gadget")
         old = 1_600_000_000.0
