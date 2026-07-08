@@ -2773,20 +2773,27 @@ def install_dynamic_profile() -> tuple[bool, str]:
                .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
                .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
     try:
-        target.write_text(content)
+        base_profile = json.loads(content)["Profiles"][0]
+    except (ValueError, KeyError, IndexError) as e:
+        return False, f"failed to parse base profile template: {e}"
+    # Default the badge color to the dev-cycle gray (the `ready` state) so a
+    # fresh pane reads gray before the first status render — and in a plain
+    # shell, which emits no badge-color OSC. Without this the base inherits the
+    # parent profile's badge color (e.g. Default's red). Single-sourced from
+    # BADGE_COLOR_PALETTE so the profile default and the rendered `ready` color
+    # never drift.
+    base_profile["Badge Color"] = _hex_to_color_components(BADGE_COLOR_PALETTE["ready"])
+    try:
+        target.write_text(json.dumps({"Profiles": [base_profile]}, indent=2))
     except OSError as e:
         return False, f"failed to write {target}: {e}"
 
     # Derive each mode profile from the just-rendered base (RENDER-05): same
-    # status-bar layout / badge sizing, differing only in a de-emphasized
-    # background (and, for paused, a faint background-image watermark). Deriving
-    # rather than hand-maintaining sibling templates keeps the layout
-    # single-sourced so the profiles never drift.
+    # status-bar layout / badge sizing (and gray badge-color default), differing
+    # only in a de-emphasized background (and, for paused, a faint
+    # background-image watermark). Deriving rather than hand-maintaining sibling
+    # templates keeps the layout single-sourced so the profiles never drift.
     written = [str(target)]
-    try:
-        base_profile = json.loads(content)["Profiles"][0]
-    except (ValueError, KeyError, IndexError) as e:
-        return False, f"failed to parse base profile {target}: {e}"
     for mode, spec in MODE_PROFILES.items():
         mode_target = target_dir / f"{spec['profile']}.json"
         try:
@@ -2876,6 +2883,21 @@ def _logical_state_for(state: dict) -> str:
     return STATUS_TO_BADGE_STATE.get(status, "ready")
 
 
+def _set_session_title() -> None:
+    """WINDOW-TITLE: set this session's iTerm2 *session name* to the badge
+    template so `project · task` surfaces in the OS window title (Title
+    Components = Name, §4.1) and survives Claude Code's `/rename` — the beacon
+    profile disables OSC title-setting (`Allow Title Setting: false`), so
+    Claude's title OSC can't overwrite it, and beacon owns the name out-of-band
+    via Apple Events (set-name). The name is the interpolated badge template, so
+    iTerm2 re-evaluates it live as SetUserVar updates flow in — it need only be
+    re-set when a profile swap resets it, not every hook. Real iTerm sessions
+    only; the synthesized `claude-session:` id has no addressable surface."""
+    sid = os.environ.get("ITERM_SESSION_ID") or ""
+    if ":" in sid and not sid.startswith("claude-session:"):
+        _cli("set-name", sid, BADGE_FORMAT)
+
+
 def apply(state: dict):
     s = state["status"]
 
@@ -2901,6 +2923,10 @@ def apply(state: dict):
     if switched:
         _cli("set-profile", target_profile)
         _cli("badge-format", BADGE_FORMAT)
+        # SetProfile resets the session name to the profile's literal Name, so
+        # restore the interpolated window title (WINDOW-TITLE) after every swap
+        # — and on the first render, which is also a swap (prev has no profile).
+        _set_session_title()
 
     # RENDER-04: badge + tab color for the logical state. Repaint when the
     # state changed, or unconditionally after a profile switch wiped the OSC.

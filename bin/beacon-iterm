@@ -8,6 +8,7 @@ Stateless CLI. Most subcommands paint one surface via an escape sequence;
   badge-color  — set the per-session badge color (SetColors=badge=)
   tab-color    — set the per-tab color (SetColors=tab=)
   set-profile  — switch the session's dynamic profile (SetProfile=)
+  set-name     — set a session's name by its session id (interpolated title)
   clear        — restore badge + tab color to profile defaults
   focus        — bring an iTerm2 session to the foreground by its session id
 """
@@ -223,6 +224,53 @@ def cmd_focus(args):
         sys.exit(f"focus: {r.stderr.strip() or ('no iTerm2 session with id ' + sid)}")
 
 
+# iTerm2 has no escape sequence to set a session's name (the OSC 0/1/2 title
+# codes are the only ones, and they're gated by the profile's "Allow Title
+# Setting" — which beacon disables so Claude Code's title OSC can't overwrite
+# the pane). So set-name drives Apple Events, like focus. The name is stored as
+# an interpolated string: passing `\(user.beacon_project)…` lets iTerm2
+# re-evaluate it live as SetUserVar updates flow in, so it need only be set once
+# per profile swap rather than on every render. Indented with spaces (see focus).
+_SET_NAME_APPLESCRIPT = '''
+tell application "iTerm2"
+  set theID to "__SID__"
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if id of s is theID then
+          set name of s to "__NAME__"
+          return
+        end if
+      end repeat
+    end repeat
+  end repeat
+  error "no session" number 3
+end tell
+'''
+
+
+def _applescript_str(s: str) -> str:
+    """Escape a Python string for an AppleScript double-quoted literal. The name
+    template carries backslashes (`\\(user.foo)`), so backslash must double
+    first, then quotes."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def cmd_set_name(args):
+    sid = args.session_id.strip()
+    if ":" in sid:
+        sid = sid.rsplit(":", 1)[-1]
+    if not _GUID_RE.match(sid):
+        sys.exit(f"set-name: invalid session id: {args.session_id}")
+    script = (_SET_NAME_APPLESCRIPT
+              .replace("__SID__", sid)
+              .replace("__NAME__", _applescript_str(args.name)))
+    r = subprocess.run(["osascript", "-e", script],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"set-name: {r.stderr.strip() or ('no iTerm2 session with id ' + sid)}")
+
+
 # --- entry ---
 
 def main(argv=None):
@@ -260,6 +308,11 @@ def main(argv=None):
 
     sp = sub.add_parser("clear-screen", help="clear the session's screen + scrollback (Cmd+K equivalent)")
     sp.set_defaults(func=cmd_clear_screen)
+
+    sp = sub.add_parser("set-name", help="set a session's name by its session id (interpolated title)")
+    sp.add_argument("session_id")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_set_name)
 
     sp = sub.add_parser("focus", help="bring an iTerm2 session to the foreground by its session id")
     sp.add_argument("session_id")

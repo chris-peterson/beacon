@@ -255,6 +255,58 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
         )
 
 
+class WindowTitleSetName(BeaconTest):
+    """TITLE-01..04: on a profile swap (including the first render, and every
+    mode entry/exit that resets the name) beacon sets the session name to the
+    interpolated badge template via set-name — but only for real iTerm sessions
+    (an addressable GUID), single-sourced with the badge (BADGE_FORMAT). A
+    non-swap state change leaves the name in place; a non-iTerm session gets
+    none, and that is not an error."""
+
+    def _set_iterm_id(self, value):
+        p = mock.patch.dict(os.environ, {"ITERM_SESSION_ID": value})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_first_render_sets_name_to_badge_template(self):
+        self._set_iterm_id("w0t0p0:ABC-123")
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.assertIn(
+            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            self.cli_calls,
+            "first render (a swap) must set the session name to the badge template",
+        )
+
+    def test_mode_swap_resets_name(self):
+        self._set_iterm_id("w0t0p0:ABC-123")
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.assertIn(
+            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            self.cli_calls,
+            "a mode swap resets the session name, so it must be re-set (TITLE-04)",
+        )
+
+    def test_non_swap_render_leaves_name_alone(self):
+        self._set_iterm_id("w0t0p0:ABC-123")
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+        self.beacon.apply({**_base_state(), "status": "working"})  # ready→busy, no swap
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "set-name"], [],
+            "a non-swap state change must not re-set the name — it persists",
+        )
+
+    def test_non_iterm_session_gets_no_title(self):
+        self._set_iterm_id("claude-session:xyz")
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "set-name"], [],
+            "a synthesized claude-session id has no addressable surface — no set-name",
+        )
+
+
 class PausedSwapsProfile(BeaconTest):
     """RENDER-05 / BADGE-11: paused is a mode state with its own profile. The
     pause⇄resume transition swaps profiles (beacon-dev ↔ beacon-pause) and,

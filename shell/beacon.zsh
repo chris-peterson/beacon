@@ -58,6 +58,18 @@ printf '\e]1337;SetProfile=beacon-dev\a'
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
 
+# Window title (TITLE-01): give an interactive pane its project as the OS window
+# title, so a beacon-dev pane isn't left showing the profile name (the profile
+# disables OSC title-setting, so the shell can't printf a title like the badge).
+# A plain shell has no task, so it shows just the project (beacon_project_full,
+# the status-bar project var); Claude panes get project · task from the plugin.
+# This is the one python/osascript call at source — the session name has no OSC
+# verb (RENDER: TITLE-03), so it can't ride the raw-printf fast path above. It's
+# backgrounded (`&!`) so it never delays shell startup, and the name is an
+# interpolated string, so it renders once the first precmd publishes the var.
+[[ -n "$ITERM_SESSION_ID" ]] && \
+  "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_project_full)' &>/dev/null &!
+
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(
   .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile

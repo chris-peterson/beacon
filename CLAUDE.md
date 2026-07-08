@@ -4,13 +4,13 @@ Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](
 
 ## What beacon is
 
-A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state two ways: a **terminal-agnostic fleet view** (`wip` / `watch` / `serve`, optionally kept always-on via `beacon serve install`) that reads across all sessions and paints no pane, and an **iTerm2 per-pane render adapter** (badge, status bar, tab color) for scanning concurrent panes without focusing each. Clicking a session in the dashboard raises its iTerm2 window (serve's `POST /focus` → `beacon-iterm focus`). Both read the same per-session state files — the single source of record; neither inverts that into a daemon. The fleet view works in any terminal; the iTerm2 adapter needs macOS + iTerm2.
+A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces session state two ways: a **terminal-agnostic fleet view** (`wip` / `watch` / `serve`, optionally kept always-on via `beacon serve install`) that reads across all sessions and paints no pane, and an **iTerm2 per-pane render adapter** (badge, status bar, tab color, window title) for scanning concurrent panes without focusing each. Clicking a session in the dashboard raises its iTerm2 window (serve's `POST /focus` → `beacon-iterm focus`). Both read the same per-session state files — the single source of record; neither inverts that into a daemon. The fleet view works in any terminal; the iTerm2 adapter needs macOS + iTerm2.
 
 ## Three deliverables, hard boundaries
 
 | Deliverable | Path | Owns |
 |:---|:---|:---|
-| **CLI** | `bin/beacon-iterm` | Translating subcommands to iTerm2 control operations — OSC sequences for painted surfaces, Apple Events (`focus`) to raise a window. **Stateless.** No Claude awareness. |
+| **CLI** | `bin/beacon-iterm` | Translating subcommands to iTerm2 control operations — OSC sequences for painted surfaces, Apple Events (`focus` to raise a window, `set-name` to set the window title). **Stateless.** No Claude awareness. |
 | **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `skills/`, `rules/` | Hook handlers, COR resolver for signals, slash command. `rules/` holds ambient rules emitted at SessionStart by `hooks/emit-rules.sh` (e.g. `keep-session-labeled` — proactive task upkeep so the fleet view has signal standalone). Invokes the CLI for every iTerm2 write. |
 | **Shell** | `shell/beacon.zsh` | Project / branch / cwd / URL — refreshed every prompt. Calls the CLI directly; never goes through the plugin. |
 
@@ -32,10 +32,11 @@ Per docs/spec.md §4.1 — these and only these:
 - **Status bar** — the beacon dynamic profile only (never the user's profile)
 - **Tab color** — mirrors the badge color (same logical state) on the tab strip; intended for tabs-not-panes workflows
 - **Pane background** — **mode states only** (`paused`, `release`, `retro`, `done`), and only by swapping into that mode's profile (RENDER-05), never an ad-hoc background OSC. Outside a mode, the background is the user's profile's.
+- **Window title** — the OS window title carries `project · task` (same template as the badge) so a `/rename`d window keeps its project context in a sea of windows (§4.8, TITLE). Set via the session *name* (not the profile name), through Apple Events (`set-name`); the profile disables OSC title-setting (`Allow Title Setting: false`) so Claude's title OSC can't overwrite it, and shows the name via `Title Components: 1`. The plugin sets it on the first render and re-sets it after each profile swap (which resets the name); iTerm2 re-evaluates the interpolated name as the badge vars change. Interactive (non-Claude) panes get the project alone (`beacon_project_full`), set once by the shell on source (`shell/beacon.zsh`) — the one place the shell calls the CLI via python rather than raw printf, since the session name has no OSC verb.
 
 The session `description` is no longer painted on the pane — it surfaces in the fleet view (`wip` / `watch` / dashboard) as recall context (WIP-12). No state carries a text glyph; a mode reads by its color dot / card treatment.
 
-beacon does **not** paint: terminal fg, window title, tab title, cursor color/shape. Terminal background (color, and a faint image) is the one painted exception, scoped to the mode profile swaps above. The rest belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice. (The window/tab title is a deliberate non-goal despite the pull to paint it — see docs/spec.md §8 for the OSC-contention finding and what a real implementation would take.)
+beacon does **not** paint: terminal fg, tab title, cursor color/shape. Terminal background (color, and a faint image) is the one painted exception, scoped to the mode profile swaps above. The rest belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice. (The **window** title *is* painted, via the session name — see the Window title bullet above and docs/spec.md §4.8; the **tab** title remains a non-goal — see §8.)
 
 beacon profiles also explicitly **disable** iTerm2's notification-center delivery (`BM Growl: false`) and terminal-generated alerts (`Send Terminal Generated Alerts: false`). Claude Code triggers these on permission prompts and idle prompts, but beacon already surfaces both via badge color — duplicate notifications add no signal and can transiently overlay the badge.
 

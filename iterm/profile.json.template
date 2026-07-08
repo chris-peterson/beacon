@@ -11,6 +11,8 @@
       "Send Terminal Generated Alerts": false,
       "Badge Font": "Futura",
       "Badge Text": "\\(user.beacon_project)\\(user.beacon_task)",
+      "Allow Title Setting": false,
+      "Title Components": 1,
       "Badge Max Width": 0.90,
       "Badge Max Height": 0.06,
       "Badge Right Margin": 12,
