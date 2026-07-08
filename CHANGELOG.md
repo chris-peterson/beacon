@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.21.0
+
+## Window title, /rename, and wander rendering
+
+- Interactive panes now show the current directory in the window title when outside a project, instead of going blank.
+- Claude Code's `/rename` now updates the beacon task label — it's treated as shorthand for `beacon set task`, sharing one slot where the most recent of the two wins.
+- The plugin reclaims the Claude-pane title once per session (a one-shot on the first turn boundary), so the shell's backgrounded startup title write can no longer clobber it.
+- The wander overlay reads `home @ where · what` — a ` @ ` separator symmetric with the ` · ` task separator — instead of the old `home · @where: what`.
+
+## Export / import state backup
+
+- New `beacon export` dumps every session's raw per-session state into a versioned JSON envelope (gzip optional); `beacon import` restores it byte-for-byte, preserving mtimes so the activity window survives a restore. Each record carries `claude_session_id`, the join key to a tack export.
+- zsh completions extended to the new commands (plus the previously-missing `json` / `open-url`), with a CI guard against argparse ↔ completion drift.
+
+## Windows CI fixes
+
+- UTF-8 encoding on template reads and export/import I/O, and `git difftool --no-symlinks`, so the review-feature tests and the moor sidecar verdict work on Windows.
+
 ## 1.20.0
 
 ## Window title
