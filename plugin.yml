@@ -27,6 +27,9 @@ suite:
     - name: moor
       required: false
       reason: powers beacon review — the branch-vs-default diff and its sidecar feedback
+    - name: anchor
+      required: false
+      reason: beacon review delegates to its review-diff.sh for working-tree review on the default branch
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]

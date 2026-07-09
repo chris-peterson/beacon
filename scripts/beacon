@@ -892,6 +892,47 @@ def _git_rev_ok(root: Path, ref: str) -> bool:
     ).returncode == 0
 
 
+def _working_tree_dirty(root: Path) -> bool:
+    """True when the working tree has staged, unstaged, or untracked changes —
+    the set that anchor's `--local` mode reviews (it runs `git add -A` first)."""
+    r = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=root, capture_output=True, text=True, timeout=2, check=False,
+    )
+    return bool(r.stdout.strip())
+
+
+def _anchor_review_script() -> Path | None:
+    """Path to anchor's `review-diff.sh` when the anchor plugin is installed,
+    else None. anchor ships as a Claude Code plugin, not a `$PATH` binary, so it
+    can't be probed with `_which`; its install location is read from Claude
+    Code's plugin registry (`~/.claude/plugins/installed_plugins.json`) — the
+    same `~/.claude/plugins` tree `_default_data_dir` already relies on. Tolerant
+    of multiple marketplace sources (any `anchor@<marketplace>` key) and multiple
+    installs (newest `lastUpdated` whose script is present on disk wins, so a
+    registry entry left behind by an uninstalled cache never matches). A missing
+    or malformed registry means anchor isn't installed → None, so `review`
+    degrades to its inert default (NFR-06), never a beacon-native copy of
+    anchor's working-tree diff."""
+    registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+    try:
+        plugins = json.loads(registry.read_text())["plugins"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    entries = []
+    for key, installs in plugins.items():
+        if key.split("@", 1)[0] != "anchor" or not isinstance(installs, list):
+            continue
+        entries.extend(e for e in installs
+                       if isinstance(e, dict) and e.get("installPath"))
+    entries.sort(key=lambda e: e.get("lastUpdated", ""), reverse=True)
+    for e in entries:
+        script = Path(e["installPath"]) / "scripts" / "review-diff.sh"
+        if script.is_file():
+            return script
+    return None
+
+
 def cmd_review(_args):
     """Review the whole branch against the default branch, the way a reviewer
     sees a CR/PR (CMD-16). Backs the status-bar `⇄ review` button (Send Text,
@@ -918,9 +959,20 @@ def cmd_review(_args):
     if not base:
         sys.exit("could not resolve a default branch (no origin/HEAD, origin/main, or origin/master)")
 
-    # Inert on the default branch: diffing it against itself is empty. Report
-    # rather than open an empty review (issue #11 — "absent or inert").
+    # On the default branch the `<default>...HEAD` range is empty by definition
+    # (issue #11 made the command inert there). But uncommitted changes are still
+    # reviewable: when anchor is installed and the tree is dirty, delegate to its
+    # `review-diff.sh --local`, which stages the working tree, diffs it vs HEAD,
+    # populates its own MOOR_CONTEXT sidecar, and prints the same REVIEW_VERDICT /
+    # REVIEW_OUTPUT contract — beacon relays it verbatim (stdout inherited, no
+    # timeout: a GUI difftool blocks) rather than re-deriving the range or sidecar
+    # (issue #13). Without anchor, or on a clean tree, stay inert — no
+    # beacon-native copy of anchor's working-tree diff (NFR-06 soft dependency).
     if branch_name in DEFAULT_BRANCHES or branch_name == base.split("/", 1)[-1]:
+        script = _anchor_review_script()
+        if script and _working_tree_dirty(root):
+            subprocess.run(["bash", str(script), "--local"], cwd=root, check=False)
+            return
         print(f"on the default branch ({branch_name}) — nothing to review against {base}")
         return
 

@@ -2047,6 +2047,114 @@ class ReviewCommand(unittest.TestCase):
         leftovers = list(Path(tempfile.gettempdir()).glob("beacon-review-*.json"))
         self.assertEqual(leftovers, [])
 
+    def _fake_anchor_script(self, marker: Path) -> Path:
+        # Stand-in for anchor's review-diff.sh, kept outside the repo working
+        # tree so its own presence doesn't dirty it. Records the mode arg it was
+        # invoked with (proving delegation happened) and prints the sidecar
+        # verdict contract, as the real script does.
+        script = Path(self._tmp.name) / "review-diff.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\n"
+            f"printf '%s' \"$1\" > '{marker.as_posix()}'\n"
+            "echo REVIEW_VERDICT=0\n"
+        )
+        return script
+
+    @unittest.skipIf(os.name == "nt", "delegation shells out to bash")
+    def test_delegates_to_anchor_on_dirty_default_branch(self):
+        # CMD-16 / issue #13: on the default branch with uncommitted changes and
+        # anchor installed, `review` delegates to `review-diff.sh --local`.
+        Path("f").write_text("a\nb\n")  # dirty the working tree on main
+        marker = Path(self._tmp.name) / "delegated.txt"
+        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
+        out = self._run_review()
+        self.assertEqual(marker.read_text(), "--local")
+        self.assertNotIn("nothing to review", out)
+
+    def test_inert_on_dirty_default_branch_without_anchor(self):
+        # Anchor absent → unchanged inert behavior, no beacon-native diff.
+        Path("f").write_text("a\nb\n")
+        self.beacon._anchor_review_script = lambda: None
+        out = self._run_review()
+        self.assertIn("on the default branch", out)
+        self.assertNotIn("REVIEW_VERDICT", out)
+
+    def test_inert_on_clean_default_branch_with_anchor(self):
+        # Clean tree → inert even with anchor installed; delegation never fires.
+        marker = Path(self._tmp.name) / "delegated.txt"
+        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
+        out = self._run_review()
+        self.assertIn("on the default branch", out)
+        self.assertFalse(marker.exists())
+
+
+class AnchorResolution(unittest.TestCase):
+    """Issue #13: `_anchor_review_script` locates anchor's review-diff.sh via
+    Claude Code's plugin registry, degrading to None when anchor is absent."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+        self.home = Path(self._tmp.name) / "home"
+        self.registry = self.home / ".claude" / "plugins" / "installed_plugins.json"
+        self.registry.parent.mkdir(parents=True)
+        self._home = os.environ.get("HOME")
+        self._userprofile = os.environ.get("USERPROFILE")
+        os.environ["HOME"] = str(self.home)
+        os.environ["USERPROFILE"] = str(self.home)
+        self.addCleanup(self._restore_home)
+
+    def _restore_home(self):
+        for var, val in (("HOME", self._home), ("USERPROFILE", self._userprofile)):
+            if val is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = val
+
+    def _install_anchor(self, marketplace: str, has_script: bool = True,
+                        last_updated: str = "2026-01-01") -> Path:
+        install = self.home / "cache" / marketplace / "anchor" / "1.0.0"
+        if has_script:
+            (install / "scripts").mkdir(parents=True)
+            (install / "scripts" / "review-diff.sh").write_text("#!/usr/bin/env bash\n")
+        return install
+
+    def _write_registry(self, plugins: dict):
+        self.registry.write_text(json.dumps({"version": 2, "plugins": plugins}))
+
+    def test_resolves_installed_anchor(self):
+        install = self._install_anchor("getty-claude-marketplace")
+        self._write_registry({"anchor@getty-claude-marketplace": [
+            {"installPath": str(install), "lastUpdated": "2026-01-01"}]})
+        self.assertEqual(self.beacon._anchor_review_script(),
+                         install / "scripts" / "review-diff.sh")
+
+    def test_none_when_anchor_absent(self):
+        self._write_registry({"tack@chris-peterson": [{"installPath": "/nope"}]})
+        self.assertIsNone(self.beacon._anchor_review_script())
+
+    def test_none_when_registry_missing(self):
+        self.assertIsNone(self.beacon._anchor_review_script())
+
+    def test_none_when_registry_malformed(self):
+        self.registry.write_text("{ not json")
+        self.assertIsNone(self.beacon._anchor_review_script())
+
+    def test_prefers_newest_install_with_script_present(self):
+        # A stale registry entry (script gone from cache) is skipped in favor of
+        # a present one, even though it sorts first by lastUpdated.
+        stale = self._install_anchor("old-marketplace", has_script=False)
+        live = self._install_anchor("getty-claude-marketplace")
+        self._write_registry({
+            "anchor@old-marketplace": [
+                {"installPath": str(stale), "lastUpdated": "2026-09-09"}],
+            "anchor@getty-claude-marketplace": [
+                {"installPath": str(live), "lastUpdated": "2026-01-01"}],
+        })
+        self.assertEqual(self.beacon._anchor_review_script(),
+                         live / "scripts" / "review-diff.sh")
+
 
 class ExportImport(BeaconTest):
     """DUMP-01..DUMP-03: lossless backup/restore of the state-file directory."""
