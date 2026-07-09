@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.22.1
+
+### Fixes
+- The iTerm2 window title on a Claude session now reliably shows `project · task`, mirroring the badge. Previously — on setups with many open windows — a plain shell's startup title write could win a race on the shared session-name surface and leave an engaged pane stuck showing the project (or cwd) with no task. The shell now defers to the plugin on a Claude-owned pane.
+
+### Other
+- Spec (TITLE-04) and CLAUDE.md reconciled to the new deferral mechanism.
+
 ## 1.22.0
 
 ## Status-bar buttons survive pane moves
