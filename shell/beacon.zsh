@@ -58,20 +58,6 @@ printf '\e]1337;SetProfile=beacon-dev\a'
 printf '\e]1337;SetBadgeFormat=%s\a' \
   "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
 
-# Window title (TITLE-01): give an interactive pane its identity as the OS window
-# title, so a beacon-dev pane isn't left showing the profile name (the profile
-# disables OSC title-setting, so the shell can't printf a title like the badge).
-# A plain shell has no task, so it shows the project when in one and its cwd
-# otherwise — beacon_title carries that "project else cwd" value (published each
-# precmd, mirroring the plugin's value-level badge fallback per BADGE-04); Claude
-# panes get project · task from the plugin. This is the one python/osascript call
-# at source — the session name has no OSC verb (RENDER: TITLE-03), so it can't
-# ride the raw-printf fast path above. It's backgrounded (`&!`) so it never delays
-# shell startup, and the name is an interpolated string, so it renders once the
-# first precmd publishes the var.
-[[ -n "$ITERM_SESSION_ID" ]] && \
-  "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_title)' &>/dev/null &!
-
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(
   .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile
@@ -225,6 +211,37 @@ fi
 typeset -gr _BEACON_CACHE_DIR="$_beacon_data_dir/cache"
 unset _beacon_data_dir
 mkdir -p "$_BEACON_CACHE_DIR"
+
+# Window title (TITLE-01): give an interactive pane its identity as the OS
+# window title, so a beacon-dev pane isn't left showing the profile name (the
+# profile disables OSC title-setting, so the shell can't printf a title like the
+# badge). A plain shell has no task, so it shows the project when in one and its
+# cwd otherwise — beacon_title carries that "project else cwd" value (published
+# each precmd, mirroring the plugin's value-level badge fallback per BADGE-04).
+#
+# The session name is a single shared surface (TITLE-04): a Claude pane wants
+# `project · task` from the plugin, not this taskless interactive title, and the
+# two writers race. Backgrounded, this osascript can land last and strand an
+# engaged pane on the interactive title. So defer to the plugin: poll briefly for
+# its engagement marker (same GUID key as the handoff files) and skip the write
+# once the pane is Claude-owned — the plugin is then the sole writer of an engaged
+# pane's name, so there is nothing left to race. A plain pane never gets the
+# marker, so the title lands after the short poll. Runs here (not up top with the
+# fast-path OSC) because the marker lives under _BEACON_CACHE_DIR; backgrounded
+# (`&!`) so neither the poll nor the osascript delays startup. The name is an
+# interpolated string, rendered once the first precmd publishes beacon_title.
+if [[ -n "$ITERM_SESSION_ID" ]]; then
+  {
+    _beacon_marker="${_BEACON_CACHE_DIR}/engaged-${ITERM_SESSION_ID##*:}"
+    _beacon_engaged=0
+    for _beacon_i in 1 2 3 4 5; do
+      [[ -e "$_beacon_marker" ]] && { _beacon_engaged=1; break; }
+      sleep 0.4
+    done
+    (( _beacon_engaged )) || \
+      "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_title)'
+  } &>/dev/null &!
+fi
 
 _beacon_write_session_file() {
   # Skip when the pane id is unavailable (non-iTerm shell). Mirrors the
