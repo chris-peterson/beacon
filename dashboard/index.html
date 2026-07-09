@@ -117,6 +117,22 @@
 
     .spacer { flex: 1 1 auto; }
 
+    /* Pop-out toggle: opens the compact always-on-top floating panel. Wears the
+       same ghost-button chrome as the card .go button; goes solid-accent while a
+       pop-out is live. */
+    .popout-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--line-hi); border-radius: 6px;
+      font: inherit; font-size: 0.72rem; letter-spacing: 0.05em;
+      padding: 0.32rem 0.7rem; cursor: pointer;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+    }
+    .popout-btn .pico { font-size: 0.9em; }
+    .popout-btn:hover { color: var(--fg); border-color: var(--accent); background: rgba(189, 147, 249, 0.1); }
+    .popout-btn.active { color: #14151c; background: var(--accent); border-color: var(--accent); }
+    .popout-btn[hidden] { display: none; }
+
     .freshness { color: var(--faint); font-size: 0.76rem; white-space: nowrap; }
     .freshness .live { color: var(--release); } /* green = live/good (ready is now a neutral gray) */
     .freshness .live::before {
@@ -354,6 +370,7 @@
        reads as a quoted transcript panel and the glyph grows into a role label. */
     .card.expanded .turn {
       display: block;
+      position: relative; /* anchor the turn-copy button to this panel's corner */
       white-space: normal; /* undo the collapsed one-liner's nowrap so prose wraps */
       overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
       margin-top: 0.6rem;
@@ -377,6 +394,11 @@
     .card.expanded .turn[data-role="human"] .tglyph::after { content: " you"; }
     .card.expanded .turn[data-role="agent"] .tglyph::after { content: " claude"; }
     .card.expanded .ttext { display: block; }
+    /* Copy the turn: the full fetched text when the panel has it, else the
+       one-line excerpt. Rides the panel's top-right corner, opposite the role
+       label; hidden until the turn is expanded into its panel. */
+    .turn-copy { position: absolute; top: 0.4rem; right: 0.4rem; display: none; }
+    .card.expanded .turn-copy { display: inline-grid; }
 
     /* Rendered-markdown primitives, scoped to .ttext so they never touch the
        collapsed one-liner (which stays plain textContent). */
@@ -676,6 +698,9 @@
       <h1>beacon <span class="dim">/ fleet</span></h1>
     </div>
     <span class="spacer"></span>
+    <button id="popout" class="popout-btn" type="button" hidden>
+      <span class="pico" aria-hidden="true">⇱</span> pop out
+    </button>
     <span class="freshness" id="freshness"></span>
   </header>
 
@@ -882,7 +907,7 @@
     // → the markdown-rendered full text. A signature guard skips no-op repaints
     // so steady polling never re-parses an unchanged turn.
     function paintTurn(t, text, rich) {
-      const sig = (rich ? "md " : "tx ") + text;
+      const sig = (rich ? "md\x00" : "tx\x00") + text;
       if (t.dataset.sig === sig) return;
       t.dataset.sig = sig;
       // Both paths escape-then-format, so **bold** and `code` render even on the
@@ -915,13 +940,14 @@
           <img class="icon" alt="" hidden>
           <span class="label"><span class="project"></span><span class="task"></span></span>
         </div>
-        <div class="turn" hidden><span class="tglyph"></span><span class="ttext"></span></div>
+        <div class="turn" hidden><button class="turn-copy copy" type="button" title="Copy this turn"></button><span class="tglyph"></span><span class="ttext"></span></div>
         <div class="tacks" hidden></div>
         <div class="desc"></div>
         <dl class="details">
           <div class="kv"><dt>cwd</dt><dd class="cwd"></dd><button class="copy" title="Copy cwd"></button></div>
           <div class="kv kv-branch"><dt>branch</dt><dd class="branch-d"></dd><button class="copy" title="Copy branch"></button></div>
           <div class="kv"><dt>session</dt><dd class="sess"></dd><button class="copy" title="Copy session id"></button></div>
+          <div class="kv kv-resume"><dt>resume</dt><dd class="resume-d"></dd><button class="copy" title="Copy resume command"></button></div>
         </dl>
         <div class="foot">
           <span class="chev" aria-hidden="true">⌄</span>
@@ -931,8 +957,17 @@
           </div>
           <button class="go" hidden>go <span class="arr">→</span></button>
         </div>`;
+      // A text-selection drag ends in a click on the card, which would otherwise
+      // toggle expand/collapse and collapse the selection. Record where the
+      // pointer went down; on click, bail if it moved (a drag) or left a live
+      // selection inside the card, so selecting turn text is possible.
+      let downX = 0, downY = 0;
+      el.addEventListener("mousedown", (e) => { downX = e.clientX; downY = e.clientY; });
       el.addEventListener("click", (e) => {
         if (e.target.closest("a")) return; // let a rendered link open; don't toggle
+        const moved = Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4;
+        const sel = el.ownerDocument.getSelection();
+        if (moved || (sel && !sel.isCollapsed && sel.toString() && el.contains(sel.anchorNode))) return;
         if (openForget) { closeForgetConfirm(); return; } // a click-away dismisses the fly-out
         // A card behind the front of its z-stack: click raises it, doesn't expand.
         if (!el.classList.contains("front")) { raiseStack(el.dataset.project, hash); return; }
@@ -975,18 +1010,35 @@
         e.stopPropagation();
         closeForgetConfirm();
       });
-      el.querySelectorAll(".copy").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
+      async function copyValue(btn, val) {
+        if (!val || val === "—") return;
+        try {
+          await navigator.clipboard.writeText(val);
+          btn.classList.add("copied");
+          setTimeout(() => btn.classList.remove("copied"), 1200);
+        } catch (_) { /* clipboard unavailable */ }
+      }
+      // Detail-row copies read the row's own <dd> (cwd / branch / session /
+      // resume command). Scoped to .details so the turn-copy button below isn't
+      // double-wired by this loop.
+      el.querySelectorAll(".details .copy").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
           e.stopPropagation(); // copy, don't toggle expand
           const dd = btn.parentElement.querySelector("dd");
-          const val = dd ? dd.textContent.trim() : "";
-          if (!val || val === "—") return;
-          try {
-            await navigator.clipboard.writeText(val);
-            btn.classList.add("copied");
-            setTimeout(() => btn.classList.remove("copied"), 1200);
-          } catch (_) { /* clipboard unavailable */ }
+          copyValue(btn, dd ? dd.textContent.trim() : "");
         });
+      });
+      // Turn copy: the full fetched text when this card has it cached for the
+      // current turn, else the collapsed excerpt — so a copy never returns less
+      // than what's on screen.
+      el.querySelector(".turn-copy").addEventListener("click", (e) => {
+        e.stopPropagation();
+        const cached = turnCache.get(hash);
+        const have = cached && cached.at === (el.dataset.turnAt || "");
+        const full = have && cached.text
+          ? cached.text
+          : (el.querySelector(".ttext").dataset.excerpt || "");
+        copyValue(e.currentTarget, full);
       });
       return el;
     }
@@ -1150,6 +1202,11 @@
       setText(el, ".branch-d", s.branch || "");
       el.querySelector(".kv-branch").hidden = !s.branch;
       setText(el, ".sess", s.session || s.hash || "");
+      // Resume command — only for real Claude sessions (s.session is the Claude
+      // session id, empty for non-Claude panes; the hash fallback isn't resumable).
+      const resumeCmd = s.session ? "claude --resume " + s.session : "";
+      setText(el, ".resume-d", resumeCmd);
+      el.querySelector(".kv-resume").hidden = !resumeCmd;
     }
 
     // Place `list` into `container` as per-project z-stacks (WIP-10: same-project
@@ -1261,7 +1318,7 @@
 
     // Sentinel group for sessions carrying no route-group signal — rendered
     // headerless and always last (silent degrade, no "ungrouped" label).
-    const NO_GROUP = " nogroup";
+    const NO_GROUP = "\x00nogroup";
 
     // Partition the fleet into ordered groups by the route-group signal. A group
     // with a signal gets a labeled header; sessions without one fall into the
@@ -1366,6 +1423,7 @@
       }
 
       document.getElementById("empty").hidden = sessions.length > 0;
+      renderPip(); // keep the floating pop-out (if open) in step with the fleet
     }
 
     // Enrich an expanded card with the full turn text (WIP-14). Cached by turn
@@ -1455,6 +1513,217 @@
       errTimer = setTimeout(() => { e.style.display = "none"; }, 4000);
     }
 
+    // ── Pop-out: a compact, always-on-top floating panel (Document
+    // Picture-in-Picture) that starts with just the sessions waiting on you and
+    // grows as others show activity while it's open. A row is a focus trigger,
+    // not an expander — the panel is a glanceable action queue, so a click raises
+    // the session's iTerm2 window (focus) rather than opening its detail. The PiP
+    // window is inherently always-on-top and it auto-fits its height to content
+    // each render. Chromium-only (Document PiP); elsewhere the button stays hidden.
+    const PIP_CSS = `
+      :root {
+        --ready:#8b8fa0; --busy:#ffb86c; --blocked:#ff5555; --paused:#6272a4;
+        --release:#50fa7b; --retro:#f8f8f2; --done:#5f6072;
+        --bg:#0d0e15; --panel:#171925; --panel-hi:#1e2130; --line:#2a2e40;
+        --line-hi:#39405a; --fg:#e8e8f4; --muted:#808ab4; --faint:#565f80;
+        --accent:#bd93f9; --cyan:#8be9fd;
+        --mono: ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code","Fira Code",Menlo,Consolas,monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        background-color: var(--bg); color: var(--fg);
+        font-family: var(--mono); font-size: 12px; letter-spacing: 0.01em;
+        background-image: radial-gradient(130% 90% at 50% -25%, rgba(189,147,249,0.18), transparent 62%);
+      }
+      .pip { padding: 0.5rem 0.55rem 0.6rem; }
+      .pip-head {
+        display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; padding: 0 0.1rem;
+        font-size: 0.66rem; font-weight: 700; letter-spacing: 0.14em;
+        text-transform: uppercase; color: var(--blocked);
+      }
+      .pip-dot {
+        width: 0.45rem; height: 0.45rem; border-radius: 50%;
+        background: var(--blocked); box-shadow: 0 0 7px var(--blocked);
+        animation: pblink 1.2s steps(1) infinite;
+      }
+      @keyframes pblink { 50% { opacity: 0.3; } }
+      .pip-count { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
+      .pip-list { display: flex; flex-direction: column; gap: 0.35rem; }
+      .pip-row {
+        display: flex; align-items: center; gap: 0.55rem; width: 100%; text-align: left;
+        padding: 0.42rem 0.55rem; border-radius: 8px; cursor: pointer;
+        background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+        font: inherit; --state-color: var(--line-hi);
+        transition: border-color 0.12s, background 0.12s, transform 0.1s;
+        animation: prowIn 0.2s cubic-bezier(0.2,0.7,0.3,1) both;
+      }
+      @keyframes prowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      .pip-row:hover:not(:disabled) { border-color: var(--state-color); background: var(--panel-hi); transform: translateX(2px); }
+      .pip-row:disabled { cursor: default; opacity: 0.72; }
+      .pip-row.state-ready { --state-color: var(--ready); }
+      .pip-row.state-busy { --state-color: var(--busy); }
+      .pip-row.state-blocked { --state-color: var(--blocked); }
+      .pip-row.state-paused { --state-color: var(--paused); }
+      .pip-row.state-release { --state-color: var(--release); }
+      .pip-row.state-retro { --state-color: var(--retro); }
+      .pip-row.state-done { --state-color: var(--done); }
+      .pip-row.needs-you {
+        border-color: rgba(255,85,85,0.5);
+        background: radial-gradient(120% 140% at 100% 0%, rgba(255,85,85,0.12), transparent 55%), var(--panel-hi);
+      }
+      .pip-rdot {
+        flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+        background: var(--state-color); box-shadow: 0 0 6px var(--state-color);
+      }
+      .pip-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
+      .pip-proj { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pip-proj .pip-task { color: var(--cyan); font-weight: 400; }
+      .pip-proj .pip-task::before { content: " · "; color: var(--faint); }
+      .pip-turn { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pip-age { flex: none; color: var(--faint); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+      .pip-age:empty { display: none; }
+      .pip-age::before { content: "◷ "; opacity: 0.7; }
+      .pip-empty { color: var(--faint); text-align: center; padding: 1.4rem 0.5rem; font-size: 0.72rem; }
+      .pip-empty[hidden] { display: none; }
+      @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.001s !important; } }
+    `;
+
+    const pip = { win: null, root: null, baseline: new Map(), included: new Set() };
+    const pipSupported = "documentPictureInPicture" in window;
+
+    async function togglePopout() {
+      if (pip.win) { pip.win.close(); return; }
+      if (!pipSupported) return;
+      const w = await documentPictureInPicture.requestWindow({ width: 340, height: 240 });
+      pip.win = w;
+      // Seed the include set + baseline from the current snapshot: everything
+      // waiting on you is in from the start; every other session's current turn
+      // timestamp is the baseline, so a later change reads as "activity" and pulls
+      // it in. The set only grows (until a session ends) so the panel is a running
+      // feed, never yanking a row you just glanced at.
+      pip.included = new Set();
+      pip.baseline = new Map();
+      for (const s of (latest && latest.sessions) || []) {
+        pip.baseline.set(s.hash, (s.latest_turn && s.latest_turn.at) || "");
+        if (needsYou(s)) pip.included.add(s.hash);
+      }
+      const doc = w.document;
+      doc.title = "beacon · needs you";
+      const style = doc.createElement("style");
+      style.textContent = PIP_CSS;
+      doc.head.appendChild(style);
+      const root = doc.createElement("div");
+      root.className = "pip";
+      root.innerHTML =
+        '<div class="pip-head"><span class="pip-dot"></span>needs you' +
+        '<span class="pip-count"></span></div>' +
+        '<div class="pip-list"></div>' +
+        '<div class="pip-empty" hidden>All quiet — nothing waiting on you.</div>';
+      doc.body.appendChild(root);
+      pip.root = root;
+      setPopoutActive(true);
+      // pagehide fires when the user closes the PiP window (or it's reclaimed);
+      // drop our handles so the poll stops rendering into a dead window.
+      w.addEventListener("pagehide", () => {
+        pip.win = null; pip.root = null; setPopoutActive(false);
+      });
+      renderPip();
+    }
+
+    function setPopoutActive(on) {
+      const btn = document.getElementById("popout");
+      btn.classList.toggle("active", on);
+      btn.title = on
+        ? "Close the floating pop-out"
+        : "Pop out a floating, always-on-top view of sessions that need you";
+    }
+
+    function renderPip() {
+      if (!pip.win || !pip.root) return;
+      const sessions = (latest && latest.sessions) || [];
+      const byHash = new Map(sessions.map((s) => [s.hash, s]));
+      // Grow the include set: waiting sessions are always in; a session whose
+      // latest turn changed since the panel opened counts as activity and joins.
+      // A session unseen at open is baselined (not flagged) so the panel doesn't
+      // flood with pre-existing chatter — it earns its place on its NEXT update.
+      for (const s of sessions) {
+        if (needsYou(s)) { pip.included.add(s.hash); continue; }
+        const at = (s.latest_turn && s.latest_turn.at) || "";
+        if (!pip.baseline.has(s.hash)) { pip.baseline.set(s.hash, at); continue; }
+        if (at && at !== pip.baseline.get(s.hash)) pip.included.add(s.hash);
+      }
+      for (const h of [...pip.included]) if (!byHash.has(h)) pip.included.delete(h);
+
+      const show = [...pip.included].map((h) => byHash.get(h)).filter(Boolean).sort(byRank);
+      const list = pip.root.querySelector(".pip-list");
+      const doc = pip.win.document;
+      // Reuse rows across renders, keyed by hash (buffer-dom-rerenders): a steady
+      // poll re-orders and re-labels in place instead of rebuilding the list.
+      const have = new Map([...list.children].map((c) => [c.dataset.hash, c]));
+      let prev = null;
+      for (const s of show) {
+        let row = have.get(s.hash) || buildPipRow(doc, s.hash);
+        updatePipRow(row, s);
+        have.delete(s.hash);
+        const anchor = prev ? prev.nextSibling : list.firstChild;
+        if (row.parentNode !== list || row !== anchor) list.insertBefore(row, anchor);
+        prev = row;
+      }
+      for (const row of have.values()) row.remove();
+
+      pip.root.querySelector(".pip-count").textContent = show.length ? String(show.length) : "";
+      pip.root.querySelector(".pip-empty").hidden = show.length > 0;
+      resizePip();
+    }
+
+    function buildPipRow(doc, hash) {
+      const row = doc.createElement("button");
+      row.type = "button";
+      row.className = "pip-row";
+      row.dataset.hash = hash;
+      row.innerHTML =
+        '<span class="pip-rdot"></span>' +
+        '<span class="pip-body"><span class="pip-proj"></span><span class="pip-turn"></span></span>' +
+        '<span class="pip-age"></span>';
+      row.addEventListener("click", () => focus(hash)); // navigate (raise window), don't expand
+      return row;
+    }
+
+    function updatePipRow(row, s) {
+      row.className = "pip-row state-" + (s.state || "ready") + (needsYou(s) ? " needs-you" : "");
+      row.disabled = !s.focusable;
+      row.title = s.focusable ? "Raise this iTerm2 window" : "Not focusable (non-iTerm2 session)";
+      const proj = row.querySelector(".pip-proj");
+      const projSig = (s.project || s.hash) + "\x00" + (s.task || "");
+      if (proj.dataset.sig !== projSig) {
+        proj.dataset.sig = projSig;
+        proj.textContent = s.project || s.hash;
+        if (s.task) {
+          const t = row.ownerDocument.createElement("span");
+          t.className = "pip-task";
+          t.textContent = s.task;
+          proj.appendChild(t);
+        }
+      }
+      const turnEl = row.querySelector(".pip-turn");
+      const tt = (s.latest_turn && s.latest_turn.text) || "";
+      if (turnEl.textContent !== tt) turnEl.textContent = tt;
+      turnEl.hidden = !tt;
+      const age = row.querySelector(".pip-age");
+      const a = fmtAge(s.age_seconds);
+      if (age.textContent !== a) age.textContent = a;
+    }
+
+    function resizePip() {
+      if (!pip.win || !pip.root) return;
+      // Auto-fit height to content (the "minimum size" ask), capped so a long
+      // queue scrolls rather than filling the display; width stays whatever the
+      // user last dragged it to.
+      const h = Math.min(Math.ceil(pip.root.scrollHeight) + 8, 680);
+      try { pip.win.resizeTo(pip.win.outerWidth || 340, Math.max(120, h)); } catch (_) {}
+    }
+
     let scheduled = false, latest = null;
     function schedule(payload) {
       latest = payload;
@@ -1478,6 +1747,22 @@
         document.getElementById("freshness").innerHTML =
           '<span class="stale">⚠ serve unreachable — is `beacon serve` running?</span>';
       } finally { inFlight = false; }
+    }
+
+    // The pop-out button only appears where Document Picture-in-Picture exists —
+    // no dead button that errors on click in unsupported browsers.
+    const popoutBtn = document.getElementById("popout");
+    if (pipSupported) {
+      popoutBtn.hidden = false;
+      setPopoutActive(false);
+      popoutBtn.addEventListener("click", togglePopout);
+      // A pop-out can't outlive its opener: closing or reloading this tab tears
+      // the floating panel down with it. Guard that with the browser's native
+      // leave-confirmation while a pop-out is live, so a stray close doesn't
+      // silently drop the always-on-top action queue.
+      window.addEventListener("beforeunload", (e) => {
+        if (pip.win) { e.preventDefault(); e.returnValue = ""; }
+      });
     }
 
     poll();
