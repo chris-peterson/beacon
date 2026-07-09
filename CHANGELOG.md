@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.24.0
+
+### Features
+
+- Each session mode now paints a richer, illustrated watermark on the iTerm2 pane: a rocket while releasing, a checklist clipboard during a retro, a checkered finish-flag when done, and a pause button when paused. The retro mode, previously plain, now carries a mark of its own.
+- The fleet dashboard's mode cards now show the same watermark the pane paints — served from the actual generated asset — so a card and its pane always match instead of drifting apart.
+
+### Other
+
+- Mode watermarks are now produced by a single shared pipeline: one command regenerates every pane asset and its dashboard thumbnail together, replacing three separate hand-drawn generators.
+- Watermark source art and generated marks moved under `iterm/resources/`.
+- Spec, palette, and command docs updated to the new marks.
+
 ## 1.23.0
 
 ### Features
