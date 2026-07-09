@@ -546,7 +546,7 @@ class DoneMode(BeaconTest):
 
 class ReleaseMode(BeaconTest):
     """RENDER-05 / STATE-10: release is the active "ship-it flow in progress" mode
-    with its own profile (beacon-release, warm amber + rocket watermark), set via
+    with its own profile (beacon-release, launch-sky navy + rocket watermark), set via
     `release`. Like retro it freezes no identity, persists across a prompt, and
     carries no badge glyph — its cue is the profile background and green badge."""
 
@@ -647,12 +647,22 @@ class ModeProfileDerivation(unittest.TestCase):
                 self.assertNotIn("Background Image Location", prof)
 
     def test_mode_images_match_their_cue(self):
-        # paused (|| watermark), release (rocket watermark), and done (⏻
-        # power-off watermark) carry an image; retro is color-only.
-        self.assertTrue(self.beacon.MODE_PROFILES["paused"]["image"])
-        self.assertTrue(self.beacon.MODE_PROFILES["release"]["image"])
-        self.assertTrue(self.beacon.MODE_PROFILES["done"]["image"])
-        self.assertIsNone(self.beacon.MODE_PROFILES["retro"]["image"])
+        # Every mode carries a slate watermark now (paused ||-button, release
+        # rocket, retro checklist clipboard, done checkered flag), all derived from
+        # their <phase>-src.png through iterm/make-bg.py; each with a blend.
+        for mode in ("paused", "release", "retro", "done"):
+            self.assertTrue(self.beacon.MODE_PROFILES[mode]["image"],
+                            f"{mode} should carry a watermark image")
+            self.assertIsNotNone(self.beacon.MODE_PROFILES[mode]["blend"])
+
+    def test_mode_image_files_exist(self):
+        # The watermark assets each mode names must be present on disk: they back
+        # both the profile background (install) and the /mode-bg/<state> serve
+        # route the dashboard card renders (WIP-17). A rename that misses one
+        # would 404 the card and blank the pane background.
+        for mode, spec in self.beacon.MODE_PROFILES.items():
+            p = self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]
+            self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
 
 
 class PendingAttentionPaintsBlocked(BeaconTest):

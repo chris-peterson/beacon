@@ -7,7 +7,9 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 <!--
   Figures are drawn in HTML from the spec palette (BADGE_COLOR_PALETTE /
   MODE_PROFILES, THEME-02) rather than screenshotted, since the pane surfaces
-  don't exist off macOS. Keep the hexes in sync with scripts/beacon.
+  don't exist off macOS. The mode watermarks are the real generated assets
+  (iterm/resources/<phase>-bg.png), thumbnailed to images/wm-<phase>.png by
+  iterm/make-bg.py. Keep the hexes in sync with scripts/beacon.
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
@@ -28,7 +30,7 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 .pal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
 .pal-card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
 .pal-pane { position: relative; height: 118px; display: block; }
-.pal-pane .wm { position: absolute; inset: 0; margin: auto; width: 46px; height: 46px; }
+.pal-pane .wm { position: absolute; inset: 0; margin: auto; width: 60px; height: 60px; object-fit: contain; opacity: 0.6; }
 .pal-pane .badge { position: absolute; top: 0.6rem; right: 0.75rem; font: 700 17px/1 var(--mono); letter-spacing: 0.01em; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
 .pal-meta { padding: 0.8rem 0.9rem 0.95rem; }
 .pal-meta h4 { margin: 0 0 0.15rem; font: 600 1.05rem/1.2 var(--mono); color: var(--fg); }
@@ -62,13 +64,13 @@ The badge text is the project name (plus `: <task>` when a task is set). The hoo
 
 ## Mode cycles
 
-The four mode cycles are ones you (or a skill) declare. Each swaps the pane into its own dynamic profile for a whole-pane background the badge color alone can't express, and each carries **no glyph** — the background and badge color are the entire cue. They persist until you `resume` (only `pause` also lifts automatically, on your next prompt).
+The four mode cycles are ones you (or a skill) declare. Each swaps the pane into its own dynamic profile for a whole-pane background the badge color alone can't express — a distinct color plus a faint slate watermark — and each carries **no badge glyph**: the pane background and badge color are the entire cue. They persist until you `resume` (only `pause` also lifts automatically, on your next prompt).
 
 <div class="pal pal-grid">
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #3c3357">
-      <svg class="wm" viewBox="0 0 24 24" opacity="0.4"><rect x="7.5" y="4" width="3" height="16" rx="1.4" fill="#6272a4"/><rect x="13.5" y="4" width="3" height="16" rx="1.4" fill="#6272a4"/></svg>
+      <img class="wm" src="images/wm-pause.png" alt="pause bars watermark">
       <span class="badge" style="color: #6272a4">checkout-api</span>
     </div>
     <div class="pal-meta">
@@ -80,7 +82,7 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #212c45">
-      <svg class="wm" viewBox="0 0 24 24" opacity="0.5" fill="#50fa7b" fill-rule="evenodd"><path d="M12 3.4 14 8.4 14 12.6 15.8 16 14 15.4 12.9 15.4 12 19 11.1 15.4 10 15.4 8.2 16 10 12.6 10 8.4Z M12 9.3A1.35 1.35 0 1 0 12 12A1.35 1.35 0 1 0 12 9.3Z"/></svg>
+      <img class="wm" src="images/wm-release.png" alt="rocket watermark">
       <span class="badge" style="color: #50fa7b">checkout-api</span>
     </div>
     <div class="pal-meta">
@@ -92,23 +94,24 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #2c4636">
+      <img class="wm" src="images/wm-retro.png" alt="checklist clipboard watermark">
       <span class="badge" style="color: #f8f8f2">checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>retro <span class="cmd">/beacon:retro</span></h4>
-      <p>A post-work follow-up or retro phase. A calm green pane under a white badge — tint only, no watermark.</p>
+      <p>A post-work follow-up or retro phase. A calm green pane under a white badge, with a faint checklist-clipboard watermark — looking back over the work.</p>
       <div class="hexrow"><span><span class="sw" style="background:#f8f8f2"></span>badge #f8f8f2</span><span><span class="sw" style="background:#2c4636"></span>pane #2c4636</span></div>
     </div>
   </div>
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #1a1622">
-      <svg class="wm" viewBox="0 0 24 24" opacity="0.55" fill="none" stroke="#5f6072" stroke-width="2" stroke-linecap="round"><path d="M12 3v8"/><path d="M7.4 6.6a6.6 6.6 0 1 0 9.2 0"/></svg>
+      <img class="wm" src="images/wm-done.png" alt="checkered finish-flag watermark">
       <span class="badge" style="color: #5f6072">checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>done <span class="cmd">/beacon:done</span></h4>
-      <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a power-symbol watermark. The badge shows the project alone — the task is dropped.</p>
+      <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a faint checkered finish-flag watermark. The badge shows the project alone — the task is dropped.</p>
       <div class="hexrow"><span><span class="sw" style="background:#5f6072"></span>badge #5f6072</span><span><span class="sw" style="background:#1a1622"></span>pane #1a1622</span></div>
     </div>
   </div>
@@ -120,6 +123,6 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
 - **Green means one thing.** It's absent from the dev stoplight and reserved for `release`, so a green pane is always "shipping," never "idle."
 - **Gray is the calm default.** A session at rest — and a session that's `done` — sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
 - **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple — recognizable whole-pane, not just by the badge.
-- **No glyphs.** A mode is read by its color and background, the same on the pane, the [dashboard card](/demo), and the fleet list — nothing has to decode a symbol.
+- **No badge glyphs.** A mode is read by its color and background — the same faint slate watermark on the pane, the [dashboard card](/demo), and the fleet list — never a symbol wedged into the badge text.
 
 The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER); the hexes are tunable in one place in `scripts/beacon` (`BADGE_COLOR_PALETTE`, `MODE_PROFILES`).

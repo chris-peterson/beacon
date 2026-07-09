@@ -389,26 +389,28 @@ MODE_PROFILES = {
         "image": "release-bg.png",
         "blend": 0.30,
     },
-    # `retro` is the post-work follow-up phase: a muted green pane (no watermark)
-    # under a white badge, so a wrapping-up session reads apart from the green
-    # release badge and the dev stoplight.
+    # `retro` is the post-work follow-up phase: a muted green pane under a white
+    # badge, so a wrapping-up session reads apart from the green release badge and
+    # the dev stoplight. Carries a faint checklist-clipboard watermark — looking back
+    # over the work.
     "retro": {
         "profile": "beacon-retro",
         "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
         "background": "2c4636",
-        "image": None,
-        "blend": None,
+        "image": "retro-bg.png",
+        "blend": 0.15,
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
     # closing-out skill reaches for instead of pause: a near-black "powered off"
-    # background with a faint power-symbol watermark, the dimmest mode so a
-    # finished pane reads as lights-out. Also suppresses the task slot (STATE-12).
+    # background with a faint checkered-flag (finish-line) watermark, the dimmest
+    # mode so a finished pane reads as lights-out — half the others' blend to hold
+    # that. Also suppresses the task slot (STATE-12).
     "done": {
         "profile": "beacon-done",
         "guid": "b4e2f6a0-1c3d-4e5f-8a90-2b6c7d8e9f01",
         "background": "1a1622",
         "image": "done-bg.png",
-        "blend": 0.30,
+        "blend": 0.15,
     },
 }
 
@@ -2185,6 +2187,11 @@ def wip_http_server(port: int):
     expanded. The bulk /wip.json carries only the single-line excerpt (WIP-11);
     this reads the companion `latest_turn_full` state, CORS-open like wip.json.
 
+    GET /mode-bg/<state> — the mode watermark PNG a mode card renders (WIP-17):
+    the very asset the iTerm2 pane paints (iterm/resources/<phase>-bg.png), so the card
+    and pane can't drift. The filename is resolved from MODE_PROFILES by state,
+    never from the URL, so there's nothing to traverse. CORS-open like wip.json.
+
     POST /forget — delete a session's per-session state (FORGET-01), the
     dashboard's close button on a timed-out card. Mutating, so it shares the
     FOCUS-04 access model with /focus.
@@ -2258,6 +2265,27 @@ def wip_http_server(port: int):
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_mode_bg(self, state: str) -> None:
+            # The mark file comes from our own MODE_PROFILES constant keyed by the
+            # logical state — never from the URL — so there is no path to traverse.
+            spec = MODE_PROFILES.get(state)
+            img = spec.get("image") if spec else None
+            p = (PLUGIN_ROOT / "iterm" / "resources" / img) if img else None
+            try:
+                data = p.read_bytes() if p else None
+            except OSError:
+                data = None
+            if not data:
+                self._send(404, json.dumps({"error": "not found"}))
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
         def _send_turn(self, sh: str) -> None:
             # Same slash/dot-free token guard as /icon — the segment is only a
             # state-file lookup key, never a path.
@@ -2308,6 +2336,8 @@ def wip_http_server(port: int):
                 self._send_icon(parsed.path[len("/icon/"):])
             elif parsed.path.startswith("/turn/"):
                 self._send_turn(parsed.path[len("/turn/"):])
+            elif parsed.path.startswith("/mode-bg/"):
+                self._send_mode_bg(parsed.path[len("/mode-bg/"):])
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
@@ -3073,7 +3103,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
                 # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
                 # asset stays centered and proportional on any pane size. Blend
                 # dials the watermark down so the background color still reads.
-                mode_profile["Background Image Location"] = str(PLUGIN_ROOT / "iterm" / spec["image"])
+                mode_profile["Background Image Location"] = str(PLUGIN_ROOT / "iterm" / "resources" / spec["image"])
                 mode_profile["Background Image Mode"] = 3
                 mode_profile["Blend"] = spec["blend"]
             mode_target.write_text(json.dumps({"Profiles": [mode_profile]}, indent=2))

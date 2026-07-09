@@ -231,6 +231,7 @@
       --pad-x: 0.95rem; --pad-top: 0.85rem;
       padding: var(--pad-top) var(--pad-x) 0.8rem;
       overflow: hidden;
+      isolation: isolate; /* contain the mode watermark ::before (z-index -1) above the tint, below content */
       transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
       animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
     }
@@ -261,35 +262,29 @@
     .card.state-done    { --state-color: var(--done); }
 
     /* Mode-state cards echo their iTerm2 pane background (RENDER-05): a muted tint
-       in the mode's hue plus a large, faint, centered watermark of the same mark
-       the pane paints (|| pause bars, rocket for release, ⏻ power-off ring for
-       done) — the direct fleet analog of the pane's mode background, readable at a
-       glance with the content still legible on top. retro's pane paints no image,
-       so it is tint-only. Watermark fill mirrors the mode's badge hue. */
-    .card.state-paused {
-      background-color: color-mix(in srgb, #3c3357 26%, var(--panel));
-      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='7.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/><rect x='13.5' y='4' width='3' height='16' rx='1.4' fill='%236272a4' fill-opacity='0.42'/></svg>");
-      background-position: center;
-      background-size: 6rem 6rem;
-      background-repeat: no-repeat;
+       in the mode's hue plus a large, faint, centered watermark. The watermark is
+       the *same generated asset the pane paints* (iterm/<phase>-bg.png), streamed
+       by serve at /mode-bg/<state> — so the card and pane can never drift. It
+       rides a ::before below the card content (z-index -1; the card isolates a
+       stacking context) at a low opacity, the fleet analog of the pane's Blend. */
+    .card.state-paused  { background-color: color-mix(in srgb, #3c3357 26%, var(--panel)); }
+    .card.state-release { background-color: color-mix(in srgb, #212c45 34%, var(--panel)); }
+    .card.state-retro   { background-color: color-mix(in srgb, #2c4636 20%, var(--panel)); }
+    .card.state-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
+
+    .card.state-paused::before,
+    .card.state-release::before,
+    .card.state-retro::before,
+    .card.state-done::before {
+      content: "";
+      position: absolute; inset: 0; z-index: -1;
+      background-repeat: no-repeat; background-position: center; background-size: 62% auto;
+      opacity: 0.16; pointer-events: none;
     }
-    .card.state-release {
-      background-color: color-mix(in srgb, #212c45 34%, var(--panel));
-      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2350fa7b' fill-opacity='0.42' fill-rule='evenodd'><path d='M12 3.4 14 8.4 14 12.6 15.8 16 14 15.4 12.9 15.4 12 19 11.1 15.4 10 15.4 8.2 16 10 12.6 10 8.4Z M12 9.3A1.35 1.35 0 1 0 12 12A1.35 1.35 0 1 0 12 9.3Z'/></svg>");
-      background-position: center;
-      background-size: 6rem 6rem;
-      background-repeat: no-repeat;
-    }
-    .card.state-retro {
-      background: color-mix(in srgb, #2c4636 20%, var(--panel));
-    }
-    .card.state-done {
-      background-color: color-mix(in srgb, var(--bg) 55%, var(--panel));
-      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235f6072' stroke-opacity='0.55' stroke-width='2' stroke-linecap='round'><path d='M12 3v8'/><path d='M7.4 6.6a6.6 6.6 0 1 0 9.2 0'/></svg>");
-      background-position: center;
-      background-size: 6rem 6rem;
-      background-repeat: no-repeat;
-    }
+    .card.state-paused::before  { background-image: url("/mode-bg/paused"); }
+    .card.state-release::before { background-image: url("/mode-bg/release"); }
+    .card.state-retro::before   { background-image: url("/mode-bg/retro"); }
+    .card.state-done::before    { background-image: url("/mode-bg/done"); }
 
     .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
     .card:hover {
