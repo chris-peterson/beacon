@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.23.0
+
+### Features
+
+- On the default branch, `beacon review` (the `⇄ review` status-bar button) now reviews uncommitted working-tree changes instead of reporting "nothing to review". A quick edit made directly on `main` gets the same review affordance branch work already has. When the [anchor](https://github.com/chris-peterson/anchor) plugin is installed and the working tree is dirty, beacon delegates to anchor's working-tree review (`review-diff.sh --local`) and relays its verdict.
+
+### Notes
+
+- anchor is an optional soft dependency, detected via Claude Code's plugin registry. Without anchor — or on a clean tree — `beacon review` stays inert on the default branch, exactly as before. Feature-branch review (branch vs. default) is unchanged.
+
 ## 1.22.1
 
 ### Fixes
