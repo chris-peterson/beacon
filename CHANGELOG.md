@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.25.0
+
+### Features
+- Dashboard cards let you select and copy text without collapsing: a mouse-up after selecting turn text keeps the selection instead of toggling the card open/closed.
+- The expanded turn now has its own copy button — it copies the full fetched turn text when the card has it, otherwise the on-screen excerpt, so a copy never returns less than what you see.
+- Each real Claude session's card gains a `resume` row carrying its `claude --resume <id>` command, copyable in one click.
+- New pop-out mode (Chromium browsers): an always-on-top floating panel that starts with the sessions waiting on you and pulls in others as they show activity while it's open. Clicking a row raises that session's iTerm2 window rather than expanding detail, and the panel auto-fits its height to its contents. A leave-confirmation guards against a stray tab close silently tearing the panel down.
+
+### Other
+- Removed the orphaned `dev/preview.py` and its `just preview` recipe, dead since the 1.0 marginalia-overlay retirement and failing to import (`ModuleNotFoundError: _compose`).
+- Dashboard source cleanup: literal NUL bytes (turn-cache signature separator, no-group sentinel) replaced with the `\x00` escape used elsewhere, so the file stays reviewable text.
+
 ## 1.24.0
 
 ### Features
