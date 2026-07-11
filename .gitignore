@@ -4,6 +4,7 @@ docs/skills/
 docs/rules/
 docs/guides/
 docs/templates/
+docs/spec.md
 docs/plugin-docs.json
 .claude/*
 !.claude/hooks/
