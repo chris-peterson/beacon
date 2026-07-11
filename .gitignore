@@ -4,7 +4,7 @@ docs/skills/
 docs/rules/
 docs/guides/
 docs/templates/
-docs/suite.json
+docs/plugin-docs.json
 .claude/*
 !.claude/hooks/
 !.claude/settings.json
