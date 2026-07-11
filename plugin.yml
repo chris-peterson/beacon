@@ -54,7 +54,7 @@ suite:
     hooks:
       cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
-      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       beacon: Show or set session beacon signals (project, task, status)
       done: Mark this session complete — set status to done (ready to hand off to another session), with an optional note
