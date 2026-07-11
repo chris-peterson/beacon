@@ -1,6 +1,7 @@
 # Canonical descriptor for the beacon plugin — edit here, never plugin.json.
-# Projects into .claude-plugin/plugin.json (via scripts/gen-plugin-json.py) and
-# the marketplace SPA (the suite: block).
+# shipyard projects this into .claude-plugin/plugin.json and the marketplace
+# catalog (the suite: block). suite.describe is generated from the
+# skills/rules/hooks sources — run `just build`, don't hand-edit it.
 
 name: beacon
 version: 1.25.0
@@ -44,6 +45,23 @@ suite:
     - ["beacon review", "Review the branch vs its default (moor-aware) — or click ⇄ review"]
   # Skill-anchored previews shown live on the docs site; the session: below is
   # the at-a-glance flow the hub also reads.
+  # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
+  describe:
+    skills:
+      beacon: Label a session's project/task on the iTerm2 badge, and check the beacon CLI wrapper is current on first use per session.
+    rules:
+      keep-session-labeled: Keep this session's beacon work label current
+    hooks:
+      cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
+      emit-rules: SessionStart — Emits this plugin's ambient rules into context.
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+    commands:
+      beacon: Show or set session beacon signals (project, task, status)
+      done: Mark this session complete — set status to done (ready to hand off to another session), with an optional note
+      pause: Pause this session's beacon — set status to paused, with an optional note
+      release: Enter release mode for this session — set status to release (ship-it flow in progress), with an optional note
+      retro: Enter retro mode for this session — set status to retro (post-work follow-up/retro), with an optional note
+  # <<< shipyard:describe <<<
   examples:
     - label: "/beacon:beacon"
       ac: "--orange"

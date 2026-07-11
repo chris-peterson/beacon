@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# DOCUMENTATION: Emits this plugin's ambient rules into context.
 # SessionStart hook: emit this plugin's ambient rules into context. Stdout is
 # added to context on every SessionStart (startup, resume, compaction — no
 # matcher in hooks.json), so the labeling guidance survives a compaction. This
