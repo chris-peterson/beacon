@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# DOCUMENTATION: Detects CLI wrapper drift after a plugin update.
 # SessionStart hook: detect CLI wrapper drift after a plugin update.
 #
 # The `install-cli` subcommand drops a wrapper at ~/.local/bin/<name>

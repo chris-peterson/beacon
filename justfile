@@ -1,20 +1,28 @@
 default:
     @just --list
 
+# regenerate all generated artifacts from source (describe, plugin.json, docs)
+build:
+    scripts/shipyard build
+
+# verify committed generated artifacts (plugin.json, describe) match source
+check:
+    scripts/shipyard check
+
 # preview the docsify docs site locally
 docs:
-    python3 scripts/gen-suite-json.py
+    scripts/shipyard build-docs
     docsify serve docs --open
 
 # regenerate .claude-plugin/plugin.json from plugin.yml (the canonical descriptor)
 plugin-json:
-    python3 scripts/gen-plugin-json.py
+    scripts/shipyard gen-plugin-json
 
-# verify plugin.json is in sync with plugin.yml (used by CI and the pre-commit hook)
-plugin-json-check:
-    python3 scripts/gen-plugin-json.py --check
+# resync plugin.yml suite.describe from the skills/rules/hooks sources
+describe:
+    scripts/shipyard gen-describe
 
-# install the git pre-commit hook that keeps plugin.json in sync with plugin.yml
+# install the git pre-commit hook that keeps generated artifacts in sync
 install-hooks:
     cp scripts/hooks/pre-commit .git/hooks/pre-commit
     chmod +x .git/hooks/pre-commit
