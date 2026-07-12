@@ -18,6 +18,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -3990,6 +3991,18 @@ def cmd_install(_args):
     step("iTerm2 dynamic profile (status bar + badge sizing)")
     ok, msg = install_dynamic_profile()
     print(f"  ✓ {msg}" if ok else _color("33", f"  ! {msg}"))
+    print()
+    step("iTerm2 fleet layout (recommended, user-set)")
+    # The tab-strip layout beacon's tab color is tuned for lives in app-wide
+    # Appearance prefs beacon deliberately never writes (the no-`defaults write`
+    # boundary). Surface any drift so the user can set it in the GUI; advisory
+    # only, so its non-zero drift exit never fails the install.
+    try:
+        r = subprocess.run(["python3", str(BEACON_ITERM), "configure"],
+                           capture_output=True, text=True, timeout=10)
+        print(textwrap.indent(r.stdout.rstrip(), "  "))
+    except Exception:
+        print(_color("33", "  ! could not audit layout prefs — see docs/iterm.md"))
     print()
     print("Next: exec zsh, then open a fresh iTerm2 tab.")
     print("Every step completed in place — no iTerm2 restart required.")

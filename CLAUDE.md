@@ -54,13 +54,13 @@ Status maps to a logical color state (`ready` / `busy` / `blocked` — the dev c
 
 Session hash is SHA-1 (truncated) of the session seed: on iTerm2 the pane **GUID** (the segment of `$ITERM_SESSION_ID` after the last colon) — *not* the full id, whose `wNtNpN` prefix drifts when a pane is moved and would fragment the pane's state into a new bucket on every move; else `claude-session:$CLAUDE_CODE_SESSION_ID` (the id Claude Code sets in every in-session subprocess on any OS, kept whole so a bare `beacon set` on Windows/non-iTerm lands in the same bucket as its hooks), else the tty name, else `default`. See `_session_seed()`. Collisions are not a security concern.
 
-## No iTerm2 prefs written — profile activated at runtime
+## No iTerm2 prefs written automatically — profile activated at runtime
 
-beacon makes **no** `defaults write com.googlecode.iterm2 ...` and is not iTerm2's default profile, so it sidesteps the plist-cache trap entirely (iTerm2 caches prefs in memory and clobbers any `defaults write` on quit). Instead:
+No hook, render, or install step ever runs `defaults write com.googlecode.iterm2 ...`, and beacon is not iTerm2's default profile, so the automatic path sidesteps the plist-cache trap entirely (iTerm2 caches prefs in memory and clobbers any `defaults write` on quit). Instead:
 
 - The base `beacon-dev` dynamic profile (the dev cycle) and one mode profile per `MODE_PROFILES` entry (`beacon-pause`, `beacon-release`, `beacon-retro`, `beacon-done`) live in `DynamicProfiles/`; iTerm2 watches the directory and reloads them live, so `install` needs no iTerm2 restart. Each mode profile is derived from the base at install time (same layout, distinct background — pause gets a faint `||`-button background image, release a faint rocket one, retro a faint checklist-clipboard one, done a faint checkered finish-flag one) so they never drift.
 - Each session is switched *into* the base `beacon-dev` profile at runtime via `set-profile` (OSC `SetProfile=`): the plugin at SessionStart, the shell snippet on source. Badge/tab color then layer on via OSC `SetColors=`. The per-state profiles are the **mode profiles** — a mode state (`paused`, `release`, `retro`, `done`) swaps into its profile for the background change a color OSC can't express (RENDER-05); ready/busy/blocked (dev) stay OSC overlays on the base. The logical-mode → profile mapping lives in `MODE_PROFILES`, so call sites never name iTerm profiles.
-- Because nothing requires an iTerm2-dead window, there is no `exclusive-configuration` command and no deferred-action install step.
+- Because nothing on the automatic path requires an iTerm2-dead window, there is no deferred-action install step. The **one** path that writes an iTerm2 preference is `beacon-iterm configure --write` (CLI-18) — explicit, user-invoked, confirmed per setting — which applies the app-wide fleet-layout prefs (tab position/size, status-bar position) that no dynamic profile can carry. It resurrects the quit-write-relaunch orchestration (once `exclusive-configuration`): confirm the restart, spawn a detached helper that waits for iTerm2 to exit, write, and relaunch. Never call it from a hook or render — it closes every window and pane.
 
 ## Session focus (FOCUS)
 

@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -2280,6 +2281,129 @@ class CompletionsMatchSubcommands(BeaconTest):
         sub = next(a for a in b._build_parser()._actions
                    if isinstance(a, b.argparse._SubParsersAction))
         self.assertLessEqual(b._UNCOMPLETED_COMMANDS, set(sub.choices))
+
+
+def _load_beacon_iterm():
+    path = REPO_ROOT / "bin" / "beacon-iterm"
+    sys.modules.pop("beacon_iterm", None)
+    loader = importlib.machinery.SourceFileLoader("beacon_iterm", str(path))
+    spec = importlib.util.spec_from_loader("beacon_iterm", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class ConfigureLayoutAudit(unittest.TestCase):
+    """`beacon-iterm configure` audits app-wide iTerm2 layout prefs read-only:
+    reports drift, exits non-zero on it, and issues no `defaults write`."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def _run(self, values, record=None):
+        def fake_run(cmd, *a, **k):
+            if record is not None:
+                record.append(cmd)
+            key = cmd[-1]
+            if key in values:
+                return subprocess.CompletedProcess(cmd, 0, stdout=values[key] + "\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="does not exist")
+        buf = io.StringIO()
+        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+                contextlib.redirect_stdout(buf), \
+                self.assertRaises(SystemExit) as cm:
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None))
+        return cm.exception.code, buf.getvalue()
+
+    def _aligned(self):
+        return {s["key"]: s["want"] for s in self.iterm.RECOMMENDED_LAYOUT}
+
+    def test_all_aligned_exits_zero(self):
+        code, out = self._run(self._aligned())
+        self.assertEqual(code, 0)
+        self.assertIn("All aligned", out)
+
+    def test_drift_exits_nonzero_and_names_setting(self):
+        vals = self._aligned()
+        del vals["StatusBarPosition"]
+        code, out = self._run(vals)
+        self.assertEqual(code, 1)
+        self.assertIn("StatusBarPosition", out)
+        self.assertIn("1 of", out)
+
+    def test_never_writes_a_pref(self):
+        record = []
+        self._run(self._aligned(), record=record)
+        self.assertTrue(record)
+        for cmd in record:
+            self.assertEqual(cmd[:2], ["defaults", "read"],
+                             f"configure must only read, never write: {cmd}")
+
+
+class ConfigureLayoutWrite(unittest.TestCase):
+    """`configure --write` applies the layout without the Preferences GUI: it
+    writes typed defaults only while iTerm2 is down, and when iTerm2 is up it
+    hands off to a detached helper + quit rather than writing in-process (a
+    running-iTerm2 write is clobbered on quit)."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def _args(self, **kw):
+        return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, **kw})
+
+    def test_apply_phase_writes_typed_defaults_then_relaunches(self):
+        calls = []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd)
+            code = 1 if cmd[:1] == ["pgrep"] else 0  # iTerm2 not running
+            return subprocess.CompletedProcess(cmd, code, stdout="", stderr="")
+        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_configure(self._args(
+                keys="TabViewType,UseCustomTabBarFontSize,CustomTabBarFontSize"))
+        writes = {c[3]: c[4:] for c in calls if c[:2] == ["defaults", "write"]}
+        self.assertEqual(writes["TabViewType"], ["-int", "2"])
+        self.assertEqual(writes["UseCustomTabBarFontSize"], ["-bool", "true"])
+        self.assertEqual(writes["CustomTabBarFontSize"], ["-float", "18"])
+        self.assertTrue(any(c[:2] == ["open", "-a"] for c in calls))
+        self.assertFalse(any(c[:1] == ["osascript"] for c in calls))
+
+    def test_running_hands_off_to_helper_and_quits(self):
+        calls, popen = [], []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")  # iTerm2 up
+        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+                mock.patch.object(self.iterm.subprocess, "Popen",
+                                  side_effect=lambda cmd, *a, **k: popen.append(cmd) or mock.Mock()), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
+        self.assertEqual(len(popen), 1)
+        helper = popen[0][-1]
+        self.assertIn("configure --write --yes --keys", helper)
+        self.assertIn("StatusBarPosition", helper)
+        self.assertTrue(any(c[:1] == ["osascript"] for c in calls))
+        self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls),
+                         "must defer the write to the helper, not write while iTerm2 runs")
+
+    def test_running_declined_makes_no_changes(self):
+        calls, popen = [], []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+                mock.patch.object(self.iterm.subprocess, "Popen",
+                                  side_effect=lambda *a, **k: popen.append(a)), \
+                mock.patch.object(self.iterm, "_prompt_tty", return_value=False), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_configure(self._args(yes=False, keys="StatusBarPosition"))
+        self.assertEqual(popen, [])
+        self.assertFalse(any(c[:1] == ["osascript"] for c in calls))
+        self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
 
 
 def _base_state() -> dict:
