@@ -10,3 +10,4 @@ docs/plugin-docs.json
 !.claude/hooks/
 !.claude/settings.json
 .preview/
+docs/index.html

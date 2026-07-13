@@ -79,3 +79,7 @@ suite:
     - { t: note, text: "Three Claude windows running; you're heads-down in one." }
     - { t: event, text: "a glance across the windows" }
     - { t: status, text: "window 3  ● red — it has been waiting for you while you weren't looking." }
+
+docs:
+  code_languages: [bash, yaml, python, json]
+  mermaid: true
