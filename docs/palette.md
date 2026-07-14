@@ -118,11 +118,37 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
 
 </div>
 
+## Branch colors
+
+The status-bar titlebar carries the current git branch, colored so the branch you're *working* pulls your eye while the default branch recedes. Two axes drive it — **which** branch (default vs. not) and, for a feature branch, its **sync state** — all [Dracula](https://draculatheme.com/contribute) hues:
+
+<div class="pal pal-stoplight">
+  <div class="pal-chip">
+    <div class="badge" style="color: #6272a4">main</div>
+    <div class="cap">default branch — home base, quiet whatever its state <span class="hex">#6272a4</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="badge" style="color: #8be9fd">feature</div>
+    <div class="cap">feature, synced with upstream — nothing to push <span class="hex">#8be9fd</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="badge" style="color: #f1fa8c">↑2↓1 feature</div>
+    <div class="cap">feature, diverged — ahead / behind upstream <span class="hex">#f1fa8c</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="badge" style="color: #ffb86c">feature</div>
+    <div class="cap">feature, untracked — no upstream, new local work <span class="hex">#ffb86c</span></div>
+  </div>
+</div>
+
+The default branch is de-emphasized across *all* states — so `main` recedes even with unpushed commits — while a feature branch reads by sync state: cyan synced, yellow diverged, orange untracked. Green is absent here too (reserved for `release`), so a synced feature branch is cyan, not green.
+
 ## Why these colors
 
 - **Green means one thing.** It's absent from the dev stoplight and reserved for `release`, so a green pane is always "shipping," never "idle."
 - **Gray is the calm default.** A session at rest — and a session that's `done` — sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
 - **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple — recognizable whole-pane, not just by the badge.
 - **No badge glyphs.** A mode is read by its color and background — the same faint slate watermark on the pane, the [dashboard card](/demo), and the fleet list — never a symbol wedged into the badge text.
+- **The branch you're on, not the one you're not.** The default branch recedes; a feature branch's sync state (cyan / yellow / orange) pulls your eye — the work lives on the branch, not on `main`.
 
 The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER); the hexes are tunable in one place in `scripts/beacon` (`BADGE_COLOR_PALETTE`, `MODE_PROFILES`).

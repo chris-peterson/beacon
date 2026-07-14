@@ -163,20 +163,22 @@ The deliverable URL comes from [tack](https://github.com/chris-peterson/tack) wh
 
 ## What beacon doesn't paint
 
-beacon paints the badge, the status bar, and the tab color — and nothing else. The terminal background and foreground, any background image, the window title, the tab title, and the cursor color and shape all belong to Claude Code, your own profile, or other tools, and beacon leaves them alone. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the badge color already signals both — a duplicate notification adds no information and can briefly overlay the badge.
+beacon leaves most of the terminal alone: the foreground color, the cursor color and shape, and any background image belong to Claude Code or your own profile. It paints only a small set of surfaces — the **status bar** (a per-pane titlebar carrying `project · task`, the tack deliverables you're working on, and the branch), the **tab** (its color for the dev/mode state, plus a two-line `project` / `task` label via the session name), the **window title** (the same session name, so a `/rename`d window keeps its project context), and — in a mode state only — the **pane background**. The **pane badge** beacon once always painted is now **opt-in and off by default**: the tab and status bar carry the identity, so painting it too is redundant in a tabs workflow. The capability remains — enable it with `"badge": "on"` in `~/.config/beacon/config.json`. beacon also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
 
 ## Recommended layout
 
-beacon paints per-*profile* surfaces it fully controls (badge, status bar, colors). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
+beacon paints per-*profile* surfaces it fully controls (the status bar, tab color, and the two-line tab label). The *shape* of the tab strip and status bar those ride on — where the tabs and status bar sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
 
-The tab-color signal is tuned for a **tall left tab strip**. Four settings make that strip readable; set them in **iTerm2 → Preferences → Appearance**:
+The layout is tuned for a **tall left tab strip with a top status-bar titlebar**. Set these in **iTerm2 → Preferences → Appearance**:
 
 | Setting | `defaults` key | Set to | Why it matters |
 |:---|:---|:---:|:---|
 | Tabs on the left | `TabViewType` | `2` | a left column is the natural home for a fleet; the tab color becomes a scannable strip (Appearance → Tabs) |
 | Larger tab labels | `UseCustomTabBarFontSize` + `CustomTabBarFontSize` | `on` + `18` | default labels are unreadably small in a left strip (Appearance → Tabs) |
-| Taller tabs | `DefaultTabBarHeight` | `60` | gives the color signal more area to register at a glance (Appearance → Tabs) |
-| Status bar at the bottom | `StatusBarPosition` | `1` | keeps the status strip clear of the top-right badge (Appearance → General) |
+| Taller tabs | `DefaultTabBarHeight` | `90` | room for the two-line `project` / `task` tab label (Appearance → Tabs) |
+| Status bar at the top | `StatusBarPosition` | `0` | the status bar is the per-pane titlebar — top is where a window title sits (Appearance → General) |
+| Separate status bars per pane | `SeparateStatusBarsPerPane` | `on` | each split gets its own titlebar identity, which the single OS window title can't (Appearance → Panes) |
+| Status bar height | `statusBarHeight` | `44` | room for the larger titlebar font; **needs an iTerm2 restart** (Advanced → search "height of the status bar") |
 
 Audit your current setup at any time — it reports only what differs and writes nothing:
 
@@ -192,7 +194,7 @@ beacon-iterm configure --write
 
 It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a fleet of work open.** (Prefer the GUI? The `defaults` key and Appearance location for each setting are in the table above.)
 
-Two related knobs are left entirely to taste — beacon renders identically whichever you choose and never touches them: **pane/window dimming** (Appearance → Dimming; dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning) and, if you don't use left tabs, **status-bar position** top vs. bottom.
+**Pane/window dimming** (Appearance → Dimming) is left to taste — beacon renders identically whichever you choose. Dimming unfocused panes/windows helps you spot the active one but also mutes beacon's colors on the panes you're scanning; recent iTerm2 renders inactive *tabs* as outlines regardless, so the tab-color strip stays legible either way.
 
 ## Setup
 

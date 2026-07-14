@@ -10,7 +10,7 @@
       "BM Growl": false,
       "Send Terminal Generated Alerts": false,
       "Badge Font": "Futura",
-      "Badge Text": "\\(user.beacon_project)\\(user.beacon_task)",
+      "Badge Text": "",
       "Allow Title Setting": false,
       "Title Components": 1,
       "Badge Max Width": 0.90,
@@ -23,39 +23,32 @@
       "Status Bar Layout": {
         "advanced configuration": {
           "remove empty components": true,
-          "font": "Menlo-Regular 18",
+          "font": "Menlo-Regular 28",
           "algorithm": 1,
           "auto-rainbow style": 0
         },
         "components": [
           {
-            "class": "iTermStatusBarActionComponent",
+            "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
+                "expression": "\\(user.beacon_project)\\(user.beacon_task)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 80,
+                "maxwidth": 600,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 1.0,
-                  "Green Component": 0.4745,
-                  "Blue Component": 0.7765,
+                  "Red Component": 0.9725,
+                  "Green Component": 0.9725,
+                  "Blue Component": 0.9490,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "↖ web",
-                  "parameter": "url=$(cat \"__BEACON_CACHE_DIR__/url-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$url\" ]; then open \"$url\"; else osascript -e 'display alert \"beacon\" message \"No URL resolved for this session.\"' >/dev/null 2>&1; fi",
-                  "action": 35,
-                  "version": 2
                 }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "Menlo-Regular 18",
+                "font": "Menlo-Regular 28",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -65,11 +58,53 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_project_full)",
+                "expression": "\\(user.beacon_deliverables)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
                 "maxwidth": 360,
+                "shared font": "",
+                "shared text color": {
+                  "Red Component": 0.7412,
+                  "Green Component": 0.5765,
+                  "Blue Component": 0.9765,
+                  "Color Space": "sRGB",
+                  "Alpha Component": 1.0
+                }
+              },
+              "layout advanced configuration dictionary value": {
+                "remove empty components": true,
+                "font": "Menlo-Regular 28",
+                "algorithm": 1,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
+            "class": "iTermStatusBarSpringComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
+                "iTermStatusBarSpringComponentSizeMultipleKey": 1
+              },
+              "layout advanced configuration dictionary value": {
+                "algorithm": 1,
+                "remove empty components": false,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
+            "class": "iTermStatusBarSwiftyStringComponent",
+            "configuration": {
+              "knobs": {
+                "expression": "\\(user.beacon_branch_default)",
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "minwidth": "0",
+                "maxwidth": 300,
                 "shared font": "",
                 "shared text color": {
                   "Red Component": 0.3843,
@@ -81,73 +116,8 @@
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "Menlo-Regular 18",
+                "font": "Menlo-Regular 28",
                 "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarSpringComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
-                "iTermStatusBarSpringComponentSizeMultipleKey": 1
-              },
-              "layout advanced configuration dictionary value": {
-                "algorithm": 1,
-                "remove empty components": false,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarActionComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 150,
-                "shared font": "",
-                "shared text color": {
-                  "Red Component": 1.0,
-                  "Green Component": 0.4745,
-                  "Blue Component": 0.7765,
-                  "Color Space": "sRGB",
-                  "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "⇄ review",
-                  "parameter": "beacon review\r",
-                  "action": 12,
-                  "version": 2
-                }
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "Menlo-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarSpringComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
-                "iTermStatusBarSpringComponentSizeMultipleKey": 1
-              },
-              "layout advanced configuration dictionary value": {
-                "algorithm": 1,
-                "remove empty components": false,
                 "auto-rainbow style": 0
               }
             }
@@ -160,19 +130,19 @@
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 240,
+                "maxwidth": 300,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 0.3137,
-                  "Green Component": 0.9804,
-                  "Blue Component": 0.4824,
+                  "Red Component": 0.5451,
+                  "Green Component": 0.9137,
+                  "Blue Component": 0.9922,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "Menlo-Regular 18",
+                "font": "Menlo-Regular 28",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -186,19 +156,19 @@
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 240,
+                "maxwidth": 300,
                 "shared font": "",
                 "shared text color": {
-                  "Red Component": 1.0,
-                  "Green Component": 0.7216,
-                  "Blue Component": 0.4235,
+                  "Red Component": 0.9451,
+                  "Green Component": 0.9804,
+                  "Blue Component": 0.5490,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
                 }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "Menlo-Regular 18",
+                "font": "Menlo-Regular 28",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }
@@ -212,52 +182,19 @@
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
-                "maxwidth": 240,
-                "shared font": "",
-                "shared text color": {
-                  "Red Component": 0.3843,
-                  "Green Component": 0.4471,
-                  "Blue Component": 0.6431,
-                  "Color Space": "sRGB",
-                  "Alpha Component": 1.0
-                }
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "Menlo-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarActionComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 90,
+                "maxwidth": 300,
                 "shared font": "",
                 "shared text color": {
                   "Red Component": 1.0,
-                  "Green Component": 0.4745,
-                  "Blue Component": 0.7765,
+                  "Green Component": 0.7216,
+                  "Blue Component": 0.4235,
                   "Color Space": "sRGB",
                   "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "↗ code",
-                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then open -a \"Visual Studio Code\" \"$cwd\" || osascript -e 'display alert \"beacon\" message \"Could not open Visual Studio Code.\"' >/dev/null 2>&1; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
-                  "action": 35,
-                  "version": 2
                 }
               },
               "layout advanced configuration dictionary value": {
                 "remove empty components": true,
-                "font": "Menlo-Regular 18",
+                "font": "Menlo-Regular 28",
                 "algorithm": 1,
                 "auto-rainbow style": 0
               }

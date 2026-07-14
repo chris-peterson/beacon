@@ -356,6 +356,14 @@ STATUS_TO_BADGE_STATE = {
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
+# Session-name (window title + tab label) format. The task rides its own line
+# via beacon_task_nl (a leading newline when set, "" when absent) so the tab
+# renders `project` over `task` on two lines (TITLE-05). The OS title bar,
+# which is single-line, shows line 1 (project) only — the tab is the surface
+# that carries the whole thing. Distinct from BADGE_FORMAT so the badge (when
+# enabled) stays a single " · "-joined line while the tab goes two-line.
+TITLE_FORMAT = r"\(user.beacon_project)\(user.beacon_task_nl)"
+
 BASE_PROFILE_NAME = "beacon-dev"
 
 # Mode profiles (RENDER-05): the SDLC mode cycles that own a dedicated dynamic
@@ -752,6 +760,87 @@ def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[s
     return "", ""
 
 
+def _bare_deliverable_label(label: str, project: str | None) -> str:
+    """Strip the current repo's prefix from a tack deliverable label so a
+    local-repo deliverable reads bare (`#1`) while a cross-repo one stays
+    qualified (`anchor #27`). tack labels are `<repo><sigil><n>` — the sigil is
+    `#` (issue/PR), `!` (GitLab MR), or `@` (commit)."""
+    repo = (project or "").split("/")[-1].strip()
+    m = re.search(r"[#!@]", label)
+    if not repo or not m:
+        return label
+    if label[:m.start()].strip().lower() == repo.lower():
+        return label[m.start():]
+    return label
+
+
+def _tack_deliverables_for(cwd: Path, branch: str, project: str | None = None,
+                           limit: int = 4) -> str:
+    """STATUS-BAR-04: the session's route deliverables for the titlebar chip. tack is
+    the deliverable tracker (deliverables attach to tacks); beacon reads, never
+    accumulates. A session maps to a route, not a tack (no session→tack edge),
+    so isolate by status + time: the route's `in_progress` tacks' deliverables,
+    plus tacks completed since this session started (`done_at` > the session
+    pin's `started_at`). Falls back to `in_progress`-only when the route is
+    location-correlated, not session-pinned (no `started_at` to compare).
+
+    Returns `[label](url)` markdown links joined by ", " (current-repo labels
+    bare-ified) so the titlebar renders them clickable, capped at `limit`,
+    in-progress first then most-recently-done. Empty when tack is absent or the
+    route has no relevant deliverable."""
+    if not _which("tack"):
+        return ""
+    try:
+        r = subprocess.run(["tack", "list", "--json"],
+                           capture_output=True, text=True, timeout=2)
+        if r.returncode != 0:
+            return ""
+        routes = json.loads(r.stdout)
+    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+        return ""
+
+    sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    route = None
+    started_at = ""
+    if sid:
+        def _pin_started(rt):
+            return max((s.get("started_at", "") for s in (rt.get("sessions") or [])
+                        if s.get("id") == sid), default="")
+        pinned = [rt for rt in routes
+                  if any(s.get("id") == sid for s in (rt.get("sessions") or []))]
+        if pinned:
+            pinned.sort(key=_pin_started, reverse=True)
+            route = pinned[0]
+            started_at = _pin_started(route)
+    if route is None:
+        slug, _group = _tack_route_for(cwd, branch, project)
+        if slug:
+            route = next((rt for rt in routes if rt.get("slug") == slug), None)
+    if not route:
+        return ""
+
+    picked = []  # (in_progress?, done_at, label) — sorted active-first, then recent
+    seen = set()
+    for t in route.get("tacks", []) or []:
+        d = t.get("deliverable") or {}
+        url, label = d.get("url"), d.get("label")
+        if not url or not label or url in seen:
+            continue
+        status = t.get("status")
+        if status == "in_progress":
+            picked.append((1, "", label, url))
+            seen.add(url)
+        elif status == "done" and started_at and t.get("done_at", "") > started_at:
+            picked.append((0, t.get("done_at", ""), label, url))
+            seen.add(url)
+    picked.sort(key=lambda p: (p[0], p[1]), reverse=True)
+    # Emit each as a `[display](url)` markdown link so the status-bar titlebar
+    # renders it clickable (iTerm2 status-bar markdown-link support); the display
+    # is the current-repo-bare-ified label.
+    return ", ".join(f"[{_bare_deliverable_label(lbl, project)}]({url})"
+                     for _, _, lbl, url in picked[:limit])
+
+
 _FORGE_PROBES = {
     "github": {
         "cli": "gh",
@@ -1036,6 +1125,13 @@ def cmd_data_dir(_args):
     """Print the resolved data dir — consumed by shell/beacon.zsh to
     derive its cache path on source."""
     sys.stdout.write(f"{DATA_DIR}\n")
+
+
+def cmd_config_get(args):
+    """Print a single user-config value (empty when unset) — consumed by
+    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15)."""
+    val = _load_config().get(args.key)
+    sys.stdout.write("" if val is None else f"{val}\n")
 
 
 def cmd_json(_args):
@@ -2134,6 +2230,17 @@ def _load_config() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _badge_enabled() -> bool:
+    """BADGE-15: the pane badge is opt-in and off by default. The tab (color +
+    two-line project/task identity) and the status-bar titlebar now carry what
+    the badge used to, so painting it too is redundant in a tabs workflow. The
+    machinery is retained — BADGE_FORMAT, BADGE_COLOR_PALETTE, the badge-color /
+    badge-format CLI verbs — and `"badge": "on"` in the user config re-enables
+    it, so a later lifecycle-phase repurposing reuses the same gate."""
+    val = _load_config().get("badge")
+    return val is not None and str(val).strip().lower() in ("1", "true", "on", "yes")
+
+
 def _focus_origins() -> set[str]:
     """The origin allowlist for the mutating routes /focus and /forget
     (FOCUS-04, FORGET-03): the built-in public dashboard origin plus the
@@ -2687,18 +2794,21 @@ def _cli(*args, timeout: float = 5.0) -> None:
 # in interactive (non-Claude) sessions the shell publishes the same slots
 # on each prompt redraw and naturally tracks the user's actual PWD.
 
-def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
-    """Return (display, state, indicator). Empty triplet outside a repo."""
+def _detect_branch_info(cwd: Path) -> tuple[str, str, str, str]:
+    """Return (display, state, indicator, identity). Empty quad outside a repo.
+    identity is "default" (the repo's default branch) or "feature" (#20),
+    mirroring the shell's _beacon_branch_info so Claude-session and interactive
+    panes classify the branch identically."""
     try:
         r = subprocess.run(
             ["git", "symbolic-ref", "--short", "HEAD"],
             cwd=str(cwd), capture_output=True, text=True, timeout=2, check=False,
         )
     except Exception:
-        return ("", "", "")
+        return ("", "", "", "")
     name = r.stdout.strip()
     if r.returncode != 0 or not name:
-        return ("", "", "")
+        return ("", "", "", "")
 
     state = "untracked"
     indicator = ""
@@ -2727,8 +2837,14 @@ def _detect_branch_info(cwd: Path) -> tuple[str, str, str]:
     except Exception:
         pass
 
+    default_ref = _default_branch_ref(cwd)
+    if default_ref:
+        identity = "default" if name == default_ref.split("/", 1)[-1] else "feature"
+    else:
+        identity = "default" if name in ("main", "master", "trunk") else "feature"
+
     display = f"{indicator} {name}" if state == "diverged" else name
-    return (display, state, indicator)
+    return (display, state, indicator, identity)
 
 
 def _project_root_at(cwd: Path) -> Path | None:
@@ -2872,20 +2988,29 @@ def _publish_chips(cwd: Path) -> None:
     the shell was blocked on Claude."""
     global _LAST_CHIP_PAIRS
     project_full = _project_full_at(cwd)
-    display, state, _ind = _detect_branch_info(cwd)
+    display, state, _ind, identity = _detect_branch_info(cwd)
+    project = _project_name_at(cwd)
+    branch = p_branch(cwd)
     url, _label = resolve_url(cwd)
+    deliverables = _tack_deliverables_for(cwd, branch, project)
 
     if project_full:
         project_full = f"{project_full}{_deliverable_suffix(url)}"
 
+    # Hybrid branch slots (#20): the default branch fills its own de-emphasized
+    # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
+    # precmd so Claude-session and interactive panes agree.
+    is_default = identity == "default"
     pairs = (
         f"beacon_project_full={project_full}",
         f"beacon_branch={display}",
         f"beacon_branch_state={state}",
-        f"beacon_branch_clean={display if state == 'clean' else ''}",
-        f"beacon_branch_diverged={display if state == 'diverged' else ''}",
-        f"beacon_branch_untracked={display if state == 'untracked' else ''}",
+        f"beacon_branch_default={display if is_default else ''}",
+        f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
+        f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
+        f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
         f"beacon_url={url}",
+        f"beacon_deliverables={deliverables}",
     )
     # Last-value gate (mirrors shell's precmd sentinels per CLAUDE.md hot
     # path policy): Stop fires once per turn, but most turns don't change
@@ -3196,7 +3321,7 @@ def _set_session_title() -> None:
     only; the synthesized `claude-session:` id has no addressable surface."""
     sid = os.environ.get("ITERM_SESSION_ID") or ""
     if ":" in sid and not sid.startswith("claude-session:"):
-        _cli("set-name", sid, BADGE_FORMAT)
+        _cli("set-name", sid, TITLE_FORMAT)
 
 
 def apply(state: dict):
@@ -3221,19 +3346,25 @@ def apply(state: dict):
     # SetBadgeFormat (§6.10), so a switch re-emits the badge format here and
     # forces the user vars + badge/tab color further down.
     switched = target_profile != prev.get("profile")
+    badge_on = _badge_enabled()
     if switched:
         _cli("set-profile", target_profile)
-        _cli("badge-format", BADGE_FORMAT)
+        # BADGE-15: the badge is opt-in (off by default). Its format is only
+        # re-emitted after a profile swap wipes the OSC when the badge is on.
+        if badge_on:
+            _cli("badge-format", BADGE_FORMAT)
         # SetProfile resets the session name to the profile's literal Name, so
         # restore the interpolated window title (WINDOW-TITLE) after every swap
         # — and on the first render, which is also a swap (prev has no profile).
         _set_session_title()
 
-    # RENDER-04: badge + tab color for the logical state. Repaint when the
-    # state changed, or unconditionally after a profile switch wiped the OSC.
+    # RENDER-04: tab color for the logical state (and the badge color too when
+    # the badge is enabled). Repaint when the state changed, or unconditionally
+    # after a profile switch wiped the OSC.
     if switched or logical != prev.get("logical_state"):
         hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["ready"])
-        _cli("badge-color", hex_color)
+        if badge_on:
+            _cli("badge-color", hex_color)
         _cli("tab-color", hex_color)
 
     # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. The badge
@@ -3254,6 +3385,11 @@ def apply(state: dict):
     if task_text != prev.get("task") or (switched and task_text):
         sep = " @ " if state.get("task_provider") == "wander" else " · "
         _cli("uservar", "beacon_task", f"{sep}{task_text}" if task_text else "")
+        # TITLE-05: the tab/window-title Name puts the task on a second line,
+        # indented two spaces under the project. Same collapse-when-empty
+        # contract as beacon_task; the wander " @ " marker is a badge-only
+        # nicety, so the two-line title just carries the bare task.
+        _cli("uservar", "beacon_task_nl", f"\n  {task_text}" if task_text else "")
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
@@ -3420,6 +3556,7 @@ def _disengage() -> None:
     remove_state("resolved")
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
+    _cli("uservar", "beacon_task_nl", "")
     # A mode state (paused/release/retro/done) swapped the pane into a mode profile
     # whose de-emphasized background the color-only `clear` below cannot undo
     # (RENDER-05). apply() swaps back to the base profile when *transitioning*
@@ -4312,6 +4449,9 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
 
+    sp = sub.add_parser("config-get", help="(internal) print a user-config value by key")
+    sp.add_argument("key")
+
     return parser
 
 
@@ -4319,7 +4459,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir"}
+_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir", "config-get"}
 
 
 def main(argv=None):
@@ -4347,7 +4487,7 @@ def main(argv=None):
         "open-url": cmd_open_url, "review": cmd_review, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "export": cmd_export, "import": cmd_import,
-        "data-dir": cmd_data_dir,
+        "data-dir": cmd_data_dir, "config-get": cmd_config_get,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)

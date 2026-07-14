@@ -48,15 +48,16 @@ zmodload -F zsh/stat b:zstat
 # here; Claude panes do it at SessionStart. A non-iTerm terminal silently
 # ignores the sequence.
 printf '\e]1337;SetProfile=beacon-dev\a'
-# Badge format: project + optional task suffix. The task slot self-collapses
-# when empty (beacon_task carries " · <task>" when set). The badge renders
-# only after engagement (BADGE-14) populates beacon_project; until then both
-# user vars are empty and the format evaluates to nothing, so a fresh
-# terminal shows no badge. Set after SetProfile, which wipes session OSC
-# overrides including SetBadgeFormat (§6.10); the profile's Badge Text key
-# carries the same format as a backstop.
-printf '\e]1337;SetBadgeFormat=%s\a' \
-  "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
+# Badge (BADGE-15): opt-in, off by default — the tab (color + two-line
+# identity) and the status-bar titlebar carry the identity now, so the badge is
+# redundant in a tabs workflow. Emit its format only when the user config turns
+# it on (`"badge": "on"` in ~/.config/beacon/config.json). Read once here at
+# source, never in the per-prompt hot path. Set after SetProfile, which wipes
+# session OSC overrides including SetBadgeFormat (§6.10).
+if [[ "${(L)$(python3 "$_BEACON_SCRIPT" config-get badge 2>/dev/null)}" == (1|true|on|yes) ]]; then
+  printf '\e]1337;SetBadgeFormat=%s\a' \
+    "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
+fi
 
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(
@@ -88,10 +89,11 @@ _beacon_project_root() {
 #   state     — "clean" (synced with upstream), "diverged" (ahead/behind), or
 #               "untracked" (no upstream set — local-only branch)
 #   indicator — "" | "↑N" | "↓N" | "↑N↓M"
-# All three empty when not in a git repo.
+#   identity  — "default" (the repo's default branch) or "feature" (any other)
+# All four empty when not in a git repo.
 _beacon_branch_info() {
   local name
-  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n'; return }
+  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n\n'; return }
   local state="untracked" ind="" counts ahead behind
   if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 \
      && counts="$(git rev-list --left-right --count "@{u}...HEAD" 2>/dev/null)"; then
@@ -105,11 +107,23 @@ _beacon_branch_info() {
       (( behind > 0 )) && ind+="↓${behind}"
     fi
   fi
+  # Identity axis (#20): the default branch is de-emphasized whatever its state;
+  # a feature branch reads by state. origin/HEAD names the default when it's set
+  # (git clone / `git remote set-head`); when it isn't, fall back to the
+  # conventional names so a fresh local repo still classifies main/master/trunk.
+  local default_branch identity="feature"
+  default_branch="$(git symbolic-ref --short --quiet refs/remotes/origin/HEAD 2>/dev/null)"
+  default_branch="${default_branch#origin/}"
+  if [[ -z "$default_branch" ]]; then
+    case "$name" in main|master|trunk) default_branch="$name" ;; esac
+  fi
+  [[ -n "$default_branch" && "$name" == "$default_branch" ]] && identity="default"
   local display="$name"
   [[ "$state" == "diverged" ]] && display="${ind} ${name}"
   print -r -- "$display"
   print -r -- "$state"
   print -r -- "$ind"
+  print -r -- "$identity"
 }
 
 # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
@@ -190,6 +204,7 @@ typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
 typeset -g _BEACON_LAST_TITLE='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
+typeset -g _BEACON_LAST_BRANCH_DEFAULT='__unset__'
 typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
@@ -266,11 +281,19 @@ _beacon_precmd() {
 
   local -a binfo
   binfo=("${(@f)$(_beacon_branch_info)}")
-  local b="${binfo[1]}" bstate="${binfo[2]}"
-  local b_clean="" b_diverged="" b_untracked=""
-  [[ "$bstate" == "clean"     ]] && b_clean="$b"
-  [[ "$bstate" == "diverged"  ]] && b_diverged="$b"
-  [[ "$bstate" == "untracked" ]] && b_untracked="$b"
+  local b="${binfo[1]}" bstate="${binfo[2]}" bidentity="${binfo[4]}"
+  # Hybrid branch color (#20): the default branch publishes one de-emphasized
+  # slot whatever its state; a feature branch routes to its state slot. Exactly
+  # one of the four is non-empty, so the profile's four branch components (each
+  # a fixed color) resolve to a single visible one via remove-empty-components.
+  local b_default="" b_clean="" b_diverged="" b_untracked=""
+  if [[ "$bidentity" == "default" ]]; then
+    b_default="$b"
+  else
+    [[ "$bstate" == "clean"     ]] && b_clean="$b"
+    [[ "$bstate" == "diverged"  ]] && b_diverged="$b"
+    [[ "$bstate" == "untracked" ]] && b_untracked="$b"
+  fi
 
   if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch "$b"
@@ -279,6 +302,10 @@ _beacon_precmd() {
   if [[ "$bstate" != "$_BEACON_LAST_BRANCH_STATE" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch_state "$bstate"
     _BEACON_LAST_BRANCH_STATE="$bstate"
+  fi
+  if [[ "$b_default" != "$_BEACON_LAST_BRANCH_DEFAULT" ]]; then
+    "$_BEACON_ITERM" uservar beacon_branch_default "$b_default"
+    _BEACON_LAST_BRANCH_DEFAULT="$b_default"
   fi
   if [[ "$b_clean" != "$_BEACON_LAST_BRANCH_CLEAN" ]]; then
     "$_BEACON_ITERM" uservar beacon_branch_clean "$b_clean"

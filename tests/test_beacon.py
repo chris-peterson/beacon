@@ -57,6 +57,13 @@ class BeaconTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+        # The pane badge is opt-in and off by default (BADGE-15); these tests
+        # exercise the render's badge-painting capability, so enable it here.
+        # The default-off path has its own test (BadgeToggle).
+        badge_patcher = mock.patch.object(self.beacon, "_badge_enabled", return_value=True)
+        badge_patcher.start()
+        self.addCleanup(badge_patcher.stop)
+
         # Pin resolved project to a known value so tests don't depend on git
         # state of the working tree they happen to run in.
         proj_patcher = mock.patch.object(
@@ -275,7 +282,7 @@ class WindowTitleSetName(BeaconTest):
         self._set_iterm_id("w0t0p0:ABC-123")
         self.beacon.apply({**_base_state(), "status": "idle"})
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "first render (a swap) must set the session name to the badge template",
         )
@@ -286,7 +293,7 @@ class WindowTitleSetName(BeaconTest):
         self.cli_calls.clear()
         self.beacon.apply({**_base_state(), "status": "paused"})
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "a mode swap resets the session name, so it must be re-set (TITLE-04)",
         )
@@ -315,7 +322,7 @@ class WindowTitleSetName(BeaconTest):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
             self.beacon.cmd_hook(args)
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "UserPromptSubmit must re-assert the title to beat the shell's launch write",
         )
@@ -326,7 +333,7 @@ class WindowTitleSetName(BeaconTest):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"stop_hook_active": False}))):
             self.beacon.cmd_hook(args)
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "Stop must re-assert the title to beat the shell's launch write",
         )
@@ -961,6 +968,76 @@ class TackUrlHonorsSessionPin(BeaconTest):
         self.assertEqual(url, self.ISSUE)
 
 
+class BareDeliverableLabel(BeaconTest):
+    """STATUS-BAR-04: a tack deliverable label reads bare for the current repo (`#1`)
+    and stays qualified for a cross-repo one (`anchor #27`)."""
+
+    def test_bare_ifies_current_repo(self):
+        b = self.beacon._bare_deliverable_label
+        self.assertEqual(b("beacon#1", "chris-peterson/beacon"), "#1")
+        self.assertEqual(b("iam!3536", "security/iam"), "!3536")
+        self.assertEqual(b("beacon@abc123", "x/beacon"), "@abc123")
+        self.assertEqual(b("anchor #27", "chris-peterson/beacon"), "anchor #27")
+
+
+class TackDeliverables(BeaconTest):
+    """STATUS-BAR-04: _tack_deliverables_for lists the route's in_progress deliverables
+    plus tacks done since the session started, current-repo labels bare-ified,
+    in-progress first."""
+
+    def _deliverables(self, routes, *, sid, tack_route=("", None), project="chris-peterson/beacon"):
+        def fake_run(cmd, *a, **k):
+            if cmd[:2] == ["tack", "list"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(routes), stderr="")
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        patches = [
+            mock.patch.object(self.beacon, "_which",
+                              side_effect=lambda x: "/bin/tack" if x == "tack" else None),
+            mock.patch.object(self.beacon, "read_state",
+                              side_effect=lambda f: (sid or None) if f == "claude_session_id" else None),
+            mock.patch.object(self.beacon, "_tack_route_for", return_value=tack_route),
+            mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": ""}, clear=False),
+            mock.patch("subprocess.run", side_effect=fake_run),
+        ]
+        for p in patches: p.start()
+        try:
+            return self.beacon._tack_deliverables_for(Path("/tmp/fake"), "abranch", project)
+        finally:
+            for p in patches: p.stop()
+
+    def test_pinned_shows_in_progress_and_done_this_session(self):
+        routes = [{
+            "slug": "beacon",
+            "sessions": [{"id": "sid-1", "started_at": "2026-07-08T00:00:00Z"}],
+            "tacks": [
+                {"status": "in_progress", "deliverable": {"label": "beacon#5", "url": "u5"}},
+                {"status": "done", "done_at": "2026-07-08T10:00:00Z",
+                 "deliverable": {"label": "anchor #27", "url": "u27"}},
+                {"status": "done", "done_at": "2026-07-01T00:00:00Z",
+                 "deliverable": {"label": "beacon#1", "url": "u1"}},
+            ],
+        }]
+        # in_progress first (bare current repo), then the done-after-start one
+        # (cross-repo, qualified); the pre-session done is excluded.
+        self.assertEqual(self._deliverables(routes, sid="sid-1"),
+                         "[#5](u5), [anchor #27](u27)")
+
+    def test_location_route_shows_in_progress_only(self):
+        routes = [{
+            "slug": "beacon",
+            "sessions": [],
+            "tacks": [
+                {"status": "in_progress", "deliverable": {"label": "beacon#5", "url": "u5"}},
+                {"status": "done", "done_at": "2026-07-09T00:00:00Z",
+                 "deliverable": {"label": "beacon#1", "url": "u1"}},
+            ],
+        }]
+        # No pin → no started_at → done tacks can't be session-scoped, so only
+        # in_progress shows.
+        self.assertEqual(
+            self._deliverables(routes, sid="", tack_route=("beacon", None)), "[#5](u5)")
+
+
 class CacheKeyIsPaneStable(BeaconTest):
     """The handoff cache files (cwd / url) and the engagement marker key on the
     pane GUID, not the full ITERM_SESSION_ID: the `wNtNpN` positional prefix
@@ -1031,17 +1108,68 @@ class BadgeFormatReferencesTaskSlot(BeaconTest):
             "on the badge",
         )
 
-    def test_profile_template_badge_text_matches_badge_format(self):
-        # The dynamic profile's "Badge Text" is the canonical badge format
-        # iTerm uses while the beacon profile is active. It must stay in sync
-        # with BADGE_FORMAT — a drift here means OSC SetBadgeFormat writes get
-        # overridden whenever the plugin switches profiles (BADGE-09).
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
-        self.assertIn(
-            r"\(user.beacon_task)", template,
-            'profile.json.template "Badge Text" must reference user.beacon_task '
-            "to match BADGE_FORMAT",
-        )
+    def test_profile_template_badge_text_is_empty(self):
+        # BADGE-15: the badge is opt-in and off by default, so the profile's
+        # static "Badge Text" backstop is empty — the plugin/shell only emit
+        # SetBadgeFormat when the user enables the badge in config.
+        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text())
+        self.assertEqual(template["Profiles"][0]["Badge Text"], "")
+
+
+class BadgeToggle(BeaconTest):
+    """BADGE-15: the pane badge is opt-in and off by default. The render always
+    paints the tab color (the primary state signal); it emits the badge OSCs
+    only when the user config enables the badge."""
+
+    def test_default_off_paints_tab_not_badge(self):
+        with mock.patch.object(self.beacon, "_badge_enabled", return_value=False):
+            self.beacon.apply({**_base_state(), "status": "working"})
+        kinds = [c[0] for c in self.cli_calls]
+        self.assertIn("tab-color", kinds)
+        self.assertNotIn("badge-color", kinds)
+        self.assertNotIn("badge-format", kinds)
+
+    def test_enabled_paints_badge(self):
+        self.beacon.apply({**_base_state(), "status": "working"})
+        kinds = [c[0] for c in self.cli_calls]
+        self.assertIn("badge-color", kinds)
+        self.assertIn("badge-format", kinds)
+
+
+class BadgeConfigToggle(unittest.TestCase):
+    """BADGE-15: _badge_enabled reads the user config's `badge` key (default
+    off). Loaded without BeaconTest's badge mock so the real gate runs."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_toggle_reads_config(self):
+        for val in ("on", "true", "1", "yes", True):
+            with mock.patch.object(self.beacon, "_load_config", return_value={"badge": val}):
+                self.assertTrue(self.beacon._badge_enabled(), val)
+        for cfg in ({}, {"badge": "off"}, {"badge": False}, {"badge": "no"}):
+            with mock.patch.object(self.beacon, "_load_config", return_value=cfg):
+                self.assertFalse(self.beacon._badge_enabled(), cfg)
+
+
+class TwoLineTitle(BeaconTest):
+    """TITLE-05: the tab / window-title Name carries the task on a second line
+    via beacon_task_nl (newline-prefixed), while BADGE_FORMAT stays a single
+    " · "-joined line."""
+
+    def test_title_format_uses_task_nl(self):
+        self.assertIn(r"\(user.beacon_task_nl)", self.beacon.TITLE_FORMAT)
+        self.assertNotIn(r"\(user.beacon_task)", self.beacon.TITLE_FORMAT)
+
+    def test_apply_publishes_newline_prefixed_task(self):
+        self.beacon.apply({**_base_state(), "task": "fix bug"})
+        self.assertIn(("uservar", "beacon_task_nl", "\n  fix bug"), self.cli_calls)
+
+    def test_empty_task_collapses(self):
+        self.beacon.apply({**_base_state(), "task": ""})
+        self.assertIn(("uservar", "beacon_task_nl", ""), self.cli_calls)
 
 
 class SessionAnchor(BeaconTest):
@@ -1940,50 +2068,53 @@ class PauseClearScreen(BeaconTest):
         self.assertEqual(self.beacon.read_state("override.status"), "paused")
 
 
-class ReviewButtonInProfile(unittest.TestCase):
-    """STATUS-BAR-02: the `⇄ review` action chip sends `beacon review` into the
-    pane via iTerm2's Send Text action (enum 12), not a coprocess — so the
-    driving session (or a shell) runs the review and consumes its output."""
+class TitlebarStatusBarLayout(unittest.TestCase):
+    """2.0 status-bar titlebar: a left-aligned project·task identity, a spring,
+    and the four hybrid branch slots (#20) — no action buttons (dropped), the
+    font raised so the strip reads as a titlebar under the Minimal theme."""
 
-    def _layout(self):
+    def _components(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         rendered = (template
                     .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
                     .replace("__BEACON_CACHE_DIR__", "/x/cache"))
-        return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]["components"]
+        return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]
 
-    def _action_titles(self):
-        return [c["configuration"]["knobs"]["action"]["title"]
-                for c in self._layout()
-                if c["class"] == "iTermStatusBarActionComponent"]
+    def _exprs(self):
+        return [c["configuration"]["knobs"].get("expression")
+                for c in self._components()["components"]
+                if c["class"] == "iTermStatusBarSwiftyStringComponent"]
 
-    def test_review_button_is_send_text(self):
-        review = next(
-            c["configuration"]["knobs"]["action"] for c in self._layout()
-            if c["class"] == "iTermStatusBarActionComponent"
-            and c["configuration"]["knobs"]["action"]["title"] == "⇄ review"
-        )
-        # Send Text = KEY_ACTION_TEXT (12), NOT Run Coprocess (35): the point is
-        # to type the command into the session, so Claude runs it and reads the
-        # sidecar verdict back. \r submits the line (both a shell prompt and the
-        # Claude Code TUI treat Return as \r).
-        self.assertEqual(review["action"], 12)
-        self.assertEqual(review["parameter"], "beacon review\r")
+    def test_no_action_buttons(self):
+        classes = [c["class"] for c in self._components()["components"]]
+        self.assertNotIn("iTermStatusBarActionComponent", classes)
 
-    def test_review_button_is_centered_between_springs(self):
-        # The review chip is flanked by two springs so it centers between the
-        # left (web · project) and right (branch · code) clusters —
-        # … project ←spring→ ⇄ review ←spring→ branch …
-        comps = self._layout()
+    def test_identity_is_first_left_aligned(self):
+        # No leading spring → the identity sits at the left; the one spring
+        # after it pushes the branch slots to the right.
+        comps = self._components()["components"]
+        self.assertEqual(comps[0]["class"], "iTermStatusBarSwiftyStringComponent")
+        self.assertEqual(comps[0]["configuration"]["knobs"]["expression"],
+                         r"\(user.beacon_project)\(user.beacon_task)")
         self.assertEqual(
-            [c["class"] for c in comps].count("iTermStatusBarSpringComponent"), 2)
-        idx = next(i for i, c in enumerate(comps)
-                   if c["class"] == "iTermStatusBarActionComponent"
-                   and c["configuration"]["knobs"]["action"]["title"] == "⇄ review")
-        self.assertEqual(comps[idx - 1]["class"], "iTermStatusBarSpringComponent")
-        self.assertEqual(comps[idx + 1]["class"], "iTermStatusBarSpringComponent")
-        # Action chips left-to-right: web (far left), review (center), code (far right).
-        self.assertEqual(self._action_titles(), ["↖ web", "⇄ review", "↗ code"])
+            [c["class"] for c in comps].count("iTermStatusBarSpringComponent"), 1)
+
+    def test_four_hybrid_branch_slots(self):
+        # One slot per branch bucket; the shell publishes exactly one non-empty,
+        # and remove-empty-components resolves them to a single visible chip.
+        for var in ("beacon_branch_default", "beacon_branch_clean",
+                    "beacon_branch_diverged", "beacon_branch_untracked"):
+            self.assertIn(rf"\(user.{var})", self._exprs())
+
+    def test_deliverables_chip_sits_right_of_identity(self):
+        # STATUS-BAR-04: the deliverables chip is the second SwiftyString, immediately
+        # after the identity and before the spring pushes the branch right.
+        swifties = [c for c in self._components()["components"]
+                    if c["class"] == "iTermStatusBarSwiftyStringComponent"]
+        self.assertEqual(swifties[0]["configuration"]["knobs"]["expression"],
+                         r"\(user.beacon_project)\(user.beacon_task)")
+        self.assertEqual(swifties[1]["configuration"]["knobs"]["expression"],
+                         r"\(user.beacon_deliverables)")
 
 
 class ReviewCommand(unittest.TestCase):
