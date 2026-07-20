@@ -57,6 +57,13 @@ class BeaconTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+        # The pane badge is opt-in and off by default (BADGE-15); these tests
+        # exercise the render's badge-painting capability, so enable it here.
+        # The default-off path has its own test (BadgeToggle).
+        badge_patcher = mock.patch.object(self.beacon, "_badge_enabled", return_value=True)
+        badge_patcher.start()
+        self.addCleanup(badge_patcher.stop)
+
         # Pin resolved project to a known value so tests don't depend on git
         # state of the working tree they happen to run in.
         proj_patcher = mock.patch.object(
@@ -275,7 +282,7 @@ class WindowTitleSetName(BeaconTest):
         self._set_iterm_id("w0t0p0:ABC-123")
         self.beacon.apply({**_base_state(), "status": "idle"})
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "first render (a swap) must set the session name to the badge template",
         )
@@ -286,7 +293,7 @@ class WindowTitleSetName(BeaconTest):
         self.cli_calls.clear()
         self.beacon.apply({**_base_state(), "status": "paused"})
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "a mode swap resets the session name, so it must be re-set (TITLE-04)",
         )
@@ -315,7 +322,7 @@ class WindowTitleSetName(BeaconTest):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
             self.beacon.cmd_hook(args)
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "UserPromptSubmit must re-assert the title to beat the shell's launch write",
         )
@@ -326,7 +333,7 @@ class WindowTitleSetName(BeaconTest):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"stop_hook_active": False}))):
             self.beacon.cmd_hook(args)
         self.assertIn(
-            ("set-name", "w0t0p0:ABC-123", self.beacon.BADGE_FORMAT),
+            ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
             "Stop must re-assert the title to beat the shell's launch write",
         )
@@ -1031,17 +1038,142 @@ class BadgeFormatReferencesTaskSlot(BeaconTest):
             "on the badge",
         )
 
-    def test_profile_template_badge_text_matches_badge_format(self):
-        # The dynamic profile's "Badge Text" is the canonical badge format
-        # iTerm uses while the beacon profile is active. It must stay in sync
-        # with BADGE_FORMAT — a drift here means OSC SetBadgeFormat writes get
-        # overridden whenever the plugin switches profiles (BADGE-09).
+    def test_profile_template_badge_text_is_empty(self):
+        # BADGE-15: the badge is opt-in and off by default, so the profile's
+        # static "Badge Text" backstop is empty — the plugin/shell only emit
+        # SetBadgeFormat when the user enables the badge in config.
+        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text())
+        self.assertEqual(template["Profiles"][0]["Badge Text"], "")
+
+
+class BadgeToggle(BeaconTest):
+    """BADGE-15: the pane badge is opt-in and off by default. The render always
+    paints the tab color (the primary state signal); it emits the badge OSCs
+    only when the user config enables the badge."""
+
+    def test_default_off_paints_tab_not_badge(self):
+        with mock.patch.object(self.beacon, "_badge_enabled", return_value=False):
+            self.beacon.apply({**_base_state(), "status": "working"})
+        kinds = [c[0] for c in self.cli_calls]
+        self.assertIn("tab-color", kinds)
+        self.assertNotIn("badge-color", kinds)
+        self.assertNotIn("badge-format", kinds)
+
+    def test_enabled_paints_badge(self):
+        self.beacon.apply({**_base_state(), "status": "working"})
+        kinds = [c[0] for c in self.cli_calls]
+        self.assertIn("badge-color", kinds)
+        self.assertIn("badge-format", kinds)
+
+
+class BadgeConfigToggle(unittest.TestCase):
+    """BADGE-15: _badge_enabled reads the user config's `badge` key (default
+    off). Loaded without BeaconTest's badge mock so the real gate runs."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_toggle_reads_config(self):
+        for val in ("on", "true", "1", "yes", True):
+            with mock.patch.object(self.beacon, "_load_config", return_value={"badge": val}):
+                self.assertTrue(self.beacon._badge_enabled(), val)
+        for cfg in ({}, {"badge": "off"}, {"badge": False}, {"badge": "no"}):
+            with mock.patch.object(self.beacon, "_load_config", return_value=cfg):
+                self.assertFalse(self.beacon._badge_enabled(), cfg)
+
+
+class TwoLineTitle(BeaconTest):
+    """TITLE-05: the tab / window-title Name carries the task on a second line
+    via beacon_task_nl (newline-prefixed), while BADGE_FORMAT stays a single
+    " · "-joined line."""
+
+    def test_title_format_uses_task_nl(self):
+        self.assertIn(r"\(user.beacon_task_nl)", self.beacon.TITLE_FORMAT)
+        self.assertNotIn(r"\(user.beacon_task)", self.beacon.TITLE_FORMAT)
+
+    def test_apply_publishes_newline_prefixed_task(self):
+        self.beacon.apply({**_base_state(), "task": "fix bug"})
+        self.assertIn(("uservar", "beacon_task_nl", "\n  fix bug"), self.cli_calls)
+
+    def test_empty_task_collapses(self):
+        self.beacon.apply({**_base_state(), "task": ""})
+        self.assertIn(("uservar", "beacon_task_nl", ""), self.cli_calls)
+
+
+class HybridBranchSlots(BeaconTest):
+    """STATUS-BAR-03 (#20): _publish_chips routes the branch to exactly one
+    slot — the de-emphasized default slot for the repo's default branch, else
+    the feature branch's sync-state slot — so the profile's fixed-color
+    components resolve to a single visible chip."""
+
+    def _publish(self, detected):
+        self.beacon._LAST_CHIP_PAIRS = None
+        with mock.patch.object(self.beacon, "_detect_branch_info", return_value=detected), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=("", "")):
+            self.beacon._publish_chips(Path("/x"))
+        batch = next(c for c in self.cli_calls if c[0] == "uservar-batch")
+        return dict(p.split("=", 1) for p in batch[1:])
+
+    def test_default_branch_fills_default_slot_only(self):
+        slots = self._publish(("main", "clean", "", "default"))
+        self.assertEqual(slots["beacon_branch_default"], "main")
+        self.assertEqual(slots["beacon_branch_clean"], "")
+        self.assertEqual(slots["beacon_branch_diverged"], "")
+        self.assertEqual(slots["beacon_branch_untracked"], "")
+
+    def test_feature_branch_routes_to_state_slot(self):
+        slots = self._publish(("↑1 topic", "diverged", "↑1", "feature"))
+        self.assertEqual(slots["beacon_branch_default"], "")
+        self.assertEqual(slots["beacon_branch_diverged"], "↑1 topic")
+        self.assertEqual(slots["beacon_branch_clean"], "")
+
+
+class HybridBranchProfileSlots(unittest.TestCase):
+    """STATUS-BAR-03: the profile carries one fixed-color branch component per
+    bucket — the default slot plus the three feature-state slots."""
+
+    def test_four_branch_slots_present(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
-        self.assertIn(
-            r"\(user.beacon_task)", template,
-            'profile.json.template "Badge Text" must reference user.beacon_task '
-            "to match BADGE_FORMAT",
-        )
+        for var in ("beacon_branch_default", "beacon_branch_clean",
+                    "beacon_branch_diverged", "beacon_branch_untracked"):
+            self.assertIn(rf"\\(user.{var})", template)
+
+
+class BranchIdentity(unittest.TestCase):
+    """STATUS-BAR-03 (#20): _detect_branch_info classifies the checked-out
+    branch as "default" (origin/HEAD, else main/master/trunk) or "feature" —
+    the axis the hybrid branch coloring routes on."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = tempfile.TemporaryDirectory()
+        self.addCleanup(self.repo.cleanup)
+        self._git("init", "-q", "-b", "main")
+        self._git("config", "user.email", "t@t.co")
+        self._git("config", "user.name", "t")
+        Path(self.repo.name, "f").write_text("a\n")
+        self._git("add", "f")
+        self._git("commit", "-qm", "init")
+        self._git("update-ref", "refs/remotes/origin/main", "main")
+        self._git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+
+    def _git(self, *args):
+        subprocess.run(["git", *args], cwd=self.repo.name, check=True,
+                       capture_output=True, text=True)
+
+    def test_default_branch_is_default(self):
+        *_rest, identity = self.beacon._detect_branch_info(Path(self.repo.name))
+        self.assertEqual(identity, "default")
+
+    def test_feature_branch_is_feature(self):
+        self._git("checkout", "-q", "-b", "topic")
+        *_rest, identity = self.beacon._detect_branch_info(Path(self.repo.name))
+        self.assertEqual(identity, "feature")
 
 
 class SessionAnchor(BeaconTest):

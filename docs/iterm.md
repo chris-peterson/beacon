@@ -169,14 +169,15 @@ beacon paints the badge, the status bar, and the tab color — and nothing else.
 
 beacon paints per-*profile* surfaces it fully controls (badge, status bar, colors). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
 
-The tab-color signal is tuned for a **tall left tab strip**. Four settings make that strip readable; set them in **iTerm2 → Preferences → Appearance**:
+The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable; set them in **iTerm2 → Preferences → Appearance**:
 
 | Setting | `defaults` key | Set to | Why it matters |
 |:---|:---|:---:|:---|
 | Tabs on the left | `TabViewType` | `2` | a left column is the natural home for a fleet; the tab color becomes a scannable strip (Appearance → Tabs) |
 | Larger tab labels | `UseCustomTabBarFontSize` + `CustomTabBarFontSize` | `on` + `18` | default labels are unreadably small in a left strip (Appearance → Tabs) |
-| Taller tabs | `DefaultTabBarHeight` | `60` | gives the color signal more area to register at a glance (Appearance → Tabs) |
+| Taller tabs | `DefaultTabBarHeight` | `90` | gives the two-line project/task label room to show both lines (Appearance → Tabs) |
 | Status bar at the bottom | `StatusBarPosition` | `1` | keeps the status strip clear of the top-right badge (Appearance → General) |
+| HTML tab titles | `HTMLTabTitles` | `on` | renders the bold project accent in the two-line tab label (Appearance → Tabs) |
 
 Audit your current setup at any time — it reports only what differs and writes nothing:
 
