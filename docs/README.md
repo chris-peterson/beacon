@@ -9,7 +9,111 @@ beacon surfaces what every session is doing — which project, what task, and wh
 
 A glance across the windows tells you which session needs you:
 
-<div class="cw-session" data-cw-session="session"></div>
+<!--
+  Bespoke fleet figure drawn in HTML from the spec palette (BADGE_COLOR_PALETTE,
+  THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
+  no macOS/iTerm2. Same hues and idioms as the .bcn figures on /iterm and /palette
+  — keep the hexes in sync with scripts/beacon. The play-by-play narrative it
+  replaces still lives in plugin.yml's suite.session (read by the marketplace hub).
+-->
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+.fleet {
+  --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
+  --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290; --sep: #7e8290;
+  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --cyan: #8be9fd; --green: #50fa7b;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  margin: 1.4rem 0 1.75rem;
+  padding: 1.35rem 1.3rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background:
+    radial-gradient(130% 130% at 88% -20%, rgba(255,85,85,0.13), transparent 52%),
+    radial-gradient(120% 130% at 4% 118%, rgba(139,233,253,0.06), transparent 48%),
+    linear-gradient(180deg, #262735, var(--ground));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 26px 64px -22px rgba(0,0,0,0.65);
+}
+.fleet-head { display: flex; align-items: baseline; gap: 0.65rem; flex-wrap: wrap; margin: 0 0.15rem 1.05rem; }
+.fleet-head .k { font: 600 0.68rem/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
+.fleet-head .h { font: 400 0.9rem/1.4 var(--mono); color: var(--muted); }
+.fleet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+@media (max-width: 620px) { .fleet-grid { grid-template-columns: 1fr; } }
+.fl-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--sep);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 0.85rem 0.9rem 0.95rem;
+  animation: fl-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.fl-card:nth-child(1) { animation-delay: 0.05s; }
+.fl-card:nth-child(2) { animation-delay: 0.15s; }
+.fl-card:nth-child(3) { animation-delay: 0.25s; }
+@keyframes fl-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.fl-top { display: flex; align-items: center; gap: 0.5rem; }
+.fl-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(255,255,255,0.03); }
+.fl-proj { font: 700 0.98rem/1.2 var(--mono); color: var(--fg); white-space: nowrap; }
+.fl-win { margin-left: auto; font: 500 0.66rem/1 var(--mono); letter-spacing: 0.06em; color: var(--faint); text-transform: uppercase; }
+.fl-task { margin-top: 0.5rem; font: 400 0.82rem/1.35 var(--mono); color: var(--muted); }
+.fl-task b { font-weight: 400; color: var(--faint); }
+.fl-foot { margin-top: 0.7rem; display: flex; align-items: center; gap: 0.5rem; }
+.fl-branch { font: 400 0.72rem/1 var(--mono); color: var(--cyan); }
+.fl-state { margin-left: auto; font: 600 0.68rem/1 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.fl-card.busy    { border-left-color: var(--busy); }
+.fl-card.busy .fl-dot   { background: var(--busy); }
+.fl-card.busy .fl-state { color: var(--busy); }
+.fl-card.ready   { opacity: 0.9; }
+.fl-card.ready .fl-dot   { background: var(--ready); }
+.fl-card.ready .fl-state { color: var(--ready); }
+.fl-card.blocked {
+  border-left-color: var(--blocked);
+  background:
+    linear-gradient(180deg, rgba(255,85,85,0.10), rgba(255,85,85,0.03)),
+    var(--panel);
+  box-shadow: 0 0 0 1px rgba(255,85,85,0.35), 0 14px 34px -12px rgba(255,85,85,0.4);
+}
+.fl-card.blocked .fl-dot   { background: var(--blocked); animation: fl-pulse 1.8s ease-in-out infinite; }
+.fl-card.blocked .fl-state { color: var(--blocked); }
+.fl-card.blocked .fl-branch { color: var(--busy); }
+@keyframes fl-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,85,85,0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(255,85,85,0); }
+}
+.fl-here { margin-left: auto; padding: 0.12em 0.46em; border-radius: 5px; font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ground); background: var(--busy); white-space: nowrap; }
+.fl-cap { margin: 1.05rem 0.2rem 0; font-size: 0.86rem; line-height: 1.55; color: var(--muted); }
+.fl-cap b { color: var(--fg); font-weight: 600; }
+.fl-cap .red { color: var(--blocked); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  .fl-card { animation: none; }
+  .fl-card.blocked .fl-dot { animation: none; }
+}
+</style>
+
+<div class="fleet">
+  <div class="fleet-head">
+    <span class="k">Your fleet</span>
+    <span class="h">three windows · one wants you</span>
+  </div>
+  <div class="fleet-grid">
+    <div class="fl-card busy">
+      <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">widgets-web</span><span class="fl-here">you're here</span></div>
+      <div class="fl-task">refactor the cart drawer</div>
+      <div class="fl-foot"><span class="fl-branch">feat/cart-drawer</span><span class="fl-state">working</span></div>
+    </div>
+    <div class="fl-card ready">
+      <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">auth-svc</span><span class="fl-win">win 2</span></div>
+      <div class="fl-task"><b>idle — waiting for a prompt</b></div>
+      <div class="fl-foot"><span class="fl-branch">main</span><span class="fl-state">at rest</span></div>
+    </div>
+    <div class="fl-card blocked">
+      <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">checkout-api</span><span class="fl-win">win 3</span></div>
+      <div class="fl-task">rebase on main — <b>merge conflict in the refund handler</b></div>
+      <div class="fl-foot"><span class="fl-branch">fix/refunds</span><span class="fl-state">needs you</span></div>
+    </div>
+  </div>
+  <p class="fl-cap">You're heads-down in <b>widgets-web</b>. Meanwhile <b>checkout-api</b> went <span class="red">red</span> and has been waiting the whole time — the color pulls your eye before you think to check.</p>
+</div>
 
 > [!TIP]
 > Want to see it first? [Try the demo](/demo) — one command seeds a fictional fleet and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
@@ -110,9 +214,79 @@ Then run `claude` in that tab and type any prompt:
 
 ## Usage
 
-Labeling a pane and scanning the fleet, in motion:
+The label and status commands paint the pane's badge — the same traffic-light colors the [fleet view](/demo) uses. Here's what each one produces:
 
-<div class="cw-session" data-cw-session="examples"></div>
+<!--
+  Bespoke command→badge figure in the spec palette (BADGE_COLOR_PALETTE), same
+  idioms as the .fleet figure above and the .bcn figures on /iterm and /palette.
+  Replaces the generic animated session player; the play-by-play it showed still
+  lives in plugin.yml's suite.examples (read by the marketplace hub).
+-->
+<style>
+.cmdfig {
+  --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
+  --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290;
+  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4; --cyan: #8be9fd;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  margin: 1.3rem 0 1.6rem;
+  padding: 0.4rem 1.15rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #262735, var(--ground));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 22px 54px -24px rgba(0,0,0,0.6);
+}
+.cf-row { display: grid; grid-template-columns: minmax(0, 1fr) 1.4rem minmax(0, 1.15fr); align-items: center; gap: 0.65rem 0.9rem; padding: 0.9rem 0; }
+.cf-row + .cf-row { border-top: 1px solid rgba(139,233,253,0.09); }
+@media (max-width: 560px) {
+  .cf-row { grid-template-columns: 1fr; justify-items: start; gap: 0.4rem; }
+  .cf-arrow { display: none; }
+}
+.cf-cmd {
+  font: 500 0.8rem/1.5 var(--mono) !important;
+  color: var(--cyan) !important;
+  background: linear-gradient(rgba(139,233,253,0.08), rgba(139,233,253,0.08)), var(--ground) !important;
+  border: 1px solid var(--line);
+  padding: 0.4em 0.6em !important;
+  border-radius: 7px;
+  white-space: normal !important;
+  overflow-wrap: break-word;
+}
+.cf-arrow { color: var(--faint); font: 400 1.05rem/1 var(--mono); text-align: center; }
+.cf-out { display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; }
+.cf-badge { font: 700 1.05rem/1.15 var(--mono); white-space: nowrap; }
+.cf-badge .t { font-weight: 400; opacity: 0.9; }
+.cf-badge.ready { color: var(--ready); }
+.cf-badge.blocked { color: var(--blocked); }
+.cf-badge.paused { color: var(--paused); }
+.cf-cap { font: 400 0.78rem/1.4 var(--mono); color: var(--muted); }
+</style>
+
+<div class="cmdfig">
+  <div class="cf-row">
+    <code class="cf-cmd">/beacon:beacon set task perms</code>
+    <span class="cf-arrow">→</span>
+    <span class="cf-out">
+      <span class="cf-badge ready">ai-sdlc<span class="t"> : perms</span></span>
+      <span class="cf-cap">labeled — neutral gray while idle</span>
+    </span>
+  </div>
+  <div class="cf-row">
+    <code class="cf-cmd">/beacon:beacon status waiting "bg refresh"</code>
+    <span class="cf-arrow">→</span>
+    <span class="cf-out">
+      <span class="cf-badge blocked">ai-sdlc<span class="t"> : perms</span></span>
+      <span class="cf-cap">you flag yourself waiting — the badge goes red</span>
+    </span>
+  </div>
+  <div class="cf-row">
+    <code class="cf-cmd">/beacon:pause "lunch"</code>
+    <span class="cf-arrow">→</span>
+    <span class="cf-out">
+      <span class="cf-badge paused">ai-sdlc<span class="t"> : perms</span></span>
+      <span class="cf-cap">parked — the pane dims to purple</span>
+    </span>
+  </div>
+</div>
 
 Inside Claude Code:
 

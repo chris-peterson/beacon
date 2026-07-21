@@ -65,8 +65,8 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-tab i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
 .bcn-tab .t { font-weight: 400; color: var(--identity); }
 .bcn-tab.ready { border-left-color: var(--ready); } .bcn-tab.ready i { background: var(--ready); }
-.bcn-tab.busy { border-left-color: var(--busy); background: rgba(255,184,108,0.10); } .bcn-tab.busy i { background: var(--busy); }
-.bcn-tab.blocked { border-left-color: var(--blocked); background: rgba(255,85,85,0.12); } .bcn-tab.blocked i { background: var(--blocked); }
+.bcn-tab.busy { border-left-color: var(--busy); background: linear-gradient(rgba(255,184,108,0.13), rgba(255,184,108,0.13)), var(--body); } .bcn-tab.busy i { background: var(--busy); }
+.bcn-tab.blocked { border-left-color: var(--blocked); background: linear-gradient(rgba(255,85,85,0.16), rgba(255,85,85,0.16)), var(--body); } .bcn-tab.blocked i { background: var(--blocked); }
 .bcn-tab.paused { border-left-color: var(--paused); } .bcn-tab.paused i { background: var(--paused); }
 .bcn-tabcol .cap { flex: 1 1 12rem; font-size: 0.9rem; color: #cdd2e6; line-height: 1.5; align-self: center; }
 </style>
