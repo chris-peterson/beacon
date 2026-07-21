@@ -281,8 +281,7 @@ def cmd_set_name(args):
 # live left-tabs plist, iTerm2 3.6.10). beacon writes no iTerm2 pref — the
 # no-`defaults write` boundary that keeps it clear of the plist-cache trap — so
 # `configure` only audits and names each value for the user to set in
-# Preferences → Appearance. HTMLTabTitles is deliberately absent: it serves
-# tab-title *content*, still a non-goal, not the tab-color signal's legibility.
+# Preferences → Appearance.
 RECOMMENDED_LAYOUT = (
     {"key": "TabViewType", "want": "2", "type": "int", "label": "Tabs on the left",
      "why": "a tall left strip is the natural home for a fleet of sessions; "
@@ -296,13 +295,17 @@ RECOMMENDED_LAYOUT = (
      "label": "Tab-label font size",
      "why": "default labels are unreadably small in a left strip",
      "where": "Appearance → Tabs"},
-    {"key": "DefaultTabBarHeight", "want": "60", "type": "float", "label": "Taller tabs",
-     "why": "gives the color signal more area to read at a glance",
+    {"key": "DefaultTabBarHeight", "want": "90", "type": "float", "label": "Taller tabs",
+     "why": "gives the two-line project/task label room to show both lines",
      "where": "Appearance → Tabs"},
     {"key": "StatusBarPosition", "want": "1", "type": "int",
      "label": "Status bar at the bottom",
      "why": "keeps the status strip clear of the top-right badge",
      "where": "Appearance → General"},
+    {"key": "HTMLTabTitles", "want": "1", "type": "bool",
+     "label": "HTML tab titles (on)",
+     "why": "renders the <b> project accent in the two-line tab label",
+     "where": "Appearance → Tabs"},
 )
 
 

@@ -62,6 +62,19 @@ Everyday development. There's no mode background — the pane stays your own pro
 
 The badge text is the project name (plus `: <task>` when a task is set). The hooks own these three transitions; you never set them by hand.
 
+## branch — the status-bar chip
+
+The branch chip in the status bar reads by a **hybrid of identity and sync state**. The repo's default branch (`origin/HEAD`, else `main` / `master` / `trunk`) is de-emphasized whatever its state, so a feature branch is the one that stands out — and reads by how it sits against its upstream:
+
+| Branch | Color | Hex |
+|:---|:---|:---|
+| default (main/master/trunk) | slate, de-emphasized | `#6272a4` |
+| feature — synced | cyan | `#8be9fd` |
+| feature — diverged (ahead/behind) | yellow | `#f1fa8c` |
+| feature — untracked (no upstream) | orange | `#ffb86c` |
+
+Green is absent here too — it stays reserved for [`release`](#mode-cycles). The color is a Dracula hue in every case; the four are published as separate user-var slots so the profile resolves the one that applies without any conditional logic.
+
 ## Mode cycles
 
 The four mode cycles are ones you (or a skill) declare. Each swaps the pane into its own dynamic profile for a whole-pane background the badge color alone can't express — a distinct color plus a faint slate watermark — and each carries **no badge glyph**: the pane background and badge color are the entire cue. They persist until you `resume` (only `pause` also lifts automatically, on your next prompt).
