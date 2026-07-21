@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.26.0
+
+## What's Changed
+* Adopt shipyard for build tooling and CI by @chris-peterson in https://github.com/chris-peterson/beacon/pull/16
+* Re-sync describe: annotate hook tool matchers by @chris-peterson in https://github.com/chris-peterson/beacon/pull/17
+* Recommend and apply the iTerm2 fleet layout by @chris-peterson in https://github.com/chris-peterson/beacon/pull/21
+* Split render model: land the stock-iTerm2 wins by @chris-peterson in https://github.com/chris-peterson/beacon/pull/24
+
+
+**Full Changelog**: https://github.com/chris-peterson/beacon/compare/v1.25.0...v1.26.0
+
 ## 1.25.0
 
 ### Features
