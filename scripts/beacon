@@ -2204,6 +2204,9 @@ def _focus_session(sh: str) -> tuple[bool, str]:
     return True, "focused"
 
 
+POST_BODY_MAX = 64 * 1024
+
+
 def wip_http_server(port: int):
     """Build (don't start) the localhost fleet server, bound to 127.0.0.1 only.
 
@@ -2279,6 +2282,30 @@ def wip_http_server(port: int):
             # own name in Host).
             host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
             return host.strip("[]").lower() in ("127.0.0.1", "localhost", "::1")
+
+        def _read_body(self) -> bytes:
+            # Every POST reply path reads the body first, the rejections
+            # included: HTTP/1.0 closes the connection after each response, and
+            # closing a socket that still holds unread bytes makes Windows
+            # abort it (WinError 10053) instead of delivering what was written
+            # — so a 403 sent over an undrained buffer reaches the caller as a
+            # connection error rather than as the rejection FOCUS-04 /
+            # FORGET-03 specify. Reading at the top of do_POST rather than per
+            # reply path is deliberate: an early return added later can't forget
+            # the drain. The payload is one small JSON object, so the cap is far
+            # above anything legitimate — a caller declaring more than that has
+            # its body left partly unread and gets the abort, which is the same
+            # answer as the 400 its payload would earn.
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return b""
+            if length <= 0:
+                return b""
+            try:
+                return self.rfile.read(min(length, POST_BODY_MAX))
+            except OSError:
+                return b""
 
         def _send_icon(self, sh: str) -> None:
             # The path segment is only ever a state-file lookup key; constrain
@@ -2394,6 +2421,7 @@ def wip_http_server(port: int):
         def do_POST(self):
             origin = self.headers.get("Origin") or ""
             path = urlparse(self.path).path
+            raw = self._read_body()
             if path not in ("/focus", "/forget"):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
@@ -2401,10 +2429,8 @@ def wip_http_server(port: int):
                 self._send(403, json.dumps({"error": "forbidden"}), origin or "*")
                 return
             try:
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length else b""
                 sh = (json.loads(raw or b"{}").get("hash") or "").strip()
-            except (ValueError, OSError):
+            except (ValueError, AttributeError):
                 sh = ""
             if path == "/focus":
                 ok, msg = _focus_session(sh)

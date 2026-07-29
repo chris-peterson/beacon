@@ -40,6 +40,27 @@ def _load_beacon(data_dir: Path):
     return module
 
 
+class _CountingReader:
+    """Delegating `rfile` wrapper that records the size of each `read`.
+
+    The request line and headers are parsed with `readline`, so a recorded
+    `read` is a body read — which is what lets a test see whether a reply path
+    consumed the request body before responding.
+    """
+
+    def __init__(self, inner, reads: list):
+        self._inner = inner
+        self._reads = reads
+
+    def read(self, *args):
+        data = self._inner.read(*args)
+        self._reads.append(len(data))
+        return data
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
 class _WipBase(unittest.TestCase):
     """Shared fixture for the wip/serve suites: a fresh tempdir DATA_DIR, tack
     correlation isolated from the developer's real ~/.tack, and helpers to
@@ -893,9 +914,16 @@ class ForgetTest(unittest.TestCase):
             self.beacon.cmd_forget(types.SimpleNamespace(hash="../x"))
         self.assertEqual(cm.exception.code, 2)
 
-    def _start_server(self):
+    def _start_server(self, body_reads: list = None):
         server = self.beacon.wip_http_server(0)
         self.addCleanup(server.server_close)
+        if body_reads is not None:
+            class _Spy(server.RequestHandlerClass):
+                def setup(self):
+                    super().setup()
+                    self.rfile = _CountingReader(self.rfile, body_reads)
+
+            server.RequestHandlerClass = _Spy
         threading.Thread(target=server.handle_request, daemon=True).start()
         return server.server_address[1]
 
@@ -924,6 +952,33 @@ class ForgetTest(unittest.TestCase):
             self._post_forget(port, origin="https://evil.example")
         self.assertEqual(cm.exception.code, 403)
         self.assertTrue(list(self.state_dir.glob("abcdef01.*")))  # not deleted
+
+    def test_forget_route_rejects_a_non_object_payload(self):
+        # A JSON body that isn't an object has no `hash` to look up. It earns a
+        # 400, not a torn-down connection — the handler answers every request it
+        # accepts, including the ill-formed ones.
+        port = self._start_server()
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/forget", data=b'"not-an-object"', method="POST")
+        req.add_header("Content-Type", "application/json")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3)
+        self.assertEqual(cm.exception.code, 400)
+
+    def test_rejected_post_reads_the_body_it_refuses(self):
+        # FORGET-03 / FOCUS-04 require the rejection to reach the caller. The
+        # response is written and the connection then closes, so the body has to
+        # be consumed first: closing a socket that still holds unread bytes
+        # makes Windows abort it, and the caller sees a connection error where
+        # the 403 should be.
+        self._write("abcdef01", "anchor.project", "p")
+        body_reads: list = []
+        port = self._start_server(body_reads)
+        sent = json.dumps({"hash": "abcdef01"}).encode()  # what _post_forget sends
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._post_forget(port, origin="https://evil.example")
+        self.assertEqual(cm.exception.code, 403)
+        self.assertEqual(body_reads, [len(sent)])
 
 
 if __name__ == "__main__":
