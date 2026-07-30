@@ -172,7 +172,7 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), and `description`. Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
+**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), `description`, and the accumulated `deliverables` (STATUSLINE-03, whose list is scoped to one Claude session). Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
 
 **HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_full`, the six `beacon_branch*` slots), the `cwd-<pane-guid>.txt` handoff file, and the persisted `resolved.url` / `resolved.url_label` from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
 
@@ -659,6 +659,14 @@ The status line shall **not** call `resolve_url` — it renders per prompt, and 
 
 Because the link is single-sourced, terminal-agnostic, and clickable, the `↖ web` status-bar action button and its `url-<pane-guid>.txt` handoff file are **retired** — the dual-source design behind #5 is removed rather than patched. `beacon open-url` / `copy-url` (CMD-14) remain the shell-side path, for a pane not running Claude.
 
+**STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) captured *before* the deliverable suffix is appended to the chip. Branch and repo URLs are not deliverables and shall record nothing.
+
+The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it, so the tail is always the deliverable the session is on now. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped — the row shares one line with the pause reason, so an unbounded list would wrap.
+
+The status line shall render the list as its link segment: each entry its own OSC-8 link, comma-separated, **bare** (`#4`) when the entry's `project` matches the session's and **qualified** (`otherproj:#4`) when it does not, with the qualifier taken as the repo segment of the forge identity so both sides of the comparison derive the same way. The last entry shall be emphasized (bold) so the row answers "what am I on *now*" as well as "where have I been". A session that has touched no deliverable falls back to the single resolved URL of STATUSLINE-02 — the same rendering with one element.
+
+The footer is the home rather than an iTerm2 status-bar segment: the refs are only useful if you can click through to them, which the strip cannot do (§6.10 caveat 3), and the footer carries them in any terminal.
+
 ---
 
 ## 5. Non-functional Requirements (NFR)
@@ -744,7 +752,11 @@ state/<session-hash>.description
 state/<session-hash>.pending-attention
 state/<session-hash>.latest_turn        # WIP-11: most recent turn {role,text,at} for the fleet view
 state/<session-hash>.iterm_session_id   # FOCUS-02: iTerm2 session GUID (focus handle)
-state/<session-hash>.resolved
+state/<session-hash>.resolved           # badge snapshot {project,task,status} (STATE-03)
+state/<session-hash>.resolved.url       # STATUSLINE-02: PROV-07's URL, persisted so the row never re-resolves
+state/<session-hash>.resolved.url_label # STATUSLINE-02: its display label (the link text)
+state/<session-hash>.resolved.project   # STATUSLINE-03: forge identity, for bare-vs-qualified refs
+state/<session-hash>.deliverables       # STATUSLINE-03: [{ref,url,project}] this session has touched
 ```
 
 Session hash is SHA-1 (truncated to 12–16 chars — collisions are not a security concern) of the session seed. On iTerm2 the seed is the pane **GUID** (the segment of `$ITERM_SESSION_ID` after the last colon), which is stable for the pane's life; the full `$ITERM_SESSION_ID` is *not* — iTerm2 rewrites its `wNtNpN` positional prefix when a pane is moved between windows, tabs, or splits, so seeding on the full id fragmented a pane's state into a fresh bucket on each move. Off iTerm2 the seed is `claude-session:$CLAUDE_CODE_SESSION_ID` (kept whole), then the tty name, then `default`.

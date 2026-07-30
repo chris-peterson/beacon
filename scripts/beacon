@@ -2889,6 +2889,34 @@ def _deliverable_suffix(url: str) -> str:
     return ""
 
 
+DELIVERABLES_MAX = 8
+
+
+def _record_deliverable(ref: str, url: str, project_id: str) -> None:
+    """STATUSLINE-03: append a deliverable the session has touched. Deduped on
+    URL, and a re-touch moves the entry to the end — the tail is "what I'm on
+    now", which is what the status line emphasizes. Capped at DELIVERABLES_MAX,
+    oldest dropped: the row shares a line with the pause reason, and a session
+    that has crossed a dozen deliverables is better served by the older ones
+    ageing out than by a row that wraps."""
+    entries = [e for e in read_state_json("deliverables", [])
+               if isinstance(e, dict) and e.get("url") != url]
+    entries.append({"ref": ref, "url": url, "project": project_id})
+    write_state("deliverables", json.dumps(entries[-DELIVERABLES_MAX:]))
+
+
+def _qualify_deliverable(entry: dict, project_id: str) -> str:
+    """`#42` for a deliverable in `project_id`, `otherproj:#42` for one
+    elsewhere. The qualifier is the repo segment of the forge identity
+    (`gh:acme/widgets` → `widgets`), so both sides of the comparison are
+    derived the same way and a rename can't make a local ref read as foreign."""
+    ref = entry.get("ref", "")
+    owner = entry.get("project", "")
+    if not owner or owner == project_id:
+        return ref
+    return f"{owner.rsplit('/', 1)[-1]}:{ref}"
+
+
 def _project_full_at(cwd: Path) -> str:
     """Abbreviated remote identity, e.g. `gh:owner/repo`. Empty when there's
     no project or no remote. Mirrors shell's `_beacon_project_full`."""
@@ -2946,8 +2974,13 @@ def _publish_chips(cwd: Path) -> None:
     display, state, _ind, identity = _detect_branch_info(cwd)
     url, label = resolve_url(cwd)
 
+    # The bare forge identity, captured before the deliverable suffix is
+    # appended — it's what qualifies a deliverable as this project's or
+    # another's (STATUSLINE-03).
+    project_id = project_full
+    ref = _deliverable_suffix(url)
     if project_full:
-        project_full = f"{project_full}{_deliverable_suffix(url)}"
+        project_full = f"{project_full}{ref}"
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
     # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
@@ -2981,6 +3014,9 @@ def _publish_chips(cwd: Path) -> None:
     # by the renderer and holds project/task/status.
     write_state("resolved.url", url)
     write_state("resolved.url_label", label)
+    write_state("resolved.project", project_id)
+    if ref:
+        _record_deliverable(ref, url, project_id)
 
     key = _iterm_cache_key()
     if key:
@@ -3876,6 +3912,11 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("latest_turn")
     remove_state("latest_turn_full")
     remove_state("title_reasserted")
+    # STATUSLINE-03: the accumulated list is scoped to one Claude session, but
+    # the state keys on the pane — without this, a fresh session inherits the
+    # previous tenant's deliverables and the footer credits it with work it
+    # never touched.
+    remove_state("deliverables")
     _clear_cc_signals()
     _clear_description()
 
@@ -3926,15 +3967,30 @@ def _statusline_pause_segment() -> str:
 
 
 def _statusline_link_segment() -> str:
-    """STATUSLINE-02: the session's resolved URL (PROV-07) as a clickable
-    OSC-8 link, labelled the way the project chip labels it. Reads the value
-    `_publish_chips` persisted rather than re-resolving — the row renders per
-    prompt, and `resolve_url` shells to git and can shell to `gh`/`glab`."""
-    url = read_state("resolved.url")
-    if not url:
-        return ""
-    label = read_state("resolved.url_label") or url
-    return f"\033[{STATUSLINE_LINK_COLOR}m{_osc8(url, label)}\033[0m"
+    """STATUSLINE-02/03: the deliverables this session has touched, each a
+    clickable OSC-8 link — bare (`#4`) for this project, qualified
+    (`otherproj:#75`) for another — with the most recent last and bold, so the
+    row still answers "what am I on *now*" as well as "where have I been".
+
+    A session that has touched no deliverable falls back to the single resolved
+    URL (a branch or repo page), which is the same rendering with one element.
+
+    Reads only what `_publish_chips` persisted; never re-resolves — the row
+    renders per prompt, and `resolve_url` shells to git and can shell to
+    `gh`/`glab`."""
+    entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    if entries:
+        project_id = read_state("resolved.project") or ""
+        links = [_osc8(e.get("url", ""), _qualify_deliverable(e, project_id))
+                 for e in entries]
+        links[-1] = f"\033[1m{links[-1]}\033[22m"
+        body = ", ".join(links)
+    else:
+        url = read_state("resolved.url")
+        if not url:
+            return ""
+        body = _osc8(url, read_state("resolved.url_label") or url)
+    return f"\033[{STATUSLINE_LINK_COLOR}m{body}\033[0m"
 
 
 def cmd_statusline(_args):

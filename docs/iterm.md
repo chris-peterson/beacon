@@ -166,11 +166,13 @@ The deliverable comes from [tack](https://github.com/chris-peterson/tack) when i
 
 Claude Code renders a footer row from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.
 
-The row carries the session's resolved URL as a clickable link (the same URL the project chip identifies), and, while the session is paused, the reason you parked it:
+The row carries the deliverables this session has touched, each a clickable link, and — while the session is paused — the reason you parked it:
 
 ```text
-⏸ waiting on CI · acme/widgets#42
+⏸ waiting on CI · !3, #4, otherproj:#75
 ```
+
+Refs in the current project render bare (`#4`); refs elsewhere are qualified with the project (`otherproj:#75`), so a session that crosses repos still reads unambiguously. The most recent is bold, so the row answers "what am I on right now" as well as "where have I been". A session that hasn't touched a deliverable yet shows the branch or repo page instead.
 
 `beacon install` prints the `settings.json` block to add; it doesn't edit the file for you. Whether the link is actually clickable is your terminal's call — iTerm2, WezTerm, kitty, Windows Terminal, and recent VTE all render it.
 

@@ -13,6 +13,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -1194,6 +1195,58 @@ class ResolvedUrlPersistence(BeaconTest):
                          "https://gh.test/acme/widget/tree/b")
 
 
+class DeliverableAccumulation(BeaconTest):
+    """STATUSLINE-03: _publish_chips records each deliverable the URL resolver
+    lands on, so the status line can show what the session has crossed. Only
+    forge issue/PR/MR URLs count — a branch or repo page is not a deliverable."""
+
+    def _publish(self, url, project_full="gh:acme/widgets"):
+        self.beacon._LAST_CHIP_SIGNATURE = None
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
+            self.beacon._publish_chips(Path("/x"))
+
+    def _refs(self):
+        return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def test_deliverable_url_is_recorded(self):
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self._refs(), ["#42"])
+
+    def test_gitlab_mr_records_bang_ref(self):
+        self._publish("https://gitlab.com/acme/widgets/-/merge_requests/17")
+        self.assertEqual(self._refs(), ["!17"])
+
+    def test_branch_url_records_nothing(self):
+        self._publish("https://github.com/acme/widgets/tree/main")
+        self.assertEqual(self._refs(), [])
+
+    def test_project_identity_is_stored_without_the_suffix(self):
+        # The stored identity is what qualification compares against; carrying
+        # the `#42` suffix would make every later ref read as foreign.
+        self._publish("https://github.com/acme/widgets/pull/42")
+        entry = self.beacon.read_state_json("deliverables", [])[0]
+        self.assertEqual(entry["project"], "gh:acme/widgets")
+        self.assertEqual(self.beacon.read_state("resolved.project"), "gh:acme/widgets")
+
+    def test_crossing_projects_accumulates_both(self):
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self._publish("https://github.com/other/otherproj/issues/75",
+                      project_full="gh:other/otherproj")
+        self.assertEqual(self._refs(), ["#42", "#75"])
+
+    def test_fresh_start_drops_the_previous_tenant_list(self):
+        # State keys on the pane, which outlives a Claude session. Without the
+        # wipe, a fresh session's footer credits it with the prior session's
+        # deliverables.
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertEqual(self._refs(), [])
+
+
 class WebButtonRetired(unittest.TestCase):
     """STATUS-BAR-02: the `↖ web` action chip and the handoff file it read are
     gone from the profile — the status line carries the URL (STATUSLINE-02)."""
@@ -2208,6 +2261,63 @@ class StatusLineProvider(BeaconTest):
         url = "https://github.com/acme/widgets"
         self.beacon.write_state("resolved.url", url)
         self.assertIn(f"\033]8;;{url}\a{url}\033]8;;\a", self._run())
+
+    def _visible(self, row):
+        """Strip OSC-8 wrappers and SGR so assertions read like the rendered row."""
+        return re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", row).rstrip("\n")
+
+    def _touch(self, ref, url, project):
+        self.beacon._record_deliverable(ref, url, project)
+
+    def test_deliverables_render_bare_and_qualified(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("!3", "https://x.test/w/mr/3", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
+        self.assertEqual(self._visible(self._run()), "!3, #4, otherproj:#75")
+
+    def test_each_deliverable_is_its_own_link(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
+        out = self._run()
+        self.assertIn("\033]8;;https://x.test/w/issues/4\a#4", out)
+        self.assertIn("\033]8;;https://x.test/o/issues/75\aotherproj:#75", out)
+
+    def test_most_recent_is_emphasized(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
+        out = self._run()
+        # Bold opens immediately before the last link and closes after it, so the
+        # row answers "what am I on now" as well as "where have I been".
+        self.assertIn("\033[1m\033]8;;https://x.test/w/issues/9\a#9", out)
+        self.assertNotIn("\033[1m\033]8;;https://x.test/w/issues/4", out)
+
+    def test_retouch_moves_to_the_end_without_duplicating(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._visible(self._run()), "#9, #4")
+
+    def test_oldest_drops_past_the_cap(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        for n in range(self.beacon.DELIVERABLES_MAX + 3):
+            self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
+        entries = self.beacon.read_state_json("deliverables", [])
+        self.assertEqual(len(entries), self.beacon.DELIVERABLES_MAX)
+        self.assertEqual(entries[0]["ref"], "#3")   # #0..#2 aged out
+        self.assertEqual(entries[-1]["ref"], f"#{self.beacon.DELIVERABLES_MAX + 2}")
+
+    def test_deliverables_supersede_the_single_url(self):
+        # A branch-tree URL resolves while the session has already touched a
+        # deliverable — the accumulated work is the more useful answer.
+        self.beacon.write_state("resolved.url", "https://x.test/w/tree/main")
+        self.beacon.write_state("resolved.url_label", "acme/widgets")
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._visible(self._run()), "#4")
 
     def test_pause_reason_and_link_share_one_row(self):
         self.beacon.write_state("override.status", "paused")
