@@ -1,22 +1,29 @@
 # beacon — Spec Coverage Status
 
-Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
+Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-07-08
-**Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.21.0
-**Coverage:** 158 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
-1.21.0 adds the TITLE (§4.8 window title) and DUMP (export/import) domains and
-folds `/rename` into the task chain (PROV-02).
+**Last audit:** 2026-07-30
+**Spec version:** v2 (root-level, `SPEC.md`)
+**Coverage:** 164 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
+(the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
+deliverables) join STATUSLINE-01, STATUS-BAR-02 sheds the `↖ web` chip, and
+STATUS-BAR-07 makes the `↗ code` editor configurable. CMD-19/20/22 retire into
+a single CMD-18 (`/beacon:session-mode`).
 
-> **Partial hand-reconciliation (2026-07-08).** `/sextant:spec-status` is
-> model-invocation-disabled, so this pass was done by hand: the TITLE and DUMP
-> rows below were added and the header bumped to 1.21.0. A full `spec-status`
-> pass is still owed — the per-domain row counts predate this and don't tally to
-> 158 (the `PERF-01..04` row has no matching spec IDs, and the `CLI` row count is
-> one short of the spec's CLI defs). Headline count is the authoritative spec ID
-> total; the row-level bookkeeping needs the tool.
+The plugin version is **not** recorded here: the release workflow bumps
+`plugin.yml` / `.claude-plugin/plugin.json` when a GitHub Release is published,
+so a hand-written version in this file goes stale the moment CI runs.
+
+> **Partial hand-reconciliation (2026-07-30).** `/sextant:spec-status` is
+> model-invocation-disabled, so this pass was done by hand: the STATUSLINE row
+> was added and the STATUS-BAR / CMD rows updated for 2.0. The headline count is
+> a direct count of `**ID.**` definitions in `SPEC.md` and is authoritative. A
+> full `spec-status` pass is still owed for the per-domain row counts, which
+> predate this and don't tally (the `PERF-01..04` row has no matching spec IDs;
+> the `CLI` row is one short of the spec's CLI defs; the `BADGE` row still calls
+> BADGE-15 retired, but the id was reused for the opt-in badge gate and is live).
 
 Status (`signal.status`) has seven values, organized into **SDLC cycles**
 (STATE-13): the **dev** cycle — `idle` / `working` / `waiting` — maps to the
@@ -64,7 +71,8 @@ a mode state swaps into its profile for a background a color OSC can't express
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
 | TITLE-01..04 | 4 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write |
-| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles) |
+| STATUS-BAR-01..03, 05..07 (gap 04) | 6 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 lost the `↖ web` chip in 2.0 (the status line carries the URL, STATUSLINE-02) leaving two action chips; STATUS-BAR-07 is the configurable `↗ code` editor (`code_app` / `code_args` read at click time, launched via `cmd_open_code` through an absolute interpreter path — issue #25) |
+| STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26); STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18) |
 | RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
 | THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed) |

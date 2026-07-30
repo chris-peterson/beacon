@@ -77,7 +77,7 @@ beacon ships as three discrete deliverables. Section 3 organizes requirements ar
 
 | ID  | Deliverable | Form | Owns |
 |:---|:---|:---|:---|
-| **D1** | This specification | `docs/spec.md`, served via the docsify site | Requirements, architecture, scope. |
+| **D1** | This specification | `SPEC.md`, copied to `docs/spec.md` at docs-build time and served as `/spec` | Requirements, architecture, scope. |
 | **D2** | `beacon-iterm` CLI | A standalone executable on `$PATH` | Translating subcommands into iTerm2 control operations — escape sequences for painted surfaces, Apple Events for out-of-band actions like focus. Stateless; no Claude awareness. |
 | **D3** | `beacon` Claude Code plugin | A plugin tree (hooks, skill, command, scripts, shell snippet, profile installer) | Hook handlers, COR resolver, slash command, skill, shell integration, profile installation. Calls D2 for every iTerm2 surface change. |
 

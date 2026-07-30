@@ -380,7 +380,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | This specification | [docs/spec.md](/spec) |
+| D1 | This specification | [SPEC.md](/spec) |
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 

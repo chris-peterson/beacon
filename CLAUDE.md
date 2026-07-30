@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Notes for AI coding agents working on beacon. Behavioral spec is [docs/spec.md](./docs/spec.md); user-facing docs are [README.md](./README.md). When the spec and the code disagree, ask — don't silently choose one.
+Notes for AI coding agents working on beacon. Behavioral spec is [SPEC.md](./SPEC.md) (published to the docs site as `/spec`); user-facing docs are [README.md](./README.md). When the spec and the code disagree, ask — don't silently choose one.
 
 ## What beacon is
 
@@ -26,7 +26,7 @@ The CLI must remain unaware of Claude — it's usable from CI, ad-hoc terminal s
 
 ## Surfaces beacon paints
 
-Per docs/spec.md §4.1 — these and only these:
+Per SPEC.md §4.1 — these and only these:
 
 - **Status bar** — the beacon dynamic profile only (never the user's profile): a fixed strip of `project  ⇄ review  branch cwd↗`, the two action buttons and the branch chip. It carries only what a hyperlink can't do — type a command into the pane, launch a local app; navigating to the session's URL is the status line's job (STATUSLINE-02). `↗ code` reads `code_app` / `code_args` from the user config at click time and delegates to `beacon open-code` via an absolute interpreter path (STATUS-BAR-07) — an action shell has no interactive `PATH`, so resolving the editor binary there is exactly what would fail. The branch chip reads by the hybrid model (STATUS-BAR-03): default branch de-emphasized (slate) whatever its state, feature branch by sync state (cyan synced / yellow diverged / orange untracked; green reserved for release). The plugin's `_publish_chips` and the shell's precmd both publish the four hybrid branch slots so Claude-session and interactive panes agree.
 - **Tab** — color mirrors the logical state on the tab strip (`SetColors=tab=`); the two-line `project` / `task` **label** rides the session name (see Window title, TITLE-05).
@@ -37,7 +37,7 @@ Per docs/spec.md §4.1 — these and only these:
 
 The session `description` is not painted on the pane — it surfaces in the fleet view (`wip` / `watch` / dashboard) as recall context (WIP-12). While paused, line 1 of the tab / window title leads with the paused glyph (TITLE-06), and the reason surfaces in the Claude Code status line (`beacon statusline`, STATUSLINE-01) — a footer row Claude owns that never overlaps terminal output. On the badge and fleet card no state carries a text glyph; a mode reads by its color dot / card treatment (the title glyph is a separate surface).
 
-beacon does **not** paint: terminal fg, tab title, cursor color/shape. Terminal background (color, and a faint image) is the one painted exception, scoped to the mode profile swaps above. The rest belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice. (The **window** title *is* painted, via the session name — see the Window title bullet above and docs/spec.md §4.8; the **tab** title remains a non-goal — see §8.)
+beacon does **not** paint: terminal fg, tab title, cursor color/shape. Terminal background (color, and a faint image) is the one painted exception, scoped to the mode profile swaps above. The rest belong to Claude Code, the user's profile, or other tools. Adding to this list is a spec change, not an implementation choice. (The **window** title *is* painted, via the session name — see the Window title bullet above and SPEC.md §4.8; the **tab** title remains a non-goal — see §8.)
 
 beacon profiles also explicitly **disable** iTerm2's notification-center delivery (`BM Growl: false`) and terminal-generated alerts (`Send Terminal Generated Alerts: false`). Claude Code triggers these on permission prompts and idle prompts, but beacon already surfaces both via the tab color (and the badge when enabled) — duplicate notifications add no signal.
 

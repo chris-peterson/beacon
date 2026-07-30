@@ -58,7 +58,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | Behavioral spec | [docs/spec.md](docs/spec.md) |
+| D1 | Behavioral spec | [SPEC.md](SPEC.md) |
 | D2 | `beacon-iterm` CLI | Stateless OSC-emitter executable |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 
