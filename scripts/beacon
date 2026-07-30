@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -248,6 +250,7 @@ _beacon() {
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the resolved URL in the default browser'
+    'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
     'review:review the whole branch vs the default branch (moor-aware)'
   )
@@ -872,6 +875,49 @@ def cmd_copy_url(_args):
     print(f"copied: {url}")
 
 
+CODE_APP_DEFAULT = "code"
+CODE_ARGS_DEFAULT = ["--maximized"]
+
+
+def _code_launch_argv() -> list[str]:
+    """STATUS-BAR-07: the editor invocation for the `↗ code` button, from the
+    user config (`code_app` / `code_args`), else `code --maximized`. `code_args`
+    accepts a list or a shell-quoted string; the list is the documented form."""
+    cfg = _load_config()
+    app = str(cfg.get("code_app") or CODE_APP_DEFAULT)
+    raw = cfg.get("code_args")
+    if raw is None:
+        args = list(CODE_ARGS_DEFAULT)
+    elif isinstance(raw, str):
+        args = shlex.split(raw)
+    else:
+        args = [str(a) for a in raw]
+    return [app, *args]
+
+
+def cmd_open_code(args):
+    """STATUS-BAR-07: open a directory in the configured editor. Backs the
+    `↗ code` status-bar button, which invokes this rather than launching the
+    editor from its own shell: an iTerm2 action shell has no interactive `PATH`
+    (§6.10 caveat 3), and resolving the binary is exactly what that costs. It
+    also puts the config read at click time, so changing editors needs no
+    reinstall."""
+    target = args.dir or str(Path.cwd())
+    argv = _code_launch_argv()
+    exe = shutil.which(argv[0])
+    if not exe:
+        sys.exit(f"editor not found: {argv[0]!r} is not on PATH — "
+                 f'set "code_app" to an absolute path in {_config_file()}')
+    try:
+        r = subprocess.run([exe, *argv[1:], target], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        sys.exit(f"failed to launch {argv[0]}: {e}")
+    if r.returncode != 0:
+        detail = r.stderr.decode(errors="replace").strip()
+        sys.exit(f"{argv[0]} exited {r.returncode}{': ' + detail if detail else ''}")
+    print(f"opened: {target}")
+
+
 def cmd_open_url(_args):
     """Resolve the current URL (PROV-07) and open it in the default browser
     via `open`. Used by the status bar 'go' button via Send Text — runs in
@@ -1057,9 +1103,16 @@ def cmd_data_dir(_args):
 
 def cmd_config_get(args):
     """Print a single user-config value (empty when unset) — consumed by
-    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15)."""
+    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15). A list
+    value prints shell-quoted and space-joined, so a caller can word-split it
+    without re-parsing JSON."""
     val = _load_config().get(args.key)
-    sys.stdout.write("" if val is None else f"{val}\n")
+    if val is None:
+        sys.stdout.write("")
+        return
+    if isinstance(val, (list, tuple)):
+        val = " ".join(shlex.quote(str(v)) for v in val)
+    sys.stdout.write(f"{val}\n")
 
 
 def cmd_json(_args):
@@ -3163,8 +3216,11 @@ def install_dynamic_profile() -> tuple[bool, str]:
     Substitutions in `iterm/profile.json.template`:
       __BEACON_SCRIPT__     — script path for the non-interactive coprocess
                               shells behind the status-bar action buttons.
-      __BEACON_CACHE_DIR__  — so the `↖ web` / `↗ code` action shells read the
-                              per-session handoff files without deriving it.
+      __BEACON_PYTHON__     — the running interpreter, absolute. A coprocess
+                              action shell has no interactive `PATH` (§6.10
+                              caveat 3), so a bare `python3` may not resolve.
+      __BEACON_CACHE_DIR__  — so the `↗ code` action shell reads the
+                              per-session handoff file without deriving it.
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
     its own formatting and any GUI-edited values, so a "content matches"
@@ -3192,6 +3248,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
         return json.dumps(value)[1:-1]
     content = (template.read_text(encoding="utf-8")
                .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
+               .replace("__BEACON_PYTHON__", _json_inner(sys.executable or "python3"))
                .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
     try:
         base_profile = json.loads(content)["Profiles"][0]
@@ -4503,6 +4560,9 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("open-url", help="open the resolved URL in the default browser via `open`")
 
+    sp = sub.add_parser("open-code", help="open a directory in the configured editor (config: code_app / code_args)")
+    sp.add_argument("dir", nargs="?", help="directory to open (default: cwd)")
+
     sub.add_parser("review", help="review the whole branch vs the default branch through the configured difftool (moor-aware)")
 
     sub.add_parser("json", help="print the resolved session state as JSON")
@@ -4592,7 +4652,8 @@ def main(argv=None):
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
-        "open-url": cmd_open_url, "review": cmd_review, "json": cmd_json,
+        "open-url": cmd_open_url, "open-code": cmd_open_code,
+        "review": cmd_review, "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir, "config-get": cmd_config_get,

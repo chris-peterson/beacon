@@ -100,7 +100,7 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
     <li><span><b><code>⇄ review</code> button</b> — types <code>beacon review</code> into the pane and runs it, diffing the branch against its default branch.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
-    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in VS Code.</span></li>
+    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default; set <code>code_app</code> / <code>code_args</code> to change it).</span></li>
     <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
   </ol>
 </div>

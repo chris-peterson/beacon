@@ -555,7 +555,7 @@ Chip-by-chip behavior:
 5. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
 6. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
 7. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
-8. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in VS Code.
+8. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in the configured editor (STATUS-BAR-07).
 
 Action-chip color matches the data cluster it anchors so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
 
@@ -564,6 +564,16 @@ Action-chip color matches the data cluster it anchors so each CTA visually ties 
 **STATUS-BAR-05.** When the shell prompt redraws, the shell integration shall publish the values the status bar consumes — full project URL (carrying the deliverable suffix, so the resolved URL is still resolved here even though no chip renders it directly), branch text + sync state (with derived per-state slots, including the de-emphasized default-branch slot per STATUS-BAR-03, so the profile does not need conditional expressions), and local cwd with `~`-substitution. The integration shall also write the per-session cwd handoff file the `↗ code` action button reads, since iTerm2 coprocess actions cannot interpolate user variables. During a Claude session the shell prompt cannot redraw, so the plugin covers the gap: SessionStart paints the anchor (HOOK-08) and Stop re-resolves chips from the anchor cwd each turn (HOOK-08b) so a new branch or a narrowed URL becomes visible. Between Claude sessions the shell resumes prompt-driven publishing and follows the user's actual PWD. The exact user-var names and handoff-file paths are an implementation contract between the shell snippet, the plugin, and the dynamic profile (see §6.5).
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
+
+**STATUS-BAR-07.** The `↗ code` button's editor shall be user-configurable through the same `~/.config/beacon/config.json` the badge gate (BADGE-15) and `focus_origins` (FOCUS-04) already use, via two keys: **`code_app`** (the editor command, default `code`) and **`code_args`** (startup arguments, default `["--maximized"]`, accepted as a JSON array or a shell-quoted string). An explicit empty array means *no arguments*, not "use the default".
+
+The configuration shall be read at **click time**, not install time, so changing editors takes effect immediately with no `beacon install` re-run. A click is never a hot path, so the extra read costs nothing there.
+
+The launch shall happen in a `beacon open-code [<dir>]` subcommand rather than in the button's own shell, and the button shall invoke it through an **absolute interpreter path** (`__BEACON_PYTHON__`, substituted at install from the running interpreter). An iTerm2 coprocess action shell has no interactive `PATH` (§6.10 caveat 3) — which is why both buttons historically launched via macOS `open` — so resolving an editor binary from that shell is precisely the thing that would fail. Moving it into Python also makes the behavior testable.
+
+When the configured editor cannot be resolved on `PATH`, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
+
+`code_args` is deliberately not applied to a `⇄ review` equivalent: that chip is a Send Text action running in the user's own shell, where their `PATH` and aliases already apply.
 
 ### 4.5 Render orchestration (RENDER)
 

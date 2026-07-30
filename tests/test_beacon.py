@@ -1247,6 +1247,105 @@ class DeliverableAccumulation(BeaconTest):
         self.assertEqual(self._refs(), [])
 
 
+class ConfigurableCodeButton(BeaconTest):
+    """STATUS-BAR-07 (#25): the `↗ code` button's editor comes from the user
+    config, read at click time so changing it needs no reinstall."""
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "cfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_default_is_code_maximized(self):
+        with self._config():
+            self.assertEqual(self.beacon._code_launch_argv(), ["code", "--maximized"])
+
+    def test_app_and_args_are_honored(self):
+        with self._config(code_app="subl", code_args=["-n", "-w"]):
+            self.assertEqual(self.beacon._code_launch_argv(), ["subl", "-n", "-w"])
+
+    def test_args_accept_a_shell_quoted_string(self):
+        with self._config(code_app="ed", code_args='-a "two words"'):
+            self.assertEqual(self.beacon._code_launch_argv(), ["ed", "-a", "two words"])
+
+    def test_empty_args_list_drops_the_default(self):
+        # An explicit [] means "no arguments", not "fall back to --maximized".
+        with self._config(code_app="mate", code_args=[]):
+            self.assertEqual(self.beacon._code_launch_argv(), ["mate"])
+
+    def test_unresolvable_editor_exits_with_an_actionable_message(self):
+        # No `open -a` fallback (the repo's no-fallbacks convention): the button
+        # surfaces this text in its alert so the user knows what to set.
+        with self._config(code_app="beacon-no-such-editor"), \
+             mock.patch.object(self.beacon.shutil, "which", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
+        msg = str(cm.exception)
+        self.assertIn("beacon-no-such-editor", msg)
+        self.assertIn("code_app", msg)
+
+    def test_launch_passes_args_then_directory(self):
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stderr=b"")
+
+        with self._config(code_app="subl", code_args=["-n"]), \
+             mock.patch.object(self.beacon.shutil, "which", return_value="/bin/subl"), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls, [["/bin/subl", "-n", "/work/repo"]])
+
+    def test_nonzero_exit_is_surfaced(self):
+        with self._config(), \
+             mock.patch.object(self.beacon.shutil, "which", return_value="/bin/code"), \
+             mock.patch.object(self.beacon.subprocess, "run", lambda a, **k: types.SimpleNamespace(
+                 returncode=3, stderr=b"boom")):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
+        self.assertIn("boom", str(cm.exception))
+
+    def test_config_get_space_joins_a_list(self):
+        with self._config(code_args=["--maximized", "-n"]):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.beacon.cmd_config_get(self.beacon.argparse.Namespace(key="code_args"))
+        self.assertEqual(buf.getvalue().strip(), "--maximized -n")
+
+
+class CodeButtonInProfile(unittest.TestCase):
+    """STATUS-BAR-07: the button delegates to `beacon open-code` rather than
+    launching the editor from its own shell — an iTerm2 action shell has no
+    interactive PATH (§6.10 caveat 3), so it invokes an absolute interpreter."""
+
+    def _code_action(self):
+        raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        raw = (raw.replace("__BEACON_SCRIPT__", "/p/scripts/beacon")
+                  .replace("__BEACON_PYTHON__", "/usr/bin/python3")
+                  .replace("__BEACON_CACHE_DIR__", "/c"))
+        layout = json.loads(raw)["Profiles"][0]["Status Bar Layout"]["components"]
+        return next(c["configuration"]["knobs"]["action"] for c in layout
+                    if c["class"] == "iTermStatusBarActionComponent"
+                    and c["configuration"]["knobs"]["action"]["title"] == "↗ code")
+
+    def test_button_calls_open_code_by_absolute_interpreter(self):
+        param = self._code_action()["parameter"]
+        self.assertIn('"/usr/bin/python3" "/p/scripts/beacon" open-code', param)
+        self.assertNotIn("open -a", param)
+
+    def test_button_strips_quotes_before_building_the_alert(self):
+        # The alert interpolates the error text into AppleScript; an unescaped
+        # quote there would break the script instead of showing the message.
+        param = self._code_action()["parameter"]
+        self.assertIn("tr -d", param)
+
+    def test_python_placeholder_is_substituted_at_install(self):
+        src = (REPO_ROOT / "scripts" / "beacon").read_text()
+        self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
+
+
 class WebButtonRetired(unittest.TestCase):
     """STATUS-BAR-02: the `↖ web` action chip and the handoff file it read are
     gone from the profile — the status line carries the URL (STATUSLINE-02)."""

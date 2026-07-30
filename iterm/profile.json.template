@@ -243,7 +243,7 @@
                   "applyMode": 0,
                   "escaping": 1,
                   "title": "↗ code",
-                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then open -a \"Visual Studio Code\" \"$cwd\" || osascript -e 'display alert \"beacon\" message \"Could not open Visual Studio Code.\"' >/dev/null 2>&1; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
+                  "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then err=$(\"__BEACON_PYTHON__\" \"__BEACON_SCRIPT__\" open-code \"$cwd\" 2>&1 >/dev/null) || { msg=$(printf '%s' \"$err\" | tr -d '\"\\\\'); osascript -e \"display alert \\\"beacon\\\" message \\\"$msg\\\"\" >/dev/null 2>&1; }; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
                   "action": 35,
                   "version": 2
                 }

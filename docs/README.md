@@ -174,9 +174,22 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`project ⇄ review branch ↗ code`, whose buttons review the branch and open the cwd in VS Code), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`project ⇄ review branch ↗ code`, whose buttons review the branch and open the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
+
+### Choosing the editor the `↗ code` button opens
+
+By default the button runs `code --maximized`. Point it at a different editor, or pass your own startup arguments, in `~/.config/beacon/config.json`:
+
+```json
+{
+  "code_app": "subl",
+  "code_args": ["-n"]
+}
+```
+
+The keys are read when you click, so a change takes effect immediately — no `beacon install` re-run. If the command isn't on your `PATH`, the button says so and names the key to fix rather than quietly opening something else; set `code_app` to an absolute path in that case.
 
 ## Install
 
