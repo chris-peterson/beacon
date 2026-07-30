@@ -40,7 +40,7 @@ suite:
   what: "Puts a colored badge on each terminal window so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The badge is iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
   cmds:
     - ["/beacon:beacon", "Label a pane, or set status with a note"]
-    - ["/beacon:pause", "Park this session fast — status paused, optional note"]
+    - ["/beacon:session-mode", "Set the session mode — pause, release, retro, done"]
     - ["beacon", "Read the resolved project / task / status anywhere"]
     - ["beacon review", "Review the branch vs its default (moor-aware) — or click ⇄ review"]
   # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
@@ -55,10 +55,7 @@ suite:
       hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       beacon: Show or set session beacon signals (project, task, status)
-      done: Mark this session complete — set status to done (ready to hand off to another session), with an optional note
-      pause: Pause this session's beacon — set status to paused, with an optional note
-      release: Enter release mode for this session — set status to release (ship-it flow in progress), with an optional note
-      retro: Enter retro mode for this session — set status to retro (post-work follow-up/retro), with an optional note
+      session-mode: Set this session's beacon mode — release, retro, pause, done, or resume — with an optional note
   # <<< shipyard:describe <<<
 
 docs:

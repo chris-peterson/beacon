@@ -209,7 +209,7 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
-- `/beacon:pause "checking lunch options"` moves the badge to the muted-purple pause color (and dims the pane); the note shows in the fleet dashboard, and sending the next prompt clears both
+- `/beacon:session-mode pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
 - `/beacon:beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
@@ -279,7 +279,7 @@ The label and status commands paint the pane's badge — the same traffic-light 
     </span>
   </div>
   <div class="cf-row">
-    <code class="cf-cmd">/beacon:pause "lunch"</code>
+    <code class="cf-cmd">/beacon:session-mode pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-badge paused">ai-sdlc<span class="t"> : perms</span></span>
@@ -291,11 +291,11 @@ The label and status commands paint the pane's badge — the same traffic-light 
 Inside Claude Code:
 
 ```text
-/beacon:beacon                             # show resolved state (default)
-/beacon:beacon status waiting "bg refresh" # set status with a description
-/beacon:pause "leaving for lunch"          # shorthand for `status paused …`
-/beacon:beacon resume                      # clear all overrides + description
-/beacon:beacon clear status                # clear just the status override
+/beacon:beacon                               # show resolved state (default)
+/beacon:beacon status waiting "bg refresh"   # set status with a description
+/beacon:session-mode pause "out for lunch"   # any mode: pause/release/retro/done
+/beacon:session-mode resume                  # clear all overrides + description
+/beacon:beacon clear status                  # clear just the status override
 ```
 
 At the shell:

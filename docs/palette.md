@@ -87,7 +87,7 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
       <span class="badge" style="color: #6272a4">checkout-api</span>
     </div>
     <div class="pal-meta">
-      <h4>pause <span class="cmd">/beacon:pause</span></h4>
+      <h4>pause <span class="cmd">/beacon:session-mode pause</span></h4>
       <p>You've parked the session. The one mode that can happen anytime — and the one that lifts on its own, the next prompt you send.</p>
       <div class="hexrow"><span><span class="sw" style="background:#6272a4"></span>badge #6272a4</span><span><span class="sw" style="background:#3c3357"></span>pane #3c3357</span></div>
     </div>
@@ -99,7 +99,7 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
       <span class="badge" style="color: #50fa7b">checkout-api</span>
     </div>
     <div class="pal-meta">
-      <h4>release <span class="cmd">/beacon:release</span></h4>
+      <h4>release <span class="cmd">/beacon:session-mode release</span></h4>
       <p>A ship-it flow is in progress. The one active mode — a rocket climbing a deep launch-sky, under the green you never see during dev, so it reads unmistakably as "shipping."</p>
       <div class="hexrow"><span><span class="sw" style="background:#50fa7b"></span>badge #50fa7b</span><span><span class="sw" style="background:#212c45"></span>pane #212c45</span></div>
     </div>
@@ -111,7 +111,7 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
       <span class="badge" style="color: #f8f8f2">checkout-api</span>
     </div>
     <div class="pal-meta">
-      <h4>retro <span class="cmd">/beacon:retro</span></h4>
+      <h4>retro <span class="cmd">/beacon:session-mode retro</span></h4>
       <p>A post-work follow-up or retro phase. A calm green pane under a white badge, with a faint checklist-clipboard watermark — looking back over the work.</p>
       <div class="hexrow"><span><span class="sw" style="background:#f8f8f2"></span>badge #f8f8f2</span><span><span class="sw" style="background:#2c4636"></span>pane #2c4636</span></div>
     </div>
@@ -123,7 +123,7 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
       <span class="badge" style="color: #5f6072">checkout-api</span>
     </div>
     <div class="pal-meta">
-      <h4>done <span class="cmd">/beacon:done</span></h4>
+      <h4>done <span class="cmd">/beacon:session-mode done</span></h4>
       <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a faint checkered finish-flag watermark. The badge shows the project alone — the task is dropped.</p>
       <div class="hexrow"><span><span class="sw" style="background:#5f6072"></span>badge #5f6072</span><span><span class="sw" style="background:#1a1622"></span>pane #1a1622</span></div>
     </div>
