@@ -356,14 +356,22 @@ STATUS_TO_BADGE_STATE = {
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
+# Paused title glyph (TITLE-06): leads line 1 while paused. A glyph, not the word
+# "paused", because the tab and the single-line OS window title are the same
+# string (§4.8) — a word would crowd the tab, so the parked state reads as a
+# compact mark on both. Tune the glyph here in one place.
+PAUSED_TITLE_GLYPH = "⏸ "
+
 # Two-line tab/window-title Name (TITLE-05): the project sits on line 1, the
 # task on an indented line 2 via beacon_task_nl (a leading newline when set, ""
 # when absent) so the tab reads project over task while the single-line OS
-# window title shows line 1. The project is wrapped in <b> as the one sparing
-# HTML accent so the identity reads as the title (needs iTerm2 HTML tab titles,
-# CLI-18); the task stays plain. Distinct from BADGE_FORMAT so the badge (when
-# enabled, BADGE-15) keeps its single-line " · " form.
-TITLE_FORMAT = r"<b>\(user.beacon_project)</b>\(user.beacon_task_nl)"
+# window title shows line 1. beacon_title_prefix leads line 1 with the paused
+# glyph (PAUSED_TITLE_GLYPH) while paused (TITLE-06), "" the rest of the time. The
+# project is wrapped in <b> as the one sparing HTML accent so the identity reads
+# as the title (needs iTerm2 HTML tab titles, CLI-18); the task stays plain.
+# Distinct from BADGE_FORMAT so the badge (when enabled, BADGE-15) keeps its
+# single-line " · " form.
+TITLE_FORMAT = r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.beacon_task_nl)"
 
 BASE_PROFILE_NAME = "beacon-dev"
 
@@ -2196,6 +2204,9 @@ def _focus_session(sh: str) -> tuple[bool, str]:
     return True, "focused"
 
 
+POST_BODY_MAX = 64 * 1024
+
+
 def wip_http_server(port: int):
     """Build (don't start) the localhost fleet server, bound to 127.0.0.1 only.
 
@@ -2271,6 +2282,30 @@ def wip_http_server(port: int):
             # own name in Host).
             host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
             return host.strip("[]").lower() in ("127.0.0.1", "localhost", "::1")
+
+        def _read_body(self) -> bytes:
+            # Every POST reply path reads the body first, the rejections
+            # included: HTTP/1.0 closes the connection after each response, and
+            # closing a socket that still holds unread bytes makes Windows
+            # abort it (WinError 10053) instead of delivering what was written
+            # — so a 403 sent over an undrained buffer reaches the caller as a
+            # connection error rather than as the rejection FOCUS-04 /
+            # FORGET-03 specify. Reading at the top of do_POST rather than per
+            # reply path is deliberate: an early return added later can't forget
+            # the drain. The payload is one small JSON object, so the cap is far
+            # above anything legitimate — a caller declaring more than that has
+            # its body left partly unread and gets the abort, which is the same
+            # answer as the 400 its payload would earn.
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return b""
+            if length <= 0:
+                return b""
+            try:
+                return self.rfile.read(min(length, POST_BODY_MAX))
+            except OSError:
+                return b""
 
         def _send_icon(self, sh: str) -> None:
             # The path segment is only ever a state-file lookup key; constrain
@@ -2386,6 +2421,7 @@ def wip_http_server(port: int):
         def do_POST(self):
             origin = self.headers.get("Origin") or ""
             path = urlparse(self.path).path
+            raw = self._read_body()
             if path not in ("/focus", "/forget"):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
@@ -2393,10 +2429,8 @@ def wip_http_server(port: int):
                 self._send(403, json.dumps({"error": "forbidden"}), origin or "*")
                 return
             try:
-                length = int(self.headers.get("Content-Length") or 0)
-                raw = self.rfile.read(length) if length else b""
                 sh = (json.loads(raw or b"{}").get("hash") or "").strip()
-            except (ValueError, OSError):
+            except (ValueError, AttributeError):
                 sh = ""
             if path == "/focus":
                 ok, msg = _focus_session(sh)
@@ -3254,6 +3288,7 @@ def apply(state: dict):
     # (RENDER-05): its background can't be expressed by the badge-color OSC, so
     # it swaps profiles. Every other state is an OSC overlay on the base profile.
     logical = _logical_state_for(state)
+    paused = logical == "paused"
     target_profile = (MODE_PROFILES[logical]["profile"]
                       if logical in MODE_PROFILES else BASE_PROFILE_NAME)
 
@@ -3307,6 +3342,15 @@ def apply(state: dict):
         # contract as beacon_task; the wander " @ " marker is a badge-only
         # nicety, so the two-line title just carries the bare task.
         _cli("uservar", "beacon_task_nl", f"\n  {task_text}" if task_text else "")
+
+    # TITLE-06: while paused, line 1 (tab + single-line OS window title) leads
+    # with the paused glyph — a compact mark the window list (Mission Control /
+    # ⌘`) shows where the tab color isn't legible. The pause *reason* itself is
+    # surfaced by the Claude Code status line (STATUSLINE-01), a footer row that
+    # doesn't overlap terminal output; the badge was too poor a home for it.
+    prev_paused = prev.get("logical_state") == "paused"
+    if paused != prev_paused or (switched and paused):
+        _cli("uservar", "beacon_title_prefix", PAUSED_TITLE_GLYPH if paused else "")
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
@@ -3474,6 +3518,7 @@ def _disengage() -> None:
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
     _cli("uservar", "beacon_task_nl", "")
+    _cli("uservar", "beacon_title_prefix", "")
     # A mode state (paused/release/retro/done) swapped the pane into a mode profile
     # whose de-emphasized background the color-only `clear` below cannot undo
     # (RENDER-05). apply() swaps back to the base profile when *transitioning*
@@ -3846,6 +3891,31 @@ def cmd_render(_args):
     render()
 
 
+def cmd_statusline(_args):
+    """STATUSLINE-01: Claude Code status-line provider. Claude runs this per
+    prompt (and on its other status-line events) and renders stdout as a footer
+    row it owns — above its built-in badges, never overlapping terminal output.
+    For now the row carries ONLY the pause reason, the highest-signal 'why is
+    this parked' recall context; `project` / `task` / `status` are already on the
+    tab (RENDER-04 / TITLE-05), so the row is empty the rest of the time. Reads
+    only per-session state files — no network — per Claude Code's guidance that
+    the status-line command stay cheap (it runs frequently)."""
+    # Drain Claude's status-line JSON on stdin so the pipe closes cleanly; beacon
+    # resolves its own session from the environment (session_hash), so the payload
+    # is unused today. Future signals (#26 URL, #18 deliverables) may read it.
+    try:
+        sys.stdin.read()
+    except Exception:
+        pass
+    if read_state("override.status") != "paused":
+        return
+    reason = " ".join((read_state("description") or "").split())
+    if not reason:
+        return
+    color = _WIP_DOT_COLOR["paused"]
+    sys.stdout.write(f"\033[{color}m{PAUSED_TITLE_GLYPH}{reason}\033[0m\n")
+
+
 def _is_active(line: str) -> bool:
     """A zshrc line is active if it isn't a comment and isn't blank."""
     stripped = line.strip()
@@ -4003,12 +4073,22 @@ def cmd_install_cli(args):
     _install_completions()
 
 
+def _statusline_settings_block() -> str:
+    """The `statusLine` block to paste into Claude Code's settings.json so the
+    pause reason surfaces in the footer row (STATUSLINE-01). `beacon` is the
+    PATH wrapper this install just placed."""
+    return json.dumps(
+        {"statusLine": {"type": "command", "command": "beacon statusline", "padding": 0}},
+        indent=2,
+    )
+
+
 def cmd_install(_args):
     print("beacon install")
     print("==============")
     print()
     iterm = _is_iterm_installed()
-    total = 4 if iterm else 2
+    total = 6 if iterm else 3
     n = 0
 
     def step(title: str) -> None:
@@ -4022,6 +4102,14 @@ def cmd_install(_args):
     print()
     step("tab completion")
     _install_completions()
+    print()
+
+    # Terminal-agnostic: Claude Code renders the status line in any terminal, so
+    # this advisory shows on both paths. Print-to-paste rather than auto-writing
+    # the user's settings.json (STATUSLINE-01).
+    step("Claude Code status line (surfaces the pause reason) — optional")
+    print("  Add this to ~/.claude/settings.json to show the pause reason in the footer:")
+    print(textwrap.indent(_statusline_settings_block(), "  "))
     print()
 
     if not iterm:
@@ -4274,6 +4362,9 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--clear-screen", action="store_true",
                     help="also clear the iTerm2 session's screen + scrollback for a clean stand-down")
 
+    sub.add_parser("statusline",
+                   help="(internal) Claude Code status-line provider: prints the pause reason")
+
     sp = sub.add_parser("release",
                         help="set status=release (ship-it flow in progress) with optional description")
     sp.add_argument("note", nargs="*")
@@ -4376,7 +4467,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir", "config-get"}
+_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir", "config-get", "statusline"}
 
 
 def main(argv=None):
@@ -4397,7 +4488,7 @@ def main(argv=None):
         "clear": cmd_clear,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
         "resume": cmd_resume, "reset": cmd_reset,
-        "render": cmd_render, "hook": cmd_hook,
+        "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,

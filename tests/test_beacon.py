@@ -693,28 +693,34 @@ class PendingAttentionPaintsBlocked(BeaconTest):
 
 
 class DescriptionIsFleetData(BeaconTest):
-    """STATE-02: a description is persisted and surfaced in the fleet view; it
-    paints no per-pane surface of its own. The paused background comes from the
-    profile swap (RENDER-05), never from a retired bg-image/note/clear-screen
-    overlay."""
+    """STATE-02: a description is persisted and surfaced in the fleet view; the
+    pane paints no reason text of its own (the badge was a bad home for it, so the
+    reason now rides the Claude Code status line, STATUSLINE-01). While paused the
+    title/tab lead with the ⏸ glyph (TITLE-06); the pane still paints only the
+    paused color + profile, never a retired bg-image/note/clear-screen overlay."""
 
-    def test_paused_with_description_paints_only_color(self):
+    def test_paused_leads_title_glyph_and_paints_only_color(self):
         self.beacon.apply({**_base_state(), "status": "working"})
         self.cli_calls.clear()
-
         self.beacon.apply({
-            **_base_state(), "status": "paused",
-            "description": "leaving for lunch",
+            **_base_state(), "status": "paused", "description": "leaving for lunch",
         })
-
         paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
-        self.assertIn(("badge-color", paused_hex), self.cli_calls)
         self.assertIn(("tab-color", paused_hex), self.cli_calls)
+        # TITLE-06: the paused glyph leads line 1.
+        self.assertIn(("uservar", "beacon_title_prefix", self.beacon.PAUSED_TITLE_GLYPH), self.cli_calls)
+        # The description paints no reason text on the pane and no retired overlay.
         for verb in ("bg-image", "note", "clear-screen"):
             self.assertEqual(
                 [c for c in self.cli_calls if c[0] == verb], [],
                 f"a description must not emit {verb} (overlay retired)",
             )
+
+    def test_resume_clears_title_glyph(self):
+        self.beacon.apply({**_base_state(), "status": "paused", "description": "brb"})
+        self.cli_calls.clear()
+        self.beacon.apply({**_base_state(), "status": "working"})
+        self.assertIn(("uservar", "beacon_title_prefix", ""), self.cli_calls)
 
     def test_description_alone_does_not_repaint(self):
         # Adding a description without a logical-state change is data-only.
@@ -1092,6 +1098,14 @@ class TwoLineTitle(BeaconTest):
     def test_title_format_uses_task_nl(self):
         self.assertIn(r"\(user.beacon_task_nl)", self.beacon.TITLE_FORMAT)
         self.assertNotIn(r"\(user.beacon_task)", self.beacon.TITLE_FORMAT)
+
+    def test_title_format_leads_with_prefix(self):
+        # TITLE-06: the paused mode lead prefixes line 1, ahead of the project.
+        self.assertIn(r"\(user.beacon_title_prefix)", self.beacon.TITLE_FORMAT)
+        self.assertLess(
+            self.beacon.TITLE_FORMAT.index(r"\(user.beacon_title_prefix)"),
+            self.beacon.TITLE_FORMAT.index(r"\(user.beacon_project)"),
+        )
 
     def test_apply_publishes_newline_prefixed_task(self):
         self.beacon.apply({**_base_state(), "task": "fix bug"})
@@ -1748,7 +1762,8 @@ class InstallGating(unittest.TestCase):
             self.assertFalse(self.mocks[name].called, f"{name} should be skipped")
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
-        self.assertIn("[1/2]", out)
+        self.assertIn("[1/3]", out)
+        self.assertIn("[3/3]", out)  # includes the status-line advisory step
         self.assertIn("beacon wip", out)
         self.assertIn("beacon serve install", out)
 
@@ -1759,7 +1774,7 @@ class InstallGating(unittest.TestCase):
             self.assertTrue(self.mocks[name].called, f"{name} should run")
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
-        self.assertIn("[4/4]", out)
+        self.assertIn("[6/6]", out)
 
     def test_install_completes_in_place(self):
         # 1.0 pivot: no pref needs iTerm2 quit, so install emits no
@@ -2070,6 +2085,43 @@ class PauseClearScreen(BeaconTest):
         self.beacon.cmd_pause(args)
         self.assertNotIn(("clear-screen",), self.cli_calls)
         self.assertEqual(self.beacon.read_state("override.status"), "paused")
+
+
+class StatusLineProvider(BeaconTest):
+    """STATUSLINE-01: the Claude Code status-line provider prints ONLY the pause
+    reason (the footer row Claude owns, no terminal overlap) — empty otherwise,
+    since project/task/status are carried by the tab."""
+
+    def _run(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO('{"cwd":"/x"}')), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+        return buf.getvalue()
+
+    def test_paused_with_reason_prints_glyph_and_reason(self):
+        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_state("description", "waiting on CI")
+        out = self._run()
+        self.assertIn("waiting on CI", out)
+        self.assertIn(self.beacon.PAUSED_TITLE_GLYPH.strip(), out)  # ⏸
+        self.assertIn("\033[", out)  # ANSI color
+
+    def test_not_paused_prints_nothing(self):
+        self.beacon.write_state("override.status", "working")
+        self.beacon.write_state("description", "waiting on CI")
+        self.assertEqual(self._run(), "")
+
+    def test_paused_without_reason_prints_nothing(self):
+        self.beacon.write_state("override.status", "paused")
+        self.assertEqual(self._run(), "")
+
+    def test_multiline_reason_collapsed_to_one_line(self):
+        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_state("description", "line one\nline two")
+        out = self._run()
+        self.assertIn("line one line two", out)
+        self.assertEqual(out.count("\n"), 1)  # only the trailing newline
 
 
 class ReviewButtonInProfile(unittest.TestCase):
