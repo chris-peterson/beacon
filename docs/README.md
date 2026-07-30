@@ -174,7 +174,7 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`project ⇄ review branch ↗ code`, whose buttons review the branch and open the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`project branch ↗ code`, whose button opens the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
 

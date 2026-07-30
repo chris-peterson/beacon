@@ -1049,7 +1049,7 @@ class BadgeFormatReferencesTaskSlot(BeaconTest):
         # BADGE-15: the badge is opt-in and off by default, so the profile's
         # static "Badge Text" backstop is empty — the plugin/shell only emit
         # SetBadgeFormat when the user enables the badge in config.
-        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text())
+        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8"))
         self.assertEqual(template["Profiles"][0]["Badge Text"], "")
 
 
@@ -1321,7 +1321,7 @@ class CodeButtonInProfile(unittest.TestCase):
     interactive PATH (§6.10 caveat 3), so it invokes an absolute interpreter."""
 
     def _code_action(self):
-        raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         raw = (raw.replace("__BEACON_SCRIPT__", "/p/scripts/beacon")
                   .replace("__BEACON_PYTHON__", "/usr/bin/python3")
                   .replace("__BEACON_CACHE_DIR__", "/c"))
@@ -1342,7 +1342,7 @@ class CodeButtonInProfile(unittest.TestCase):
         self.assertIn("tr -d", param)
 
     def test_python_placeholder_is_substituted_at_install(self):
-        src = (REPO_ROOT / "scripts" / "beacon").read_text()
+        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
         self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
 
 
@@ -1351,12 +1351,12 @@ class WebButtonRetired(unittest.TestCase):
     gone from the profile — the status line carries the URL (STATUSLINE-02)."""
 
     def test_profile_carries_no_web_chip_or_url_handoff(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         self.assertNotIn("↖ web", template)
         self.assertNotIn("url-${ITERM_SESSION_ID", template)
 
     def test_shell_publishes_no_url_var_or_handoff(self):
-        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text()
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
         self.assertNotIn("uservar beacon_url", shell)
         self.assertNotIn("_beacon_write_session_file url", shell)
 
@@ -1366,7 +1366,7 @@ class HybridBranchProfileSlots(unittest.TestCase):
     bucket — the default slot plus the three feature-state slots."""
 
     def test_four_branch_slots_present(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         for var in ("beacon_branch_default", "beacon_branch_clean",
                     "beacon_branch_diverged", "beacon_branch_untracked"):
             self.assertIn(rf"\\(user.{var})", template)
@@ -2432,15 +2432,16 @@ class StatusLineProvider(BeaconTest):
         self.assertLess(out.index("waiting on CI"), out.index("ex#1"))
 
 
-class ReviewButtonInProfile(unittest.TestCase):
-    """STATUS-BAR-02: the `⇄ review` action chip sends `beacon review` into the
-    pane via iTerm2's Send Text action (enum 12), not a coprocess — so the
-    driving session (or a shell) runs the review and consumes its output."""
+class StatusBarLayout(unittest.TestCase):
+    """STATUS-BAR-02: the strip is `project ←spring→ branch ↗ code`. `↗ code` is
+    the only action chip left — the URL moved to the status line (STATUSLINE-02)
+    and the review chip was dropped for lack of use."""
 
     def _layout(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         rendered = (template
                     .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
+                    .replace("__BEACON_PYTHON__", "/x/python3")
                     .replace("__BEACON_CACHE_DIR__", "/x/cache"))
         return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]["components"]
 
@@ -2449,216 +2450,42 @@ class ReviewButtonInProfile(unittest.TestCase):
                 for c in self._layout()
                 if c["class"] == "iTermStatusBarActionComponent"]
 
-    def test_review_button_is_send_text(self):
-        review = next(
-            c["configuration"]["knobs"]["action"] for c in self._layout()
-            if c["class"] == "iTermStatusBarActionComponent"
-            and c["configuration"]["knobs"]["action"]["title"] == "⇄ review"
-        )
-        # Send Text = KEY_ACTION_TEXT (12), NOT Run Coprocess (35): the point is
-        # to type the command into the session, so Claude runs it and reads the
-        # sidecar verdict back. \r submits the line (both a shell prompt and the
-        # Claude Code TUI treat Return as \r).
-        self.assertEqual(review["action"], 12)
-        self.assertEqual(review["parameter"], "beacon review\r")
+    def test_code_is_the_only_action_chip(self):
+        self.assertEqual(self._action_titles(), ["↗ code"])
 
-    def test_review_button_is_centered_between_springs(self):
-        # The review chip is flanked by two springs so it centers between the
-        # left (project) and right (branch · code) clusters —
-        # … project ←spring→ ⇄ review ←spring→ branch …
+    def test_one_spring_pushes_the_branch_cluster_right(self):
+        # With no centered chip, a second spring would have nothing to balance
+        # against — one is enough to hold project left and branch + code right.
         comps = self._layout()
+        classes = [c["class"] for c in comps]
+        self.assertEqual(classes.count("iTermStatusBarSpringComponent"), 1)
+        spring = classes.index("iTermStatusBarSpringComponent")
         self.assertEqual(
-            [c["class"] for c in comps].count("iTermStatusBarSpringComponent"), 2)
-        idx = next(i for i, c in enumerate(comps)
-                   if c["class"] == "iTermStatusBarActionComponent"
-                   and c["configuration"]["knobs"]["action"]["title"] == "⇄ review")
-        self.assertEqual(comps[idx - 1]["class"], "iTermStatusBarSpringComponent")
-        self.assertEqual(comps[idx + 1]["class"], "iTermStatusBarSpringComponent")
-        # STATUS-BAR-02: two action chips, review (center) and code (far right).
-        # The `↖ web` chip is retired — the status line carries the URL as an
-        # OSC-8 link (STATUSLINE-02), single-sourced and terminal-agnostic.
-        self.assertEqual(self._action_titles(), ["⇄ review", "↗ code"])
+            comps[0]["configuration"]["knobs"]["expression"],
+            r"\(user.beacon_project_full)")
+        self.assertEqual(spring, 1)
+        self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
+
+    def test_review_chip_is_gone(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        self.assertNotIn("⇄ review", template)
+        self.assertNotIn("beacon review", template)
 
 
-class ReviewCommand(unittest.TestCase):
-    """CMD-16: `beacon review` diffs the whole branch against the default
-    branch through the configured difftool, relaying moor's sidecar verdict."""
+class ReviewFeatureRemoved(BeaconTest):
+    """CMD-16 retired: the branch-review subcommand goes with its chip. Reviewing
+    a diff is a job other tools own; beacon's is reporting session state."""
 
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.beacon = _load_beacon(Path(self._tmp.name))
-        self.addCleanup(self._tmp.cleanup)
-        self.repo = tempfile.TemporaryDirectory()
-        self.addCleanup(self.repo.cleanup)
-        self._cwd = os.getcwd()
-        self.addCleanup(lambda: os.chdir(self._cwd))
-        os.chdir(self.repo.name)
-        self._git("init", "-q", "-b", "main")
-        self._git("config", "user.email", "t@t.co")
-        self._git("config", "user.name", "t")
-        Path("f").write_text("a\n")
-        self._git("add", "f")
-        self._git("commit", "-qm", "init")
-        self._git("update-ref", "refs/remotes/origin/main", "main")
-        self._git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-
-    def _git(self, *args):
-        subprocess.run(["git", *args], cwd=self.repo.name, check=True,
-                       capture_output=True, text=True)
-
-    def _run_review(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            self.beacon.cmd_review(None)
-        return buf.getvalue()
-
-    def test_inert_on_default_branch(self):
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertNotIn("REVIEW_VERDICT", out)
-
-    def test_errors_outside_a_repo(self):
-        os.chdir(self._tmp.name)  # a non-repo dir
+    def test_review_is_not_a_subcommand(self):
         with self.assertRaises(SystemExit):
-            self.beacon.cmd_review(None)
+            self.beacon._build_parser().parse_args(["review"])
 
-    def test_relays_sidecar_verdict(self):
-        self._git("checkout", "-q", "-b", "feature")
-        Path("f").write_text("a\nb\n")
-        self._git("commit", "-qam", "change")
-        # Fake difftool: write an output section into MOOR_CONTEXT, as moor does.
-        tool = Path(self.repo.name) / "faketool.py"
-        tool.write_text(
-            "import json,os,sys\n"
-            "p=os.environ['MOOR_CONTEXT']\n"
-            "d=json.load(open(p))\n"
-            "d['output']={'reviewer':'t','exitCode':1,"
-            "'comments':[{'body':'x','action':'fix-now','file':'f'}]}\n"
-            "json.dump(d,open(p,'w'))\n"
-        )
-        self._git("config", "diff.tool", "faketool")
-        # git runs the difftool cmd through `sh -c`, which eats the backslashes
-        # in a raw Windows path (C:\Users\… → C:Users…); use forward slashes.
-        # And invoke the exact interpreter running the suite — `python3` isn't
-        # guaranteed on PATH on Windows.
-        py = Path(sys.executable).as_posix()
-        self._git("config", "difftool.faketool.cmd",
-                  f'"{py}" "{tool.as_posix()}" "$LOCAL" "$REMOTE"')
-        self._git("config", "difftool.prompt", "false")
-        out = self._run_review()
-        self.assertIn("REVIEW_VERDICT=1", out)
-        self.assertIn('"action":"fix-now"', out)
-        # The sidecar temp file is cleaned up after relaying.
-        leftovers = list(Path(tempfile.gettempdir()).glob("beacon-review-*.json"))
-        self.assertEqual(leftovers, [])
+    def test_review_entry_points_are_gone(self):
+        for name in ("cmd_review", "_anchor_review_script", "_working_tree_dirty"):
+            self.assertFalse(hasattr(self.beacon, name), f"{name} should be removed")
 
-    def _fake_anchor_script(self, marker: Path) -> Path:
-        # Stand-in for anchor's review-diff.sh, kept outside the repo working
-        # tree so its own presence doesn't dirty it. Records the mode arg it was
-        # invoked with (proving delegation happened) and prints the sidecar
-        # verdict contract, as the real script does.
-        script = Path(self._tmp.name) / "review-diff.sh"
-        script.write_text(
-            "#!/usr/bin/env bash\n"
-            f"printf '%s' \"$1\" > '{marker.as_posix()}'\n"
-            "echo REVIEW_VERDICT=0\n"
-        )
-        return script
-
-    @unittest.skipIf(os.name == "nt", "delegation shells out to bash")
-    def test_delegates_to_anchor_on_dirty_default_branch(self):
-        # CMD-16 / issue #13: on the default branch with uncommitted changes and
-        # anchor installed, `review` delegates to `review-diff.sh --local`.
-        Path("f").write_text("a\nb\n")  # dirty the working tree on main
-        marker = Path(self._tmp.name) / "delegated.txt"
-        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
-        out = self._run_review()
-        self.assertEqual(marker.read_text(), "--local")
-        self.assertNotIn("nothing to review", out)
-
-    def test_inert_on_dirty_default_branch_without_anchor(self):
-        # Anchor absent → unchanged inert behavior, no beacon-native diff.
-        Path("f").write_text("a\nb\n")
-        self.beacon._anchor_review_script = lambda: None
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertNotIn("REVIEW_VERDICT", out)
-
-    def test_inert_on_clean_default_branch_with_anchor(self):
-        # Clean tree → inert even with anchor installed; delegation never fires.
-        marker = Path(self._tmp.name) / "delegated.txt"
-        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertFalse(marker.exists())
-
-
-class AnchorResolution(unittest.TestCase):
-    """Issue #13: `_anchor_review_script` locates anchor's review-diff.sh via
-    Claude Code's plugin registry, degrading to None when anchor is absent."""
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.beacon = _load_beacon(Path(self._tmp.name))
-        self.addCleanup(self._tmp.cleanup)
-        self.home = Path(self._tmp.name) / "home"
-        self.registry = self.home / ".claude" / "plugins" / "installed_plugins.json"
-        self.registry.parent.mkdir(parents=True)
-        self._home = os.environ.get("HOME")
-        self._userprofile = os.environ.get("USERPROFILE")
-        os.environ["HOME"] = str(self.home)
-        os.environ["USERPROFILE"] = str(self.home)
-        self.addCleanup(self._restore_home)
-
-    def _restore_home(self):
-        for var, val in (("HOME", self._home), ("USERPROFILE", self._userprofile)):
-            if val is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = val
-
-    def _install_anchor(self, marketplace: str, has_script: bool = True,
-                        last_updated: str = "2026-01-01") -> Path:
-        install = self.home / "cache" / marketplace / "anchor" / "1.0.0"
-        if has_script:
-            (install / "scripts").mkdir(parents=True)
-            (install / "scripts" / "review-diff.sh").write_text("#!/usr/bin/env bash\n")
-        return install
-
-    def _write_registry(self, plugins: dict):
-        self.registry.write_text(json.dumps({"version": 2, "plugins": plugins}))
-
-    def test_resolves_installed_anchor(self):
-        install = self._install_anchor("getty-claude-marketplace")
-        self._write_registry({"anchor@getty-claude-marketplace": [
-            {"installPath": str(install), "lastUpdated": "2026-01-01"}]})
-        self.assertEqual(self.beacon._anchor_review_script(),
-                         install / "scripts" / "review-diff.sh")
-
-    def test_none_when_anchor_absent(self):
-        self._write_registry({"tack@chris-peterson": [{"installPath": "/nope"}]})
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_none_when_registry_missing(self):
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_none_when_registry_malformed(self):
-        self.registry.write_text("{ not json")
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_prefers_newest_install_with_script_present(self):
-        # A stale registry entry (script gone from cache) is skipped in favor of
-        # a present one, even though it sorts first by lastUpdated.
-        stale = self._install_anchor("old-marketplace", has_script=False)
-        live = self._install_anchor("getty-claude-marketplace")
-        self._write_registry({
-            "anchor@old-marketplace": [
-                {"installPath": str(stale), "lastUpdated": "2026-09-09"}],
-            "anchor@getty-claude-marketplace": [
-                {"installPath": str(live), "lastUpdated": "2026-01-01"}],
-        })
-        self.assertEqual(self.beacon._anchor_review_script(),
-                         live / "scripts" / "review-diff.sh")
+    def test_completions_do_not_offer_review(self):
+        self.assertNotIn("'review:", self.beacon.ZSH_COMPLETION)
 
 
 class ExportImport(BeaconTest):

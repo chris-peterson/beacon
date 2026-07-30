@@ -25,12 +25,6 @@ suite:
     - name: tack
       required: false
       reason: resolves the branch's CR/PR URL for the badge link
-    - name: moor
-      required: false
-      reason: powers beacon review — the branch-vs-default diff and its sidecar feedback
-    - name: anchor
-      required: false
-      reason: beacon review delegates to its review-diff.sh for working-tree review on the default branch
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]
@@ -42,7 +36,6 @@ suite:
     - ["/beacon:beacon", "Label a pane, or set status with a note"]
     - ["/beacon:session-mode", "Set the session mode — pause, release, retro, done"]
     - ["beacon", "Read the resolved project / task / status anywhere"]
-    - ["beacon review", "Review the branch vs its default (moor-aware) — or click ⇄ review"]
   # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
   describe:
     skills:

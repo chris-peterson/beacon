@@ -260,7 +260,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url`, the plugin shall open the resolved `url` in the user's default browser. Both resolve through PROV-07 against the invoking cwd rather than reading persisted state, so they are correct from any shell; they are the shell-side counterparts to the status line's clickable link (STATUSLINE-02), which serves the pane a Claude session holds.
 
-**CMD-16.** When the user invokes `review`, the plugin shall diff the whole current branch against the default branch, the way a reviewer sees a CR/PR, through git's configured difftool. It shall resolve the default branch as `origin/HEAD` (symbolic), then `origin/main`, then `origin/master`; diff the three-dot range `<default>...HEAD` under `git difftool --no-prompt --dir-diff`; and set the `MOOR_CONTEXT` env var to a sidecar file it pre-populates with the review header, so that when the difftool is [moor](https://github.com/chris-peterson/moor) the review feedback (comments + exit code) is written back and relayed on stdout as `REVIEW_VERDICT` / `REVIEW_OUTPUT` (moor's sidecar contract). Outside a git repository it shall report there is nothing to review rather than open an empty diff. On the default branch the `<default>...HEAD` range is empty, so there is nothing to review *against origin*; but uncommitted changes in the working tree are still reviewable. When the [anchor](https://github.com/chris-peterson/anchor) plugin is installed **and** the working tree is dirty (staged, unstaged, or untracked changes), the plugin shall delegate to anchor's `scripts/review-diff.sh --local` — which stages the working tree, diffs it against `HEAD`, populates its own `MOOR_CONTEXT` sidecar, and emits the same `REVIEW_VERDICT` / `REVIEW_OUTPUT` contract — relaying that output rather than re-deriving the range or sidecar. anchor is a soft dependency detected via Claude Code's plugin registry (`~/.claude/plugins/installed_plugins.json`), since it ships as a plugin, not a `$PATH` binary; when it is absent, or the working tree is clean, the plugin shall report there is nothing to review (NFR-06) — it carries no beacon-native reimplementation of the working-tree diff. This is the back-end for the `⇄ review` action chip (STATUS-BAR-02); the chip types `beacon review` into the pane, so the review runs in the reader's context (a shell, or a Claude session that consumes the relayed verdict). The subcommand is moor-*aware* only insofar as it sets the sidecar env var and relays the result — it is otherwise Claude-unaware, honoring the CLI/plugin boundary (§2): the difftool, and whether a reader acts on the verdict, are not its concern.
+**CMD-16 — retired.** The branch-review subcommand (`beacon review`) and its `⇄ review` status-bar chip are removed in 2.0; see STATUS-BAR-02.
 
 **CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, description) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
 
@@ -384,7 +384,7 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window — the tab c
   ● ● ●   project                                    ← §4.8 window title (line 1)
 ┌─[ project ]─────────────────────────────────────┐ ← §4.6 tab color + two-line
 │ [  task   ]                                      │   label (§4.8, TITLE-05)
-│ STATUS BAR  project     ⇄ review     branch cwd↗ │ ← §4.4 fixed layout, two springs
+│ STATUS BAR  project                  branch cwd↗ │ ← §4.4 fixed layout, one spring
 ├─────────────────────────────────────────────────┤
 │                                       ┌────────┐│
 │   pane content                        │ project││ ← §4.3 badge (opt-in, off
@@ -395,7 +395,7 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window — the tab c
 | Area | Section | Namespace | Purpose | Mechanism |
 |:---|:---|:---|:---|:---|
 | Badge | §4.3 | `BADGE` | At-a-glance "where am I" + traffic-light status color — **opt-in, off by default (BADGE-15)** | OSC `SetBadgeFormat` + `SetUserVar` for text; OSC `SetColors=badge=` for the status traffic-light color. The base profile (§6.6) carries badge sizing |
-| Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + the actions a link can't express (`⇄ review`, `↗ code`) | Base profile status-bar layout + `SetUserVar` + Action component |
+| Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + the one action a link can't express (`↗ code`) | Base profile status-bar layout + `SetUserVar` + Action component |
 | Tab color | §4.6 | `TAB` | Tab-strip mirror of the badge traffic-light, for tabs-not-panes workflows | OSC `SetColors=tab=` for the status traffic-light color |
 | Pane background | §4.5 | `RENDER` | Whole-pane mode cue — **mode states (`paused`, `release`, `retro`, `done`) only** | Swap into the mode's dynamic profile (§6.6), which carries a distinct background (and, for `paused` / `release` / `done`, a faint background image); leaving the mode swaps back (RENDER-05) |
 | Window title + tab label | §4.8 | `TITLE` | Two-line tab label (`project` over `task`) + single-line OS window-title identity (`project`) that survives Claude's `/rename`, for a sea of windows (Mission Control, ⌘\`, Dock) | Session `name` set to the interpolated two-line title template (`TITLE_FORMAT`, TITLE-05) via Apple Events (`set-name`); the base profile disables OSC title-setting (`Allow Title Setting: false`) so Claude's title OSC can't overwrite it, and surfaces the name via `Title Components: 1` |
@@ -509,7 +509,7 @@ When neither flag is set, BADGE-09 applies.
 
 ### 4.4 Status bar area (STATUS-BAR)
 
-The status bar carries **a fixed-layout strip of values and actions** that complement the badge: an abbreviated project URL (identification) and the branch, paired with action buttons to review the branch (`⇄ review`) and open the cwd in an editor (`↗ code`). It is delivered via a beacon-managed dynamic profile that the user opts into.
+The status bar carries **a fixed-layout strip of values and actions** that complement the badge: an abbreviated project URL (identification) and the branch, paired with an action button to open the cwd in an editor (`↗ code`). It is delivered via a beacon-managed dynamic profile that the user opts into.
 
 Layout is fixed (no dynamic show/hide based on values). Chip text is rendered in the profile's default text color — kind-based per-chip palettes were tried and dropped because, with positions fixed, the colors became decorative rather than informative. Value-based coloring (e.g. status chip turns red when waiting) requires a custom Python component and is out of scope; the badge color (BADGE-09) covers the same need.
 
@@ -542,22 +542,24 @@ flowchart TB
 
 beacon does **not** make the `beacon-dev` profile iTerm2's default — that would require quitting iTerm2 to write `Default Bookmark Guid`. Instead, each session is switched into the `beacon-dev` profile at runtime via `set-profile` (CLI-14): the plugin switches Claude panes at SessionStart, and the shell integration switches interactive panes on source (§6.6). This activates the profile without touching the user's default and without any pref write that needs iTerm2 quit.
 
-**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right. The sequence places the **project identity** flush left and the **branch + `↗ code` action** flush right, with the **`⇄ review` action centered between two springs** that absorb the slack on either side of it.
+**STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right: **project identity** flush left, a **spring** absorbing the slack, and the **branch + `↗ code` action** flush right.
 
-The strip carries only what a hyperlink cannot do. Navigating to the session's URL is the status line's job (STATUSLINE-02) — a footer row that works in any terminal and reads from one source — so the two surviving actions are the ones a link has no way to express: typing a command into the pane, and launching a local application.
+The strip carries only what a hyperlink cannot do, and only where that has proven worth a permanent slot. Navigating to the session's URL is the status line's job (STATUSLINE-02) — a footer row that works in any terminal and reads from one source. What remains is the one action a link has no way to express and that earns its place: launching a local application against the session's directory.
 
 Chip-by-chip behavior:
 
 1. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
-2. **Spring** — the leading spring; together with the trailing spring it centers the `⇄ review` action.
-3. **`⇄ review` action button** — magenta, centered. Always visible. This is an iTerm2 **Send Text** action, not a coprocess: clicking shall type `beacon review` into the pane and submit it (CMD-16). It thus runs in the reader's context — a shell (moor opens for a manual review) or a live Claude session (Claude runs it and consumes the sidecar verdict), so a review of the branch against its default branch is one click from any painted pane. Off a git repo `beacon review` reports there is nothing to review rather than opening an empty diff; on the default branch it delegates to anchor's working-tree review when anchor is installed and the tree is dirty, and is otherwise inert (CMD-16).
-4. **Spring** — the trailing spring; pushes the branch + `↗ code` cluster to the right edge.
-5. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
-6. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
-7. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
-8. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in the configured editor (STATUS-BAR-07).
+2. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
+3. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
+4. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
+5. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
+6. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in the configured editor (STATUS-BAR-07).
 
 Action-chip color matches the data cluster it anchors so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
+
+A `⇄ review` chip (a Send Text action typing `beacon review` into the pane) occupied the centre of the strip through 1.x, backed by a `review` subcommand that diffed the branch against its default branch through the configured difftool, with a moor sidecar contract and a delegation to anchor for working-tree review. The **whole feature is removed in 2.0** — chip and subcommand both (CMD-16 retired). It went unused, and a permanent slot in a narrow strip is the most expensive real estate beacon has. Reviewing a diff is a job other tools already own; beacon's is telling you what each session is doing.
+
+This also drops beacon's soft dependencies on `moor` and the `anchor` plugin, which existed only to serve it (NFR-06).
 
 **STATUS-BAR-03.** Action chips shall remain visible regardless of underlying state. Data chips other than the branch chip shall always render. The branch chip shall use the **hybrid identity + state coloring** (#20): the repo's default branch is de-emphasized (a slate slot) whatever its sync state, while a feature branch reads by sync state — cyan synced, yellow diverged, orange untracked (all Dracula; green is reserved for the `release` mode). The profile carries one fixed-color component per bucket (`beacon_branch_default` / `_clean` / `_diverged` / `_untracked`) and exactly one is non-empty, so `remove empty components` resolves them to a single visible chip. The default branch is probed via `origin/HEAD` (`_default_branch_ref`), falling back to the conventional `main` / `master` / `trunk` names so a fresh local repo still classifies; the shell precmd and the plugin's `_publish_chips` publish the same slot so Claude-session and interactive panes agree. Empirical iTerm2 quirks that constrain the implementation (action chips ignoring `remove empty components`, coprocess actions not interpolating user vars, SwiftyString comparison expressions being unreliable) are captured in §6.10.
 
@@ -573,7 +575,7 @@ The launch shall happen in a `beacon open-code [<dir>]` subcommand rather than i
 
 When the configured editor cannot be resolved on `PATH`, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
 
-`code_args` is deliberately not applied to a `⇄ review` equivalent: that chip is a Send Text action running in the user's own shell, where their `PATH` and aliases already apply.
+`↗ code` is the only chip this applies to — it is the only action chip left (STATUS-BAR-02).
 
 ### 4.5 Render orchestration (RENDER)
 
@@ -693,7 +695,7 @@ The footer is the home rather than an iTerm2 status-bar segment: the refs are on
 
 **NFR-05.** A provider that throws an exception shall not block other providers in the chain.
 
-**NFR-06.** When an optional integration is unavailable (`tack`, `gh`, or `glab` absent, the `anchor` plugin not installed, or `osascript` unavailable off-macOS), the plugin shall degrade gracefully — text signals continue to work, the affected provider or action is skipped, and no hook or command fails. Most integrations are `$PATH` binaries probed with `_which`; `anchor` ships as a Claude Code plugin, so its presence is read from Claude Code's plugin registry (`~/.claude/plugins/installed_plugins.json`) instead, tolerant of an absent or malformed registry.
+**NFR-06.** When an optional integration is unavailable (`tack`, `gh`, or `glab` absent, or `osascript` unavailable off-macOS), the plugin shall degrade gracefully — text signals continue to work, the affected provider or action is skipped, and no hook or command fails. Every remaining integration is a `$PATH` binary probed with `_which`.
 
 **NFR-07.** The plugin shall function in directories that are not inside any recognized project (no git, no manifest).
 

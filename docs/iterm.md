@@ -83,22 +83,19 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     </div>
     <div class="bcn-body">
       <div><span class="prompt">›</span> run just build</div>
-      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">6</span></span>
+      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">5</span></span>
     </div>
     <div class="bcn-bar">
       <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">2</span></span>
       <span class="bcn-spring"></span>
-      <span class="bcn-act">⇄ review<span class="bcn-mk">3</span></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
+      <span class="bcn-branch">main<span class="bcn-mk">3</span></span>
       <span class="bcn-sep">│</span>
-      <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
+      <span class="bcn-act">↗ code<span class="bcn-mk">4</span></span>
     </div>
   </div>
   <ol class="bcn-legend">
     <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
     <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
-    <li><span><b><code>⇄ review</code> button</b> — types <code>beacon review</code> into the pane and runs it, diffing the branch against its default branch.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
     <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default; set <code>code_app</code> / <code>code_args</code> to change it).</span></li>
     <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
@@ -133,7 +130,7 @@ The text is the project name, optionally followed by `: <task>` when a task is s
 
 ## The status bar
 
-The status bar carries a fixed-layout strip the badge has no room for: `project ⇄ review branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
+The status bar carries a fixed-layout strip the badge has no room for: `project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
 
 It carries only the two things a link can't do — type a command into the pane, and launch a local app. Navigating to the session's URL is the [status line](#the-status-line)'s job, where it's a real hyperlink that works in any terminal.
 
@@ -142,19 +139,19 @@ The project chip answers "what am I working on," not just "what repo am I in" �
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gh:acme/widgets</span><span class="bcn-spring"></span><span class="bcn-act">⇄ review</span><span class="bcn-spring"></span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-proj">gh:acme/widgets</span><span class="bcn-spring"></span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">In a repo, no tracked deliverable — the chip shows the bare identity.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-spring"></span><span class="bcn-act">⇄ review</span><span class="bcn-spring"></span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-spring"></span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream).</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-spring"></span><span class="bcn-act">⇄ review</span><span class="bcn-spring"></span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-spring"></span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">On a GitLab MR — chip shows <code>!17</code>.</div>
   </div>
