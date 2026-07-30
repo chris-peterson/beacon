@@ -913,7 +913,7 @@ class ResolveUrlForgeFallback(BeaconTest):
 
 class TackUrlHonorsSessionPin(BeaconTest):
     """_tack_url_for resolves the route via the session→route pin, not the
-    branch slug alone, so the ↖ web button and the fleet-view chip read the
+    branch slug alone, so the status-line link and the fleet-view chip read the
     same route. A route pinned to the session whose slug differs from the
     branch (a pin, not a branch-slug match) must still surface its deliverable
     URL; location correlation (via _tack_route_for) is the fallback."""
@@ -978,8 +978,8 @@ class CacheKeyIsPaneStable(BeaconTest):
     """The handoff cache files (cwd / url) and the engagement marker key on the
     pane GUID, not the full ITERM_SESSION_ID: the `wNtNpN` positional prefix
     changes when a pane is moved between windows/tabs/splits, and keying on it
-    left the status-bar buttons reading a file written under the pane's old
-    position — the ↖ web button hit its fallback, the ↗ code button no-op'd."""
+    left the `↗ code` button reading a file written under the pane's old
+    position, so it silently no-op'd."""
 
     def _key(self, iterm_id):
         with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": iterm_id}):
@@ -1123,7 +1123,7 @@ class HybridBranchSlots(BeaconTest):
     components resolve to a single visible chip."""
 
     def _publish(self, detected):
-        self.beacon._LAST_CHIP_PAIRS = None
+        self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info", return_value=detected), \
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
              mock.patch.object(self.beacon, "resolve_url", return_value=("", "")):
@@ -1143,6 +1143,70 @@ class HybridBranchSlots(BeaconTest):
         self.assertEqual(slots["beacon_branch_default"], "")
         self.assertEqual(slots["beacon_branch_diverged"], "↑1 topic")
         self.assertEqual(slots["beacon_branch_clean"], "")
+
+
+class ResolvedUrlPersistence(BeaconTest):
+    """STATUSLINE-02: _publish_chips persists the resolved URL so the status line
+    can render it without re-running resolve_url (git, and possibly gh/glab) on
+    every prompt. The `url-<pane-guid>.txt` handoff file the `↖ web` button read
+    is retired with the button — the persisted state is the single source."""
+
+    def _publish(self, url, label, cwd="/x"):
+        self.beacon._LAST_CHIP_SIGNATURE = None
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=(url, label)):
+            self.beacon._publish_chips(Path(cwd))
+
+    def test_resolution_is_persisted(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        self.assertEqual(self.beacon.read_state("resolved.url"),
+                         "https://gh.test/acme/widget/pull/7")
+        self.assertEqual(self.beacon.read_state("resolved.url_label"), "acme/widget#7")
+
+    def test_url_handoff_file_is_not_written(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        self.assertFalse((self.beacon.CACHE_DIR / "url-GUID.txt").exists())
+        # The `↗ code` button still needs its cwd handoff file.
+        self.assertTrue((self.beacon.CACHE_DIR / "cwd-GUID.txt").exists())
+
+    def test_beacon_url_uservar_is_not_published(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        batch = next(c for c in self.cli_calls if c[0] == "uservar-batch")
+        self.assertFalse([p for p in batch[1:] if p.startswith("beacon_url=")])
+
+    def test_url_only_change_still_republishes(self):
+        # The URL rides the last-value gate's signature but not the uservar
+        # payload. Two URLs can differ while every chip is identical, and the
+        # persisted value must follow — otherwise the footer link goes stale.
+        self._publish("https://gh.test/acme/widget/tree/a", "acme/widget")
+        # Deliberately does NOT reset the gate — that is what's under test.
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://gh.test/acme/widget/tree/b", "acme/widget")):
+            self.beacon._publish_chips(Path("/x"))
+        self.assertEqual(self.beacon.read_state("resolved.url"),
+                         "https://gh.test/acme/widget/tree/b")
+
+
+class WebButtonRetired(unittest.TestCase):
+    """STATUS-BAR-02: the `↖ web` action chip and the handoff file it read are
+    gone from the profile — the status line carries the URL (STATUSLINE-02)."""
+
+    def test_profile_carries_no_web_chip_or_url_handoff(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        self.assertNotIn("↖ web", template)
+        self.assertNotIn("url-${ITERM_SESSION_ID", template)
+
+    def test_shell_publishes_no_url_var_or_handoff(self):
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text()
+        self.assertNotIn("uservar beacon_url", shell)
+        self.assertNotIn("_beacon_write_session_file url", shell)
 
 
 class HybridBranchProfileSlots(unittest.TestCase):
@@ -2088,9 +2152,10 @@ class PauseClearScreen(BeaconTest):
 
 
 class StatusLineProvider(BeaconTest):
-    """STATUSLINE-01: the Claude Code status-line provider prints ONLY the pause
-    reason (the footer row Claude owns, no terminal overlap) — empty otherwise,
-    since project/task/status are carried by the tab."""
+    """STATUSLINE-01: the Claude Code status-line provider (the footer row Claude
+    owns, no terminal overlap) prints the pause reason and the resolved URL as an
+    OSC-8 link — empty otherwise, since project/task/status are carried by the
+    tab."""
 
     def _run(self):
         buf = io.StringIO()
@@ -2122,6 +2187,40 @@ class StatusLineProvider(BeaconTest):
         out = self._run()
         self.assertIn("line one line two", out)
         self.assertEqual(out.count("\n"), 1)  # only the trailing newline
+
+    def test_resolved_url_renders_as_osc8_link(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self.beacon.write_state("resolved.url", url)
+        self.beacon.write_state("resolved.url_label", "acme/widgets#42")
+        out = self._run()
+        # The full OSC-8 wrapper, not just the label: the label alone would pass
+        # even if the sequence were dropped, which is the whole feature.
+        self.assertIn(f"\033]8;;{url}\a", out)
+        self.assertIn("acme/widgets#42", out)
+        self.assertIn("\033]8;;\a", out)
+        # The bare URL never appears as text — the label is the click target.
+        self.assertNotIn(f" {url} ", out)
+
+    def test_no_resolved_url_prints_nothing(self):
+        self.assertEqual(self._run(), "")
+
+    def test_url_falls_back_to_itself_when_unlabelled(self):
+        url = "https://github.com/acme/widgets"
+        self.beacon.write_state("resolved.url", url)
+        self.assertIn(f"\033]8;;{url}\a{url}\033]8;;\a", self._run())
+
+    def test_pause_reason_and_link_share_one_row(self):
+        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_state("description", "waiting on CI")
+        self.beacon.write_state("resolved.url", "https://example.test/1")
+        self.beacon.write_state("resolved.url_label", "ex#1")
+        out = self._run()
+        self.assertIn("waiting on CI", out)
+        self.assertIn("ex#1", out)
+        self.assertIn(self.beacon.STATUSLINE_SEPARATOR, out)
+        self.assertEqual(out.count("\n"), 1)
+        # Reason leads: it answers "why is this parked" before "where is it".
+        self.assertLess(out.index("waiting on CI"), out.index("ex#1"))
 
 
 class ReviewButtonInProfile(unittest.TestCase):
@@ -2156,7 +2255,7 @@ class ReviewButtonInProfile(unittest.TestCase):
 
     def test_review_button_is_centered_between_springs(self):
         # The review chip is flanked by two springs so it centers between the
-        # left (web · project) and right (branch · code) clusters —
+        # left (project) and right (branch · code) clusters —
         # … project ←spring→ ⇄ review ←spring→ branch …
         comps = self._layout()
         self.assertEqual(
@@ -2166,8 +2265,10 @@ class ReviewButtonInProfile(unittest.TestCase):
                    and c["configuration"]["knobs"]["action"]["title"] == "⇄ review")
         self.assertEqual(comps[idx - 1]["class"], "iTermStatusBarSpringComponent")
         self.assertEqual(comps[idx + 1]["class"], "iTermStatusBarSpringComponent")
-        # Action chips left-to-right: web (far left), review (center), code (far right).
-        self.assertEqual(self._action_titles(), ["↖ web", "⇄ review", "↗ code"])
+        # STATUS-BAR-02: two action chips, review (center) and code (far right).
+        # The `↖ web` chip is retired — the status line carries the URL as an
+        # OSC-8 link (STATUSLINE-02), single-sourced and terminal-agnostic.
+        self.assertEqual(self._action_titles(), ["⇄ review", "↗ code"])
 
 
 class ReviewCommand(unittest.TestCase):

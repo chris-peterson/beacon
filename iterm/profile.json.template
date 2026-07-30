@@ -29,39 +29,6 @@
         },
         "components": [
           {
-            "class": "iTermStatusBarActionComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "minwidth": "0",
-                "maxwidth": 80,
-                "shared font": "",
-                "shared text color": {
-                  "Red Component": 1.0,
-                  "Green Component": 0.4745,
-                  "Blue Component": 0.7765,
-                  "Color Space": "sRGB",
-                  "Alpha Component": 1.0
-                },
-                "action": {
-                  "applyMode": 0,
-                  "escaping": 1,
-                  "title": "↖ web",
-                  "parameter": "url=$(cat \"__BEACON_CACHE_DIR__/url-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$url\" ]; then open \"$url\"; else osascript -e 'display alert \"beacon\" message \"No URL resolved for this session.\"' >/dev/null 2>&1; fi",
-                  "action": 35,
-                  "version": 2
-                }
-              },
-              "layout advanced configuration dictionary value": {
-                "remove empty components": true,
-                "font": "Menlo-Regular 18",
-                "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {

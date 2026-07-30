@@ -2929,21 +2929,22 @@ def _local_path_at(cwd: Path) -> str:
     return s
 
 
-_LAST_CHIP_PAIRS: tuple[str, ...] | None = None
+_LAST_CHIP_SIGNATURE: tuple[str, ...] | None = None
 
 
 def _publish_chips(cwd: Path) -> None:
-    """Refresh status-bar chips (project_full, branch*, url) + action-button
-    handoff files from `cwd`. Does NOT touch beacon_project / beacon_task —
-    those are owned by the engagement renderer.
+    """Refresh status-bar chips (project_full, branch*) + the `↗ code` handoff
+    file from `cwd`, and persist the resolved URL for the status line. Does NOT
+    touch beacon_project / beacon_task — those are owned by the engagement
+    renderer.
 
     Called whenever the shell's precmd can't (mid-session, between turns) so
     chips reflect branch creation / tack-context changes that happened while
     the shell was blocked on Claude."""
-    global _LAST_CHIP_PAIRS
+    global _LAST_CHIP_SIGNATURE
     project_full = _project_full_at(cwd)
     display, state, _ind, identity = _detect_branch_info(cwd)
-    url, _label = resolve_url(cwd)
+    url, label = resolve_url(cwd)
 
     if project_full:
         project_full = f"{project_full}{_deliverable_suffix(url)}"
@@ -2960,21 +2961,31 @@ def _publish_chips(cwd: Path) -> None:
         f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
         f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
         f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
-        f"beacon_url={url}",
     )
     # Last-value gate (mirrors shell's precmd sentinels per CLAUDE.md hot
     # path policy): Stop fires once per turn, but most turns don't change
     # branch/url. Skip the CLI spawn + file writes when nothing differs.
-    if pairs == _LAST_CHIP_PAIRS:
+    # The URL rides the signature but not the uservar payload: two URLs can
+    # differ while every chip stays identical (a branch-tree URL narrowing to
+    # a sibling), and the status line reads the persisted value below.
+    signature = pairs + (f"url={url}", f"label={label}")
+    if signature == _LAST_CHIP_SIGNATURE:
         return
-    _LAST_CHIP_PAIRS = pairs
+    _LAST_CHIP_SIGNATURE = signature
     _cli("uservar-batch", *pairs)
+
+    # STATUSLINE-02: the status line renders this per prompt, so it must never
+    # re-run resolve_url (which shells to git and can shell to gh/glab). The
+    # resolution is persisted here, on the hooks that already pay for it.
+    # Distinct from the `resolved` badge snapshot (STATE-03), which is written
+    # by the renderer and holds project/task/status.
+    write_state("resolved.url", url)
+    write_state("resolved.url_label", label)
 
     key = _iterm_cache_key()
     if key:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         (CACHE_DIR / f"cwd-{key}.txt").write_text(f"{cwd}\n")
-        (CACHE_DIR / f"url-{key}.txt").write_text(f"{url}\n")
 
 
 def _publish_anchor(cwd: Path) -> None:
@@ -3891,29 +3902,62 @@ def cmd_render(_args):
     render()
 
 
+STATUSLINE_SEPARATOR = " · "
+STATUSLINE_LINK_COLOR = "36"
+
+
+def _osc8(url: str, text: str) -> str:
+    """Wrap `text` as an OSC-8 hyperlink to `url`. BEL (`\\a`) terminates each
+    sequence rather than ST (`ESC \\`) — both are legal and BEL is the more
+    widely accepted across emulators. Claude Code passes the sequence through
+    its status-line renderer untouched (verified in iTerm2), so the terminal is
+    what decides whether it becomes clickable."""
+    return f"\033]8;;{url}\a{text}\033]8;;\a"
+
+
+def _statusline_pause_segment() -> str:
+    """`⏸ <reason>`, colored, while paused with a note; empty otherwise."""
+    if read_state("override.status") != "paused":
+        return ""
+    reason = " ".join((read_state("description") or "").split())
+    if not reason:
+        return ""
+    return f"\033[{_WIP_DOT_COLOR['paused']}m{PAUSED_TITLE_GLYPH}{reason}\033[0m"
+
+
+def _statusline_link_segment() -> str:
+    """STATUSLINE-02: the session's resolved URL (PROV-07) as a clickable
+    OSC-8 link, labelled the way the project chip labels it. Reads the value
+    `_publish_chips` persisted rather than re-resolving — the row renders per
+    prompt, and `resolve_url` shells to git and can shell to `gh`/`glab`."""
+    url = read_state("resolved.url")
+    if not url:
+        return ""
+    label = read_state("resolved.url_label") or url
+    return f"\033[{STATUSLINE_LINK_COLOR}m{_osc8(url, label)}\033[0m"
+
+
 def cmd_statusline(_args):
     """STATUSLINE-01: Claude Code status-line provider. Claude runs this per
     prompt (and on its other status-line events) and renders stdout as a footer
-    row it owns — above its built-in badges, never overlapping terminal output.
-    For now the row carries ONLY the pause reason, the highest-signal 'why is
-    this parked' recall context; `project` / `task` / `status` are already on the
-    tab (RENDER-04 / TITLE-05), so the row is empty the rest of the time. Reads
-    only per-session state files — no network — per Claude Code's guidance that
-    the status-line command stay cheap (it runs frequently)."""
+    row it owns — above its built-in badges, never overlapping terminal output,
+    in any terminal. The row carries the pause reason (the highest-signal 'why
+    is this parked' recall context) and the resolved URL as a clickable link;
+    `project` / `task` / `status` are already on the tab (RENDER-04 / TITLE-05),
+    so they are not repeated here. Reads only per-session state files — no
+    network — per Claude Code's guidance that the status-line command stay cheap
+    (it runs frequently)."""
     # Drain Claude's status-line JSON on stdin so the pipe closes cleanly; beacon
     # resolves its own session from the environment (session_hash), so the payload
-    # is unused today. Future signals (#26 URL, #18 deliverables) may read it.
+    # is unused.
     try:
         sys.stdin.read()
     except Exception:
         pass
-    if read_state("override.status") != "paused":
-        return
-    reason = " ".join((read_state("description") or "").split())
-    if not reason:
-        return
-    color = _WIP_DOT_COLOR["paused"]
-    sys.stdout.write(f"\033[{color}m{PAUSED_TITLE_GLYPH}{reason}\033[0m\n")
+    segments = [_statusline_pause_segment(), _statusline_link_segment()]
+    row = STATUSLINE_SEPARATOR.join(s for s in segments if s)
+    if row:
+        sys.stdout.write(f"{row}\n")
 
 
 def _is_active(line: str) -> bool:
