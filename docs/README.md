@@ -174,7 +174,7 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`project branch ↗ code`, whose button opens the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`↖ web · project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
 
@@ -189,7 +189,19 @@ By default the button runs `code --maximized`. Point it at a different editor, o
 }
 ```
 
-The keys are read when you click, so a change takes effect immediately — no `beacon install` re-run. If the command isn't on your `PATH`, the button says so and names the key to fix rather than quietly opening something else; set `code_app` to an absolute path in that case.
+The keys are read when you click, so a change takes effect immediately — no `beacon install` re-run. If the command isn't on your `PATH`, beacon asks your login shell before giving up (an action button doesn't inherit your interactive `PATH`, so `/opt/homebrew/bin` and friends are invisible to it). Failing both, the button says so and names the key to fix rather than quietly opening something else.
+
+### Choosing what the `↖ web` button opens
+
+By default it opens whatever beacon resolves for the session — the PR/MR/issue when there is one, else the branch or repo page. If you already have a command for this, point the button at it:
+
+```json
+{ "web_cmd": "git web" }
+```
+
+It runs in the session's directory, and is resolved the same way (`PATH`, then your login shell), so a git alias or a script both work.
+
+Resolution happens when you click, against that directory — so the button is right even in a pane beacon isn't tracking, like a shell you're just poking around in. That's also why there's no cached URL for it to get wrong.
 
 ## Install
 

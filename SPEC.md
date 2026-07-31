@@ -258,7 +258,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
 
-**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url`, the plugin shall open the resolved `url` in the user's default browser. Both resolve through PROV-07 against the invoking cwd rather than reading persisted state, so they are correct from any shell; they are the shell-side counterparts to the status line's clickable link (STATUSLINE-02), which serves the pane a Claude session holds.
+**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the user's `web_cmd` when configured, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
 
 **CMD-16 — retired.** The branch-review subcommand (`beacon review`) and its `⇄ review` status-bar chip are removed in 2.0; see STATUS-BAR-02.
 
@@ -544,16 +544,19 @@ beacon does **not** make the `beacon-dev` profile iTerm2's default — that woul
 
 **STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right: **project identity** flush left, a **spring** absorbing the slack, and the **branch + `↗ code` action** flush right.
 
-The strip carries only what a hyperlink cannot do, and only where that has proven worth a permanent slot. Navigating to the session's URL is the status line's job (STATUSLINE-02) — a footer row that works in any terminal and reads from one source. What remains is the one action a link has no way to express and that earns its place: launching a local application against the session's directory.
+The strip carries the actions worth a permanent slot in a narrow row. Each edge pairs an action chip with the data chip it acts on: `↖ web` with the project identity it opens, `↗ code` with the directory it launches into.
+
+The status line also carries the resolved URL as a link (STATUSLINE-02), which is not a duplicate: **the footer only exists in a pane running Claude, and only when focused.** A shell you are just poking around in has no footer at all, and jumping to a repo's web view from an arbitrary pane is exactly when the affordance is wanted. The strip is the surface that is always there.
 
 Chip-by-chip behavior:
 
-1. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
-2. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
-3. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
-4. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
-5. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
-6. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in the configured editor (STATUS-BAR-07).
+1. **`↖ web` action button** — link-blue, flush left. Always visible. Clicking shall open the session's web view (STATUS-BAR-08).
+2. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
+3. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
+4. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
+5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
+6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
+7. **`↗ code` action button** — magenta. Always visible. Clicking shall open the session's local cwd in the configured editor (STATUS-BAR-07).
 
 Action-chip color matches the data cluster it anchors so each CTA visually ties to its target; data chips render in a dimmer shade. The chip sequence is fixed in position; only the mutually-exclusive branch triple collapses.
 
@@ -577,7 +580,13 @@ Resolving the editor binary is subject to the same `PATH` problem, and substitut
 
 When the configured editor cannot be resolved by either route, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
 
-`↗ code` is the only chip this applies to — it is the only action chip left (STATUS-BAR-02).
+**STATUS-BAR-08.** The `↖ web` action button shall open the session's web view by invoking `beacon open-url <cwd>`, reached through the same absolute-interpreter substitution and cwd handoff file as `↗ code` (STATUS-BAR-07), with the same alert-on-failure path.
+
+Resolution happens **at click time, against the directory it is given** — there is no URL handoff file. That is what removes the #5 failure at its root: nothing is cached, so the button and the project chip beside it cannot disagree. It is also what makes the button correct in a pane beacon is not tracking, which is the case the status-line link cannot serve (STATUSLINE-02): a shell you are poking around in has no Claude footer, and that is exactly when jumping to a repo's web view is wanted.
+
+By default the URL comes from PROV-07, which knows about tack deliverables and open CRs and so lands on the *thing being worked on* rather than the repo's front page. A **`web_cmd`** key in the user config overrides that with the user's own command, run in the target directory — `git web` and its kin already exist on plenty of machines, and beacon has no business relitigating where the button should go. It is resolved the same way `code_app` is (PATH, then the login shell), so a git alias or a `$PATH` script both work. Where `code_app` / `code_args` split the program from its arguments, `web_cmd` is a single shell-quoted string: the useful values are whole commands rather than a program with a fixed flag set.
+
+`↗ code` is the only chip STATUS-BAR-07 applies to; the `↖ web` chip has its own knob above.
 
 ### 4.5 Render orchestration (RENDER)
 
@@ -633,6 +642,7 @@ The mode pane backgrounds (RENDER-05) are delivered by the mode profiles rather 
 
 | Chip                      | Hex       | Role                                 |
 |:--------------------------|:----------|:-------------------------------------|
+| `↖ web` action            | `#8be9fd` | cyan — action, matching the identity it opens |
 | `↗ code` action           | `#ff79c6` | pink — action affordance             |
 | `beacon_project_full`     | `#6272a4` | comment — identity / label           |
 | `beacon_branch_clean`     | `#50fa7b` | green — branch state (synced)        |
@@ -682,7 +692,7 @@ Claude Code renders multi-line status-line output, so a line per class beats pac
 
 The status line shall **not** call `resolve_url` — it renders per prompt, and that chain shells to git and can shell to `gh`/`glab`. The resolution is persisted as `resolved.url` / `resolved.url_label` by the hooks that already pay for it (HOOK-08, HOOK-08b), and the status line reads that state. This makes the resolved URL single-sourced: the same value feeds the project chip's deliverable suffix (STATUS-BAR-02) and this link, so the two can no longer disagree.
 
-Because the link is single-sourced, terminal-agnostic, and clickable, the `↖ web` status-bar action button and its `url-<pane-guid>.txt` handoff file are **retired** — the dual-source design behind #5 is removed rather than patched. `beacon open-url` / `copy-url` (CMD-14) remain the shell-side path, for a pane not running Claude.
+What this retires is the `url-<pane-guid>.txt` **handoff file** — the second source that drifted from the chip beside it (#5) — not the `↖ web` button, which survives on a different footing (STATUS-BAR-08). The footer link and the button answer different questions: the footer serves a pane running Claude, the button serves any pane at all.
 
 **STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) captured *before* the deliverable suffix is appended to the chip. Branch and repo URLs are not deliverables and shall record nothing.
 

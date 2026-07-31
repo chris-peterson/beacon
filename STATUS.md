@@ -5,13 +5,14 @@ Maintained by `/sextant:spec-status`.
 
 **Last audit:** 2026-07-30
 **Spec version:** v2 (root-level, `SPEC.md`)
-**Coverage:** 162 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+**Coverage:** 163 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
 (the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
 deliverables) join STATUSLINE-01, and STATUS-BAR-07 makes the `↗ code` editor
-configurable. STATUS-BAR-02 sheds both action chips it had — `↖ web` (the
-status line carries the URL) and `⇄ review`, whose whole feature went with it
-(CMD-16 retired, along with the `moor` / `anchor` soft deps that served it).
+configurable, and STATUS-BAR-08 gives `↖ web` a click-time resolver plus a
+`web_cmd` knob (its URL *handoff file* is what 2.0 retires, not the chip).
+STATUS-BAR-02 drops `⇄ review`, whose whole feature went with it (CMD-16
+retired, along with the `moor` / `anchor` soft deps that served it).
 CMD-19/20/22 retire into a single CMD-18 (`/beacon:session-mode`).
 
 The plugin version is **not** recorded here: the release workflow bumps
@@ -75,7 +76,7 @@ a mode state swaps into its profile for a background a color OSC can't express
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
 | TITLE-01..04 | 4 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write |
-| STATUS-BAR-01..03, 05..07 (gap 04) | 6 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 lost the `↖ web` chip in 2.0 (the status line carries the URL, STATUSLINE-02) leaving two action chips; STATUS-BAR-07 is the configurable `↗ code` editor (`code_app` / `code_args` read at click time, launched via `cmd_open_code` through an absolute interpreter path — issue #25) |
+| STATUS-BAR-01..03, 05..08 (gap 04) | 7 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor (`code_app` / `code_args` read at click time, launched via `cmd_open_code`); STATUS-BAR-08 is the `↖ web` chip resolving at click time via `cmd_open_url <cwd>` with an optional `web_cmd` override — both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3) |
 | STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26); STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18) |
 | RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |

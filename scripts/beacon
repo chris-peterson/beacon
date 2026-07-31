@@ -987,15 +987,47 @@ def cmd_open_code(args):
     print(f"opened: {target}")
 
 
-def cmd_open_url(_args):
-    """Resolve the current URL (PROV-07) and open it in the default browser
-    via `open`. Used by the status bar 'go' button via Send Text — runs in
-    the user's interactive shell at the prompt, so the cwd is correct."""
-    url, _ = resolve_url()
+def cmd_open_url(args):
+    """Open the session's web view. Backs the `↖ web` status-bar button
+    (STATUS-BAR-08) and is usable from any shell.
+
+    Two paths, chosen by config. `web_cmd` runs the user's own command in the
+    target directory — the point being that plenty of people already have one
+    (`git web` and friends), and beacon has no business relitigating where it
+    should go. Unset, beacon resolves the URL itself through PROV-07, which
+    knows about tack deliverables and open CRs and so lands on the *thing you
+    are working on* rather than the repo's front page.
+
+    Resolution happens at click time against the directory it is given. That is
+    what makes this correct in a pane beacon isn't tracking — a shell you are
+    just poking around in — and it is why there is no URL handoff file: nothing
+    is cached, so nothing can go stale (the #5 failure)."""
+    target = Path(args.dir) if getattr(args, "dir", None) else Path.cwd()
+
+    web_cmd = str(_load_config().get("web_cmd") or "").strip()
+    if web_cmd:
+        argv = shlex.split(web_cmd)
+        exe = _resolve_editor(argv[0])
+        if not exe:
+            sys.exit(f"web_cmd not found: {argv[0]!r} is not on PATH, and your "
+                     f"login shell could not find it either — check "
+                     f'"web_cmd" in {_config_file()}')
+        try:
+            r = subprocess.run([exe, *argv[1:]], cwd=str(target),
+                               capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as e:
+            sys.exit(f"failed to run {web_cmd!r}: {e}")
+        if r.returncode != 0:
+            sys.exit(f"{web_cmd!r} exited {r.returncode}"
+                     f"{': ' + r.stderr.strip() if r.stderr.strip() else ''}")
+        print(f"ran: {web_cmd}")
+        return
+
+    url, _ = resolve_url(target)
     if not url:
         sys.exit("no URL resolved (no override, no tack route, no git remote)")
     try:
-        r = subprocess.run(["open", url], capture_output=True, timeout=2)
+        r = subprocess.run(["open", url], capture_output=True, timeout=10)
         if r.returncode != 0:
             sys.exit(f"open failed (exit {r.returncode}): {r.stderr.decode().strip()}")
     except FileNotFoundError:
@@ -4599,7 +4631,8 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
-    sub.add_parser("open-url", help="open the resolved URL in the default browser via `open`")
+    sp = sub.add_parser("open-url", help="open the session's web view (config: web_cmd)")
+    sp.add_argument("dir", nargs="?", help="directory to resolve from (default: cwd)")
 
     sp = sub.add_parser("open-code", help="open a directory in the configured editor (config: code_app / code_args)")
     sp.add_argument("dir", nargs="?", help="directory to open (default: cwd)")

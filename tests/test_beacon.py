@@ -1394,19 +1394,80 @@ class CodeButtonInProfile(unittest.TestCase):
         self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
 
 
-class WebButtonRetired(unittest.TestCase):
-    """STATUS-BAR-02: the `↖ web` action chip and the handoff file it read are
-    gone from the profile — the status line carries the URL (STATUSLINE-02)."""
+class WebButton(unittest.TestCase):
+    """STATUS-BAR-08: the `↖ web` chip resolves at click time through
+    `beacon open-url`. What was retired in 2.0 is the *URL handoff file* — the
+    second source that drifted from the chip (#5) — not the affordance, which a
+    pane not running Claude has no other way to reach."""
 
-    def test_profile_carries_no_web_chip_or_url_handoff(self):
+    def test_chip_calls_open_url_and_reads_no_url_handoff(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        self.assertNotIn("↖ web", template)
+        self.assertIn("↖ web", template)
+        self.assertIn("open-url", template)
+        # The cwd handoff survives; a URL handoff would reintroduce the drift.
         self.assertNotIn("url-${ITERM_SESSION_ID", template)
 
     def test_shell_publishes_no_url_var_or_handoff(self):
         shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
         self.assertNotIn("uservar beacon_url", shell)
         self.assertNotIn("_beacon_write_session_file url", shell)
+
+
+class OpenUrlCommand(BeaconTest):
+    """STATUS-BAR-08 / CMD-14: `open-url [dir]` resolves at click time against
+    the directory it is given, so it is correct in a pane beacon isn't
+    tracking."""
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "webcfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_resolves_against_the_directory_argument(self):
+        seen = {}
+
+        def fake_resolve(cwd=None):
+            seen["cwd"] = str(cwd)
+            return ("https://x.test/acme/widgets/pull/7", "acme/widgets#7")
+
+        with self._config(), \
+             mock.patch.object(self.beacon, "resolve_url", fake_resolve), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b"")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(seen["cwd"], "/work/repo")
+
+    def test_web_cmd_runs_the_users_command_in_that_directory(self):
+        # `git web` and friends already exist on plenty of machines; beacon has
+        # no business relitigating where the button should go.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw.get("cwd")))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with self._config(web_cmd="git web"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls, [(["/usr/bin/git", "web"], "/work/repo")])
+
+    def test_web_cmd_takes_precedence_over_beacons_own_resolution(self):
+        with self._config(web_cmd="git web"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               side_effect=AssertionError("must not resolve")), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               lambda a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr="")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+
+    def test_an_unresolvable_web_cmd_names_the_config_key(self):
+        with self._config(web_cmd="nope-not-here"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertIn("web_cmd", str(cm.exception))
 
 
 class HybridBranchProfileSlots(unittest.TestCase):
@@ -2565,9 +2626,9 @@ class StatusLineProvider(BeaconTest):
 
 
 class StatusBarLayout(unittest.TestCase):
-    """STATUS-BAR-02: the strip is `project ←spring→ branch ↗ code`. `↗ code` is
-    the only action chip left — the URL moved to the status line (STATUSLINE-02)
-    and the review chip was dropped for lack of use."""
+    """STATUS-BAR-02: the strip is `↖ web · project ←spring→ branch ↗ code`.
+    Each edge pairs an action with the data it acts on; the review chip was
+    dropped for lack of use, and with nothing centred one spring suffices."""
 
     def _layout(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
@@ -2582,20 +2643,21 @@ class StatusBarLayout(unittest.TestCase):
                 for c in self._layout()
                 if c["class"] == "iTermStatusBarActionComponent"]
 
-    def test_code_is_the_only_action_chip(self):
-        self.assertEqual(self._action_titles(), ["↗ code"])
+    def test_the_two_action_chips_bookend_the_strip(self):
+        self.assertEqual(self._action_titles(), ["↖ web", "↗ code"])
 
     def test_one_spring_pushes_the_branch_cluster_right(self):
         # With no centered chip, a second spring would have nothing to balance
-        # against — one is enough to hold project left and branch + code right.
+        # against — one is enough to hold web + project left and branch + code
+        # right.
         comps = self._layout()
         classes = [c["class"] for c in comps]
         self.assertEqual(classes.count("iTermStatusBarSpringComponent"), 1)
-        spring = classes.index("iTermStatusBarSpringComponent")
+        self.assertEqual(comps[0]["configuration"]["knobs"]["action"]["title"], "↖ web")
         self.assertEqual(
-            comps[0]["configuration"]["knobs"]["expression"],
+            comps[1]["configuration"]["knobs"]["expression"],
             r"\(user.beacon_project_full)")
-        self.assertEqual(spring, 1)
+        self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 2)
         self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
 
     def test_review_chip_is_gone(self):

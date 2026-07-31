@@ -32,7 +32,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   --fg: #f8f8f2;
   --identity: #9aa3c0;   /* project chip — de-emphasized identity, ≥4.5:1 on --bar */
   --sep: #7e8290;
-  --pink: #ff79c6;       /* ↗ code action affordance */
+  --pink: #ff79c6;       /* ↖ web / ↗ code action affordance */
   --ready: #8b8fa0;      /* idle — at rest (dev, neutral gray) */
   --green: #50fa7b;      /* branch synced · deliverable · prompt (not a badge state) */
   --busy: #ffb86c;       /* working · branch diverged */
@@ -161,18 +161,21 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
     </div>
     <div class="bcn-body">
       <div><span class="prompt">›</span> run just build</div>
-      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">5</span></span>
+      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">6</span></span>
     </div>
     <div class="bcn-bar">
-      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">2</span></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-branch">main<span class="bcn-mk">3</span></span>
+      <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
       <span class="bcn-sep">│</span>
-      <span class="bcn-act">↗ code<span class="bcn-mk">4</span></span>
+      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
+      <span class="bcn-spring"></span>
+      <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
     </div>
   </div>
   <ol class="bcn-legend">
     <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
+    <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Set <code>web_cmd</code> to use your own command instead.</span></li>
     <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
     <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default; set <code>code_app</code> / <code>code_args</code> to change it).</span></li>
@@ -192,7 +195,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gh:acme/widgets</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets</span>
       <span class="bcn-spring"></span>
       <span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
@@ -200,7 +203,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gh:acme/widgets<b>#42</b></span>
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span>
       <span class="bcn-spring"></span>
       <span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
@@ -208,7 +211,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span>
+      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span>
       <span class="bcn-spring"></span>
       <span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
