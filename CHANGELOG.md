@@ -1,5 +1,56 @@
 # Changelog
 
+## 2.0.0
+
+beacon's per-session context moves off iTerm2 and into the Claude Code status line — a footer Claude renders, that never overlaps terminal output, and that **any** terminal shows. What stays on the iTerm2 strip is what a footer can't do, rebuilt so it can't go stale.
+
+## The status line is the new home for per-session detail
+
+Wire `beacon statusline` into `settings.json` (`beacon install` prints the block) and you get a line per class of thing, empty ones omitted:
+
+```text
+⏸ waiting on CI
+v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
+#28 Move per-session values into the Claude Code status line
+#25 · #18 · #26 · #23
+```
+
+- **Every ref is a clickable link.** Refs in the current project render bare, refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
+- **Delivered work stays on screen.** Shipping is rare and it's what a session has to show for itself, so a merged CR, a closed issue, and a published release each keep their place, reading by verb and glyph in the green beacon reserves for releases.
+- **Open change requests carry a title** — the same string the badge shows, so the two surfaces never describe one PR differently.
+- **Issues trail, dimmed.** On GitHub a CR and an issue are both `#<n>`, so the line and the weight are what separate them.
+
+"Delivered" follows your [tack](https://github.com/chris-peterson/tack) record: a tack that's `done` promotes its deliverable. That means it tracks the work *you* logged rather than the forge, and can drift if a tack goes stale — the trade is that the row costs no network call, which matters because it renders on every prompt. Releases need no tack: a release tag only exists once published.
+
+The pause reason landed here first (1.27-era, #15); this builds the rest on top.
+
+## The iTerm2 strip is smaller and steadier
+
+`↖ web · project ⟷ branch ↗ code` — the project identity now sits beside the branch it describes.
+
+- **`↖ web` resolves when you click it.** No cached URL means it can't disagree with the chip beside it, which is what made it flaky before (#5). It works in *any* pane — including a plain shell with no Claude session, which is exactly when you want to jump to a repo's web view.
+- **Both buttons are configurable.** `code_app` / `code_args` choose the editor (default `code --maximized`); `web_cmd` hands the web button to your own command, e.g. `"git web"`. Both are read when you click, so changes take effect with no reinstall.
+- **`⇄ review` is gone**, and so is the feature behind it. `beacon review`, its moor sidecar contract, the anchor delegation, and the `moor` / `anchor` soft dependencies are all removed. It went unused, and reviewing a diff is a job other tools already own.
+
+## One command for session modes
+
+`/beacon:release`, `/beacon:retro`, `/beacon:pause`, and `/beacon:done` become **`/beacon:session-mode <mode>`**. `/release` and `/retro` are common enough verbs that a bare invocation was ambiguous against the ai-sdlc skills of the same name — and beacon's wrappers were the interlopers. The CLI is unchanged: `beacon pause`, `beacon retro`, and friends work exactly as before.
+
+## Upgrading
+
+**Run `beacon install`.** The status-bar layout is baked into the iTerm2 dynamic profile, so the chip changes need a rewrite. iTerm2 reloads without restarting.
+
+| Change | What to do |
+|:---|:---|
+| `/beacon:{release,retro,pause,done}` removed | use `/beacon:session-mode <mode>` |
+| `beacon review` removed | use your difftool directly |
+| `⇄ review` chip removed | — |
+| `beacon_url` user variable no longer published | read `resolved.url` from session state |
+| `url-<pane-guid>.txt` handoff file removed | internal; no action |
+| `↗ code` default is now `code --maximized` | set `code_app` if `code` isn't on your `PATH` |
+
+Fixes along the way: the `↗ code` button failed for anyone whose editor lives outside `/usr/bin` (an iTerm2 action shell has no interactive `PATH`, so it now asks your login shell), and several Windows path and encoding bugs.
+
 ## 1.26.0
 
 ## What's Changed
