@@ -165,9 +165,8 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
     </div>
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-spring"></span>
+      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-sep">│</span>
       <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
       <span class="bcn-sep">│</span>
@@ -176,10 +175,10 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   </div>
   <ol class="bcn-legend">
     <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
-    <li><span><b><code>↖ web</code> button</b> — opens the URL resolved for this session: an open PR/MR/issue when one matches the branch, else the branch or repo page.</span></li>
+    <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Set <code>web_cmd</code> to use your own command instead.</span></li>
     <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
-    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in VS Code.</span></li>
+    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default; set <code>code_app</code> / <code>code_args</code> to change it).</span></li>
     <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
   </ol>
 </div>
@@ -196,30 +195,27 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
-      <span class="bcn-proj">gh:acme/widgets</span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets</span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">In a repo, no tracked deliverable — <code>↖ web</code> opens the repo.</div>
+    <div class="cap">In a repo, no tracked deliverable — the chip shows the bare identity.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
-      <span class="bcn-proj">gh:acme/widgets<b>#42</b></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream), <code>↖ web</code> opens the PR.</div>
+    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream).</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span>
-      <span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span>
+      <span class="bcn-sep">│</span>
+      <span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitLab MR — chip shows <code>!17</code>, <code>↖ web</code> opens the MR.</div>
+    <div class="cap">On a GitLab MR — chip shows <code>!17</code>.</div>
   </div>
 </div>
 

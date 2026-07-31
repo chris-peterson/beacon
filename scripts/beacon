@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -248,8 +250,8 @@ _beacon() {
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the resolved URL in the default browser'
+    'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
-    'review:review the whole branch vs the default branch (moor-aware)'
   )
 
   if (( CURRENT == 2 )); then
@@ -701,6 +703,52 @@ def _branch_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     return f"{remote}{sep}{branch}", branch
 
 
+_TACK_ROUTES_UNSET = object()
+_TACK_ROUTES_CACHE = _TACK_ROUTES_UNSET
+
+
+def _tack_routes() -> list:
+    """`tack list --json`, memoized for the life of the process. Every hook is
+    its own process, so the memo never spans a turn — it exists because a single
+    invocation asks tack the same question twice (the URL chain and the
+    landed-deliverable filter), and one subprocess is enough for both. Empty
+    list when tack is absent or unreadable."""
+    global _TACK_ROUTES_CACHE
+    if _TACK_ROUTES_CACHE is not _TACK_ROUTES_UNSET:
+        return _TACK_ROUTES_CACHE
+    _TACK_ROUTES_CACHE = []
+    if _which("tack"):
+        try:
+            r = subprocess.run(["tack", "list", "--json"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                parsed = json.loads(r.stdout)
+                if isinstance(parsed, list):
+                    _TACK_ROUTES_CACHE = parsed
+        except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+            pass
+    return _TACK_ROUTES_CACHE
+
+
+def _tack_landed_urls() -> set[str]:
+    """Deliverable URLs whose tack is `done` or `dropped`. STATUSLINE-03
+    promotes these to the delivered line — shipping is rare enough to be worth
+    keeping on screen, and it is what the session has to show for itself.
+
+    Read from the same `tack list` payload the URL chain already consumes, so it
+    costs nothing extra. It drifts from forge truth when a tack isn't kept
+    current; the forge is authoritative but only over the network, which the
+    per-turn hook budget rules out. A session with no tack route gets an empty
+    set and treats everything it touched as still open."""
+    return {
+        url
+        for route in _tack_routes()
+        for t in (route.get("tacks") or [])
+        if t.get("status") in ("done", "dropped")
+        and (url := (t.get("deliverable") or {}).get("url"))
+    }
+
+
 def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
     """URL for the session's tack route via the in_progress-deliverable →
     done-deliverable → first-link sub-chain.
@@ -711,15 +759,8 @@ def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[s
     missed a route pinned to the session whose slug differs from the branch.
     Location correlation (`.tack` pin / branch / project, via _tack_route_for)
     is the fallback when no pin binds this session."""
-    if not _which("tack"):
-        return "", ""
-    try:
-        r = subprocess.run(["tack", "list", "--json"],
-                           capture_output=True, text=True, timeout=2)
-        if r.returncode != 0:
-            return "", ""
-        routes = json.loads(r.stdout)
-    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+    routes = _tack_routes()
+    if not routes:
         return "", ""
 
     sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
@@ -872,15 +913,124 @@ def cmd_copy_url(_args):
     print(f"copied: {url}")
 
 
-def cmd_open_url(_args):
-    """Resolve the current URL (PROV-07) and open it in the default browser
-    via `open`. Used by the status bar 'go' button via Send Text — runs in
-    the user's interactive shell at the prompt, so the cwd is correct."""
-    url, _ = resolve_url()
+CODE_APP_DEFAULT = "code"
+CODE_ARGS_DEFAULT = ["--maximized"]
+
+
+def _code_launch_argv() -> list[str]:
+    """STATUS-BAR-07: the editor invocation for the `↗ code` button, from the
+    user config (`code_app` / `code_args`), else `code --maximized`. `code_args`
+    accepts a list or a shell-quoted string; the list is the documented form."""
+    cfg = _load_config()
+    app = str(cfg.get("code_app") or CODE_APP_DEFAULT)
+    raw = cfg.get("code_args")
+    if raw is None:
+        args = list(CODE_ARGS_DEFAULT)
+    elif isinstance(raw, str):
+        args = shlex.split(raw)
+    else:
+        args = [str(a) for a in raw]
+    return [app, *args]
+
+
+def _resolve_editor(app: str) -> str | None:
+    """Absolute path to `app`, or None when it cannot be found.
+
+    `shutil.which` alone is not enough here. A status-bar action shell inherits
+    iTerm2's `PATH`, not the login shell's (§6.10 caveat 3), so the lookup runs
+    against roughly `/usr/bin:/bin:/usr/sbin:/sbin` — which excludes
+    `/opt/homebrew/bin` and `/usr/local/bin`, the very places an editor CLI
+    installs. Substituting an absolute interpreter fixed reaching Python; it did
+    nothing for the binary Python then goes looking for.
+
+    So when `PATH` comes up empty, ask the user's login shell, which is the
+    thing that actually knows where their tools are. That is one subprocess on a
+    click — never a hot path — and it resolves the *configured* editor rather
+    than quietly launching a different one."""
+    # Both separators, not just `os.path.sep`: Windows accepts `/` in paths, so
+    # keying on the native separator alone would send `/Apps/ed` down the
+    # bare-command lookup and never find it.
+    if os.path.sep in app or "/" in app:
+        return app if os.access(app, os.X_OK) else None
+    found = shutil.which(app)
+    if found:
+        return found
+    shell = os.environ.get("SHELL") or "/bin/sh"
+    try:
+        r = subprocess.run([shell, "-lc", f"command -v {shlex.quote(app)}"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
+    path = lines[-1].strip() if lines else ""
+    return path if path and os.access(path, os.X_OK) else None
+
+
+def cmd_open_code(args):
+    """STATUS-BAR-07: open a directory in the configured editor. Backs the
+    `↗ code` status-bar button, which invokes this rather than launching the
+    editor from its own shell: an iTerm2 action shell has no interactive `PATH`
+    (§6.10 caveat 3), and resolving the binary is exactly what that costs. It
+    also puts the config read at click time, so changing editors needs no
+    reinstall."""
+    target = args.dir or str(Path.cwd())
+    argv = _code_launch_argv()
+    exe = _resolve_editor(argv[0])
+    if not exe:
+        sys.exit(f"editor not found: {argv[0]!r} is not on PATH, and your login "
+                 f'shell could not find it either — set "code_app" to an '
+                 f"absolute path in {_config_file()}")
+    try:
+        r = subprocess.run([exe, *argv[1:], target], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        sys.exit(f"failed to launch {argv[0]}: {e}")
+    if r.returncode != 0:
+        detail = r.stderr.decode(errors="replace").strip()
+        sys.exit(f"{argv[0]} exited {r.returncode}{': ' + detail if detail else ''}")
+    print(f"opened: {target}")
+
+
+def cmd_open_url(args):
+    """Open the session's web view. Backs the `↖ web` status-bar button
+    (STATUS-BAR-08) and is usable from any shell.
+
+    Two paths, chosen by config. `web_cmd` runs the user's own command in the
+    target directory — the point being that plenty of people already have one
+    (`git web` and friends), and beacon has no business relitigating where it
+    should go. Unset, beacon resolves the URL itself through PROV-07, which
+    knows about tack deliverables and open CRs and so lands on the *thing you
+    are working on* rather than the repo's front page.
+
+    Resolution happens at click time against the directory it is given. That is
+    what makes this correct in a pane beacon isn't tracking — a shell you are
+    just poking around in — and it is why there is no URL handoff file: nothing
+    is cached, so nothing can go stale (the #5 failure)."""
+    target = Path(args.dir) if getattr(args, "dir", None) else Path.cwd()
+
+    web_cmd = str(_load_config().get("web_cmd") or "").strip()
+    if web_cmd:
+        argv = shlex.split(web_cmd)
+        exe = _resolve_editor(argv[0])
+        if not exe:
+            sys.exit(f"web_cmd not found: {argv[0]!r} is not on PATH, and your "
+                     f"login shell could not find it either — check "
+                     f'"web_cmd" in {_config_file()}')
+        try:
+            r = subprocess.run([exe, *argv[1:]], cwd=str(target),
+                               capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError) as e:
+            sys.exit(f"failed to run {web_cmd!r}: {e}")
+        if r.returncode != 0:
+            sys.exit(f"{web_cmd!r} exited {r.returncode}"
+                     f"{': ' + r.stderr.strip() if r.stderr.strip() else ''}")
+        print(f"ran: {web_cmd}")
+        return
+
+    url, _ = resolve_url(target)
     if not url:
         sys.exit("no URL resolved (no override, no tack route, no git remote)")
     try:
-        r = subprocess.run(["open", url], capture_output=True, timeout=2)
+        r = subprocess.run(["open", url], capture_output=True, timeout=10)
         if r.returncode != 0:
             sys.exit(f"open failed (exit {r.returncode}): {r.stderr.decode().strip()}")
     except FileNotFoundError:
@@ -912,143 +1062,6 @@ def _git_rev_ok(root: Path, ref: str) -> bool:
     ).returncode == 0
 
 
-def _working_tree_dirty(root: Path) -> bool:
-    """True when the working tree has staged, unstaged, or untracked changes —
-    the set that anchor's `--local` mode reviews (it runs `git add -A` first)."""
-    r = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=root, capture_output=True, text=True, timeout=2, check=False,
-    )
-    return bool(r.stdout.strip())
-
-
-def _anchor_review_script() -> Path | None:
-    """Path to anchor's `review-diff.sh` when the anchor plugin is installed,
-    else None. anchor ships as a Claude Code plugin, not a `$PATH` binary, so it
-    can't be probed with `_which`; its install location is read from Claude
-    Code's plugin registry (`~/.claude/plugins/installed_plugins.json`) — the
-    same `~/.claude/plugins` tree `_default_data_dir` already relies on. Tolerant
-    of multiple marketplace sources (any `anchor@<marketplace>` key) and multiple
-    installs (newest `lastUpdated` whose script is present on disk wins, so a
-    registry entry left behind by an uninstalled cache never matches). A missing
-    or malformed registry means anchor isn't installed → None, so `review`
-    degrades to its inert default (NFR-06), never a beacon-native copy of
-    anchor's working-tree diff."""
-    registry = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
-    try:
-        plugins = json.loads(registry.read_text())["plugins"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    entries = []
-    for key, installs in plugins.items():
-        if key.split("@", 1)[0] != "anchor" or not isinstance(installs, list):
-            continue
-        entries.extend(e for e in installs
-                       if isinstance(e, dict) and e.get("installPath"))
-    entries.sort(key=lambda e: e.get("lastUpdated", ""), reverse=True)
-    for e in entries:
-        script = Path(e["installPath"]) / "scripts" / "review-diff.sh"
-        if script.is_file():
-            return script
-    return None
-
-
-def cmd_review(_args):
-    """Review the whole branch against the default branch, the way a reviewer
-    sees a CR/PR (CMD-16). Backs the status-bar `⇄ review` button (Send Text,
-    STATUS-BAR-02): it types `beacon review` into the pane, so this runs in the
-    reader's context — a human's shell (moor opens for a manual review) or a
-    Claude session (Claude runs it via Bash and consumes the printed verdict).
-
-    Launches git's configured difftool (`--dir-diff`) over `<default>...HEAD`
-    with `MOOR_CONTEXT` set, so when the difftool is moor the review feedback
-    (comments + exit code) is written to the sidecar and echoed here as
-    REVIEW_VERDICT / REVIEW_OUTPUT — the same contract anchor's review wrapper
-    emits. Claude/moor-unaware beyond setting the env var: it only translates
-    "review this branch" into a difftool invocation and relays the sidecar."""
-    root = find_project_root(Path.cwd())
-    branch = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        cwd=root, capture_output=True, text=True, timeout=2, check=False,
-    )
-    if branch.returncode != 0:
-        sys.exit("not a git repository")
-    branch_name = branch.stdout.strip()
-
-    base = _default_branch_ref(root)
-    if not base:
-        sys.exit("could not resolve a default branch (no origin/HEAD, origin/main, or origin/master)")
-
-    # On the default branch the `<default>...HEAD` range is empty by definition
-    # (issue #11 made the command inert there). But uncommitted changes are still
-    # reviewable: when anchor is installed and the tree is dirty, delegate to its
-    # `review-diff.sh --local`, which stages the working tree, diffs it vs HEAD,
-    # populates its own MOOR_CONTEXT sidecar, and prints the same REVIEW_VERDICT /
-    # REVIEW_OUTPUT contract — beacon relays it verbatim (stdout inherited, no
-    # timeout: a GUI difftool blocks) rather than re-deriving the range or sidecar
-    # (issue #13). Without anchor, or on a clean tree, stay inert — no
-    # beacon-native copy of anchor's working-tree diff (NFR-06 soft dependency).
-    if branch_name in DEFAULT_BRANCHES or branch_name == base.split("/", 1)[-1]:
-        script = _anchor_review_script()
-        if script and _working_tree_dirty(root):
-            subprocess.run(["bash", str(script), "--local"], cwd=root, check=False)
-            return
-        print(f"on the default branch ({branch_name}) — nothing to review against {base}")
-        return
-
-    diff_range = f"{base}...HEAD"
-    count = subprocess.run(
-        ["git", "rev-list", "--count", f"{base}..HEAD"],
-        cwd=root, capture_output=True, text=True, timeout=2, check=False,
-    ).stdout.strip() or "?"
-    repo = root.name
-    context = {"input": {
-        "title": f"Full diff vs {base}",
-        "details": [
-            {"label": "repo", "value": repo},
-            {"label": "branch", "value": branch_name},
-            {"label": "base", "value": base},
-            {"label": "range", "value": diff_range},
-            {"label": "commits", "value": count},
-        ],
-    }}
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", prefix="beacon-review-", delete=False,
-    ) as fh:
-        json.dump(context, fh)
-        context_path = fh.name
-
-    env = {**os.environ, "MOOR_CONTEXT": context_path}
-    # No timeout: a GUI difftool (moor) blocks until the reviewer closes it. The
-    # verdict lives in the sidecar's output section, not the exit code, so a
-    # non-zero difftool exit is expected — don't treat it as failure.
-    # --no-symlinks: with --dir-diff, git symlinks the working-tree side into the
-    # temp dir by default where the platform supports it. On Windows that symlink
-    # fails ("Function not implemented") and the difftool never launches; copying
-    # is correct cross-platform (the reviewer opens a throwaway snapshot anyway).
-    subprocess.run(
-        ["git", "difftool", "--no-prompt", "--no-symlinks", "--dir-diff", diff_range],
-        cwd=root, env=env, check=False,
-    )
-
-    try:
-        written = json.loads(Path(context_path).read_text())
-        output = written.get("output")
-    except (OSError, ValueError):
-        output = None
-    finally:
-        try:
-            Path(context_path).unlink()
-        except OSError:
-            pass
-
-    if not output:
-        print("REVIEW_VERDICT=absent")
-        return
-    print(f"REVIEW_VERDICT={output.get('exitCode', 'absent')}")
-    print(f"REVIEW_OUTPUT={json.dumps(output, separators=(',', ':'))}")
-
-
 def cmd_data_dir(_args):
     """Print the resolved data dir — consumed by shell/beacon.zsh to
     derive its cache path on source."""
@@ -1057,9 +1070,16 @@ def cmd_data_dir(_args):
 
 def cmd_config_get(args):
     """Print a single user-config value (empty when unset) — consumed by
-    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15)."""
+    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15). A list
+    value prints shell-quoted and space-joined, so a caller can word-split it
+    without re-parsing JSON."""
     val = _load_config().get(args.key)
-    sys.stdout.write("" if val is None else f"{val}\n")
+    if val is None:
+        sys.stdout.write("")
+        return
+    if isinstance(val, (list, tuple)):
+        val = " ".join(shlex.quote(str(v)) for v in val)
+    sys.stdout.write(f"{val}\n")
 
 
 def cmd_json(_args):
@@ -2868,10 +2888,12 @@ def _abbrev_remote_host(host_path: str) -> str:
 # paths contain a literal `/issues/` substring that the GitHub patterns would
 # also match — we want the GitLab sigil (`!` for MRs) to win on GitLab URLs.
 _DELIVERABLE_PATTERNS = (
-    (re.compile(r"/-/merge_requests/(\d+)"), "!"),
-    (re.compile(r"/-/issues/(\d+)"),         "#"),
-    (re.compile(r"/pull/(\d+)"),             "#"),
-    (re.compile(r"/issues/(\d+)"),           "#"),
+    (re.compile(r"/releases/tag/([^/?#]+)"), "", "release"),
+    (re.compile(r"/-/tags/([^/?#]+)"),       "", "release"),
+    (re.compile(r"/-/merge_requests/(\d+)"), "!", "cr"),
+    (re.compile(r"/-/issues/(\d+)"),         "#", "issue"),
+    (re.compile(r"/pull/(\d+)"),             "#", "cr"),
+    (re.compile(r"/issues/(\d+)"),           "#", "issue"),
 )
 
 
@@ -2882,11 +2904,70 @@ def _deliverable_suffix(url: str) -> str:
     or branch-tree URLs leave the chip showing only the project identity."""
     if not url:
         return ""
-    for pat, sigil in _DELIVERABLE_PATTERNS:
+    for pat, sigil, _kind in _DELIVERABLE_PATTERNS:
         m = pat.search(url)
         if m:
             return f"{sigil}{m.group(1)}"
     return ""
+
+
+def _deliverable_kind(url: str) -> str:
+    """`cr` for a PR/MR, `release` for a tagged release, `issue` for an issue,
+    empty otherwise. Derived from the URL rather than stored, so the distinction
+    costs no state field and applies to entries recorded before it existed. On
+    GitHub a CR and an issue both render `#<n>` (STATUSLINE-03 leans on grouping
+    and weight to tell them apart); GitLab's `!` already differs by sigil."""
+    for pat, _sigil, kind in _DELIVERABLE_PATTERNS:
+        if url and pat.search(url):
+            return kind
+    return ""
+
+
+DELIVERABLES_MAX = 8
+
+
+def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") -> None:
+    """STATUSLINE-03: append a deliverable the session has touched. Deduped on
+    URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
+    oldest dropped: the row shares a line with the pause reason, and a session
+    that has crossed a dozen deliverables is better served by the older ones
+    ageing out than by a row that wraps.
+
+    `title` describes the deliverable being recorded now. It is the same string
+    the badge is showing (the resolved `task`, when the task chain drew it from
+    the PR title or a deliberate override), so the two surfaces name the work
+    identically — sourcing them separately is what makes them disagree. Titles
+    already captured for other entries are preserved: only the current
+    deliverable has a live task to read.
+
+    Every entry is re-stamped against tack on each call, so a CR that merged (or
+    a release that shipped) mid-session moves to the delivered line without
+    waiting for anything to touch it again."""
+    landed = _tack_landed_urls()
+    prior = {e.get("url"): e.get("title", "")
+             for e in read_state_json("deliverables", []) if isinstance(e, dict)}
+    entries = [e for e in read_state_json("deliverables", [])
+               if isinstance(e, dict) and e.get("url") != url]
+    entries.append({"ref": ref, "url": url, "project": project_id})
+    for e in entries:
+        e_url = e.get("url", "")
+        # A release tag URL only exists once the release is published, so the
+        # kind alone settles it — no tack route needed.
+        e["delivered"] = e_url in landed or _deliverable_kind(e_url) == "release"
+        e["title"] = (title or prior.get(e_url, "")) if e_url == url else prior.get(e_url, "")
+    write_state("deliverables", json.dumps(entries[-DELIVERABLES_MAX:]))
+
+
+def _qualify_deliverable(entry: dict, project_id: str) -> str:
+    """`#42` for a deliverable in `project_id`, `otherproj:#42` for one
+    elsewhere. The qualifier is the repo segment of the forge identity
+    (`gh:acme/widgets` → `widgets`), so both sides of the comparison are
+    derived the same way and a rename can't make a local ref read as foreign."""
+    ref = entry.get("ref", "")
+    owner = entry.get("project", "")
+    if not owner or owner == project_id:
+        return ref
+    return f"{owner.rsplit('/', 1)[-1]}:{ref}"
 
 
 def _project_full_at(cwd: Path) -> str:
@@ -2929,24 +3010,30 @@ def _local_path_at(cwd: Path) -> str:
     return s
 
 
-_LAST_CHIP_PAIRS: tuple[str, ...] | None = None
+_LAST_CHIP_SIGNATURE: tuple[str, ...] | None = None
 
 
 def _publish_chips(cwd: Path) -> None:
-    """Refresh status-bar chips (project_full, branch*, url) + action-button
-    handoff files from `cwd`. Does NOT touch beacon_project / beacon_task —
-    those are owned by the engagement renderer.
+    """Refresh status-bar chips (project_full, branch*) + the `↗ code` handoff
+    file from `cwd`, and persist the resolved URL for the status line. Does NOT
+    touch beacon_project / beacon_task — those are owned by the engagement
+    renderer.
 
     Called whenever the shell's precmd can't (mid-session, between turns) so
     chips reflect branch creation / tack-context changes that happened while
     the shell was blocked on Claude."""
-    global _LAST_CHIP_PAIRS
+    global _LAST_CHIP_SIGNATURE
     project_full = _project_full_at(cwd)
     display, state, _ind, identity = _detect_branch_info(cwd)
-    url, _label = resolve_url(cwd)
+    url, label = resolve_url(cwd)
 
+    # The bare forge identity, captured before the deliverable suffix is
+    # appended — it's what qualifies a deliverable as this project's or
+    # another's (STATUSLINE-03).
+    project_id = project_full
+    ref = _deliverable_suffix(url)
     if project_full:
-        project_full = f"{project_full}{_deliverable_suffix(url)}"
+        project_full = f"{project_full}{ref}"
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
     # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
@@ -2960,21 +3047,40 @@ def _publish_chips(cwd: Path) -> None:
         f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
         f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
         f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
-        f"beacon_url={url}",
     )
     # Last-value gate (mirrors shell's precmd sentinels per CLAUDE.md hot
     # path policy): Stop fires once per turn, but most turns don't change
     # branch/url. Skip the CLI spawn + file writes when nothing differs.
-    if pairs == _LAST_CHIP_PAIRS:
+    # The URL rides the signature but not the uservar payload: two URLs can
+    # differ while every chip stays identical (a branch-tree URL narrowing to
+    # a sibling), and the status line reads the persisted value below.
+    signature = pairs + (f"url={url}", f"label={label}")
+    if signature == _LAST_CHIP_SIGNATURE:
         return
-    _LAST_CHIP_PAIRS = pairs
+    _LAST_CHIP_SIGNATURE = signature
     _cli("uservar-batch", *pairs)
+
+    # STATUSLINE-02: the status line renders this per prompt, so it must never
+    # re-run resolve_url (which shells to git and can shell to gh/glab). The
+    # resolution is persisted here, on the hooks that already pay for it.
+    # Distinct from the `resolved` badge snapshot (STATE-03), which is written
+    # by the renderer and holds project/task/status.
+    write_state("resolved.url", url)
+    write_state("resolved.url_label", label)
+    write_state("resolved.project", project_id)
+    if ref:
+        # The badge's own task, when the chain drew it from the PR title (or the
+        # user said so outright). Any other tier — a branch name, an ai-title —
+        # is spatial context rather than a name for the deliverable, and would
+        # read as noise next to the ref it follows.
+        snap = read_state_json("resolved", {})
+        title = (snap.get("task") or "") if snap.get("task_provider") in ("pr", "override") else ""
+        _record_deliverable(ref, url, project_id, title)
 
     key = _iterm_cache_key()
     if key:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         (CACHE_DIR / f"cwd-{key}.txt").write_text(f"{cwd}\n")
-        (CACHE_DIR / f"url-{key}.txt").write_text(f"{url}\n")
 
 
 def _publish_anchor(cwd: Path) -> None:
@@ -3116,8 +3222,11 @@ def install_dynamic_profile() -> tuple[bool, str]:
     Substitutions in `iterm/profile.json.template`:
       __BEACON_SCRIPT__     — script path for the non-interactive coprocess
                               shells behind the status-bar action buttons.
-      __BEACON_CACHE_DIR__  — so the `↖ web` / `↗ code` action shells read the
-                              per-session handoff files without deriving it.
+      __BEACON_PYTHON__     — the running interpreter, absolute. A coprocess
+                              action shell has no interactive `PATH` (§6.10
+                              caveat 3), so a bare `python3` may not resolve.
+      __BEACON_CACHE_DIR__  — so the `↗ code` action shell reads the
+                              per-session handoff file without deriving it.
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
     its own formatting and any GUI-edited values, so a "content matches"
@@ -3145,6 +3254,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
         return json.dumps(value)[1:-1]
     content = (template.read_text(encoding="utf-8")
                .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
+               .replace("__BEACON_PYTHON__", _json_inner(sys.executable or "python3"))
                .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
     try:
         base_profile = json.loads(content)["Profiles"][0]
@@ -3865,6 +3975,11 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("latest_turn")
     remove_state("latest_turn_full")
     remove_state("title_reasserted")
+    # STATUSLINE-03: the accumulated list is scoped to one Claude session, but
+    # the state keys on the pane — without this, a fresh session inherits the
+    # previous tenant's deliverables and the footer credits it with work it
+    # never touched.
+    remove_state("deliverables")
     _clear_cc_signals()
     _clear_description()
 
@@ -3891,29 +4006,147 @@ def cmd_render(_args):
     render()
 
 
+STATUSLINE_SEPARATOR = " · "
+STATUSLINE_LINK_COLOR = "36"
+# STATUSLINE-03: change requests lead the row and carry full weight; issues
+# trail, dimmed. Same hue for both — the palette's "one hue, two weights" split
+# between an actionable thing and its context (THEME-03) — so the row reads as
+# one group, and no state carries a text glyph (BADGE-11 / WIP-12).
+STATUSLINE_CR_SGR = "1;36"
+STATUSLINE_ISSUE_SGR = "2;36"
+# Delivered work gets its own line and its own vocabulary. The strike is
+# decoration; the word and the glyph are what carry it — a bare struck `#27` is
+# four characters of subtlety, and strikethrough is among the first attributes a
+# terminal drops. Green is beacon's release colour throughout (THEME-02). The
+# verb is muted against its ref: the ref is the content, the verb is the label.
+STATUSLINE_DELIVERED_SGR = "32"
+STATUSLINE_VERB_SGR = "2;32"
+# A CR line usually holds one ref and a lot of empty terminal, so the title
+# earns its place there. Issues stay bare — several share a line, and titling
+# each would wrap the row the cap exists to prevent.
+STATUSLINE_TITLE_SGR = "2;37"
+STATUSLINE_TITLE_MAX = 72
+STATUSLINE_DELIVERED = {
+    "cr": ("merged", "🏁"),
+    "release": ("released", "🚀"),
+    "issue": ("closed", "✓"),
+}
+
+
+def _osc8(url: str, text: str) -> str:
+    """Wrap `text` as an OSC-8 hyperlink to `url`. BEL (`\\a`) terminates each
+    sequence rather than ST (`ESC \\`) — both are legal and BEL is the more
+    widely accepted across emulators. Claude Code passes the sequence through
+    its status-line renderer untouched (verified in iTerm2), so the terminal is
+    what decides whether it becomes clickable."""
+    return f"\033]8;;{url}\a{text}\033]8;;\a"
+
+
+def _statusline_pause_segment() -> str:
+    """`⏸ <reason>`, colored, while paused with a note; empty otherwise."""
+    if read_state("override.status") != "paused":
+        return ""
+    reason = " ".join((read_state("description") or "").split())
+    if not reason:
+        return ""
+    return f"\033[{_WIP_DOT_COLOR['paused']}m{PAUSED_TITLE_GLYPH}{reason}\033[0m"
+
+
+def _statusline_link_segment() -> str:
+    """STATUSLINE-02/03: the deliverables this session has touched, each a
+    clickable OSC-8 link — bare (`#4`) for this project, qualified
+    (`otherproj:#75`) for another. Change requests lead the row at full weight
+    and issues trail dimmed, newest first within each group, so the row answers
+    "what am I shipping" before "what does it answer".
+
+    A session that has touched no deliverable falls back to the single resolved
+    URL (a branch or repo page), which is the same rendering with one element.
+
+    Reads only what `_publish_chips` persisted; never re-resolves — the row
+    renders per prompt, and `resolve_url` shells to git and can shell to
+    `gh`/`glab`."""
+    entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    if entries:
+        return ""
+    url = read_state("resolved.url")
+    if not url:
+        return ""
+    body = _osc8(url, read_state("resolved.url_label") or url)
+    return f"\033[{STATUSLINE_LINK_COLOR}m{body}\033[0m"
+
+
+def _statusline_open_lines() -> list[str]:
+    """STATUSLINE-03: open work, one line per kind — change requests above the
+    issues they answer. Newest first within each line. Splitting by kind rather
+    than packing one row is what lets a glance separate "what I'm shipping" from
+    "what I'm shipping it for"; on GitHub the two are both `#<n>` and share a
+    line only by accident of numbering."""
+    project_id = read_state("resolved.project") or ""
+    live = [e for e in read_state_json("deliverables", [])
+            if isinstance(e, dict) and not e.get("delivered")]
+    lines = []
+    for kind, sgr in (("cr", STATUSLINE_CR_SGR), ("issue", STATUSLINE_ISSUE_SGR)):
+        refs = []
+        for e in reversed(live):
+            if _deliverable_kind(e.get("url", "")) != kind:
+                continue
+            ref = f"\033[{sgr}m{_osc8(e.get('url', ''), _qualify_deliverable(e, project_id))}\033[0m"
+            title = " ".join((e.get("title") or "").split()) if kind == "cr" else ""
+            if title:
+                if len(title) > STATUSLINE_TITLE_MAX:
+                    title = title[:STATUSLINE_TITLE_MAX - 1].rstrip() + "…"
+                ref += f" \033[{STATUSLINE_TITLE_SGR}m{title}\033[0m"
+            refs.append(ref)
+        if refs:
+            lines.append(STATUSLINE_SEPARATOR.join(refs))
+    return lines
+
+
+def _statusline_delivered_line() -> str:
+    """STATUSLINE-03: what the session has shipped, on its own line above the
+    open work. `~#27~ merged 🏁`. Newest first — the most recent thing shipped
+    is the one worth seeing."""
+    project_id = read_state("resolved.project") or ""
+    parts = []
+    for e in reversed([e for e in read_state_json("deliverables", [])
+                       if isinstance(e, dict) and e.get("delivered")]):
+        url = e.get("url", "")
+        word, glyph = STATUSLINE_DELIVERED.get(_deliverable_kind(url), ("done", "✓"))
+        ref = _osc8(url, f"\033[9m{_qualify_deliverable(e, project_id)}\033[29m")
+        parts.append(f"\033[{STATUSLINE_DELIVERED_SGR}m{ref}\033[0m"
+                     f" \033[{STATUSLINE_VERB_SGR}m{word} {glyph}\033[0m")
+    return STATUSLINE_SEPARATOR.join(parts)
+
+
 def cmd_statusline(_args):
     """STATUSLINE-01: Claude Code status-line provider. Claude runs this per
     prompt (and on its other status-line events) and renders stdout as a footer
-    row it owns — above its built-in badges, never overlapping terminal output.
-    For now the row carries ONLY the pause reason, the highest-signal 'why is
-    this parked' recall context; `project` / `task` / `status` are already on the
-    tab (RENDER-04 / TITLE-05), so the row is empty the rest of the time. Reads
-    only per-session state files — no network — per Claude Code's guidance that
-    the status-line command stay cheap (it runs frequently)."""
+    row it owns — above its built-in badges, never overlapping terminal output,
+    in any terminal. The row carries the pause reason (the highest-signal 'why
+    is this parked' recall context) and the resolved URL as a clickable link;
+    `project` / `task` / `status` are already on the tab (RENDER-04 / TITLE-05),
+    so they are not repeated here. Reads only per-session state files — no
+    network — per Claude Code's guidance that the status-line command stay cheap
+    (it runs frequently)."""
     # Drain Claude's status-line JSON on stdin so the pipe closes cleanly; beacon
     # resolves its own session from the environment (session_hash), so the payload
-    # is unused today. Future signals (#26 URL, #18 deliverables) may read it.
+    # is unused.
     try:
         sys.stdin.read()
     except Exception:
         pass
-    if read_state("override.status") != "paused":
-        return
-    reason = " ".join((read_state("description") or "").split())
-    if not reason:
-        return
-    color = _WIP_DOT_COLOR["paused"]
-    sys.stdout.write(f"\033[{color}m{PAUSED_TITLE_GLYPH}{reason}\033[0m\n")
+    # One line per class, most urgent first: why the session is parked, what it
+    # has shipped, then the open work split by kind. Shipping is rare, and
+    # burying it among the open refs is what made it unreadable on a shared row.
+    rows = [
+        STATUSLINE_SEPARATOR.join(
+            s for s in (_statusline_pause_segment(), _statusline_link_segment()) if s),
+        _statusline_delivered_line(),
+        *_statusline_open_lines(),
+    ]
+    rows = [r for r in rows if r]
+    if rows:
+        sys.stdout.write("\n".join(rows) + "\n")
 
 
 def _is_active(line: str) -> bool:
@@ -4401,9 +4634,11 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
-    sub.add_parser("open-url", help="open the resolved URL in the default browser via `open`")
+    sp = sub.add_parser("open-url", help="open the session's web view (config: web_cmd)")
+    sp.add_argument("dir", nargs="?", help="directory to resolve from (default: cwd)")
 
-    sub.add_parser("review", help="review the whole branch vs the default branch through the configured difftool (moor-aware)")
+    sp = sub.add_parser("open-code", help="open a directory in the configured editor (config: code_app / code_args)")
+    sp.add_argument("dir", nargs="?", help="directory to open (default: cwd)")
 
     sub.add_parser("json", help="print the resolved session state as JSON")
 
@@ -4492,7 +4727,8 @@ def main(argv=None):
         "completions": cmd_completions, "install": cmd_install,
         "install-cli": cmd_install_cli,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
-        "open-url": cmd_open_url, "review": cmd_review, "json": cmd_json,
+        "open-url": cmd_open_url, "open-code": cmd_open_code,
+        "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir, "config-get": cmd_config_get,

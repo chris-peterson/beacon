@@ -87,9 +87,8 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     </div>
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-spring"></span>
+      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-sep">│</span>
       <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
       <span class="bcn-sep">│</span>
@@ -98,10 +97,10 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
   </div>
   <ol class="bcn-legend">
     <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
-    <li><span><b><code>↖ web</code> button</b> — opens the URL resolved for this session: an open PR/MR/issue when one matches the branch, else the branch or repo page.</span></li>
+    <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Set <code>web_cmd</code> to use your own command instead.</span></li>
     <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
-    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in VS Code.</span></li>
+    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default; set <code>code_app</code> / <code>code_args</code> to change it).</span></li>
     <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
   </ol>
 </div>
@@ -134,32 +133,58 @@ The text is the project name, optionally followed by `: <task>` when a task is s
 
 ## The status bar
 
-The status bar carries a fixed-layout strip the badge has no room for: `↖ web · project │ branch · ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles). The two ends pair an action button with the data it acts on — `↖ web` with the project identity it opens, `↗ code` with the working directory.
+The status bar carries a fixed-layout strip the badge has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
 
-The project chip answers "what am I working on," not just "what repo am I in" — it appends the deliverable and colors the branch by its git sync state. Clicking `↖ web` opens whatever the chip points at:
+It carries only the two things a link can't do — type a command into the pane, and launch a local app. Navigating to the session's URL is the [status line](#the-status-line)'s job, where it's a real hyperlink that works in any terminal.
+
+The project chip answers "what am I working on," not just "what repo am I in" — it appends the deliverable and colors the branch by its git sync state:
 
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets</span><span class="bcn-spring"></span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">In a repo, no tracked deliverable — <code>↖ web</code> opens the repo.</div>
+    <div class="cap">In a repo, no tracked deliverable — the chip shows the bare identity.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-spring"></span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream), <code>↖ web</code> opens the PR.</div>
+    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream).</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-spring"></span><span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitLab MR — chip shows <code>!17</code>, <code>↖ web</code> opens the MR.</div>
+    <div class="cap">On a GitLab MR — chip shows <code>!17</code>.</div>
   </div>
 </div>
 
-The deliverable URL comes from [tack](https://github.com/chris-peterson/tack) when it's tracking the branch, or from `gh`/`glab` when an open PR/MR matches it. Without either, the chip shows the bare repo identity and `↖ web` opens the repo or branch page. See [Tack integration](/?id=tack-integration-optional) for the resolution order.
+The deliverable comes from [tack](https://github.com/chris-peterson/tack) when it's tracking the branch, or from `gh`/`glab` when an open PR/MR matches it. Without either, the chip shows the bare repo identity. See [Tack integration](/?id=tack-integration-optional) for the resolution order.
+
+## The status line
+
+Claude Code renders footer rows from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.
+
+It gives you a line per class of thing, so a glance separates what you shipped from what's in flight:
+
+```text
+⏸ waiting on CI
+v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
+#28 Move per-session values into the Claude Code status line
+#25 · #18 · #26 · #23
+```
+
+Every ref is a clickable link. Empty lines are omitted, so an ordinary session is one line of open work.
+
+- **Delivered** work is kept on screen — shipping is rare and it's what the session has to show for itself. It reads by its verb and glyph, in the same green beacon reserves for releases.
+- **Change requests** lead the open work and carry a title: the same string the badge shows, so the two surfaces never describe one PR differently.
+- **Issues** trail, dimmed and bare — several share a line, and titling each would wrap the row.
+- Refs in the current project render bare (`#4`); refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
+
+"Delivered" comes from [tack](https://github.com/chris-peterson/tack): a tack that's `done` promotes its deliverable. That means it follows *your* record of the work rather than the forge's — it can drift if a tack goes stale, and the trade is that the row costs no network call. Releases are the exception: a release tag only exists once published, so it needs no tack.
+
+`beacon install` prints the `settings.json` block to add; it doesn't edit the file for you. Whether the links are actually clickable is your terminal's call — iTerm2, WezTerm, kitty, Windows Terminal, and recent VTE all render them.
 
 ## What beacon doesn't paint
 

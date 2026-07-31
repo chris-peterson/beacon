@@ -174,9 +174,34 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`↖ web · project │ branch · ↗ code`, whose buttons open the resolved PR/MR/issue and the cwd in VS Code), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
+
+### Choosing the editor the `↗ code` button opens
+
+By default the button runs `code --maximized`. Point it at a different editor, or pass your own startup arguments, in `~/.config/beacon/config.json`:
+
+```json
+{
+  "code_app": "subl",
+  "code_args": ["-n"]
+}
+```
+
+The keys are read when you click, so a change takes effect immediately — no `beacon install` re-run. If the command isn't on your `PATH`, beacon asks your login shell before giving up (an action button doesn't inherit your interactive `PATH`, so `/opt/homebrew/bin` and friends are invisible to it). Failing both, the button says so and names the key to fix rather than quietly opening something else.
+
+### Choosing what the `↖ web` button opens
+
+By default it opens whatever beacon resolves for the session — the PR/MR/issue when there is one, else the branch or repo page. If you already have a command for this, point the button at it:
+
+```json
+{ "web_cmd": "git web" }
+```
+
+It runs in the session's directory, and is resolved the same way (`PATH`, then your login shell), so a git alias or a script both work.
+
+Resolution happens when you click, against that directory — so the button is right even in a pane beacon isn't tracking, like a shell you're just poking around in. That's also why there's no cached URL for it to get wrong.
 
 ## Install
 
@@ -209,7 +234,7 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the badge color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
-- `/beacon:pause "checking lunch options"` moves the badge to the muted-purple pause color (and dims the pane); the note shows in the fleet dashboard, and sending the next prompt clears both
+- `/beacon:session-mode pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
 - `/beacon:beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
@@ -279,7 +304,7 @@ The label and status commands paint the pane's badge — the same traffic-light 
     </span>
   </div>
   <div class="cf-row">
-    <code class="cf-cmd">/beacon:pause "lunch"</code>
+    <code class="cf-cmd">/beacon:session-mode pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-badge paused">ai-sdlc<span class="t"> : perms</span></span>
@@ -291,11 +316,11 @@ The label and status commands paint the pane's badge — the same traffic-light 
 Inside Claude Code:
 
 ```text
-/beacon:beacon                             # show resolved state (default)
-/beacon:beacon status waiting "bg refresh" # set status with a description
-/beacon:pause "leaving for lunch"          # shorthand for `status paused …`
-/beacon:beacon resume                      # clear all overrides + description
-/beacon:beacon clear status                # clear just the status override
+/beacon:beacon                               # show resolved state (default)
+/beacon:beacon status waiting "bg refresh"   # set status with a description
+/beacon:session-mode pause "out for lunch"   # any mode: pause/release/retro/done
+/beacon:session-mode resume                  # clear all overrides + description
+/beacon:beacon clear status                  # clear just the status override
 ```
 
 At the shell:
@@ -320,7 +345,7 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 
 beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon asks it for the URL most relevant to the current branch and surfaces that URL in two places:
 
-- The `↖ web` button opens it instead of the bare project URL.
+- The status-line link points at it instead of the bare project URL.
 - The project chip appends `#42` (issue/PR) or `!17` (GitLab MR) when the URL is a forge deliverable — `gh:owner/repo#42` instead of just `gh:owner/repo`.
 
 The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly — `gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts — and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
@@ -367,7 +392,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | This specification | [docs/spec.md](/spec) |
+| D1 | This specification | [SPEC.md](/spec) |
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
 | D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
 

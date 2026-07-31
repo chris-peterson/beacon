@@ -13,6 +13,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -913,7 +914,7 @@ class ResolveUrlForgeFallback(BeaconTest):
 
 class TackUrlHonorsSessionPin(BeaconTest):
     """_tack_url_for resolves the route via the session→route pin, not the
-    branch slug alone, so the ↖ web button and the fleet-view chip read the
+    branch slug alone, so the status-line link and the fleet-view chip read the
     same route. A route pinned to the session whose slug differs from the
     branch (a pin, not a branch-slug match) must still surface its deliverable
     URL; location correlation (via _tack_route_for) is the fallback."""
@@ -978,8 +979,8 @@ class CacheKeyIsPaneStable(BeaconTest):
     """The handoff cache files (cwd / url) and the engagement marker key on the
     pane GUID, not the full ITERM_SESSION_ID: the `wNtNpN` positional prefix
     changes when a pane is moved between windows/tabs/splits, and keying on it
-    left the status-bar buttons reading a file written under the pane's old
-    position — the ↖ web button hit its fallback, the ↗ code button no-op'd."""
+    left the `↗ code` button reading a file written under the pane's old
+    position, so it silently no-op'd."""
 
     def _key(self, iterm_id):
         with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": iterm_id}):
@@ -1048,7 +1049,7 @@ class BadgeFormatReferencesTaskSlot(BeaconTest):
         # BADGE-15: the badge is opt-in and off by default, so the profile's
         # static "Badge Text" backstop is empty — the plugin/shell only emit
         # SetBadgeFormat when the user enables the badge in config.
-        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text())
+        template = json.loads((REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8"))
         self.assertEqual(template["Profiles"][0]["Badge Text"], "")
 
 
@@ -1123,7 +1124,7 @@ class HybridBranchSlots(BeaconTest):
     components resolve to a single visible chip."""
 
     def _publish(self, detected):
-        self.beacon._LAST_CHIP_PAIRS = None
+        self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info", return_value=detected), \
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
              mock.patch.object(self.beacon, "resolve_url", return_value=("", "")):
@@ -1145,12 +1146,365 @@ class HybridBranchSlots(BeaconTest):
         self.assertEqual(slots["beacon_branch_clean"], "")
 
 
+class ResolvedUrlPersistence(BeaconTest):
+    """STATUSLINE-02: _publish_chips persists the resolved URL so the status line
+    can render it without re-running resolve_url (git, and possibly gh/glab) on
+    every prompt. The `url-<pane-guid>.txt` handoff file the `↖ web` button read
+    is retired with the button — the persisted state is the single source."""
+
+    def _publish(self, url, label, cwd="/x"):
+        self.beacon._LAST_CHIP_SIGNATURE = None
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=(url, label)):
+            self.beacon._publish_chips(Path(cwd))
+
+    def test_resolution_is_persisted(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        self.assertEqual(self.beacon.read_state("resolved.url"),
+                         "https://gh.test/acme/widget/pull/7")
+        self.assertEqual(self.beacon.read_state("resolved.url_label"), "acme/widget#7")
+
+    def test_url_handoff_file_is_not_written(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        self.assertFalse((self.beacon.CACHE_DIR / "url-GUID.txt").exists())
+        # The `↗ code` button still needs its cwd handoff file.
+        self.assertTrue((self.beacon.CACHE_DIR / "cwd-GUID.txt").exists())
+
+    def test_beacon_url_uservar_is_not_published(self):
+        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
+        batch = next(c for c in self.cli_calls if c[0] == "uservar-batch")
+        self.assertFalse([p for p in batch[1:] if p.startswith("beacon_url=")])
+
+    def test_url_only_change_still_republishes(self):
+        # The URL rides the last-value gate's signature but not the uservar
+        # payload. Two URLs can differ while every chip is identical, and the
+        # persisted value must follow — otherwise the footer link goes stale.
+        self._publish("https://gh.test/acme/widget/tree/a", "acme/widget")
+        # Deliberately does NOT reset the gate — that is what's under test.
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://gh.test/acme/widget/tree/b", "acme/widget")):
+            self.beacon._publish_chips(Path("/x"))
+        self.assertEqual(self.beacon.read_state("resolved.url"),
+                         "https://gh.test/acme/widget/tree/b")
+
+
+class DeliverableAccumulation(BeaconTest):
+    """STATUSLINE-03: _publish_chips records each deliverable the URL resolver
+    lands on, so the status line can show what the session has crossed. Only
+    forge issue/PR/MR URLs count — a branch or repo page is not a deliverable."""
+
+    def _publish(self, url, project_full="gh:acme/widgets"):
+        self.beacon._LAST_CHIP_SIGNATURE = None
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
+            self.beacon._publish_chips(Path("/x"))
+
+    def _refs(self):
+        return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def test_deliverable_url_is_recorded(self):
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self._refs(), ["#42"])
+
+    def test_gitlab_mr_records_bang_ref(self):
+        self._publish("https://gitlab.com/acme/widgets/-/merge_requests/17")
+        self.assertEqual(self._refs(), ["!17"])
+
+    def test_branch_url_records_nothing(self):
+        self._publish("https://github.com/acme/widgets/tree/main")
+        self.assertEqual(self._refs(), [])
+
+    def test_project_identity_is_stored_without_the_suffix(self):
+        # The stored identity is what qualification compares against; carrying
+        # the `#42` suffix would make every later ref read as foreign.
+        self._publish("https://github.com/acme/widgets/pull/42")
+        entry = self.beacon.read_state_json("deliverables", [])[0]
+        self.assertEqual(entry["project"], "gh:acme/widgets")
+        self.assertEqual(self.beacon.read_state("resolved.project"), "gh:acme/widgets")
+
+    def test_crossing_projects_accumulates_both(self):
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self._publish("https://github.com/other/otherproj/issues/75",
+                      project_full="gh:other/otherproj")
+        self.assertEqual(self._refs(), ["#42", "#75"])
+
+    def _snapshot(self, task, provider):
+        self.beacon.write_state("resolved", json.dumps(
+            {"task": task, "task_provider": provider}))
+
+    def test_title_is_the_same_string_the_badge_shows(self):
+        # The badge paints the resolved task; the footer titles the CR. Sourcing
+        # them separately is what made the two surfaces name one PR differently.
+        self._snapshot("Move per-session values into the status line", "pr")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
+                         "Move per-session values into the status line")
+
+    def test_an_override_task_titles_the_cr_too(self):
+        self._snapshot("ship the cart rework", "override")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
+                         "ship the cart rework")
+
+    def test_a_branch_derived_task_is_not_a_title(self):
+        # `#42 2.0` is the branch name, not a name for the work.
+        self._snapshot("2.0", "branch")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"], "")
+
+    def test_fresh_start_drops_the_previous_tenant_list(self):
+        # State keys on the pane, which outlives a Claude session. Without the
+        # wipe, a fresh session's footer credits it with the prior session's
+        # deliverables.
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertEqual(self._refs(), [])
+
+
+class ConfigurableCodeButton(BeaconTest):
+    """STATUS-BAR-07 (#25): the `↗ code` button's editor comes from the user
+    config, read at click time so changing it needs no reinstall."""
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "cfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_default_is_code_maximized(self):
+        with self._config():
+            self.assertEqual(self.beacon._code_launch_argv(), ["code", "--maximized"])
+
+    def test_app_and_args_are_honored(self):
+        with self._config(code_app="subl", code_args=["-n", "-w"]):
+            self.assertEqual(self.beacon._code_launch_argv(), ["subl", "-n", "-w"])
+
+    def test_args_accept_a_shell_quoted_string(self):
+        with self._config(code_app="ed", code_args='-a "two words"'):
+            self.assertEqual(self.beacon._code_launch_argv(), ["ed", "-a", "two words"])
+
+    def test_empty_args_list_drops_the_default(self):
+        # An explicit [] means "no arguments", not "fall back to --maximized".
+        with self._config(code_app="mate", code_args=[]):
+            self.assertEqual(self.beacon._code_launch_argv(), ["mate"])
+
+    def test_editor_off_path_is_found_via_the_login_shell(self):
+        # The regression: a status-bar action shell inherits iTerm2's PATH, so
+        # `code` in /opt/homebrew/bin is invisible to shutil.which and the
+        # button failed for everyone whose editor lives outside /usr/bin.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stdout="/opt/homebrew/bin/code\n",
+                                         stderr=b"")
+
+        with self._config(), \
+             mock.patch.object(self.beacon.shutil, "which", return_value=None), \
+             mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}), \
+             mock.patch.object(self.beacon.os, "access", return_value=True), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.assertEqual(self.beacon._resolve_editor("code"), "/opt/homebrew/bin/code")
+        self.assertEqual(calls[0][:2], ["/bin/zsh", "-lc"])
+
+    def test_an_absolute_editor_path_skips_lookup_entirely(self):
+        with mock.patch.object(self.beacon.os, "access", return_value=True):
+            self.assertEqual(self.beacon._resolve_editor("/Apps/ed"), "/Apps/ed")
+
+    def test_unresolvable_editor_exits_with_an_actionable_message(self):
+        # No `open -a` fallback (the repo's no-fallbacks convention): the button
+        # surfaces this text in its alert so the user knows what to set.
+        with self._config(code_app="beacon-no-such-editor"), \
+             mock.patch.object(self.beacon.shutil, "which", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
+        msg = str(cm.exception)
+        self.assertIn("beacon-no-such-editor", msg)
+        self.assertIn("code_app", msg)
+
+    def test_launch_passes_args_then_directory(self):
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stderr=b"")
+
+        with self._config(code_app="subl", code_args=["-n"]), \
+             mock.patch.object(self.beacon.shutil, "which", return_value="/bin/subl"), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls, [["/bin/subl", "-n", "/work/repo"]])
+
+    def test_nonzero_exit_is_surfaced(self):
+        with self._config(), \
+             mock.patch.object(self.beacon.shutil, "which", return_value="/bin/code"), \
+             mock.patch.object(self.beacon.subprocess, "run", lambda a, **k: types.SimpleNamespace(
+                 returncode=3, stderr=b"boom")):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
+        self.assertIn("boom", str(cm.exception))
+
+    def test_config_get_space_joins_a_list(self):
+        with self._config(code_args=["--maximized", "-n"]):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.beacon.cmd_config_get(self.beacon.argparse.Namespace(key="code_args"))
+        self.assertEqual(buf.getvalue().strip(), "--maximized -n")
+
+
+class CodeButtonInProfile(unittest.TestCase):
+    """STATUS-BAR-07: the button delegates to `beacon open-code` rather than
+    launching the editor from its own shell — an iTerm2 action shell has no
+    interactive PATH (§6.10 caveat 3), so it invokes an absolute interpreter."""
+
+    def _code_action(self):
+        raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        raw = (raw.replace("__BEACON_SCRIPT__", "/p/scripts/beacon")
+                  .replace("__BEACON_PYTHON__", "/usr/bin/python3")
+                  .replace("__BEACON_CACHE_DIR__", "/c"))
+        layout = json.loads(raw)["Profiles"][0]["Status Bar Layout"]["components"]
+        return next(c["configuration"]["knobs"]["action"] for c in layout
+                    if c["class"] == "iTermStatusBarActionComponent"
+                    and c["configuration"]["knobs"]["action"]["title"] == "↗ code")
+
+    def test_button_calls_open_code_by_absolute_interpreter(self):
+        param = self._code_action()["parameter"]
+        self.assertIn('"/usr/bin/python3" "/p/scripts/beacon" open-code', param)
+        self.assertNotIn("open -a", param)
+
+    def test_button_strips_quotes_before_building_the_alert(self):
+        # The alert interpolates the error text into AppleScript; an unescaped
+        # quote there would break the script instead of showing the message.
+        param = self._code_action()["parameter"]
+        self.assertIn("tr -d", param)
+
+    def test_python_placeholder_is_substituted_at_install(self):
+        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
+        self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
+
+
+class PaletteDocMatchesCode(unittest.TestCase):
+    """docs/palette.md documents the status line's SGR roles and names the
+    constants that carry them. Renaming one in `scripts/beacon` without touching
+    the doc leaves a reader chasing an identifier that no longer exists — the
+    same drift the page's "keep the hexes in sync" note guards for the pane."""
+
+    NAMES = ("STATUSLINE_CR_SGR", "STATUSLINE_ISSUE_SGR", "STATUSLINE_DELIVERED_SGR",
+             "STATUSLINE_VERB_SGR", "STATUSLINE_TITLE_SGR")
+
+    def test_every_constant_the_palette_cites_exists(self):
+        palette = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
+        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                self.assertIn(name, palette, f"{name} missing from docs/palette.md")
+                self.assertIn(f"{name} = ", src, f"{name} missing from scripts/beacon")
+
+    def test_documented_sgr_values_match_the_code(self):
+        palette = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
+        beacon = _load_beacon(REPO_ROOT / "tests")
+        # The page prints the codes (`SGR 1;36`); a value edited in one place
+        # only is exactly what a reader would trust and get wrong.
+        for name in ("STATUSLINE_CR_SGR", "STATUSLINE_ISSUE_SGR"):
+            with self.subTest(name=name):
+                self.assertIn(f"SGR {getattr(beacon, name)}", palette)
+
+
+class WebButton(unittest.TestCase):
+    """STATUS-BAR-08: the `↖ web` chip resolves at click time through
+    `beacon open-url`. What was retired in 2.0 is the *URL handoff file* — the
+    second source that drifted from the chip (#5) — not the affordance, which a
+    pane not running Claude has no other way to reach."""
+
+    def test_chip_calls_open_url_and_reads_no_url_handoff(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        self.assertIn("↖ web", template)
+        self.assertIn("open-url", template)
+        # The cwd handoff survives; a URL handoff would reintroduce the drift.
+        self.assertNotIn("url-${ITERM_SESSION_ID", template)
+
+    def test_shell_publishes_no_url_var_or_handoff(self):
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        self.assertNotIn("uservar beacon_url", shell)
+        self.assertNotIn("_beacon_write_session_file url", shell)
+
+
+class OpenUrlCommand(BeaconTest):
+    """STATUS-BAR-08 / CMD-14: `open-url [dir]` resolves at click time against
+    the directory it is given, so it is correct in a pane beacon isn't
+    tracking."""
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "webcfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_resolves_against_the_directory_argument(self):
+        seen = {}
+
+        def fake_resolve(cwd=None):
+            seen["cwd"] = str(cwd)
+            return ("https://x.test/acme/widgets/pull/7", "acme/widgets#7")
+
+        with self._config(), \
+             mock.patch.object(self.beacon, "resolve_url", fake_resolve), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b"")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        # The arg round-trips through Path, which normalizes separators — so
+        # compare against the platform's own rendering, not a POSIX literal.
+        self.assertEqual(seen["cwd"], str(Path("/work/repo")))
+
+    def test_web_cmd_runs_the_users_command_in_that_directory(self):
+        # `git web` and friends already exist on plenty of machines; beacon has
+        # no business relitigating where the button should go.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw.get("cwd")))
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with self._config(web_cmd="git web"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls, [(["/usr/bin/git", "web"], str(Path("/work/repo")))])
+
+    def test_web_cmd_takes_precedence_over_beacons_own_resolution(self):
+        with self._config(web_cmd="git web"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               side_effect=AssertionError("must not resolve")), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               lambda a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr="")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+
+    def test_an_unresolvable_web_cmd_names_the_config_key(self):
+        with self._config(web_cmd="nope-not-here"), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value=None):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertIn("web_cmd", str(cm.exception))
+
+
 class HybridBranchProfileSlots(unittest.TestCase):
     """STATUS-BAR-03: the profile carries one fixed-color branch component per
     bucket — the default slot plus the three feature-state slots."""
 
     def test_four_branch_slots_present(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text()
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         for var in ("beacon_branch_default", "beacon_branch_clean",
                     "beacon_branch_diverged", "beacon_branch_untracked"):
             self.assertIn(rf"\\(user.{var})", template)
@@ -2088,9 +2442,10 @@ class PauseClearScreen(BeaconTest):
 
 
 class StatusLineProvider(BeaconTest):
-    """STATUSLINE-01: the Claude Code status-line provider prints ONLY the pause
-    reason (the footer row Claude owns, no terminal overlap) — empty otherwise,
-    since project/task/status are carried by the tab."""
+    """STATUSLINE-01: the Claude Code status-line provider (the footer row Claude
+    owns, no terminal overlap) prints the pause reason and the resolved URL as an
+    OSC-8 link — empty otherwise, since project/task/status are carried by the
+    tab."""
 
     def _run(self):
         buf = io.StringIO()
@@ -2123,16 +2478,192 @@ class StatusLineProvider(BeaconTest):
         self.assertIn("line one line two", out)
         self.assertEqual(out.count("\n"), 1)  # only the trailing newline
 
+    def test_resolved_url_renders_as_osc8_link(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self.beacon.write_state("resolved.url", url)
+        self.beacon.write_state("resolved.url_label", "acme/widgets#42")
+        out = self._run()
+        # The full OSC-8 wrapper, not just the label: the label alone would pass
+        # even if the sequence were dropped, which is the whole feature.
+        self.assertIn(f"\033]8;;{url}\a", out)
+        self.assertIn("acme/widgets#42", out)
+        self.assertIn("\033]8;;\a", out)
+        # The bare URL never appears as text — the label is the click target.
+        self.assertNotIn(f" {url} ", out)
 
-class ReviewButtonInProfile(unittest.TestCase):
-    """STATUS-BAR-02: the `⇄ review` action chip sends `beacon review` into the
-    pane via iTerm2's Send Text action (enum 12), not a coprocess — so the
-    driving session (or a shell) runs the review and consumes its output."""
+    def test_no_resolved_url_prints_nothing(self):
+        self.assertEqual(self._run(), "")
+
+    def test_url_falls_back_to_itself_when_unlabelled(self):
+        url = "https://github.com/acme/widgets"
+        self.beacon.write_state("resolved.url", url)
+        self.assertIn(f"\033]8;;{url}\a{url}\033]8;;\a", self._run())
+
+    def _visible(self, row):
+        """Strip OSC-8 wrappers and SGR so assertions read like the rendered row."""
+        return re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", row).rstrip("\n")
+
+    def _touch(self, ref, url, project, title="", landed=()):
+        # tack IS on PATH on a dev machine, so an unmocked _record_deliverable
+        # shells out and reads the author's real routes — slow and dependent on
+        # state no test controls. `landed` stands in for the URLs whose tack has
+        # gone done.
+        with mock.patch.object(self.beacon, "_tack_landed_urls",
+                               return_value=set(landed)):
+            self.beacon._record_deliverable(ref, url, project, title)
+
+
+    def _lines(self):
+        return self._visible(self._run()).split("\n")
+
+    def test_open_work_splits_by_kind_crs_above_issues(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("!3", "https://x.test/w/-/merge_requests/3", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
+        # CRs lead; issues follow, newest first. Bare for this project,
+        # qualified for another.
+        self.assertEqual(self._lines(), ["!3", "otherproj:#75 · #4"])
+
+    def test_each_deliverable_is_its_own_link(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
+        out = self._run()
+        self.assertIn("\033]8;;https://x.test/w/issues/4\a#4", out)
+        self.assertIn("\033]8;;https://x.test/o/issues/75\aotherproj:#75", out)
+
+    def test_crs_carry_more_weight_than_issues(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        out = self._run()
+        # Same hue, two weights — a CR reads as the actionable thing, the issue
+        # as its context. On GitHub both render `#<n>`, so weight is the cue.
+        self.assertIn(f"\033[{self.beacon.STATUSLINE_CR_SGR}m"
+                      "\033]8;;https://x.test/w/pull/9\a#9", out)
+        self.assertIn(f"\033[{self.beacon.STATUSLINE_ISSUE_SGR}m"
+                      "\033]8;;https://x.test/w/issues/4\a#4", out)
+
+    def test_retouch_moves_to_the_front_without_duplicating(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._lines(), ["#4 · #9"])
+
+    def test_items_on_a_line_share_one_separator(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        for n in (4, 5, 6):
+            self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
+        line = self._lines()[0]
+        self.assertEqual(line, "#6 · #5 · #4")
+        self.assertNotIn(",", line)
+
+    def test_delivered_work_leads_on_its_own_line(self):
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", landed=[url])
+        self.assertEqual(self._lines(), ["#9 merged 🏁", "#4"])
+
+    def test_delivered_ref_is_struck_but_the_verb_carries_it(self):
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", landed=[url])
+        out = self._run()
+        # Strike wraps the ref text only — a four-character strike is too subtle
+        # to be the signal, so the word and glyph outside it do the work.
+        self.assertIn("\a\033[9m#9\033[29m\033]8;;\a", out)
+        self.assertIn("merged 🏁", out)
+
+    def test_a_release_is_delivered_without_asking_tack(self):
+        # A /releases/tag/ URL only exists once published, so the kind settles
+        # it — no tack route required.
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("v2.0.0", "https://x.test/w/releases/tag/v2.0.0", "gh:acme/widgets")
+        self.assertEqual(self._lines(), ["v2.0.0 released 🚀"])
+
+    def test_a_cr_carries_a_title(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets",
+                    title="Rework the cart drawer")
+        self.assertEqual(self._lines(), ["#9 Rework the cart drawer"])
+
+    def test_issues_stay_bare(self):
+        # Several issues share a line; titling each would wrap the row the cap
+        # exists to prevent.
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets",
+                    title="Some issue summary")
+        self.assertEqual(self._lines(), ["#4"])
+
+    def test_a_long_title_is_ellipsized(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets", title="x" * 200)
+        title = self._lines()[0].split(" ", 1)[1]
+        self.assertEqual(len(title), self.beacon.STATUSLINE_TITLE_MAX)
+        self.assertTrue(title.endswith("…"))
+
+    def test_a_title_survives_a_later_touch_that_has_none(self):
+        # Only the current deliverable has a live task to read; an older CR must
+        # keep the title it was captured with rather than being blanked.
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", title="Rework the cart drawer")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._lines()[0], "#9 Rework the cart drawer")
+
+    def test_a_delivered_cr_drops_its_title(self):
+        # The delivered line is a ledger, not a worklist — the verb is the point.
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets",
+                    title="Rework the cart drawer", landed=[url])
+        self.assertEqual(self._lines(), ["#9 merged 🏁"])
+
+    def test_oldest_drops_past_the_cap(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        for n in range(self.beacon.DELIVERABLES_MAX + 3):
+            self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
+        entries = self.beacon.read_state_json("deliverables", [])
+        self.assertEqual(len(entries), self.beacon.DELIVERABLES_MAX)
+        self.assertEqual(entries[0]["ref"], "#3")   # #0..#2 aged out
+        self.assertEqual(entries[-1]["ref"], f"#{self.beacon.DELIVERABLES_MAX + 2}")
+
+    def test_deliverables_supersede_the_single_url(self):
+        # A branch-tree URL resolves while the session has already touched a
+        # deliverable — the accumulated work is the more useful answer.
+        self.beacon.write_state("resolved.url", "https://x.test/w/tree/main")
+        self.beacon.write_state("resolved.url_label", "acme/widgets")
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._visible(self._run()), "#4")
+
+    def test_pause_reason_and_link_share_one_row(self):
+        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_state("description", "waiting on CI")
+        self.beacon.write_state("resolved.url", "https://example.test/1")
+        self.beacon.write_state("resolved.url_label", "ex#1")
+        out = self._run()
+        self.assertIn("waiting on CI", out)
+        self.assertIn("ex#1", out)
+        self.assertIn(self.beacon.STATUSLINE_SEPARATOR, out)
+        self.assertEqual(out.count("\n"), 1)
+        # Reason leads: it answers "why is this parked" before "where is it".
+        self.assertLess(out.index("waiting on CI"), out.index("ex#1"))
+
+
+class StatusBarLayout(unittest.TestCase):
+    """STATUS-BAR-02: the strip is `↖ web · project ←spring→ branch ↗ code`.
+    Each edge pairs an action with the data it acts on; the review chip was
+    dropped for lack of use, and with nothing centred one spring suffices."""
 
     def _layout(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         rendered = (template
                     .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
+                    .replace("__BEACON_PYTHON__", "/x/python3")
                     .replace("__BEACON_CACHE_DIR__", "/x/cache"))
         return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]["components"]
 
@@ -2141,214 +2672,43 @@ class ReviewButtonInProfile(unittest.TestCase):
                 for c in self._layout()
                 if c["class"] == "iTermStatusBarActionComponent"]
 
-    def test_review_button_is_send_text(self):
-        review = next(
-            c["configuration"]["knobs"]["action"] for c in self._layout()
-            if c["class"] == "iTermStatusBarActionComponent"
-            and c["configuration"]["knobs"]["action"]["title"] == "⇄ review"
-        )
-        # Send Text = KEY_ACTION_TEXT (12), NOT Run Coprocess (35): the point is
-        # to type the command into the session, so Claude runs it and reads the
-        # sidecar verdict back. \r submits the line (both a shell prompt and the
-        # Claude Code TUI treat Return as \r).
-        self.assertEqual(review["action"], 12)
-        self.assertEqual(review["parameter"], "beacon review\r")
+    def test_the_two_action_chips_bookend_the_strip(self):
+        self.assertEqual(self._action_titles(), ["↖ web", "↗ code"])
 
-    def test_review_button_is_centered_between_springs(self):
-        # The review chip is flanked by two springs so it centers between the
-        # left (web · project) and right (branch · code) clusters —
-        # … project ←spring→ ⇄ review ←spring→ branch …
+    def test_the_spring_sits_behind_web_leaving_one_right_hand_cluster(self):
+        # `↖ web` alone at the left edge; the spring then pushes project, its
+        # branch, and `↗ code` together on the right, so the identity sits
+        # beside the branch it belongs to rather than across the strip from it.
         comps = self._layout()
+        classes = [c["class"] for c in comps]
+        self.assertEqual(classes.count("iTermStatusBarSpringComponent"), 1)
+        self.assertEqual(comps[0]["configuration"]["knobs"]["action"]["title"], "↖ web")
+        self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 1)
         self.assertEqual(
-            [c["class"] for c in comps].count("iTermStatusBarSpringComponent"), 2)
-        idx = next(i for i, c in enumerate(comps)
-                   if c["class"] == "iTermStatusBarActionComponent"
-                   and c["configuration"]["knobs"]["action"]["title"] == "⇄ review")
-        self.assertEqual(comps[idx - 1]["class"], "iTermStatusBarSpringComponent")
-        self.assertEqual(comps[idx + 1]["class"], "iTermStatusBarSpringComponent")
-        # Action chips left-to-right: web (far left), review (center), code (far right).
-        self.assertEqual(self._action_titles(), ["↖ web", "⇄ review", "↗ code"])
+            comps[2]["configuration"]["knobs"]["expression"],
+            r"\(user.beacon_project_full)")
+        self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
+
+    def test_review_chip_is_gone(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        self.assertNotIn("⇄ review", template)
+        self.assertNotIn("beacon review", template)
 
 
-class ReviewCommand(unittest.TestCase):
-    """CMD-16: `beacon review` diffs the whole branch against the default
-    branch through the configured difftool, relaying moor's sidecar verdict."""
+class ReviewFeatureRemoved(BeaconTest):
+    """CMD-16 retired: the branch-review subcommand goes with its chip. Reviewing
+    a diff is a job other tools own; beacon's is reporting session state."""
 
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.beacon = _load_beacon(Path(self._tmp.name))
-        self.addCleanup(self._tmp.cleanup)
-        self.repo = tempfile.TemporaryDirectory()
-        self.addCleanup(self.repo.cleanup)
-        self._cwd = os.getcwd()
-        self.addCleanup(lambda: os.chdir(self._cwd))
-        os.chdir(self.repo.name)
-        self._git("init", "-q", "-b", "main")
-        self._git("config", "user.email", "t@t.co")
-        self._git("config", "user.name", "t")
-        Path("f").write_text("a\n")
-        self._git("add", "f")
-        self._git("commit", "-qm", "init")
-        self._git("update-ref", "refs/remotes/origin/main", "main")
-        self._git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
-
-    def _git(self, *args):
-        subprocess.run(["git", *args], cwd=self.repo.name, check=True,
-                       capture_output=True, text=True)
-
-    def _run_review(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            self.beacon.cmd_review(None)
-        return buf.getvalue()
-
-    def test_inert_on_default_branch(self):
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertNotIn("REVIEW_VERDICT", out)
-
-    def test_errors_outside_a_repo(self):
-        os.chdir(self._tmp.name)  # a non-repo dir
+    def test_review_is_not_a_subcommand(self):
         with self.assertRaises(SystemExit):
-            self.beacon.cmd_review(None)
+            self.beacon._build_parser().parse_args(["review"])
 
-    def test_relays_sidecar_verdict(self):
-        self._git("checkout", "-q", "-b", "feature")
-        Path("f").write_text("a\nb\n")
-        self._git("commit", "-qam", "change")
-        # Fake difftool: write an output section into MOOR_CONTEXT, as moor does.
-        tool = Path(self.repo.name) / "faketool.py"
-        tool.write_text(
-            "import json,os,sys\n"
-            "p=os.environ['MOOR_CONTEXT']\n"
-            "d=json.load(open(p))\n"
-            "d['output']={'reviewer':'t','exitCode':1,"
-            "'comments':[{'body':'x','action':'fix-now','file':'f'}]}\n"
-            "json.dump(d,open(p,'w'))\n"
-        )
-        self._git("config", "diff.tool", "faketool")
-        # git runs the difftool cmd through `sh -c`, which eats the backslashes
-        # in a raw Windows path (C:\Users\… → C:Users…); use forward slashes.
-        # And invoke the exact interpreter running the suite — `python3` isn't
-        # guaranteed on PATH on Windows.
-        py = Path(sys.executable).as_posix()
-        self._git("config", "difftool.faketool.cmd",
-                  f'"{py}" "{tool.as_posix()}" "$LOCAL" "$REMOTE"')
-        self._git("config", "difftool.prompt", "false")
-        out = self._run_review()
-        self.assertIn("REVIEW_VERDICT=1", out)
-        self.assertIn('"action":"fix-now"', out)
-        # The sidecar temp file is cleaned up after relaying.
-        leftovers = list(Path(tempfile.gettempdir()).glob("beacon-review-*.json"))
-        self.assertEqual(leftovers, [])
+    def test_review_entry_points_are_gone(self):
+        for name in ("cmd_review", "_anchor_review_script", "_working_tree_dirty"):
+            self.assertFalse(hasattr(self.beacon, name), f"{name} should be removed")
 
-    def _fake_anchor_script(self, marker: Path) -> Path:
-        # Stand-in for anchor's review-diff.sh, kept outside the repo working
-        # tree so its own presence doesn't dirty it. Records the mode arg it was
-        # invoked with (proving delegation happened) and prints the sidecar
-        # verdict contract, as the real script does.
-        script = Path(self._tmp.name) / "review-diff.sh"
-        script.write_text(
-            "#!/usr/bin/env bash\n"
-            f"printf '%s' \"$1\" > '{marker.as_posix()}'\n"
-            "echo REVIEW_VERDICT=0\n"
-        )
-        return script
-
-    @unittest.skipIf(os.name == "nt", "delegation shells out to bash")
-    def test_delegates_to_anchor_on_dirty_default_branch(self):
-        # CMD-16 / issue #13: on the default branch with uncommitted changes and
-        # anchor installed, `review` delegates to `review-diff.sh --local`.
-        Path("f").write_text("a\nb\n")  # dirty the working tree on main
-        marker = Path(self._tmp.name) / "delegated.txt"
-        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
-        out = self._run_review()
-        self.assertEqual(marker.read_text(), "--local")
-        self.assertNotIn("nothing to review", out)
-
-    def test_inert_on_dirty_default_branch_without_anchor(self):
-        # Anchor absent → unchanged inert behavior, no beacon-native diff.
-        Path("f").write_text("a\nb\n")
-        self.beacon._anchor_review_script = lambda: None
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertNotIn("REVIEW_VERDICT", out)
-
-    def test_inert_on_clean_default_branch_with_anchor(self):
-        # Clean tree → inert even with anchor installed; delegation never fires.
-        marker = Path(self._tmp.name) / "delegated.txt"
-        self.beacon._anchor_review_script = lambda: self._fake_anchor_script(marker)
-        out = self._run_review()
-        self.assertIn("on the default branch", out)
-        self.assertFalse(marker.exists())
-
-
-class AnchorResolution(unittest.TestCase):
-    """Issue #13: `_anchor_review_script` locates anchor's review-diff.sh via
-    Claude Code's plugin registry, degrading to None when anchor is absent."""
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.beacon = _load_beacon(Path(self._tmp.name))
-        self.addCleanup(self._tmp.cleanup)
-        self.home = Path(self._tmp.name) / "home"
-        self.registry = self.home / ".claude" / "plugins" / "installed_plugins.json"
-        self.registry.parent.mkdir(parents=True)
-        self._home = os.environ.get("HOME")
-        self._userprofile = os.environ.get("USERPROFILE")
-        os.environ["HOME"] = str(self.home)
-        os.environ["USERPROFILE"] = str(self.home)
-        self.addCleanup(self._restore_home)
-
-    def _restore_home(self):
-        for var, val in (("HOME", self._home), ("USERPROFILE", self._userprofile)):
-            if val is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = val
-
-    def _install_anchor(self, marketplace: str, has_script: bool = True,
-                        last_updated: str = "2026-01-01") -> Path:
-        install = self.home / "cache" / marketplace / "anchor" / "1.0.0"
-        if has_script:
-            (install / "scripts").mkdir(parents=True)
-            (install / "scripts" / "review-diff.sh").write_text("#!/usr/bin/env bash\n")
-        return install
-
-    def _write_registry(self, plugins: dict):
-        self.registry.write_text(json.dumps({"version": 2, "plugins": plugins}))
-
-    def test_resolves_installed_anchor(self):
-        install = self._install_anchor("getty-claude-marketplace")
-        self._write_registry({"anchor@getty-claude-marketplace": [
-            {"installPath": str(install), "lastUpdated": "2026-01-01"}]})
-        self.assertEqual(self.beacon._anchor_review_script(),
-                         install / "scripts" / "review-diff.sh")
-
-    def test_none_when_anchor_absent(self):
-        self._write_registry({"tack@chris-peterson": [{"installPath": "/nope"}]})
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_none_when_registry_missing(self):
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_none_when_registry_malformed(self):
-        self.registry.write_text("{ not json")
-        self.assertIsNone(self.beacon._anchor_review_script())
-
-    def test_prefers_newest_install_with_script_present(self):
-        # A stale registry entry (script gone from cache) is skipped in favor of
-        # a present one, even though it sorts first by lastUpdated.
-        stale = self._install_anchor("old-marketplace", has_script=False)
-        live = self._install_anchor("getty-claude-marketplace")
-        self._write_registry({
-            "anchor@old-marketplace": [
-                {"installPath": str(stale), "lastUpdated": "2026-09-09"}],
-            "anchor@getty-claude-marketplace": [
-                {"installPath": str(live), "lastUpdated": "2026-01-01"}],
-        })
-        self.assertEqual(self.beacon._anchor_review_script(),
-                         live / "scripts" / "review-diff.sh")
+    def test_completions_do_not_offer_review(self):
+        self.assertNotIn("'review:", self.beacon.ZSH_COMPLETION)
 
 
 class ExportImport(BeaconTest):

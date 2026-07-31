@@ -210,7 +210,6 @@ typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
 typeset -g _BEACON_LAST_URL_SIGNAL='__unset__'
-typeset -g _BEACON_LAST_URL='__unset__'
 typeset -g _BEACON_RESOLVED_URL=''
 
 # Per-session file handoff for status-bar action buttons. Action enum 35
@@ -260,9 +259,8 @@ fi
 
 _beacon_write_session_file() {
   # Skip when the pane id is unavailable (non-iTerm shell). Mirrors the
-  # plugin's `if key:` guard: an empty id would write the shared
-  # `cwd-.txt` / `url-.txt`, which the action buttons then serve to every
-  # empty-id session.
+  # plugin's `if key:` guard: an empty id would write the shared `cwd-.txt`,
+  # which the `↗ code` button then serves to every empty-id session.
   [[ -n "$ITERM_SESSION_ID" ]] || return 0
   # Key on the pane GUID (the segment after the last colon), not the full
   # ITERM_SESSION_ID: the `wNtNpN` prefix changes when the pane is moved, so
@@ -367,11 +365,6 @@ _beacon_precmd() {
     _BEACON_LAST_TITLE="$title"
   fi
 
-  if [[ "$url" != "$_BEACON_LAST_URL" ]]; then
-    "$_BEACON_ITERM" uservar beacon_url "$url"
-    _beacon_write_session_file url "$url"
-    _BEACON_LAST_URL="$url"
-  fi
 }
 
 _beacon_chpwd() {
@@ -386,7 +379,6 @@ _beacon_chpwd() {
   _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
   _BEACON_LAST_URL_SIGNAL='__unset__'
-  _BEACON_LAST_URL='__unset__'
   _beacon_precmd
 }
 

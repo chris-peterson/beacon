@@ -1,22 +1,34 @@
 # beacon — Spec Coverage Status
 
-Tracking status of the requirements declared in [`docs/spec.md`](docs/spec.md).
+Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-07-08
-**Spec version:** v1 (root-level, `docs/spec.md`)
-**Plugin version:** 1.21.0
-**Coverage:** 158 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
-1.21.0 adds the TITLE (§4.8 window title) and DUMP (export/import) domains and
-folds `/rename` into the task chain (PROV-02).
+**Last audit:** 2026-07-30
+**Spec version:** v2 (root-level, `SPEC.md`)
+**Coverage:** 163 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
+(the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
+deliverables) join STATUSLINE-01, and STATUS-BAR-07 makes the `↗ code` editor
+configurable, and STATUS-BAR-08 gives `↖ web` a click-time resolver plus a
+`web_cmd` knob (its URL *handoff file* is what 2.0 retires, not the chip).
+STATUS-BAR-02 drops `⇄ review`, whose whole feature went with it (CMD-16
+retired, along with the `moor` / `anchor` soft deps that served it).
+CMD-19/20/22 retire into a single CMD-18 (`/beacon:session-mode`).
 
-> **Partial hand-reconciliation (2026-07-08).** `/sextant:spec-status` is
-> model-invocation-disabled, so this pass was done by hand: the TITLE and DUMP
-> rows below were added and the header bumped to 1.21.0. A full `spec-status`
-> pass is still owed — the per-domain row counts predate this and don't tally to
-> 158 (the `PERF-01..04` row has no matching spec IDs, and the `CLI` row count is
-> one short of the spec's CLI defs). Headline count is the authoritative spec ID
-> total; the row-level bookkeeping needs the tool.
+The plugin version is **not** recorded here: the release workflow bumps
+`plugin.yml` / `.claude-plugin/plugin.json` when a GitHub Release is published,
+so a hand-written version in this file goes stale the moment CI runs.
+
+> **Partial hand-reconciliation (2026-07-30).** `/sextant:spec-status` is
+> model-invocation-disabled, so this pass was done by hand: the STATUSLINE row
+> was added and the STATUS-BAR / CMD rows updated for 2.0. The headline count is
+> a direct count of `**<ID>.**` definitions in `SPEC.md`, excluding the
+> `— retired` marker lines (which reuse the same bold-ID form), and is
+> authoritative. A
+> full `spec-status` pass is still owed for the per-domain row counts, which
+> predate this and don't tally (the `PERF-01..04` row has no matching spec IDs;
+> the `CLI` row is one short of the spec's CLI defs; the `BADGE` row still calls
+> BADGE-15 retired, but the id was reused for the opt-in badge gate and is live).
 
 Status (`signal.status`) has seven values, organized into **SDLC cycles**
 (STATE-13): the **dev** cycle — `idle` / `working` / `waiting` — maps to the
@@ -53,7 +65,7 @@ a mode state swaps into its profile for a background a color OSC can't express
 | OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
 | STATE-01..13 (incl. 04a) | 14 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree`; STATE-08 is the `retro` synonym for `status retro`; STATE-09 is the `done` mode (`cmd_done`, no snapshot, no auto-resume); STATE-10 is `pause --clear-screen` (`_cli("clear-screen")`, `cmd_clear_screen` in `bin/beacon-iterm`); STATE-11 is the `release` synonym (`cmd_release`); STATE-12 suppresses the task while `done` (blanked in `resolve`, `test_done_suppresses_task_keeps_project`); STATE-13 is the SDLC-cycle grouping (`MODE_PROFILES` keyed by cycle) |
 | SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
-| CMD-01..09, 13..22 (gap 10, 11; CMD-12 retired) | 19 | All Covered | CMD-08 install writes the base + mode dynamic profiles; CMD-16 is `review` (backs the `⇄ review` status-bar button; on the default branch with a dirty tree it delegates to anchor's `review-diff.sh --local` when anchor is installed, `_anchor_review_script` via the plugin registry, issue #13); CMD-18/19/20/22 are the `/beacon:pause` / `retro` / `done` / `release` shims (no model pin); CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16) |
+| CMD-01..09, 13..15, 17, 18, 21 (gap 10, 11; CMD-12, 16, 19, 20, 22 retired) | 15 | All Covered | CMD-08 install writes the base + mode dynamic profiles; CMD-16 retired in 2.0 with the branch-review feature (chip + `beacon review` subcommand + the moor/anchor soft deps); CMD-18 is the single `/beacon:session-mode <mode>` shim (no model pin) that CMD-19/20/22 folded into in 2.0 (issue #23); CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16) |
 | WIP-01..17 | 17 | All Covered | Cross-session introspection / export; WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12: no state carries a text glyph — every fleet row reads by its color dot and `status` (the dashboard conveys a mode via the WIP-17 card treatment); WIP-13 emits `agent_color` (fleet-view identity pill only, never painted); WIP-14 persists `latest_turn_full` + serves it at `GET /turn/<hash>` for card expansion; WIP-15 collapses same-project sessions into a z-stack (newest front, raise on demand); WIP-16 auto-groups the fleet by route group (groupless in an unlabeled bottom section, no toggle); WIP-17 gives mode-state cards the pane-analog treatment (muted tint + centered `||` / rocket / clipboard / finish-flag watermark) and keeps a mode session out of the attention band |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | DUMP-01..04 | 4 | All Covered | `export` / `import` full-fidelity per-session state backup (`_export_payload`, `cmd_export`, `cmd_import`); versioned JSON envelope, gzip optional, mtimes preserved (DUMP-03), hex-hash + path-traversal guard on import; DUMP-04 treats the dump as sensitive (raw payload is the product, not shape-only) |
@@ -64,11 +76,12 @@ a mode state swaps into its profile for a background a color OSC can't express
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
 | BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
 | TITLE-01..04 | 4 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write |
-| STATUS-BAR-01..03, 05, 06 (gap 04) | 5 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles) |
+| STATUS-BAR-01..03, 05..08 (gap 04) | 7 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor (`code_app` / `code_args` read at click time, launched via `cmd_open_code`); STATUS-BAR-08 is the `↖ web` chip resolving at click time via `cmd_open_url <cwd>` with an optional `web_cmd` override — both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3) |
+| STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26); STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18) |
 | RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
 | THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed) |
-| NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus`; NFR-06 soft deps now include the `anchor` plugin, probed via the plugin registry (`_anchor_review_script`) rather than `_which` |
+| NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus`; NFR-06 soft deps are `tack` / `gh` / `glab` / `osascript`, all `_which`-probed — the `moor` and `anchor` deps went with the branch-review feature in 2.0 |
 
 Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no
 STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
