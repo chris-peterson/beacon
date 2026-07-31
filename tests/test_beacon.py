@@ -1394,6 +1394,33 @@ class CodeButtonInProfile(unittest.TestCase):
         self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
 
 
+class PaletteDocMatchesCode(unittest.TestCase):
+    """docs/palette.md documents the status line's SGR roles and names the
+    constants that carry them. Renaming one in `scripts/beacon` without touching
+    the doc leaves a reader chasing an identifier that no longer exists — the
+    same drift the page's "keep the hexes in sync" note guards for the pane."""
+
+    NAMES = ("STATUSLINE_CR_SGR", "STATUSLINE_ISSUE_SGR", "STATUSLINE_DELIVERED_SGR",
+             "STATUSLINE_VERB_SGR", "STATUSLINE_TITLE_SGR")
+
+    def test_every_constant_the_palette_cites_exists(self):
+        palette = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
+        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
+        for name in self.NAMES:
+            with self.subTest(name=name):
+                self.assertIn(name, palette, f"{name} missing from docs/palette.md")
+                self.assertIn(f"{name} = ", src, f"{name} missing from scripts/beacon")
+
+    def test_documented_sgr_values_match_the_code(self):
+        palette = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
+        beacon = _load_beacon(REPO_ROOT / "tests")
+        # The page prints the codes (`SGR 1;36`); a value edited in one place
+        # only is exactly what a reader would trust and get wrong.
+        for name in ("STATUSLINE_CR_SGR", "STATUSLINE_ISSUE_SGR"):
+            with self.subTest(name=name):
+                self.assertIn(f"SGR {getattr(beacon, name)}", palette)
+
+
 class WebButton(unittest.TestCase):
     """STATUS-BAR-08: the `↖ web` chip resolves at click time through
     `beacon open-url`. What was retired in 2.0 is the *URL handoff file* — the
