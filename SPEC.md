@@ -258,7 +258,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
 
-**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the user's `web_cmd` when configured, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
+**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the `web` button's configured `cmd` when set, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
 
 **CMD-16 — retired.** The branch-review subcommand (`beacon review`) and its `⇄ review` status-bar chip are removed in 2.0; see STATUS-BAR-02.
 
@@ -273,6 +273,8 @@ The mode takes an argument rather than each mode getting its own command because
 **CMD-19, CMD-20, CMD-22 — retired.** The per-mode `/beacon:retro`, `/beacon:done`, and `/beacon:release` commands folded into CMD-18.
 
 **CMD-21.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
+
+**CMD-23.** When the user invokes `install-profile`, the plugin shall re-render the base and mode dynamic profiles (STATUS-BAR-01) from the template and the current user config, and nothing else — no wrapper, no completions, no shell integration, no fleet-layout advisory. This is the apply path for a changed button label (STATUS-BAR-09): iTerm2 reloads the `DynamicProfiles` directory on change, so the re-render reaches every open pane without a restart. Off iTerm2 the subcommand shall exit non-zero saying so, rather than writing a profile nothing will load.
 
 ---
 
@@ -570,13 +572,13 @@ This also drops beacon's soft dependencies on `moor` and the `anchor` plugin, wh
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
 
-**STATUS-BAR-07.** The `↗ code` button's editor shall be user-configurable through the same `~/.config/beacon/config.json` the badge gate (BADGE-15) and `focus_origins` (FOCUS-04) already use, via two keys: **`code_app`** (the editor command, default `code`) and **`code_args`** (startup arguments, default `["--maximized"]`, accepted as a JSON array or a shell-quoted string). An explicit empty array means *no arguments*, not "use the default".
+**STATUS-BAR-07.** The `↗ code` button's editor shall be user-configurable through the same `~/.config/beacon/config.json` the badge gate (BADGE-15) and `focus_origins` (FOCUS-04) already use, as the **`cmd`** of its `statusbar.buttons.code` block (STATUS-BAR-09) — a single shell-quoted command, default `code --maximized`. A bare program with no arguments is how "no startup arguments" is expressed.
 
 The configuration shall be read at **click time**, not install time, so changing editors takes effect immediately with no `beacon install` re-run. A click is never a hot path, so the extra read costs nothing there.
 
 The launch shall happen in a `beacon open-code [<dir>]` subcommand rather than in the button's own shell, and the button shall invoke it through an **absolute interpreter path** (`__BEACON_PYTHON__`, substituted at install from the running interpreter). An iTerm2 coprocess action shell has no interactive `PATH` (§6.10 caveat 3) — which is why both buttons historically launched via macOS `open` — so resolving an editor binary from that shell is precisely the thing that would fail. Moving it into Python also makes the behavior testable.
 
-Resolving the editor binary is subject to the same `PATH` problem, and substituting an absolute interpreter does not solve it: the Python process inherits the action shell's `PATH` too, so a `shutil.which` lookup runs against roughly `/usr/bin:/bin:/usr/sbin:/sbin` and misses `/opt/homebrew/bin` and `/usr/local/bin` — where an editor CLI actually installs. The plugin shall therefore resolve an unqualified `code_app` by `PATH` first and, failing that, by asking the user's **login shell** (`$SHELL -lc 'command -v <app>'`), which is the thing that knows where their tools live. An absolute `code_app` is used as given. This is one subprocess on a click, never a hot path, and it resolves the *configured* editor rather than quietly launching a different one.
+Resolving the editor binary is subject to the same `PATH` problem, and substituting an absolute interpreter does not solve it: the Python process inherits the action shell's `PATH` too, so a `shutil.which` lookup runs against roughly `/usr/bin:/bin:/usr/sbin:/sbin` and misses `/opt/homebrew/bin` and `/usr/local/bin` — where an editor CLI actually installs. The plugin shall therefore resolve an unqualified program by `PATH` first and, failing that, by asking the user's **login shell** (`$SHELL -lc 'command -v <app>'`), which is the thing that knows where their tools live. An absolute path is used as given. This is one subprocess on a click, never a hot path, and it resolves the *configured* editor rather than quietly launching a different one.
 
 When the configured editor cannot be resolved by either route, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
 
@@ -584,9 +586,52 @@ When the configured editor cannot be resolved by either route, the plugin shall 
 
 Resolution happens **at click time, against the directory it is given** — there is no URL handoff file. That is what removes the #5 failure at its root: nothing is cached, so the button and the project chip beside it cannot disagree. It is also what makes the button correct in a pane beacon is not tracking, which is the case the status-line link cannot serve (STATUSLINE-02): a shell you are poking around in has no Claude footer, and that is exactly when jumping to a repo's web view is wanted.
 
-By default the URL comes from PROV-07, which knows about tack deliverables and open CRs and so lands on the *thing being worked on* rather than the repo's front page. A **`web_cmd`** key in the user config overrides that with the user's own command, run in the target directory — `git web` and its kin already exist on plenty of machines, and beacon has no business relitigating where the button should go. It is resolved the same way `code_app` is (PATH, then the login shell), so a git alias or a `$PATH` script both work. Where `code_app` / `code_args` split the program from its arguments, `web_cmd` is a single shell-quoted string: the useful values are whole commands rather than a program with a fixed flag set.
+By default the URL comes from PROV-07, which knows about tack deliverables and open CRs and so lands on the *thing being worked on* rather than the repo's front page. The button's **`cmd`** (STATUS-BAR-09) overrides that with the user's own command, run in the target directory — `git web` and its kin already exist on plenty of machines, and beacon has no business relitigating where the button should go. It is resolved the same way the editor is (PATH, then the login shell), so a git alias or a `$PATH` script both work.
 
-`↗ code` is the only chip STATUS-BAR-07 applies to; the `↖ web` chip has its own knob above.
+**STATUS-BAR-09.** Both action buttons shall take their **label** and their **command** from a `statusbar.buttons.<name>` block in the user config, where `<name>` is `web` or `code`:
+
+```json
+{
+  "statusbar": {
+    "buttons": {
+      "web":  { "label": "↖ web",  "cmd": "git web" },
+      "code": { "label": "↗ code", "cmd": "code --maximized" }
+    }
+  }
+}
+```
+
+Both fields are optional and a blank value means the button's default, so there is no third "explicitly disabled" state to interpret. The `web` default `cmd` is the empty string, which selects the PROV-07 resolution above — the button's default behavior is a value in this scheme rather than a special case outside it.
+
+Each `cmd` receives the pane's directory by the route that suits what the button opens, and the two differ:
+
+| Button | How the directory is handed over |
+|:---|:---|
+| `code` | **appended as the final argument** (`code -n <dir>`) — an editor's job is to open that path |
+| `web` | the command's **working directory**, with no argument added — `git web` and its kin read the repo they are standing in |
+
+A `cmd` may also **position** values itself, through placeholders expanded at click time:
+
+| Placeholder | Value | When it can't resolve |
+|:---|:---|:---|
+| `{dir}` | the pane's directory | never — the cwd is always known |
+| `{project}` | the resolved project name for that directory | empty outside a recognized project |
+| `{branch}` | the current branch | empty outside a git repo |
+
+Four rules make the expansion predictable:
+
+1. **`{dir}` suppresses the `code` append.** A command that places the directory itself shall not also receive it appended. Only `{dir}` does this — `{branch}` and `{project}` say nothing about where the path goes, so a `cmd` using them still gets the directory appended. (The `web` button has no append to suppress; its cwd handoff is unconditional.)
+2. **Expansion is per-argument, after the shell split.** A value containing spaces stays one argv entry, and a value can never introduce an argument — expanding into the command string and re-splitting is what would turn a `/My Repo` path into two arguments, or let a directory name smuggle in a flag.
+3. **An argument that expands to nothing is dropped**, rather than passed as an empty string a program would read as a positional argument the user never wrote.
+4. **An unrecognized `{name}` is an error** naming the known placeholders, not a silently empty value. `{{` and `}}` are literal braces, and a bare `{}` is not a placeholder — so `find -exec … {} \;` survives verbatim.
+
+The values cost a git probe each, so they shall be resolved only when the `cmd` actually contains a placeholder.
+
+Beyond substitution a `cmd` carries no shell semantics: it is split into a program and its arguments (`shlex`) and executed directly, never through a shell, so there is no command substitution, pipeline, or redirection. A command needing those belongs in a script on `$PATH`, which resolves the same way and receives the directory by the same route.
+
+The two fields **apply at different times**, and the difference is forced by iTerm2 rather than chosen: `cmd` is read on the click (STATUS-BAR-07 / -08), so a new command takes effect with no reinstall, while `label` is baked into the dynamic profile, because an action component's title is a static knob and cannot interpolate a user variable the way the text chips do (§6.10 caveat 2). A changed label therefore applies by re-rendering the profile (CMD-23), which iTerm2 picks up live since it watches the `DynamicProfiles` directory (STATUS-BAR-01). The mode profiles are derived from the base (RENDER-05), so a customized label reaches all of them.
+
+Color is deliberately **not** configurable here. The chip hues carry semantic roles across surfaces (THEME-01, THEME-03) — the action-affordance hue must not collide with a state hue — and a per-button color knob cannot hold that invariant on its own. Recoloring belongs to a theming capability that owns the whole palette, not to this block.
 
 ### 4.5 Render orchestration (RENDER)
 

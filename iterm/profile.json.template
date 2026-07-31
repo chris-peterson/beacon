@@ -47,7 +47,7 @@
                 "action": {
                   "applyMode": 0,
                   "escaping": 1,
-                  "title": "↖ web",
+                  "title": "__BEACON_WEB_LABEL__",
                   "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then err=$(\"__BEACON_PYTHON__\" \"__BEACON_SCRIPT__\" open-url \"$cwd\" 2>&1 >/dev/null) || { msg=$(printf '%s' \"$err\" | tr -d '\"\\\\'); osascript -e \"display alert \\\"beacon\\\" message \\\"$msg\\\"\" >/dev/null 2>&1; }; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
                   "action": 35,
                   "version": 2
@@ -226,7 +226,7 @@
                 "action": {
                   "applyMode": 0,
                   "escaping": 1,
-                  "title": "↗ code",
+                  "title": "__BEACON_CODE_LABEL__",
                   "parameter": "cwd=$(cat \"__BEACON_CACHE_DIR__/cwd-${ITERM_SESSION_ID##*:}.txt\" 2>/dev/null); if [ -n \"$cwd\" ]; then err=$(\"__BEACON_PYTHON__\" \"__BEACON_SCRIPT__\" open-code \"$cwd\" 2>&1 >/dev/null) || { msg=$(printf '%s' \"$err\" | tr -d '\"\\\\'); osascript -e \"display alert \\\"beacon\\\" message \\\"$msg\\\"\" >/dev/null 2>&1; }; else osascript -e 'display alert \"beacon\" message \"No working directory resolved for this session.\"' >/dev/null 2>&1; fi",
                   "action": 35,
                   "version": 2

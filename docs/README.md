@@ -178,30 +178,90 @@ On macOS with iTerm2, beacon also paints each session's state onto its own pane 
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
 
-### Choosing the editor the `↗ code` button opens
+### Customizing the two buttons
 
-By default the button runs `code --maximized`. Point it at a different editor, or pass your own startup arguments, in `~/.config/beacon/config.json`:
+Each button's text and what it runs come from `~/.config/beacon/config.json`. These are the defaults, so a config that says nothing behaves exactly like this:
 
 ```json
 {
-  "code_app": "subl",
-  "code_args": ["-n"]
+  "statusbar": {
+    "buttons": {
+      "web":  { "label": "↖ web",  "cmd": "" },
+      "code": { "label": "↗ code", "cmd": "code --maximized" }
+    }
+  }
 }
 ```
 
-The keys are read when you click, so a change takes effect immediately — no `beacon install` re-run. If the command isn't on your `PATH`, beacon asks your login shell before giving up (an action button doesn't inherit your interactive `PATH`, so `/opt/homebrew/bin` and friends are invisible to it). Failing both, the button says so and names the key to fix rather than quietly opening something else.
+Set only what you're changing — a missing or blank field means the default.
 
-### Choosing what the `↖ web` button opens
+**`cmd` applies on the next click.** Nothing to re-run. It's resolved on your `PATH` and then, failing that, by asking your login shell, so a git alias or a script both work (an action button doesn't inherit your interactive `PATH`, so `/opt/homebrew/bin` and friends are invisible to it). If neither can find it, the button says so and names the key to fix rather than quietly opening something else.
 
-By default it opens whatever beacon resolves for the session — the PR/MR/issue when there is one, else the branch or repo page. If you already have a command for this, point the button at it:
+Both buttons hand your command the pane's directory, but not the same way:
+
+| Button | How the directory arrives |
+|:---|:---|
+| `↗ code` | **appended as the last argument** — `"code -n"` runs `code -n /path/to/repo` |
+| `↖ web` | as the **working directory**, with no argument added — which is what lets `git web` read your `origin` remote |
+
+#### Placing values yourself
+
+When the end of the command isn't where you want the path, put it where you want it:
 
 ```json
-{ "web_cmd": "git web" }
+{ "statusbar": { "buttons": { "code": {
+      "cmd": "code -n {dir} --goto {dir}/README.md" } } } }
 ```
 
-It runs in the session's directory, and is resolved the same way (`PATH`, then your login shell), so a git alias or a script both work.
+| Placeholder | Expands to | Outside a repo |
+|:---|:---|:---|
+| `{dir}` | the pane's directory | always available |
+| `{project}` | the project's name | empty |
+| `{branch}` | the current branch | empty |
 
-Resolution happens when you click, against that directory — so the button is right even in a pane beacon isn't tracking, like a shell you're just poking around in. That's also why there's no cached URL for it to get wrong.
+- **`{dir}` turns off the automatic append** for `↗ code`, so the path lands only where you put it. `{project}` and `{branch}` don't — they say nothing about the path, so it's still appended.
+- **A value never splits into extra arguments.** A directory called `My Repo` stays one argument.
+- **An argument that expands to nothing disappears** rather than becoming an empty string, so `"ed {branch}"` outside a repo is just `ed`.
+- **A misspelled placeholder is an error** that names the real ones. Want a literal brace? Double it: `{{`. A bare `{}` isn't a placeholder, so `find -exec … {} \;` is safe.
+
+There's no shell involved: the command is split into a program and arguments and run directly, so `$(…)`, pipes, and redirection aren't available. If you need those, point the button at a script on your `$PATH` — it resolves the same way and gets the directory the same way.
+
+**`label` applies on a re-render**, because iTerm2 stores a button's title in the profile rather than reading it live:
+
+```bash
+beacon install-profile
+```
+
+That rewrites the profiles only — no reinstall of the wrapper, completions, or shell integration — and iTerm2 picks it up immediately, on panes that are already open.
+
+#### What `↖ web` opens
+
+Left alone (`cmd` blank), it opens whatever beacon resolves for the session: the PR/MR/issue when there is one, else the branch or repo page. Resolution happens when you click, against that pane's directory — so the button is right even in a pane beacon isn't tracking, like a shell you're just poking around in, and there's no cached URL for it to get wrong.
+
+Set a `cmd` and you get the repo's front page instead, or wherever else you point it:
+
+```json
+{ "statusbar": { "buttons": { "web": { "cmd": "git web" } } } }
+```
+
+`git web` isn't built into git — it's an alias you add to your own `~/.gitconfig`. This one is [line 48 of `chris-peterson/gitconfig`](https://github.com/chris-peterson/gitconfig/blob/main/.gitconfig#L48):
+
+```gitconfig
+[alias]
+	web = !"git rev-parse --is-inside-work-tree >/dev/null && open \"https://$(git remote get-url origin | sed 's/git@//' | sed 's/\\.git$//' | sed 's/:/\\//' )\""
+```
+
+It builds the URL from your `origin` remote, so SSH remotes work on GitHub and GitLab alike, and it does nothing outside a work tree. It opens with macOS `open` — on Linux, swap that for `xdg-open`.
+
+#### What `↗ code` opens
+
+The pane's working directory, in `code --maximized`. Change the flags, or name a different editor entirely — whatever you put here gets the directory appended:
+
+```json
+{ "statusbar": { "buttons": { "code": { "cmd": "code -n" } } } }
+```
+
+A bare program (`"cmd": "code"`) passes no flags of its own, just the directory.
 
 ## Install
 

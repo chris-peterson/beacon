@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Customizable status-bar buttons
+
+The `↖ web` and `↗ code` buttons take their label and their command from a `statusbar.buttons` block in `~/.config/beacon/config.json`, with `{dir}` / `{project}` / `{branch}` placeholders for positioning values in the command. See [Customizing the two buttons](https://chris-peterson.github.io/beacon/#/?id=customizing-the-two-buttons).
+
+**Breaking** — this replaces `web_cmd`, `code_app`, and `code_args`. A config still using them renders the defaults rather than erroring.
+
+| Was | Now |
+|:---|:---|
+| `"web_cmd": "git web"` | `"statusbar": { "buttons": { "web": { "cmd": "git web" } } }` |
+| `"code_app": "code", "code_args": ["-n"]` | `"statusbar": { "buttons": { "code": { "cmd": "code -n" } } }` |
+
 ## 2.0.0
 
 beacon's per-session context moves off iTerm2 and into the Claude Code status line — a footer Claude renders, that never overlaps terminal output, and that **any** terminal shows. What stays on the iTerm2 strip is what a footer can't do, rebuilt so it can't go stale.

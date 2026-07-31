@@ -44,6 +44,32 @@ def _uservar_emits(calls, slot):
     return [c for c in calls if c[:2] == ("uservar", slot)]
 
 
+# The install-time placeholder values a test renders the profile template with.
+# Kept in one place so a new placeholder is added once rather than in each test
+# that parses the profile — an unsubstituted `__BEACON_*__` still parses as JSON,
+# so a missed one shows up as a puzzling string mismatch instead of an error.
+PROFILE_SUBSTITUTIONS = {
+    "__BEACON_SCRIPT__": "/x/scripts/beacon",
+    "__BEACON_PYTHON__": "/x/python3",
+    "__BEACON_CACHE_DIR__": "/x/cache",
+    "__BEACON_WEB_LABEL__": "↖ web",
+    "__BEACON_CODE_LABEL__": "↗ code",
+}
+
+
+def _render_profile_template(**overrides) -> dict:
+    """The base profile as iTerm2 would load it — the template with every
+    placeholder filled. Overrides replace a placeholder's value by its bare name
+    (`web_label="↖ repo"`)."""
+    raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+    values = dict(PROFILE_SUBSTITUTIONS)
+    for name, value in overrides.items():
+        values[f"__BEACON_{name.upper()}__"] = value
+    for placeholder, value in values.items():
+        raw = raw.replace(placeholder, value)
+    return json.loads(raw)["Profiles"][0]
+
+
 class BeaconTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -674,6 +700,293 @@ class ModeProfileDerivation(unittest.TestCase):
             self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
 
 
+class CustomizableStatusBarButtons(unittest.TestCase):
+    """STATUS-BAR-09 / CMD-23: the `↖ web` and `↗ code` buttons take their label
+    and their command from `statusbar.buttons.<name>`. The command is read on the
+    click; the label is baked into the profile, so it applies on a re-render."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self._home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home.cleanup)
+        home_patcher = mock.patch("pathlib.Path.home", return_value=Path(self._home.name))
+        home_patcher.start()
+        self.addCleanup(home_patcher.stop)
+        self._cfg_dir = Path(self._tmp.name) / "cfg"
+        (self._cfg_dir / "beacon").mkdir(parents=True, exist_ok=True)
+
+    def _config(self, **keys):
+        (self._cfg_dir / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self._cfg_dir)})
+
+    def _buttons(self, **by_name):
+        return self._config(statusbar={"buttons": by_name})
+
+    def _profiles_dir(self):
+        return (Path(self._home.name) / "Library" / "Application Support"
+                / "iTerm2" / "DynamicProfiles")
+
+    def _rendered_titles(self):
+        base = json.loads((self._profiles_dir() / "beacon-dev.json").read_text())["Profiles"][0]
+        return [c["configuration"]["knobs"]["action"]["title"]
+                for c in base["Status Bar Layout"]["components"]
+                if c["class"] == "iTermStatusBarActionComponent"]
+
+    def test_defaults_when_no_config_is_present(self):
+        with self._config():
+            self.assertEqual(self.beacon._statusbar_button("web"),
+                             {"label": "↖ web", "cmd": ""})
+            self.assertEqual(self.beacon._statusbar_button("code"),
+                             {"label": "↗ code", "cmd": "code --maximized"})
+
+    def test_label_and_cmd_are_read_from_the_block(self):
+        with self._buttons(web={"label": "↖ repo", "cmd": "git web"}):
+            self.assertEqual(self.beacon._statusbar_button("web"),
+                             {"label": "↖ repo", "cmd": "git web"})
+
+    def test_one_field_set_leaves_the_other_at_its_default(self):
+        with self._buttons(code={"label": "↗ edit"}):
+            self.assertEqual(self.beacon._statusbar_button("code"),
+                             {"label": "↗ edit", "cmd": "code --maximized"})
+
+    def test_a_blank_value_falls_back_rather_than_disabling(self):
+        # A whitespace-only label would render an invisible button, and a blank
+        # code cmd has nothing to launch — both mean "the default" instead.
+        with self._buttons(code={"label": "   ", "cmd": ""}):
+            self.assertEqual(self.beacon._statusbar_button("code"),
+                             {"label": "↗ code", "cmd": "code --maximized"})
+
+    def test_a_non_dict_block_is_ignored(self):
+        # A hand-edited config can put a string where the block goes; defaults
+        # are the answer, not a crash on a click.
+        with self._config(statusbar={"buttons": {"web": "git web"}}):
+            self.assertEqual(self.beacon._statusbar_button("web")["label"], "↖ web")
+        with self._config(statusbar="buttons"):
+            self.assertEqual(self.beacon._statusbar_button("web")["label"], "↖ web")
+
+    def test_rendered_profile_carries_the_configured_labels(self):
+        with self._buttons(web={"label": "↖ repo"}, code={"label": "↗ edit"}):
+            ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        self.assertEqual(self._rendered_titles(), ["↖ repo", "↗ edit"])
+
+    def test_every_mode_profile_carries_the_configured_labels(self):
+        # The mode profiles are deep copies of the base, so a customized label
+        # must survive into each of them — otherwise a paused pane silently
+        # reverts to the shipped title.
+        with self._buttons(web={"label": "↖ repo"}):
+            ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        for spec in self.beacon.MODE_PROFILES.values():
+            prof = json.loads(
+                (self._profiles_dir() / f"{spec['profile']}.json").read_text())["Profiles"][0]
+            titles = [c["configuration"]["knobs"]["action"]["title"]
+                      for c in prof["Status Bar Layout"]["components"]
+                      if c["class"] == "iTermStatusBarActionComponent"]
+            self.assertEqual(titles, ["↖ repo", "↗ code"])
+
+    def test_no_placeholder_survives_into_the_written_profile(self):
+        # An unsubstituted placeholder still parses as JSON, so it ships as a
+        # literal `__BEACON_…__` button title rather than failing the install.
+        with self._config():
+            ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        for path in self._profiles_dir().glob("beacon-*.json"):
+            with self.subTest(profile=path.name):
+                self.assertNotIn("__BEACON_", path.read_text())
+
+    def test_a_cmd_is_argv_not_a_shell_line(self):
+        # No shell=True anywhere on the click path: a config value must reach
+        # the program as literal argv, so metacharacters can't be evaluated.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw.get("shell")))
+            return types.SimpleNamespace(returncode=0, stderr=b"", stdout="")
+
+        with self._buttons(code={"cmd": "ed '$(touch /tmp/pwned)' >out"}), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/bin/ed"), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        argv, shell = calls[0]
+        self.assertIsNot(shell, True)
+        self.assertEqual(argv, ["/bin/ed", "$(touch /tmp/pwned)", ">out", "/work/repo"])
+
+    def test_the_code_directory_is_appended_last(self):
+        calls = []
+        with mock.patch.object(self.beacon, "_resolve_editor", return_value="/bin/code"), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=lambda a, **k: calls.append(a) or types.SimpleNamespace(
+                                   returncode=0, stderr=b"")):
+            with self._config():
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls[0][-1], "/work/repo")
+
+    def test_the_web_cmd_gets_the_directory_as_its_cwd_not_an_argument(self):
+        calls = []
+        with self._buttons(web={"cmd": "git web"}), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=lambda a, **k: calls.append((a, k.get("cwd"))) or types.SimpleNamespace(
+                                   returncode=0, stderr="", stdout="")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        argv, cwd = calls[0]
+        self.assertEqual(argv, ["/usr/bin/git", "web"])
+        self.assertEqual(cwd, str(Path("/work/repo")))
+
+    def _launch(self, cmd, cwd="/work/repo", branch="topic", project="widgets"):
+        """Run the code button with `cmd` configured, returning the argv it
+        launched. Token *values* are stubbed so the captured subprocess call is
+        the editor's and not a git probe's; `_cmd_token_values` has its own test."""
+        calls = []
+        with self._buttons(code={"cmd": cmd}), \
+             mock.patch.object(self.beacon, "_cmd_token_values",
+                               return_value={"dir": cwd, "project": project, "branch": branch}), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/bin/ed"), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=lambda a, **k: calls.append(a) or types.SimpleNamespace(
+                                   returncode=0, stderr=b"")):
+            self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=cwd))
+        return calls[0]
+
+    def test_token_values_come_from_the_clicked_directory(self):
+        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
+             mock.patch.object(self.beacon, "p_branch", return_value="topic"):
+            self.assertEqual(self.beacon._cmd_token_values(Path("/work/repo")),
+                             {"dir": str(Path("/work/repo")), "project": "widgets", "branch": "topic"})
+
+    def test_token_values_are_empty_strings_when_unresolvable(self):
+        with mock.patch.object(self.beacon, "_project_name_at", return_value=""), \
+             mock.patch.object(self.beacon, "p_branch", return_value=None):
+            values = self.beacon._cmd_token_values(Path("/tmp"))
+        self.assertEqual(values["project"], "")
+        self.assertEqual(values["branch"], "")
+
+    def test_dir_token_positions_the_path_and_suppresses_the_append(self):
+        argv = self._launch("ed --goto {dir}/README.md")
+        self.assertEqual(argv, ["/bin/ed", "--goto", "/work/repo/README.md"])
+
+    def test_a_token_free_cmd_still_gets_the_append(self):
+        self.assertEqual(self._launch("ed -n"), ["/bin/ed", "-n", "/work/repo"])
+
+    def test_a_non_dir_token_does_not_suppress_the_append(self):
+        # `{branch}` says nothing about where the path goes, so the directory
+        # still needs appending — otherwise the editor opens nothing.
+        argv = self._launch("ed --branch {branch}")
+        self.assertEqual(argv, ["/bin/ed", "--branch", "topic", "/work/repo"])
+
+    def test_a_value_with_spaces_stays_one_argument(self):
+        # The reason substitution is per-argument rather than on the command
+        # string: re-splitting would turn one path into two arguments.
+        argv = self._launch("ed {dir}", cwd="/work/My Repo")
+        self.assertEqual(argv, ["/bin/ed", "/work/My Repo"])
+
+    def test_an_argument_that_expands_to_nothing_is_dropped(self):
+        self.assertEqual(self._launch("ed {branch}", branch=""), ["/bin/ed", "/work/repo"])
+
+    def test_doubled_braces_are_literal_and_bare_braces_pass_through(self):
+        argv = self._launch("ed {{literal}} {} {dir}")
+        self.assertEqual(argv, ["/bin/ed", "{literal}", "{}", "/work/repo"])
+
+    def test_an_unknown_placeholder_names_the_known_ones(self):
+        with self._buttons(code={"cmd": "ed {nope}"}), \
+             mock.patch.object(self.beacon, "_cmd_token_values",
+                               return_value={"dir": "/work/repo", "project": "widgets", "branch": "topic"}), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/bin/ed"):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        msg = str(cm.exception)
+        self.assertIn("{nope}", msg)
+        self.assertIn("{dir}", msg)
+
+    def test_a_substituted_value_cannot_introduce_an_argument(self):
+        # A directory whose name looks like a flag must arrive as one argv
+        # entry, not be re-split into a flag the user never wrote.
+        argv = self._launch("ed {dir}", cwd="/work/--rm -rf")
+        self.assertEqual(argv, ["/bin/ed", "/work/--rm -rf"])
+
+    def test_tokens_expand_for_the_web_button_too(self):
+        calls = []
+        with self._buttons(web={"cmd": "gh browse --repo {project}"}), \
+             mock.patch.object(self.beacon, "_cmd_token_values",
+                               return_value={"dir": "/work/repo", "project": "widgets", "branch": "topic"}), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/gh"), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=lambda a, **k: calls.append((a, k.get("cwd"))) or types.SimpleNamespace(
+                                   returncode=0, stderr="", stdout="")):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        argv, cwd = calls[0]
+        self.assertEqual(argv, ["/usr/bin/gh", "browse", "--repo", "widgets"])
+        # The cwd handoff is unconditional for web — there is no append to suppress.
+        self.assertEqual(cwd, str(Path("/work/repo")))
+
+    def test_no_git_work_when_the_cmd_has_no_placeholder(self):
+        # Resolving the token values costs two git probes; a cmd referencing
+        # none of them must not pay for them on every click.
+        calls = []
+        with self._buttons(code={"cmd": "ed -n"}), \
+             mock.patch.object(self.beacon, "_cmd_token_values",
+                               side_effect=AssertionError("must not resolve token values")), \
+             mock.patch.object(self.beacon, "_resolve_editor", return_value="/bin/ed"), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=lambda a, **k: calls.append(a) or types.SimpleNamespace(
+                                   returncode=0, stderr=b"")):
+            self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertEqual(calls[0], ["/bin/ed", "-n", "/work/repo"])
+
+    def test_install_profile_requires_iterm(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+        self.assertIn("iTerm2", str(cm.exception))
+
+    def test_install_profile_rerenders_without_the_rest_of_the_bootstrap(self):
+        calls = []
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+             mock.patch.object(self.beacon, "install_dynamic_profile",
+                               side_effect=lambda: (calls.append("profile") or (True, "wrote it"))), \
+             mock.patch.object(self.beacon, "_install_cli_wrapper",
+                               side_effect=AssertionError("must not run the wrapper step")), \
+             mock.patch.object(self.beacon, "_install_shell_source",
+                               side_effect=AssertionError("must not run the shell step")):
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+        self.assertEqual(calls, ["profile"])
+
+    def test_install_profile_exits_nonzero_when_the_write_fails(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+             mock.patch.object(self.beacon, "install_dynamic_profile",
+                               return_value=(False, "failed to write")):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+        self.assertIn("failed to write", str(cm.exception))
+
+
+class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
+    """Every `__BEACON_*__` in the profile template needs a matching `.replace`
+    in `install_dynamic_profile`. A placeholder added to the template alone
+    parses fine and ships as a literal button title or shell path, so nothing
+    else catches it."""
+
+    def test_template_and_installer_agree_on_the_placeholder_set(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
+        in_template = set(re.findall(r"__BEACON_[A-Z_]+__", template))
+        self.assertTrue(in_template, "template has no placeholders — did they move?")
+        for name in sorted(in_template):
+            with self.subTest(placeholder=name):
+                self.assertIn(f'.replace("{name}"', src,
+                              f"{name} is in the template but never substituted")
+
+    def test_the_test_helper_covers_every_placeholder(self):
+        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
+        in_template = set(re.findall(r"__BEACON_[A-Z_]+__", template))
+        self.assertEqual(in_template, set(PROFILE_SUBSTITUTIONS),
+                         "PROFILE_SUBSTITUTIONS is out of step with the template")
+
+
 class PendingAttentionPaintsBlocked(BeaconTest):
     """BADGE-09a: the pending-attention marker forces the blocked (red) color
     state via OSC, regardless of the prompt subtype — beacon no longer
@@ -1282,21 +1595,25 @@ class ConfigurableCodeButton(BeaconTest):
         (d / "beacon" / "config.json").write_text(json.dumps(keys))
         return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
 
+    def _button(self, name, **fields):
+        return self._config(statusbar={"buttons": {name: fields}})
+
     def test_default_is_code_maximized(self):
         with self._config():
             self.assertEqual(self.beacon._code_launch_argv(), ["code", "--maximized"])
 
-    def test_app_and_args_are_honored(self):
-        with self._config(code_app="subl", code_args=["-n", "-w"]):
+    def test_cmd_is_honored(self):
+        with self._button("code", cmd="subl -n -w"):
             self.assertEqual(self.beacon._code_launch_argv(), ["subl", "-n", "-w"])
 
-    def test_args_accept_a_shell_quoted_string(self):
-        with self._config(code_app="ed", code_args='-a "two words"'):
+    def test_cmd_is_shell_quoted(self):
+        with self._button("code", cmd='ed -a "two words"'):
             self.assertEqual(self.beacon._code_launch_argv(), ["ed", "-a", "two words"])
 
-    def test_empty_args_list_drops_the_default(self):
-        # An explicit [] means "no arguments", not "fall back to --maximized".
-        with self._config(code_app="mate", code_args=[]):
+    def test_a_bare_program_passes_no_arguments(self):
+        # The single-string cmd is how "no arguments" is said now — it replaces
+        # the explicit empty argument list that used to mean the same thing.
+        with self._button("code", cmd="mate"):
             self.assertEqual(self.beacon._code_launch_argv(), ["mate"])
 
     def test_editor_off_path_is_found_via_the_login_shell(self):
@@ -1325,13 +1642,13 @@ class ConfigurableCodeButton(BeaconTest):
     def test_unresolvable_editor_exits_with_an_actionable_message(self):
         # No `open -a` fallback (the repo's no-fallbacks convention): the button
         # surfaces this text in its alert so the user knows what to set.
-        with self._config(code_app="beacon-no-such-editor"), \
+        with self._button("code", cmd="beacon-no-such-editor"), \
              mock.patch.object(self.beacon.shutil, "which", return_value=None):
             with self.assertRaises(SystemExit) as cm:
                 self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
         msg = str(cm.exception)
         self.assertIn("beacon-no-such-editor", msg)
-        self.assertIn("code_app", msg)
+        self.assertIn("statusbar.buttons.code.cmd", msg)
 
     def test_launch_passes_args_then_directory(self):
         calls = []
@@ -1340,7 +1657,7 @@ class ConfigurableCodeButton(BeaconTest):
             calls.append(argv)
             return types.SimpleNamespace(returncode=0, stderr=b"")
 
-        with self._config(code_app="subl", code_args=["-n"]), \
+        with self._button("code", cmd="subl -n"), \
              mock.patch.object(self.beacon.shutil, "which", return_value="/bin/subl"), \
              mock.patch.object(self.beacon.subprocess, "run", fake_run):
             self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
@@ -1356,11 +1673,11 @@ class ConfigurableCodeButton(BeaconTest):
         self.assertIn("boom", str(cm.exception))
 
     def test_config_get_space_joins_a_list(self):
-        with self._config(code_args=["--maximized", "-n"]):
+        with self._config(focus_origins=["https://a.test", "https://b.test"]):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                self.beacon.cmd_config_get(self.beacon.argparse.Namespace(key="code_args"))
-        self.assertEqual(buf.getvalue().strip(), "--maximized -n")
+                self.beacon.cmd_config_get(self.beacon.argparse.Namespace(key="focus_origins"))
+        self.assertEqual(buf.getvalue().strip(), "https://a.test https://b.test")
 
 
 class CodeButtonInProfile(unittest.TestCase):
@@ -1369,18 +1686,14 @@ class CodeButtonInProfile(unittest.TestCase):
     interactive PATH (§6.10 caveat 3), so it invokes an absolute interpreter."""
 
     def _code_action(self):
-        raw = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        raw = (raw.replace("__BEACON_SCRIPT__", "/p/scripts/beacon")
-                  .replace("__BEACON_PYTHON__", "/usr/bin/python3")
-                  .replace("__BEACON_CACHE_DIR__", "/c"))
-        layout = json.loads(raw)["Profiles"][0]["Status Bar Layout"]["components"]
+        layout = _render_profile_template()["Status Bar Layout"]["components"]
         return next(c["configuration"]["knobs"]["action"] for c in layout
                     if c["class"] == "iTermStatusBarActionComponent"
                     and c["configuration"]["knobs"]["action"]["title"] == "↗ code")
 
     def test_button_calls_open_code_by_absolute_interpreter(self):
         param = self._code_action()["parameter"]
-        self.assertIn('"/usr/bin/python3" "/p/scripts/beacon" open-code', param)
+        self.assertIn('"/x/python3" "/x/scripts/beacon" open-code', param)
         self.assertNotIn("open -a", param)
 
     def test_button_strips_quotes_before_building_the_alert(self):
@@ -1429,7 +1742,7 @@ class WebButton(unittest.TestCase):
 
     def test_chip_calls_open_url_and_reads_no_url_handoff(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        self.assertIn("↖ web", template)
+        self.assertIn("__BEACON_WEB_LABEL__", template)
         self.assertIn("open-url", template)
         # The cwd handoff survives; a URL handoff would reintroduce the drift.
         self.assertNotIn("url-${ITERM_SESSION_ID", template)
@@ -1451,6 +1764,9 @@ class OpenUrlCommand(BeaconTest):
         (d / "beacon" / "config.json").write_text(json.dumps(keys))
         return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
 
+    def _web_button(self, cmd):
+        return self._config(statusbar={"buttons": {"web": {"cmd": cmd}}})
+
     def test_resolves_against_the_directory_argument(self):
         seen = {}
 
@@ -1467,7 +1783,7 @@ class OpenUrlCommand(BeaconTest):
         # compare against the platform's own rendering, not a POSIX literal.
         self.assertEqual(seen["cwd"], str(Path("/work/repo")))
 
-    def test_web_cmd_runs_the_users_command_in_that_directory(self):
+    def test_a_configured_cmd_runs_in_that_directory(self):
         # `git web` and friends already exist on plenty of machines; beacon has
         # no business relitigating where the button should go.
         calls = []
@@ -1476,14 +1792,14 @@ class OpenUrlCommand(BeaconTest):
             calls.append((argv, kw.get("cwd")))
             return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        with self._config(web_cmd="git web"), \
+        with self._web_button("git web"), \
              mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
              mock.patch.object(self.beacon.subprocess, "run", fake_run):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
         self.assertEqual(calls, [(["/usr/bin/git", "web"], str(Path("/work/repo")))])
 
-    def test_web_cmd_takes_precedence_over_beacons_own_resolution(self):
-        with self._config(web_cmd="git web"), \
+    def test_a_configured_cmd_takes_precedence_over_beacons_own_resolution(self):
+        with self._web_button("git web"), \
              mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
              mock.patch.object(self.beacon, "resolve_url",
                                side_effect=AssertionError("must not resolve")), \
@@ -1491,12 +1807,12 @@ class OpenUrlCommand(BeaconTest):
                                lambda a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr="")):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
 
-    def test_an_unresolvable_web_cmd_names_the_config_key(self):
-        with self._config(web_cmd="nope-not-here"), \
+    def test_an_unresolvable_cmd_names_the_config_key(self):
+        with self._web_button("nope-not-here"), \
              mock.patch.object(self.beacon, "_resolve_editor", return_value=None):
             with self.assertRaises(SystemExit) as cm:
                 self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
-        self.assertIn("web_cmd", str(cm.exception))
+        self.assertIn("statusbar.buttons.web.cmd", str(cm.exception))
 
 
 class HybridBranchProfileSlots(unittest.TestCase):
@@ -2660,12 +2976,7 @@ class StatusBarLayout(unittest.TestCase):
     dropped for lack of use, and with nothing centred one spring suffices."""
 
     def _layout(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        rendered = (template
-                    .replace("__BEACON_SCRIPT__", "/x/scripts/beacon")
-                    .replace("__BEACON_PYTHON__", "/x/python3")
-                    .replace("__BEACON_CACHE_DIR__", "/x/cache"))
-        return json.loads(rendered)["Profiles"][0]["Status Bar Layout"]["components"]
+        return _render_profile_template()["Status Bar Layout"]["components"]
 
     def _action_titles(self):
         return [c["configuration"]["knobs"]["action"]["title"]

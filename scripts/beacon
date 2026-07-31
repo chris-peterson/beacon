@@ -248,6 +248,7 @@ _beacon() {
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
+    'install-profile:re-render the iTerm2 dynamic profiles from config'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the resolved URL in the default browser'
     'open-code:open a directory in the configured editor'
@@ -913,24 +914,106 @@ def cmd_copy_url(_args):
     print(f"copied: {url}")
 
 
-CODE_APP_DEFAULT = "code"
-CODE_ARGS_DEFAULT = ["--maximized"]
+# The two status-bar action buttons and their defaults (STATUS-BAR-09). An
+# empty `web` cmd is not a missing value — it selects beacon's own PROV-07
+# resolution, which is the default the button ships with.
+STATUSBAR_BUTTON_DEFAULTS = {
+    "web": {"label": "↖ web", "cmd": ""},
+    "code": {"label": "↗ code", "cmd": "code --maximized"},
+}
+
+
+def _statusbar_button(name: str) -> dict:
+    """One action button's `label` and `cmd` — the user's
+    `statusbar.buttons.<name>` block layered over the defaults above.
+
+    The two halves reach the button by different routes, which is why they read
+    at different times despite living in one config block. `cmd` is read here,
+    on the click, so a new command applies with no reinstall. `label` is baked
+    into the dynamic profile at render time: an action component's title is a
+    static knob and cannot interpolate a user var the way the text chips do
+    (§6.10), so a changed label needs an `install-profile` re-render.
+
+    A blank or absent `cmd` means the button's default — for `code` that is
+    `code --maximized`, and for `web` it is the empty string that selects
+    PROV-07. One rule covers both, so there is no third "explicitly disabled"
+    state for a caller to interpret."""
+    default = STATUSBAR_BUTTON_DEFAULTS[name]
+    section = _load_config().get("statusbar")
+    buttons = section.get("buttons") if isinstance(section, dict) else None
+    cfg = buttons.get(name) if isinstance(buttons, dict) else None
+    if not isinstance(cfg, dict):
+        return dict(default)
+    label, cmd = cfg.get("label"), cfg.get("cmd")
+    return {
+        "label": label.strip() if isinstance(label, str) and label.strip() else default["label"],
+        "cmd": cmd.strip() if isinstance(cmd, str) and cmd.strip() else default["cmd"],
+    }
 
 
 def _code_launch_argv() -> list[str]:
-    """STATUS-BAR-07: the editor invocation for the `↗ code` button, from the
-    user config (`code_app` / `code_args`), else `code --maximized`. `code_args`
-    accepts a list or a shell-quoted string; the list is the documented form."""
-    cfg = _load_config()
-    app = str(cfg.get("code_app") or CODE_APP_DEFAULT)
-    raw = cfg.get("code_args")
-    if raw is None:
-        args = list(CODE_ARGS_DEFAULT)
-    elif isinstance(raw, str):
-        args = shlex.split(raw)
-    else:
-        args = [str(a) for a in raw]
-    return [app, *args]
+    """STATUS-BAR-07: the editor invocation for the `↗ code` button — its
+    configured `cmd`, shell-split, else `code --maximized`."""
+    return shlex.split(_statusbar_button("code")["cmd"])
+
+
+# Placeholders a button's `cmd` may position (STATUS-BAR-09). `{{` / `}}` are
+# literal braces, so a command needing one isn't locked out; `{}` (empty) is not
+# a placeholder, which keeps `find -exec … {} \;` working verbatim.
+STATUSBAR_CMD_TOKENS = ("dir", "project", "branch")
+_CMD_TOKEN_RE = re.compile(r"\{\{|\}\}|\{([a-z_]+)\}")
+
+
+def _cmd_token_values(cwd: Path) -> dict:
+    """The placeholder values for a click in `cwd`. Resolved here rather than
+    persisted: a button is correct in a pane beacon isn't tracking, which is the
+    same reason the URL is resolved at click time (STATUS-BAR-08)."""
+    return {
+        "dir": str(cwd),
+        "project": _project_name_at(cwd) or "",
+        "branch": p_branch(cwd) or "",
+    }
+
+
+def _substitute_cmd_tokens(argv: list[str], cwd: Path) -> tuple[list[str], bool]:
+    """Expand placeholders in each argument, returning the new argv and whether
+    `{dir}` appeared.
+
+    Substitution is **per-argument, after the shlex split** — expanding into the
+    command string and re-splitting is what would turn a `/My Repo` path into two
+    arguments. That also means a value never introduces new argv entries, so a
+    directory name can't smuggle in a flag.
+
+    The `{dir}` flag is what suppresses `cmd_open_code`'s automatic append: a
+    command that places the directory itself must not receive it twice. Only
+    `{dir}` does that — `{branch}` and `{project}` say nothing about where the
+    path goes, so a `cmd` using them still gets the directory appended."""
+    if not any("{" in a for a in argv):
+        return argv, False
+    values = _cmd_token_values(cwd)
+    saw_dir = False
+
+    def repl(m):
+        nonlocal saw_dir
+        if m.group(0) in ("{{", "}}"):
+            return m.group(0)[0]
+        name = m.group(1)
+        if name not in values:
+            known = ", ".join(f"{{{t}}}" for t in STATUSBAR_CMD_TOKENS)
+            sys.exit(f"unknown placeholder {{{name}}} in the button's cmd — "
+                     f"known placeholders are {known} (use {{{{ for a literal brace)")
+        saw_dir = saw_dir or name == "dir"
+        return values[name]
+
+    out = []
+    for arg in argv:
+        expanded = _CMD_TOKEN_RE.sub(repl, arg)
+        # An argument that expanded to nothing — `{branch}` outside a repo — is
+        # dropped rather than passed as an empty string, which a program reads as
+        # a positional argument the user never wrote.
+        if expanded or not arg:
+            out.append(expanded)
+    return out, saw_dir
 
 
 def _resolve_editor(app: str) -> str | None:
@@ -974,14 +1057,16 @@ def cmd_open_code(args):
     also puts the config read at click time, so changing editors needs no
     reinstall."""
     target = args.dir or str(Path.cwd())
-    argv = _code_launch_argv()
+    argv, positioned = _substitute_cmd_tokens(_code_launch_argv(), Path(target))
     exe = _resolve_editor(argv[0])
     if not exe:
         sys.exit(f"editor not found: {argv[0]!r} is not on PATH, and your login "
-                 f'shell could not find it either — set "code_app" to an '
-                 f"absolute path in {_config_file()}")
+                 f'shell could not find it either — set an absolute path in '
+                 f'"statusbar.buttons.code.cmd" in {_config_file()}')
+    # `{dir}` in the cmd means the user placed the path themselves (STATUS-BAR-09).
+    tail = [] if positioned else [target]
     try:
-        r = subprocess.run([exe, *argv[1:], target], capture_output=True, timeout=20)
+        r = subprocess.run([exe, *argv[1:], *tail], capture_output=True, timeout=20)
     except (OSError, subprocess.SubprocessError) as e:
         sys.exit(f"failed to launch {argv[0]}: {e}")
     if r.returncode != 0:
@@ -994,9 +1079,9 @@ def cmd_open_url(args):
     """Open the session's web view. Backs the `↖ web` status-bar button
     (STATUS-BAR-08) and is usable from any shell.
 
-    Two paths, chosen by config. `web_cmd` runs the user's own command in the
-    target directory — the point being that plenty of people already have one
-    (`git web` and friends), and beacon has no business relitigating where it
+    Two paths, chosen by config. The button's `cmd` runs the user's own command
+    in the target directory — the point being that plenty of people already have
+    one (`git web` and friends), and beacon has no business relitigating where it
     should go. Unset, beacon resolves the URL itself through PROV-07, which
     knows about tack deliverables and open CRs and so lands on the *thing you
     are working on* rather than the repo's front page.
@@ -1007,23 +1092,25 @@ def cmd_open_url(args):
     is cached, so nothing can go stale (the #5 failure)."""
     target = Path(args.dir) if getattr(args, "dir", None) else Path.cwd()
 
-    web_cmd = str(_load_config().get("web_cmd") or "").strip()
-    if web_cmd:
-        argv = shlex.split(web_cmd)
+    cmd = _statusbar_button("web")["cmd"]
+    if cmd:
+        # No append to suppress here — the directory reaches this command as its
+        # cwd — so the `{dir}` flag is not consulted, only the expansion.
+        argv, _ = _substitute_cmd_tokens(shlex.split(cmd), target)
         exe = _resolve_editor(argv[0])
         if not exe:
-            sys.exit(f"web_cmd not found: {argv[0]!r} is not on PATH, and your "
+            sys.exit(f"web command not found: {argv[0]!r} is not on PATH, and your "
                      f"login shell could not find it either — check "
-                     f'"web_cmd" in {_config_file()}')
+                     f'"statusbar.buttons.web.cmd" in {_config_file()}')
         try:
             r = subprocess.run([exe, *argv[1:]], cwd=str(target),
                                capture_output=True, text=True, timeout=20)
         except (OSError, subprocess.SubprocessError) as e:
-            sys.exit(f"failed to run {web_cmd!r}: {e}")
+            sys.exit(f"failed to run {cmd!r}: {e}")
         if r.returncode != 0:
-            sys.exit(f"{web_cmd!r} exited {r.returncode}"
+            sys.exit(f"{cmd!r} exited {r.returncode}"
                      f"{': ' + r.stderr.strip() if r.stderr.strip() else ''}")
-        print(f"ran: {web_cmd}")
+        print(f"ran: {cmd}")
         return
 
     url, _ = resolve_url(target)
@@ -3227,6 +3314,12 @@ def install_dynamic_profile() -> tuple[bool, str]:
                               caveat 3), so a bare `python3` may not resolve.
       __BEACON_CACHE_DIR__  — so the `↗ code` action shell reads the
                               per-session handoff file without deriving it.
+      __BEACON_*_LABEL__    — each action button's title, from
+                              `statusbar.buttons.<name>.label` (STATUS-BAR-09).
+                              Baked in rather than read from a user var: an
+                              action component's title is a static knob
+                              (§6.10), so a label change applies by
+                              re-rendering here, not on the next click.
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
     its own formatting and any GUI-edited values, so a "content matches"
@@ -3255,7 +3348,9 @@ def install_dynamic_profile() -> tuple[bool, str]:
     content = (template.read_text(encoding="utf-8")
                .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
                .replace("__BEACON_PYTHON__", _json_inner(sys.executable or "python3"))
-               .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR))))
+               .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR)))
+               .replace("__BEACON_WEB_LABEL__", _json_inner(_statusbar_button("web")["label"]))
+               .replace("__BEACON_CODE_LABEL__", _json_inner(_statusbar_button("code")["label"])))
     try:
         base_profile = json.loads(content)["Profiles"][0]
     except (ValueError, KeyError, IndexError) as e:
@@ -4306,6 +4401,22 @@ def cmd_install_cli(args):
     _install_completions()
 
 
+def cmd_install_profile(_args):
+    """CMD-23: re-render the dynamic profiles from the template and the user
+    config, skipping the rest of the install bootstrap. This is how a changed
+    `statusbar.buttons.<name>.label` is applied (STATUS-BAR-09) — iTerm2 watches
+    DynamicProfiles and reloads on change, so the new label reaches every open
+    pane with no restart and no re-run of the wrapper / completions / shell
+    steps."""
+    if not _is_iterm_installed():
+        sys.exit("iTerm2 not detected — the dynamic profile is the iTerm2 "
+                 "render adapter's surface, and there is nothing to render here")
+    ok, msg = install_dynamic_profile()
+    if not ok:
+        sys.exit(msg)
+    print(f"✓ {msg}")
+
+
 def _statusline_settings_block() -> str:
     """The `statusLine` block to paste into Claude Code's settings.json so the
     pause reason surfaces in the footer row (STATUSLINE-01). `beacon` is the
@@ -4630,14 +4741,19 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--dir", default=None,
                     help="directory to install into (default: ~/.local/bin)")
 
+    sub.add_parser("install-profile",
+                   help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
+
     sub.add_parser("resolve-url", help="(internal) print resolved url+label as TAB-separated text")
 
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
-    sp = sub.add_parser("open-url", help="open the session's web view (config: web_cmd)")
+    sp = sub.add_parser("open-url",
+                        help="open the session's web view (config: statusbar.buttons.web.cmd)")
     sp.add_argument("dir", nargs="?", help="directory to resolve from (default: cwd)")
 
-    sp = sub.add_parser("open-code", help="open a directory in the configured editor (config: code_app / code_args)")
+    sp = sub.add_parser("open-code",
+                        help="open a directory in the configured editor (config: statusbar.buttons.code.cmd)")
     sp.add_argument("dir", nargs="?", help="directory to open (default: cwd)")
 
     sub.add_parser("json", help="print the resolved session state as JSON")
@@ -4725,7 +4841,7 @@ def main(argv=None):
         "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
-        "install-cli": cmd_install_cli,
+        "install-cli": cmd_install_cli, "install-profile": cmd_install_profile,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
