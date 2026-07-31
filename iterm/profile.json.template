@@ -62,6 +62,22 @@
             }
           },
           {
+            "class": "iTermStatusBarSpringComponent",
+            "configuration": {
+              "knobs": {
+                "base: priority": 5,
+                "base: compression resistance": 1,
+                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
+                "iTermStatusBarSpringComponentSizeMultipleKey": 1
+              },
+              "layout advanced configuration dictionary value": {
+                "algorithm": 1,
+                "remove empty components": false,
+                "auto-rainbow style": 0
+              }
+            }
+          },
+          {
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
@@ -83,22 +99,6 @@
                 "remove empty components": true,
                 "font": "Menlo-Regular 18",
                 "algorithm": 1,
-                "auto-rainbow style": 0
-              }
-            }
-          },
-          {
-            "class": "iTermStatusBarSpringComponent",
-            "configuration": {
-              "knobs": {
-                "base: priority": 5,
-                "base: compression resistance": 1,
-                "iTermStatusBarSpringComponentSpringConstantKey": 0.01,
-                "iTermStatusBarSpringComponentSizeMultipleKey": 1
-              },
-              "layout advanced configuration dictionary value": {
-                "algorithm": 1,
-                "remove empty components": false,
                 "auto-rainbow style": 0
               }
             }

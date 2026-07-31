@@ -87,9 +87,9 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     </div>
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-spring"></span>
+      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
+      <span class="bcn-sep">│</span>
       <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
       <span class="bcn-sep">│</span>
       <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
@@ -133,7 +133,7 @@ The text is the project name, optionally followed by `: <task>` when a task is s
 
 ## The status bar
 
-The status bar carries a fixed-layout strip the badge has no room for: `↖ web · project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
+The status bar carries a fixed-layout strip the badge has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
 
 It carries only the two things a link can't do — type a command into the pane, and launch a local app. Navigating to the session's URL is the [status line](#the-status-line)'s job, where it's a real hyperlink that works in any terminal.
 
@@ -142,19 +142,19 @@ The project chip answers "what am I working on," not just "what repo am I in" �
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets</span><span class="bcn-spring"></span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">In a repo, no tracked deliverable — the chip shows the bare identity.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-spring"></span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream).</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-sep">│</span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-spring"></span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
     <div class="cap">On a GitLab MR — chip shows <code>!17</code>.</div>
   </div>

@@ -1436,7 +1436,9 @@ class OpenUrlCommand(BeaconTest):
              mock.patch.object(self.beacon.subprocess, "run",
                                lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b"")):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
-        self.assertEqual(seen["cwd"], "/work/repo")
+        # The arg round-trips through Path, which normalizes separators — so
+        # compare against the platform's own rendering, not a POSIX literal.
+        self.assertEqual(seen["cwd"], str(Path("/work/repo")))
 
     def test_web_cmd_runs_the_users_command_in_that_directory(self):
         # `git web` and friends already exist on plenty of machines; beacon has
@@ -1451,7 +1453,7 @@ class OpenUrlCommand(BeaconTest):
              mock.patch.object(self.beacon, "_resolve_editor", return_value="/usr/bin/git"), \
              mock.patch.object(self.beacon.subprocess, "run", fake_run):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
-        self.assertEqual(calls, [(["/usr/bin/git", "web"], "/work/repo")])
+        self.assertEqual(calls, [(["/usr/bin/git", "web"], str(Path("/work/repo")))])
 
     def test_web_cmd_takes_precedence_over_beacons_own_resolution(self):
         with self._config(web_cmd="git web"), \
@@ -2646,18 +2648,18 @@ class StatusBarLayout(unittest.TestCase):
     def test_the_two_action_chips_bookend_the_strip(self):
         self.assertEqual(self._action_titles(), ["↖ web", "↗ code"])
 
-    def test_one_spring_pushes_the_branch_cluster_right(self):
-        # With no centered chip, a second spring would have nothing to balance
-        # against — one is enough to hold web + project left and branch + code
-        # right.
+    def test_the_spring_sits_behind_web_leaving_one_right_hand_cluster(self):
+        # `↖ web` alone at the left edge; the spring then pushes project, its
+        # branch, and `↗ code` together on the right, so the identity sits
+        # beside the branch it belongs to rather than across the strip from it.
         comps = self._layout()
         classes = [c["class"] for c in comps]
         self.assertEqual(classes.count("iTermStatusBarSpringComponent"), 1)
         self.assertEqual(comps[0]["configuration"]["knobs"]["action"]["title"], "↖ web")
+        self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 1)
         self.assertEqual(
-            comps[1]["configuration"]["knobs"]["expression"],
+            comps[2]["configuration"]["knobs"]["expression"],
             r"\(user.beacon_project_full)")
-        self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 2)
         self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
 
     def test_review_chip_is_gone(self):

@@ -947,7 +947,10 @@ def _resolve_editor(app: str) -> str | None:
     thing that actually knows where their tools are. That is one subprocess on a
     click — never a hot path — and it resolves the *configured* editor rather
     than quietly launching a different one."""
-    if os.path.sep in app:
+    # Both separators, not just `os.path.sep`: Windows accepts `/` in paths, so
+    # keying on the native separator alone would send `/Apps/ed` down the
+    # bare-command lookup and never find it.
+    if os.path.sep in app or "/" in app:
         return app if os.access(app, os.X_OK) else None
     found = shutil.which(app)
     if found:

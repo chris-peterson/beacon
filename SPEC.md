@@ -384,7 +384,7 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window — the tab c
   ● ● ●   project                                    ← §4.8 window title (line 1)
 ┌─[ project ]─────────────────────────────────────┐ ← §4.6 tab color + two-line
 │ [  task   ]                                      │   label (§4.8, TITLE-05)
-│ STATUS BAR  project                  branch cwd↗ │ ← §4.4 fixed layout, one spring
+│ STATUS BAR  ↖ web           project branch cwd↗ │ ← §4.4 fixed layout, one spring
 ├─────────────────────────────────────────────────┤
 │                                       ┌────────┐│
 │   pane content                        │ project││ ← §4.3 badge (opt-in, off
@@ -544,15 +544,15 @@ beacon does **not** make the `beacon-dev` profile iTerm2's default — that woul
 
 **STATUS-BAR-02.** The dynamic profile shall enable the status bar with the following fixed chip layout, left to right: **project identity** flush left, a **spring** absorbing the slack, and the **branch + `↗ code` action** flush right.
 
-The strip carries the actions worth a permanent slot in a narrow row. Each edge pairs an action chip with the data chip it acts on: `↖ web` with the project identity it opens, `↗ code` with the directory it launches into.
+The strip carries the actions worth a permanent slot in a narrow row. `↖ web` holds the left edge alone; a spring then gathers the project identity, its branch, and `↗ code` on the right, so the identity sits beside the branch it belongs to rather than across the strip from it.
 
 The status line also carries the resolved URL as a link (STATUSLINE-02), which is not a duplicate: **the footer only exists in a pane running Claude, and only when focused.** A shell you are just poking around in has no footer at all, and jumping to a repo's web view from an arbitrary pane is exactly when the affordance is wanted. The strip is the surface that is always there.
 
 Chip-by-chip behavior:
 
 1. **`↖ web` action button** — link-blue, flush left. Always visible. Clicking shall open the session's web view (STATUS-BAR-08).
-2. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
-3. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
+2. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
+3. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
 4. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
 5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
 6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
