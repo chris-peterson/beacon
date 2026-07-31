@@ -161,17 +161,27 @@ The deliverable comes from [tack](https://github.com/chris-peterson/tack) when i
 
 ## The status line
 
-Claude Code renders a footer row from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.
+Claude Code renders footer rows from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.
 
-The row carries the deliverables this session has touched, each a clickable link, and — while the session is paused — the reason you parked it:
+It gives you a line per class of thing, so a glance separates what you shipped from what's in flight:
 
 ```text
-⏸ waiting on CI · !3, #4, otherproj:#75
+⏸ waiting on CI
+v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
+#28 Move per-session values into the Claude Code status line
+#25 · #18 · #26 · #23
 ```
 
-Refs in the current project render bare (`#4`); refs elsewhere are qualified with the project (`otherproj:#75`), so a session that crosses repos still reads unambiguously. The most recent is bold, so the row answers "what am I on right now" as well as "where have I been". A session that hasn't touched a deliverable yet shows the branch or repo page instead.
+Every ref is a clickable link. Empty lines are omitted, so an ordinary session is one line of open work.
 
-`beacon install` prints the `settings.json` block to add; it doesn't edit the file for you. Whether the link is actually clickable is your terminal's call — iTerm2, WezTerm, kitty, Windows Terminal, and recent VTE all render it.
+- **Delivered** work is kept on screen — shipping is rare and it's what the session has to show for itself. It reads by its verb and glyph, in the same green beacon reserves for releases.
+- **Change requests** lead the open work and carry a title: the same string the badge shows, so the two surfaces never describe one PR differently.
+- **Issues** trail, dimmed and bare — several share a line, and titling each would wrap the row.
+- Refs in the current project render bare (`#4`); refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
+
+"Delivered" comes from [tack](https://github.com/chris-peterson/tack): a tack that's `done` promotes its deliverable. That means it follows *your* record of the work rather than the forge's — it can drift if a tack goes stale, and the trade is that the row costs no network call. Releases are the exception: a release tag only exists once published, so it needs no tack.
+
+`beacon install` prints the `settings.json` block to add; it doesn't edit the file for you. Whether the links are actually clickable is your terminal's call — iTerm2, WezTerm, kitty, Windows Terminal, and recent VTE all render them.
 
 ## What beacon doesn't paint
 

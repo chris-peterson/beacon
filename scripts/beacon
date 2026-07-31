@@ -703,6 +703,52 @@ def _branch_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     return f"{remote}{sep}{branch}", branch
 
 
+_TACK_ROUTES_UNSET = object()
+_TACK_ROUTES_CACHE = _TACK_ROUTES_UNSET
+
+
+def _tack_routes() -> list:
+    """`tack list --json`, memoized for the life of the process. Every hook is
+    its own process, so the memo never spans a turn — it exists because a single
+    invocation asks tack the same question twice (the URL chain and the
+    landed-deliverable filter), and one subprocess is enough for both. Empty
+    list when tack is absent or unreadable."""
+    global _TACK_ROUTES_CACHE
+    if _TACK_ROUTES_CACHE is not _TACK_ROUTES_UNSET:
+        return _TACK_ROUTES_CACHE
+    _TACK_ROUTES_CACHE = []
+    if _which("tack"):
+        try:
+            r = subprocess.run(["tack", "list", "--json"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                parsed = json.loads(r.stdout)
+                if isinstance(parsed, list):
+                    _TACK_ROUTES_CACHE = parsed
+        except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+            pass
+    return _TACK_ROUTES_CACHE
+
+
+def _tack_landed_urls() -> set[str]:
+    """Deliverable URLs whose tack is `done` or `dropped`. STATUSLINE-03
+    promotes these to the delivered line — shipping is rare enough to be worth
+    keeping on screen, and it is what the session has to show for itself.
+
+    Read from the same `tack list` payload the URL chain already consumes, so it
+    costs nothing extra. It drifts from forge truth when a tack isn't kept
+    current; the forge is authoritative but only over the network, which the
+    per-turn hook budget rules out. A session with no tack route gets an empty
+    set and treats everything it touched as still open."""
+    return {
+        url
+        for route in _tack_routes()
+        for t in (route.get("tacks") or [])
+        if t.get("status") in ("done", "dropped")
+        and (url := (t.get("deliverable") or {}).get("url"))
+    }
+
+
 def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
     """URL for the session's tack route via the in_progress-deliverable →
     done-deliverable → first-link sub-chain.
@@ -713,15 +759,8 @@ def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[s
     missed a route pinned to the session whose slug differs from the branch.
     Location correlation (`.tack` pin / branch / project, via _tack_route_for)
     is the fallback when no pin binds this session."""
-    if not _which("tack"):
-        return "", ""
-    try:
-        r = subprocess.run(["tack", "list", "--json"],
-                           capture_output=True, text=True, timeout=2)
-        if r.returncode != 0:
-            return "", ""
-        routes = json.loads(r.stdout)
-    except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
+    routes = _tack_routes()
+    if not routes:
         return "", ""
 
     sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
@@ -894,6 +933,36 @@ def _code_launch_argv() -> list[str]:
     return [app, *args]
 
 
+def _resolve_editor(app: str) -> str | None:
+    """Absolute path to `app`, or None when it cannot be found.
+
+    `shutil.which` alone is not enough here. A status-bar action shell inherits
+    iTerm2's `PATH`, not the login shell's (§6.10 caveat 3), so the lookup runs
+    against roughly `/usr/bin:/bin:/usr/sbin:/sbin` — which excludes
+    `/opt/homebrew/bin` and `/usr/local/bin`, the very places an editor CLI
+    installs. Substituting an absolute interpreter fixed reaching Python; it did
+    nothing for the binary Python then goes looking for.
+
+    So when `PATH` comes up empty, ask the user's login shell, which is the
+    thing that actually knows where their tools are. That is one subprocess on a
+    click — never a hot path — and it resolves the *configured* editor rather
+    than quietly launching a different one."""
+    if os.path.sep in app:
+        return app if os.access(app, os.X_OK) else None
+    found = shutil.which(app)
+    if found:
+        return found
+    shell = os.environ.get("SHELL") or "/bin/sh"
+    try:
+        r = subprocess.run([shell, "-lc", f"command -v {shlex.quote(app)}"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
+    path = lines[-1].strip() if lines else ""
+    return path if path and os.access(path, os.X_OK) else None
+
+
 def cmd_open_code(args):
     """STATUS-BAR-07: open a directory in the configured editor. Backs the
     `↗ code` status-bar button, which invokes this rather than launching the
@@ -903,10 +972,11 @@ def cmd_open_code(args):
     reinstall."""
     target = args.dir or str(Path.cwd())
     argv = _code_launch_argv()
-    exe = shutil.which(argv[0])
+    exe = _resolve_editor(argv[0])
     if not exe:
-        sys.exit(f"editor not found: {argv[0]!r} is not on PATH — "
-                 f'set "code_app" to an absolute path in {_config_file()}')
+        sys.exit(f"editor not found: {argv[0]!r} is not on PATH, and your login "
+                 f'shell could not find it either — set "code_app" to an '
+                 f"absolute path in {_config_file()}")
     try:
         r = subprocess.run([exe, *argv[1:], target], capture_output=True, timeout=20)
     except (OSError, subprocess.SubprocessError) as e:
@@ -2783,10 +2853,12 @@ def _abbrev_remote_host(host_path: str) -> str:
 # paths contain a literal `/issues/` substring that the GitHub patterns would
 # also match — we want the GitLab sigil (`!` for MRs) to win on GitLab URLs.
 _DELIVERABLE_PATTERNS = (
-    (re.compile(r"/-/merge_requests/(\d+)"), "!"),
-    (re.compile(r"/-/issues/(\d+)"),         "#"),
-    (re.compile(r"/pull/(\d+)"),             "#"),
-    (re.compile(r"/issues/(\d+)"),           "#"),
+    (re.compile(r"/releases/tag/([^/?#]+)"), "", "release"),
+    (re.compile(r"/-/tags/([^/?#]+)"),       "", "release"),
+    (re.compile(r"/-/merge_requests/(\d+)"), "!", "cr"),
+    (re.compile(r"/-/issues/(\d+)"),         "#", "issue"),
+    (re.compile(r"/pull/(\d+)"),             "#", "cr"),
+    (re.compile(r"/issues/(\d+)"),           "#", "issue"),
 )
 
 
@@ -2797,26 +2869,57 @@ def _deliverable_suffix(url: str) -> str:
     or branch-tree URLs leave the chip showing only the project identity."""
     if not url:
         return ""
-    for pat, sigil in _DELIVERABLE_PATTERNS:
+    for pat, sigil, _kind in _DELIVERABLE_PATTERNS:
         m = pat.search(url)
         if m:
             return f"{sigil}{m.group(1)}"
     return ""
 
 
+def _deliverable_kind(url: str) -> str:
+    """`cr` for a PR/MR, `release` for a tagged release, `issue` for an issue,
+    empty otherwise. Derived from the URL rather than stored, so the distinction
+    costs no state field and applies to entries recorded before it existed. On
+    GitHub a CR and an issue both render `#<n>` (STATUSLINE-03 leans on grouping
+    and weight to tell them apart); GitLab's `!` already differs by sigil."""
+    for pat, _sigil, kind in _DELIVERABLE_PATTERNS:
+        if url and pat.search(url):
+            return kind
+    return ""
+
+
 DELIVERABLES_MAX = 8
 
 
-def _record_deliverable(ref: str, url: str, project_id: str) -> None:
+def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") -> None:
     """STATUSLINE-03: append a deliverable the session has touched. Deduped on
-    URL, and a re-touch moves the entry to the end — the tail is "what I'm on
-    now", which is what the status line emphasizes. Capped at DELIVERABLES_MAX,
+    URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
     oldest dropped: the row shares a line with the pause reason, and a session
     that has crossed a dozen deliverables is better served by the older ones
-    ageing out than by a row that wraps."""
+    ageing out than by a row that wraps.
+
+    `title` describes the deliverable being recorded now. It is the same string
+    the badge is showing (the resolved `task`, when the task chain drew it from
+    the PR title or a deliberate override), so the two surfaces name the work
+    identically — sourcing them separately is what makes them disagree. Titles
+    already captured for other entries are preserved: only the current
+    deliverable has a live task to read.
+
+    Every entry is re-stamped against tack on each call, so a CR that merged (or
+    a release that shipped) mid-session moves to the delivered line without
+    waiting for anything to touch it again."""
+    landed = _tack_landed_urls()
+    prior = {e.get("url"): e.get("title", "")
+             for e in read_state_json("deliverables", []) if isinstance(e, dict)}
     entries = [e for e in read_state_json("deliverables", [])
                if isinstance(e, dict) and e.get("url") != url]
     entries.append({"ref": ref, "url": url, "project": project_id})
+    for e in entries:
+        e_url = e.get("url", "")
+        # A release tag URL only exists once the release is published, so the
+        # kind alone settles it — no tack route needed.
+        e["delivered"] = e_url in landed or _deliverable_kind(e_url) == "release"
+        e["title"] = (title or prior.get(e_url, "")) if e_url == url else prior.get(e_url, "")
     write_state("deliverables", json.dumps(entries[-DELIVERABLES_MAX:]))
 
 
@@ -2931,7 +3034,13 @@ def _publish_chips(cwd: Path) -> None:
     write_state("resolved.url_label", label)
     write_state("resolved.project", project_id)
     if ref:
-        _record_deliverable(ref, url, project_id)
+        # The badge's own task, when the chain drew it from the PR title (or the
+        # user said so outright). Any other tier — a branch name, an ai-title —
+        # is spatial context rather than a name for the deliverable, and would
+        # read as noise next to the ref it follows.
+        snap = read_state_json("resolved", {})
+        title = (snap.get("task") or "") if snap.get("task_provider") in ("pr", "override") else ""
+        _record_deliverable(ref, url, project_id, title)
 
     key = _iterm_cache_key()
     if key:
@@ -3864,6 +3973,29 @@ def cmd_render(_args):
 
 STATUSLINE_SEPARATOR = " · "
 STATUSLINE_LINK_COLOR = "36"
+# STATUSLINE-03: change requests lead the row and carry full weight; issues
+# trail, dimmed. Same hue for both — the palette's "one hue, two weights" split
+# between an actionable thing and its context (THEME-03) — so the row reads as
+# one group, and no state carries a text glyph (BADGE-11 / WIP-12).
+STATUSLINE_CR_SGR = "1;36"
+STATUSLINE_ISSUE_SGR = "2;36"
+# Delivered work gets its own line and its own vocabulary. The strike is
+# decoration; the word and the glyph are what carry it — a bare struck `#27` is
+# four characters of subtlety, and strikethrough is among the first attributes a
+# terminal drops. Green is beacon's release colour throughout (THEME-02). The
+# verb is muted against its ref: the ref is the content, the verb is the label.
+STATUSLINE_DELIVERED_SGR = "32"
+STATUSLINE_VERB_SGR = "2;32"
+# A CR line usually holds one ref and a lot of empty terminal, so the title
+# earns its place there. Issues stay bare — several share a line, and titling
+# each would wrap the row the cap exists to prevent.
+STATUSLINE_TITLE_SGR = "2;37"
+STATUSLINE_TITLE_MAX = 72
+STATUSLINE_DELIVERED = {
+    "cr": ("merged", "🏁"),
+    "release": ("released", "🚀"),
+    "issue": ("closed", "✓"),
+}
 
 
 def _osc8(url: str, text: str) -> str:
@@ -3888,8 +4020,9 @@ def _statusline_pause_segment() -> str:
 def _statusline_link_segment() -> str:
     """STATUSLINE-02/03: the deliverables this session has touched, each a
     clickable OSC-8 link — bare (`#4`) for this project, qualified
-    (`otherproj:#75`) for another — with the most recent last and bold, so the
-    row still answers "what am I on *now*" as well as "where have I been".
+    (`otherproj:#75`) for another. Change requests lead the row at full weight
+    and issues trail dimmed, newest first within each group, so the row answers
+    "what am I shipping" before "what does it answer".
 
     A session that has touched no deliverable falls back to the single resolved
     URL (a branch or repo page), which is the same rendering with one element.
@@ -3899,17 +4032,55 @@ def _statusline_link_segment() -> str:
     `gh`/`glab`."""
     entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
     if entries:
-        project_id = read_state("resolved.project") or ""
-        links = [_osc8(e.get("url", ""), _qualify_deliverable(e, project_id))
-                 for e in entries]
-        links[-1] = f"\033[1m{links[-1]}\033[22m"
-        body = ", ".join(links)
-    else:
-        url = read_state("resolved.url")
-        if not url:
-            return ""
-        body = _osc8(url, read_state("resolved.url_label") or url)
+        return ""
+    url = read_state("resolved.url")
+    if not url:
+        return ""
+    body = _osc8(url, read_state("resolved.url_label") or url)
     return f"\033[{STATUSLINE_LINK_COLOR}m{body}\033[0m"
+
+
+def _statusline_open_lines() -> list[str]:
+    """STATUSLINE-03: open work, one line per kind — change requests above the
+    issues they answer. Newest first within each line. Splitting by kind rather
+    than packing one row is what lets a glance separate "what I'm shipping" from
+    "what I'm shipping it for"; on GitHub the two are both `#<n>` and share a
+    line only by accident of numbering."""
+    project_id = read_state("resolved.project") or ""
+    live = [e for e in read_state_json("deliverables", [])
+            if isinstance(e, dict) and not e.get("delivered")]
+    lines = []
+    for kind, sgr in (("cr", STATUSLINE_CR_SGR), ("issue", STATUSLINE_ISSUE_SGR)):
+        refs = []
+        for e in reversed(live):
+            if _deliverable_kind(e.get("url", "")) != kind:
+                continue
+            ref = f"\033[{sgr}m{_osc8(e.get('url', ''), _qualify_deliverable(e, project_id))}\033[0m"
+            title = " ".join((e.get("title") or "").split()) if kind == "cr" else ""
+            if title:
+                if len(title) > STATUSLINE_TITLE_MAX:
+                    title = title[:STATUSLINE_TITLE_MAX - 1].rstrip() + "…"
+                ref += f" \033[{STATUSLINE_TITLE_SGR}m{title}\033[0m"
+            refs.append(ref)
+        if refs:
+            lines.append(STATUSLINE_SEPARATOR.join(refs))
+    return lines
+
+
+def _statusline_delivered_line() -> str:
+    """STATUSLINE-03: what the session has shipped, on its own line above the
+    open work. `~#27~ merged 🏁`. Newest first — the most recent thing shipped
+    is the one worth seeing."""
+    project_id = read_state("resolved.project") or ""
+    parts = []
+    for e in reversed([e for e in read_state_json("deliverables", [])
+                       if isinstance(e, dict) and e.get("delivered")]):
+        url = e.get("url", "")
+        word, glyph = STATUSLINE_DELIVERED.get(_deliverable_kind(url), ("done", "✓"))
+        ref = _osc8(url, f"\033[9m{_qualify_deliverable(e, project_id)}\033[29m")
+        parts.append(f"\033[{STATUSLINE_DELIVERED_SGR}m{ref}\033[0m"
+                     f" \033[{STATUSLINE_VERB_SGR}m{word} {glyph}\033[0m")
+    return STATUSLINE_SEPARATOR.join(parts)
 
 
 def cmd_statusline(_args):
@@ -3929,10 +4100,18 @@ def cmd_statusline(_args):
         sys.stdin.read()
     except Exception:
         pass
-    segments = [_statusline_pause_segment(), _statusline_link_segment()]
-    row = STATUSLINE_SEPARATOR.join(s for s in segments if s)
-    if row:
-        sys.stdout.write(f"{row}\n")
+    # One line per class, most urgent first: why the session is parked, what it
+    # has shipped, then the open work split by kind. Shipping is rare, and
+    # burying it among the open refs is what made it unreadable on a shared row.
+    rows = [
+        STATUSLINE_SEPARATOR.join(
+            s for s in (_statusline_pause_segment(), _statusline_link_segment()) if s),
+        _statusline_delivered_line(),
+        *_statusline_open_lines(),
+    ]
+    rows = [r for r in rows if r]
+    if rows:
+        sys.stdout.write("\n".join(rows) + "\n")
 
 
 def _is_active(line: str) -> bool:

@@ -573,7 +573,9 @@ The configuration shall be read at **click time**, not install time, so changing
 
 The launch shall happen in a `beacon open-code [<dir>]` subcommand rather than in the button's own shell, and the button shall invoke it through an **absolute interpreter path** (`__BEACON_PYTHON__`, substituted at install from the running interpreter). An iTerm2 coprocess action shell has no interactive `PATH` (§6.10 caveat 3) — which is why both buttons historically launched via macOS `open` — so resolving an editor binary from that shell is precisely the thing that would fail. Moving it into Python also makes the behavior testable.
 
-When the configured editor cannot be resolved on `PATH`, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
+Resolving the editor binary is subject to the same `PATH` problem, and substituting an absolute interpreter does not solve it: the Python process inherits the action shell's `PATH` too, so a `shutil.which` lookup runs against roughly `/usr/bin:/bin:/usr/sbin:/sbin` and misses `/opt/homebrew/bin` and `/usr/local/bin` — where an editor CLI actually installs. The plugin shall therefore resolve an unqualified `code_app` by `PATH` first and, failing that, by asking the user's **login shell** (`$SHELL -lc 'command -v <app>'`), which is the thing that knows where their tools live. An absolute `code_app` is used as given. This is one subprocess on a click, never a hot path, and it resolves the *configured* editor rather than quietly launching a different one.
+
+When the configured editor cannot be resolved by either route, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
 
 `↗ code` is the only chip this applies to — it is the only action chip left (STATUS-BAR-02).
 
@@ -663,7 +665,18 @@ A session's free-text context — why it's parked, where its work lives — need
 
 The row is therefore where per-session **values** live, and the iTerm2 status bar keeps only the **actions** a footer row cannot perform (typing a command into the pane, launching a local app — STATUS-BAR-02).
 
-**STATUSLINE-01.** beacon shall provide a `beacon statusline` subcommand suitable for Claude Code's `settings.json` `statusLine.command`. It reads Claude Code's status-line JSON on stdin and prints at most one line, composed of the segments defined below joined by ` · `; when every segment is empty it shall print nothing rather than an empty row. While the session is **paused with a note**, the first segment is the pause reason, led by the `⏸` glyph and colored by the paused state. `project` / `task` / `status` are not repeated here — they are already on the tab (RENDER-04, TITLE-05). The subcommand shall read only per-session state (no network, no `gh`/`glab`) so it stays cheap enough for Claude Code's frequent status-line invocations. `beacon install` shall surface the `statusLine` settings block for the user to add (opt-in; it does not rewrite `settings.json`).
+**STATUSLINE-01.** beacon shall provide a `beacon statusline` subcommand suitable for Claude Code's `settings.json` `statusLine.command`. It reads Claude Code's status-line JSON on stdin and prints **one line per class of information**, in this order, omitting any that is empty; when all are empty it shall print nothing rather than a blank row:
+
+| Line | Carries |
+|:---|:---|
+| 1 | the pause reason while paused, led by `⏸` and colored by the paused state |
+| 2 | what the session has **delivered** (STATUSLINE-03) |
+| 3 | **open change requests**, each with its title |
+| 4 | **open issues** |
+
+Claude Code renders multi-line status-line output, so a line per class beats packing one row: it lets a glance separate what shipped from what is in flight from what it answers. Items *within* a line are joined by ` · ` — one separator throughout, so the eye never has to learn two.
+
+`project` / `task` / `status` are not repeated here — they are already on the tab (RENDER-04, TITLE-05). `project` / `task` / `status` are not repeated here — they are already on the tab (RENDER-04, TITLE-05). The subcommand shall read only per-session state (no network, no `gh`/`glab`) so it stays cheap enough for Claude Code's frequent status-line invocations. `beacon install` shall surface the `statusLine` settings block for the user to add (opt-in; it does not rewrite `settings.json`).
 
 **STATUSLINE-02.** The row shall carry the session's resolved URL (PROV-07) as a **clickable OSC-8 hyperlink** — `ESC]8;;<url>BEL <label> ESC]8;;BEL`, using the same label the project chip uses — so the deliverable is one click away in any terminal that renders OSC-8 (iTerm2, WezTerm, kitty, Windows Terminal, recent VTE). Claude Code passes the sequence through its status-line renderer untouched, so whether it becomes clickable is the terminal's decision, not beacon's. When no URL resolves, the segment is empty. The bare URL shall not appear as text; the label is the click target.
 
@@ -673,9 +686,25 @@ Because the link is single-sourced, terminal-agnostic, and clickable, the `↖ w
 
 **STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) captured *before* the deliverable suffix is appended to the chip. Branch and repo URLs are not deliverables and shall record nothing.
 
-The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it, so the tail is always the deliverable the session is on now. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped — the row shares one line with the pause reason, so an unbounded list would wrap.
+The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped, so the footer cannot grow without bound.
 
-The status line shall render the list as its link segment: each entry its own OSC-8 link, comma-separated, **bare** (`#4`) when the entry's `project` matches the session's and **qualified** (`otherproj:#4`) when it does not, with the qualifier taken as the repo segment of the forge identity so both sides of the comparison derive the same way. The last entry shall be emphasized (bold) so the row answers "what am I on *now*" as well as "where have I been". A session that has touched no deliverable falls back to the single resolved URL of STATUSLINE-02 — the same rendering with one element.
+**Kind.** Each entry's kind is derived from its URL, never stored — so the distinction costs no state field and applies to entries recorded before it existed:
+
+| Kind | URL | Renders |
+|:---|:---|:---|
+| `cr` | `/pull/<n>`, `/-/merge_requests/<n>` | full weight, leads the open lines, carries a title |
+| `issue` | `/issues/<n>` | dimmed, trails the CRs, bare |
+| `release` | `/releases/tag/<v>`, `/-/tags/<v>` | always delivered |
+
+On GitHub a CR and an issue are both `#<n>`, so the line they sit on and the weight they carry are the only cues; GitLab's `!` already differs by sigil. Refs render **bare** (`#4`) when the entry's `project` matches the session's and **qualified** (`otherproj:#4`) when it does not, the qualifier taken as the repo segment of the forge identity so both sides of the comparison derive the same way.
+
+**Delivered.** An entry is delivered when its URL belongs to a tack that has gone `done` or `dropped`, or when its kind is `release` — a release tag URL only exists once published, so the kind settles it with no tack involved. Delivered entries move to their own line and render `~<ref>~ <verb> <glyph>` in the release green (THEME-02): `merged 🏁`, `released 🚀`, `closed ✓`. The verb is muted against its ref, and the strike is decoration — a four-character struck ref is too subtle to be the signal on its own, and strikethrough is among the first attributes a terminal drops.
+
+Shipping is rare and is what the session has to show for itself, so delivered work is **kept on screen** rather than cleared. The landed signal comes from tack because the forge is only authoritative over the network, which the per-turn hook budget rules out; it drifts if a tack is not kept current.
+
+**Titles.** An open CR shall carry the session's resolved `task` — the very string the badge is painting — but only when the task chain drew it from the PR title or a deliberate override. Other tiers (a branch name, an ai-title) name where the session is, not what the deliverable is, and would read as noise beside the ref. Sourcing the title anywhere else is what makes two beacon surfaces describe one PR differently. Titles are per-entry and sticky: only the current deliverable has a live task to read. They are ellipsized past `STATUSLINE_TITLE_MAX` (72). Issues stay bare — several share a line, and titling each would wrap the row the cap exists to prevent; a delivered CR drops its title, since that line is a ledger and the verb is its point.
+
+A session that has touched no deliverable falls back to the single resolved URL of STATUSLINE-02 — the same rendering with one element.
 
 The footer is the home rather than an iTerm2 status-bar segment: the refs are only useful if you can click through to them, which the strip cannot do (§6.10 caveat 3), and the footer carries them in any terminal.
 

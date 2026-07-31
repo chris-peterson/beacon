@@ -1206,6 +1206,7 @@ class DeliverableAccumulation(BeaconTest):
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
             self.beacon._publish_chips(Path("/x"))
 
@@ -1237,6 +1238,30 @@ class DeliverableAccumulation(BeaconTest):
         self._publish("https://github.com/other/otherproj/issues/75",
                       project_full="gh:other/otherproj")
         self.assertEqual(self._refs(), ["#42", "#75"])
+
+    def _snapshot(self, task, provider):
+        self.beacon.write_state("resolved", json.dumps(
+            {"task": task, "task_provider": provider}))
+
+    def test_title_is_the_same_string_the_badge_shows(self):
+        # The badge paints the resolved task; the footer titles the CR. Sourcing
+        # them separately is what made the two surfaces name one PR differently.
+        self._snapshot("Move per-session values into the status line", "pr")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
+                         "Move per-session values into the status line")
+
+    def test_an_override_task_titles_the_cr_too(self):
+        self._snapshot("ship the cart rework", "override")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
+                         "ship the cart rework")
+
+    def test_a_branch_derived_task_is_not_a_title(self):
+        # `#42 2.0` is the branch name, not a name for the work.
+        self._snapshot("2.0", "branch")
+        self._publish("https://github.com/acme/widgets/pull/42")
+        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"], "")
 
     def test_fresh_start_drops_the_previous_tenant_list(self):
         # State keys on the pane, which outlives a Claude session. Without the
@@ -1273,6 +1298,29 @@ class ConfigurableCodeButton(BeaconTest):
         # An explicit [] means "no arguments", not "fall back to --maximized".
         with self._config(code_app="mate", code_args=[]):
             self.assertEqual(self.beacon._code_launch_argv(), ["mate"])
+
+    def test_editor_off_path_is_found_via_the_login_shell(self):
+        # The regression: a status-bar action shell inherits iTerm2's PATH, so
+        # `code` in /opt/homebrew/bin is invisible to shutil.which and the
+        # button failed for everyone whose editor lives outside /usr/bin.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stdout="/opt/homebrew/bin/code\n",
+                                         stderr=b"")
+
+        with self._config(), \
+             mock.patch.object(self.beacon.shutil, "which", return_value=None), \
+             mock.patch.dict(os.environ, {"SHELL": "/bin/zsh"}), \
+             mock.patch.object(self.beacon.os, "access", return_value=True), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run):
+            self.assertEqual(self.beacon._resolve_editor("code"), "/opt/homebrew/bin/code")
+        self.assertEqual(calls[0][:2], ["/bin/zsh", "-lc"])
+
+    def test_an_absolute_editor_path_skips_lookup_entirely(self):
+        with mock.patch.object(self.beacon.os, "access", return_value=True):
+            self.assertEqual(self.beacon._resolve_editor("/Apps/ed"), "/Apps/ed")
 
     def test_unresolvable_editor_exits_with_an_actionable_message(self):
         # No `open -a` fallback (the repo's no-fallbacks convention): the button
@@ -2365,15 +2413,27 @@ class StatusLineProvider(BeaconTest):
         """Strip OSC-8 wrappers and SGR so assertions read like the rendered row."""
         return re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", row).rstrip("\n")
 
-    def _touch(self, ref, url, project):
-        self.beacon._record_deliverable(ref, url, project)
+    def _touch(self, ref, url, project, title="", landed=()):
+        # tack IS on PATH on a dev machine, so an unmocked _record_deliverable
+        # shells out and reads the author's real routes — slow and dependent on
+        # state no test controls. `landed` stands in for the URLs whose tack has
+        # gone done.
+        with mock.patch.object(self.beacon, "_tack_landed_urls",
+                               return_value=set(landed)):
+            self.beacon._record_deliverable(ref, url, project, title)
 
-    def test_deliverables_render_bare_and_qualified(self):
+
+    def _lines(self):
+        return self._visible(self._run()).split("\n")
+
+    def test_open_work_splits_by_kind_crs_above_issues(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
-        self._touch("!3", "https://x.test/w/mr/3", "gh:acme/widgets")
+        self._touch("!3", "https://x.test/w/-/merge_requests/3", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
-        self.assertEqual(self._visible(self._run()), "!3, #4, otherproj:#75")
+        # CRs lead; issues follow, newest first. Bare for this project,
+        # qualified for another.
+        self.assertEqual(self._lines(), ["!3", "otherproj:#75 · #4"])
 
     def test_each_deliverable_is_its_own_link(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
@@ -2383,22 +2443,94 @@ class StatusLineProvider(BeaconTest):
         self.assertIn("\033]8;;https://x.test/w/issues/4\a#4", out)
         self.assertIn("\033]8;;https://x.test/o/issues/75\aotherproj:#75", out)
 
-    def test_most_recent_is_emphasized(self):
+    def test_crs_carry_more_weight_than_issues(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
-        self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
         out = self._run()
-        # Bold opens immediately before the last link and closes after it, so the
-        # row answers "what am I on now" as well as "where have I been".
-        self.assertIn("\033[1m\033]8;;https://x.test/w/issues/9\a#9", out)
-        self.assertNotIn("\033[1m\033]8;;https://x.test/w/issues/4", out)
+        # Same hue, two weights — a CR reads as the actionable thing, the issue
+        # as its context. On GitHub both render `#<n>`, so weight is the cue.
+        self.assertIn(f"\033[{self.beacon.STATUSLINE_CR_SGR}m"
+                      "\033]8;;https://x.test/w/pull/9\a#9", out)
+        self.assertIn(f"\033[{self.beacon.STATUSLINE_ISSUE_SGR}m"
+                      "\033]8;;https://x.test/w/issues/4\a#4", out)
 
-    def test_retouch_moves_to_the_end_without_duplicating(self):
+    def test_retouch_moves_to_the_front_without_duplicating(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
-        self.assertEqual(self._visible(self._run()), "#9, #4")
+        self.assertEqual(self._lines(), ["#4 · #9"])
+
+    def test_items_on_a_line_share_one_separator(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        for n in (4, 5, 6):
+            self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
+        line = self._lines()[0]
+        self.assertEqual(line, "#6 · #5 · #4")
+        self.assertNotIn(",", line)
+
+    def test_delivered_work_leads_on_its_own_line(self):
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", landed=[url])
+        self.assertEqual(self._lines(), ["#9 merged 🏁", "#4"])
+
+    def test_delivered_ref_is_struck_but_the_verb_carries_it(self):
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", landed=[url])
+        out = self._run()
+        # Strike wraps the ref text only — a four-character strike is too subtle
+        # to be the signal, so the word and glyph outside it do the work.
+        self.assertIn("\a\033[9m#9\033[29m\033]8;;\a", out)
+        self.assertIn("merged 🏁", out)
+
+    def test_a_release_is_delivered_without_asking_tack(self):
+        # A /releases/tag/ URL only exists once published, so the kind settles
+        # it — no tack route required.
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("v2.0.0", "https://x.test/w/releases/tag/v2.0.0", "gh:acme/widgets")
+        self.assertEqual(self._lines(), ["v2.0.0 released 🚀"])
+
+    def test_a_cr_carries_a_title(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets",
+                    title="Rework the cart drawer")
+        self.assertEqual(self._lines(), ["#9 Rework the cart drawer"])
+
+    def test_issues_stay_bare(self):
+        # Several issues share a line; titling each would wrap the row the cap
+        # exists to prevent.
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets",
+                    title="Some issue summary")
+        self.assertEqual(self._lines(), ["#4"])
+
+    def test_a_long_title_is_ellipsized(self):
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets", title="x" * 200)
+        title = self._lines()[0].split(" ", 1)[1]
+        self.assertEqual(len(title), self.beacon.STATUSLINE_TITLE_MAX)
+        self.assertTrue(title.endswith("…"))
+
+    def test_a_title_survives_a_later_touch_that_has_none(self):
+        # Only the current deliverable has a live task to read; an older CR must
+        # keep the title it was captured with rather than being blanked.
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets", title="Rework the cart drawer")
+        self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
+        self.assertEqual(self._lines()[0], "#9 Rework the cart drawer")
+
+    def test_a_delivered_cr_drops_its_title(self):
+        # The delivered line is a ledger, not a worklist — the verb is the point.
+        url = "https://x.test/w/pull/9"
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", url, "gh:acme/widgets",
+                    title="Rework the cart drawer", landed=[url])
+        self.assertEqual(self._lines(), ["#9 merged 🏁"])
 
     def test_oldest_drops_past_the_cap(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
