@@ -154,7 +154,7 @@ The fallback is not parenthesized — it appears as a real path so it reads natu
 5. **Project URL** — bare git remote URL (e.g. `https://git.example/acme/widgets`)
 6. **Empty** — when none of the above produces a value
 
-The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each at runtime and uses it if present. There is no hard dependency, no shipped tool code in beacon. Users can replace step 2 or step 3 with another provider (Linear, Jira, GitHub Issues, custom) by overriding the shell function `_beacon_resolve_url`.
+The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each at runtime and uses it if present. There is no hard dependency, no shipped tool code in beacon. Replacing step 2 or step 3 with another provider (Linear, Jira, GitHub Issues, custom) has no supported hook: the shell-side override retired with BADGE-08 once the shell stopped resolving URLs.
 
 **PROV-08.** For `icon` (the project's favicon, surfaced in the fleet view to distinguish work streams visually), the plugin shall consult: user override (`icon <path|url>`), then the project's icon on disk — the first existing file among the conventional locations under the project root (`docs/favicon.svg`, root `favicon.{svg,ico,png}`, the `public/` / `static/` / `app/` web roots, `icon.*` / `logo.*`), SVG preferred over raster. The discovered path is anchored at SessionStart (HOOK-08) so the fleet commands read a known path rather than re-walking the tree on every request. A project with no icon at a known path and no override resolves to no icon. The icon is fleet-view enrichment surfaced through `wip` / `serve` (WIP-01, WIP-08); it is never painted on a pane — §4.1 lists the painted surfaces, and this is not one.
 
@@ -170,11 +170,11 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-03b.** When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pending-attention` marker. The marker survives subsequent PostToolUse `working` writes and shall be cleared when the next tool actually starts (PreToolUse), when the user submits a prompt (UserPromptSubmit), or when the turn ends (Stop). While the marker is set, the resolved badge shall reflect the `blocked` color state regardless of `signal.status` (BADGE-09a). Rationale: hook delivery is not strictly ordered, so a late PostToolUse for an earlier tool may arrive after a fresh permission-prompt Notification for a new tool; without the sticky marker, the badge would briefly flip back to `busy` while the user is in fact still blocked.
 
-**HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_full`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
+**HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_name`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
 **HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), `description`, and the accumulated `deliverables` (STATUSLINE-03, whose list is scoped to one Claude session). Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
 
-**HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_full`, the six `beacon_branch*` slots), the `cwd-<pane-guid>.txt` handoff file, and the persisted `resolved.url` / `resolved.url_label` from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
+**HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_name`, the six `beacon_branch*` slots), the `cwd-<pane-guid>.txt` handoff file, and the persisted `resolved.url` / `resolved.url_label` from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
 
 **HOOK-09.** When a Claude session ends (SessionEnd hook), the plugin shall disengage the pane (BADGE-14): blank the badge user vars, revert badge and tab color to default, swap the pane back to the base `beacon-dev` profile (RENDER-05, so a session that ends mid-mode does not keep its `paused` / `release` / `retro` / `done` background — the color-only revert cannot undo a profile background), and remove the engagement marker and the resolved snapshot, so an exited session leaves the pane looking unmanaged rather than carrying its last-painted color and text. The plugin shall skip disengagement for the `clear` and `resume` end reasons: `clear` is immediately followed by a fresh SessionStart (HOOK-08a) that re-engages the same pane, and `resume` suspends the session expecting its state to persist. Rationale: the badge marks a live session; once the session is gone the shell resumes ownership of the status bar (§6.5) but per BADGE-02 never writes `beacon_project` / `beacon_task` or the badge color, so without this hook the last Claude-painted badge persists indefinitely. SessionEnd is best-effort — it does not fire on a hard crash or `kill -9`; HOOK-03c and the next session's HOOK-08a wipe remain the backstops for state a missed SessionEnd would leave behind.
 
@@ -258,7 +258,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
 
-**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the user's `web_cmd` when configured, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
+**CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the `web` button's configured `cmd` when set, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
 
 **CMD-16 — retired.** The branch-review subcommand (`beacon review`) and its `⇄ review` status-bar chip are removed in 2.0; see STATUS-BAR-02.
 
@@ -273,6 +273,8 @@ The mode takes an argument rather than each mode getting its own command because
 **CMD-19, CMD-20, CMD-22 — retired.** The per-mode `/beacon:retro`, `/beacon:done`, and `/beacon:release` commands folded into CMD-18.
 
 **CMD-21.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
+
+**CMD-23.** When the user invokes `install-profile`, the plugin shall re-render the base and mode dynamic profiles (STATUS-BAR-01) from the template and the current user config, and nothing else — no wrapper, no completions, no shell integration, no fleet-layout advisory. This is the apply path for a changed button label (STATUS-BAR-09): iTerm2 reloads the `DynamicProfiles` directory on change, so the re-render reaches every open pane without a restart. Off iTerm2 the subcommand shall exit non-zero saying so, rather than writing a profile nothing will load.
 
 ---
 
@@ -476,7 +478,7 @@ flowchart LR
 
 **BADGE-07.** The plugin shall provide an `install-cli` subcommand that drops a `beacon` wrapper at `~/.local/bin/beacon` (or a user-supplied directory via `--dir`) so `beacon <subcommand>` works as an interactive command on PATH and so tab completion (loaded as `_beacon`) attaches to the right command name. The wrapper hardcodes a path to the source script at install time and is the single mechanism by which `beacon` appears on PATH; the shell integration does not define a `beacon` alias. Plugin upgrades do not auto-refresh the wrapper — see CMD-13 and Architecture Rule 11.
 
-**BADGE-08.** The shell integration shall expose `_beacon_resolve_url()` as a public zsh function implementing the PROV-07 chain. Users may redefine this function in their `.zshrc` (after sourcing `beacon.zsh`) to substitute non-tack URL providers (Linear, Jira, GitHub Issues, etc.) without forking beacon.
+**BADGE-08 — retired.** The shell integration exposed `_beacon_resolve_url()` as a redefinable PROV-07 override. Its only consumer was the deliverable suffix on the project chip; with the chip carrying the project's name (STATUS-BAR-02), the shell resolves no URL at all, so the hook had nothing left to influence — a redefinition would have been a silent no-op. URL resolution now lives solely in the plugin (`resolve_url`), which the `↖ web` button and the status line both read.
 
 **BADGE-09.** The plugin shall set the badge color on every status change, mapping the resolved status to a logical color state:
 
@@ -518,7 +520,7 @@ Layout is fixed (no dynamic show/hide based on values). Chip text is rendered in
 flowchart TB
     PROMPT([shell prompt redraws])
     PROMPT --> PRECMD[shell precmd]
-    PRECMD --> S1[uservar beacon_project_full]
+    PRECMD --> S1[uservar beacon_project_name]
     PRECMD --> S2[uservar beacon_branch]
     PRECMD --> SF1[file url-SESSION.txt]
     PRECMD --> SF2[file cwd-SESSION.txt]
@@ -552,7 +554,7 @@ Chip-by-chip behavior:
 
 1. **`↖ web` action button** — link-blue, flush left. Always visible. Clicking shall open the session's web view (STATUS-BAR-08).
 2. **Spring** — absorbs the slack, holding project identity at the left edge and the branch + `↗ code` cluster at the right. One spring, not two: with no centered chip there is nothing for a second to balance against.
-3. **Project identity** — abbreviated remote project URL (e.g. `gh:acme/widgets`), rendered in link-blue. Known forge hosts (`github.com`, `gitlab.com`, `bitbucket.org`) collapse to a 2-letter prefix joined by `:`; unknown hosts render as `host/owner/repo`. When the resolved URL points at a forge issue/PR/MR (PROV-07 — typically a tack-tracked deliverable or a user override), the chip appends `#<n>` for issues/PRs or `!<n>` for GitLab merge requests (e.g. `gh:acme/widgets#42`, `gl:foo/bar!17`) so the chip answers "what am I working on" rather than only "what repo am I in." Bare repo and branch-tree URLs leave the chip showing project identity only. Identification only — not clickable; the clickable form of the same URL is the status-line link (STATUSLINE-02).
+3. **Project name** — the project's name (e.g. `widgets`), rendered in link-blue: the `origin` remote's repo basename when there is one, else the project root's own directory name, else the current directory's. It carries **no forge identity and no deliverable ref** — a name is what the chip beside a branch has room for, and it is the one value that reads the same everywhere, since it needs neither a git repo nor a resolved URL nor a Claude session to have an answer. That independence is the point: the chip never collapses, and resolving it costs no URL lookup on the shell's per-prompt path. The forge identity still exists (it qualifies deliverables in the status line, STATUSLINE-03) but is not painted here, and the clickable deliverable is the status-line link (STATUSLINE-02).
 4. **Branch (synced)** — bare branch name, rendered in green. Visible only when the local branch is synced with its upstream.
 5. **Branch (diverged)** — branch name with a leading ahead/behind indicator (`↑N`, `↓N`, or `↑N↓M` — e.g. `↑3 main`, `↓1 feature`, `↑3↓1 main`), rendered in orange. Visible only when the branch is ahead, behind, or both. The indicator sits left of the name so a vertical scan of stacked panes can spot divergent branches without re-parsing each name.
 6. **Branch (untracked)** — bare branch name, rendered in dim gray. Visible only when the branch has no upstream tracking ref. The three branch chips are **mutually exclusive** — exactly one renders when in a git repo, none when outside one.
@@ -570,13 +572,13 @@ This also drops beacon's soft dependencies on `moor` and the `anchor` plugin, wh
 
 **STATUS-BAR-06.** The plugin shall not modify any other iTerm2 profile (the user's default, or any pre-existing profile). The status bar feature is delivered solely via the beacon dynamic profile.
 
-**STATUS-BAR-07.** The `↗ code` button's editor shall be user-configurable through the same `~/.config/beacon/config.json` the badge gate (BADGE-15) and `focus_origins` (FOCUS-04) already use, via two keys: **`code_app`** (the editor command, default `code`) and **`code_args`** (startup arguments, default `["--maximized"]`, accepted as a JSON array or a shell-quoted string). An explicit empty array means *no arguments*, not "use the default".
+**STATUS-BAR-07.** The `↗ code` button's editor shall be user-configurable through the same `~/.config/beacon/config.json` the badge gate (BADGE-15) and `focus_origins` (FOCUS-04) already use, as the **`cmd`** of its `statusbar.buttons.code` block (STATUS-BAR-09) — a single shell-quoted command, default `code --maximized`. A bare program with no arguments is how "no startup arguments" is expressed.
 
 The configuration shall be read at **click time**, not install time, so changing editors takes effect immediately with no `beacon install` re-run. A click is never a hot path, so the extra read costs nothing there.
 
 The launch shall happen in a `beacon open-code [<dir>]` subcommand rather than in the button's own shell, and the button shall invoke it through an **absolute interpreter path** (`__BEACON_PYTHON__`, substituted at install from the running interpreter). An iTerm2 coprocess action shell has no interactive `PATH` (§6.10 caveat 3) — which is why both buttons historically launched via macOS `open` — so resolving an editor binary from that shell is precisely the thing that would fail. Moving it into Python also makes the behavior testable.
 
-Resolving the editor binary is subject to the same `PATH` problem, and substituting an absolute interpreter does not solve it: the Python process inherits the action shell's `PATH` too, so a `shutil.which` lookup runs against roughly `/usr/bin:/bin:/usr/sbin:/sbin` and misses `/opt/homebrew/bin` and `/usr/local/bin` — where an editor CLI actually installs. The plugin shall therefore resolve an unqualified `code_app` by `PATH` first and, failing that, by asking the user's **login shell** (`$SHELL -lc 'command -v <app>'`), which is the thing that knows where their tools live. An absolute `code_app` is used as given. This is one subprocess on a click, never a hot path, and it resolves the *configured* editor rather than quietly launching a different one.
+Resolving the editor binary is subject to the same `PATH` problem, and substituting an absolute interpreter does not solve it: the Python process inherits the action shell's `PATH` too, so a `shutil.which` lookup runs against roughly `/usr/bin:/bin:/usr/sbin:/sbin` and misses `/opt/homebrew/bin` and `/usr/local/bin` — where an editor CLI actually installs. The plugin shall therefore resolve an unqualified program by `PATH` first and, failing that, by asking the user's **login shell** (`$SHELL -lc 'command -v <app>'`), which is the thing that knows where their tools live. An absolute path is used as given. This is one subprocess on a click, never a hot path, and it resolves the *configured* editor rather than quietly launching a different one.
 
 When the configured editor cannot be resolved by either route, the plugin shall exit non-zero with a message naming the command and the config key to set, and the button shall surface that message in its alert. It shall **not** fall back to another launch mechanism: a silent fallback to `open -a` would mean the user's configured editor was ignored without their knowing. The button strips quote and backslash characters from the message before interpolating it into AppleScript, since an unescaped quote would break the alert rather than display it. The empty-cwd alert path (no handoff value) is unchanged.
 
@@ -584,9 +586,52 @@ When the configured editor cannot be resolved by either route, the plugin shall 
 
 Resolution happens **at click time, against the directory it is given** — there is no URL handoff file. That is what removes the #5 failure at its root: nothing is cached, so the button and the project chip beside it cannot disagree. It is also what makes the button correct in a pane beacon is not tracking, which is the case the status-line link cannot serve (STATUSLINE-02): a shell you are poking around in has no Claude footer, and that is exactly when jumping to a repo's web view is wanted.
 
-By default the URL comes from PROV-07, which knows about tack deliverables and open CRs and so lands on the *thing being worked on* rather than the repo's front page. A **`web_cmd`** key in the user config overrides that with the user's own command, run in the target directory — `git web` and its kin already exist on plenty of machines, and beacon has no business relitigating where the button should go. It is resolved the same way `code_app` is (PATH, then the login shell), so a git alias or a `$PATH` script both work. Where `code_app` / `code_args` split the program from its arguments, `web_cmd` is a single shell-quoted string: the useful values are whole commands rather than a program with a fixed flag set.
+By default the URL comes from PROV-07, which knows about tack deliverables and open CRs and so lands on the *thing being worked on* rather than the repo's front page. The button's **`cmd`** (STATUS-BAR-09) overrides that with the user's own command, run in the target directory — `git web` and its kin already exist on plenty of machines, and beacon has no business relitigating where the button should go. It is resolved the same way the editor is (PATH, then the login shell), so a git alias or a `$PATH` script both work.
 
-`↗ code` is the only chip STATUS-BAR-07 applies to; the `↖ web` chip has its own knob above.
+**STATUS-BAR-09.** Both action buttons shall take their **label** and their **command** from a `statusbar.buttons.<name>` block in the user config, where `<name>` is `web` or `code`:
+
+```json
+{
+  "statusbar": {
+    "buttons": {
+      "web":  { "label": "↖ web",  "cmd": "git web" },
+      "code": { "label": "↗ code", "cmd": "code --maximized" }
+    }
+  }
+}
+```
+
+Both fields are optional and a blank value means the button's default, so there is no third "explicitly disabled" state to interpret. The `web` default `cmd` is the empty string, which selects the PROV-07 resolution above — the button's default behavior is a value in this scheme rather than a special case outside it.
+
+Each `cmd` receives the pane's directory by the route that suits what the button opens, and the two differ:
+
+| Button | How the directory is handed over |
+|:---|:---|
+| `code` | **appended as the final argument** (`code -n <dir>`) — an editor's job is to open that path |
+| `web` | the command's **working directory**, with no argument added — `git web` and its kin read the repo they are standing in |
+
+A `cmd` may also **position** values itself, through placeholders expanded at click time:
+
+| Placeholder | Value | When it can't resolve |
+|:---|:---|:---|
+| `{dir}` | the pane's directory | never — the cwd is always known |
+| `{project}` | the resolved project name for that directory | empty outside a recognized project |
+| `{branch}` | the current branch | empty outside a git repo |
+
+Four rules make the expansion predictable:
+
+1. **`{dir}` suppresses the `code` append.** A command that places the directory itself shall not also receive it appended. Only `{dir}` does this — `{branch}` and `{project}` say nothing about where the path goes, so a `cmd` using them still gets the directory appended. (The `web` button has no append to suppress; its cwd handoff is unconditional.)
+2. **Expansion is per-argument, after the shell split.** A value containing spaces stays one argv entry, and a value can never introduce an argument — expanding into the command string and re-splitting is what would turn a `/My Repo` path into two arguments, or let a directory name smuggle in a flag.
+3. **An argument that expands to nothing is dropped**, rather than passed as an empty string a program would read as a positional argument the user never wrote.
+4. **An unrecognized `{name}` is an error** naming the known placeholders, not a silently empty value. `{{` and `}}` are literal braces, and a bare `{}` is not a placeholder — so `find -exec … {} \;` survives verbatim.
+
+The values cost a git probe each, so they shall be resolved only when the `cmd` actually contains a placeholder.
+
+Beyond substitution a `cmd` carries no shell semantics: it is split into a program and its arguments (`shlex`) and executed directly, never through a shell, so there is no command substitution, pipeline, or redirection. A command needing those belongs in a script on `$PATH`, which resolves the same way and receives the directory by the same route.
+
+The two fields **apply at different times**, and the difference is forced by iTerm2 rather than chosen: `cmd` is read on the click (STATUS-BAR-07 / -08), so a new command takes effect with no reinstall, while `label` is baked into the dynamic profile, because an action component's title is a static knob and cannot interpolate a user variable the way the text chips do (§6.10 caveat 2). A changed label therefore applies by re-rendering the profile (CMD-23), which iTerm2 picks up live since it watches the `DynamicProfiles` directory (STATUS-BAR-01). The mode profiles are derived from the base (RENDER-05), so a customized label reaches all of them.
+
+Color is deliberately **not** configurable here. The chip hues carry semantic roles across surfaces (THEME-01, THEME-03) — the action-affordance hue must not collide with a state hue — and a per-button color knob cannot hold that invariant on its own. Recoloring belongs to a theming capability that owns the whole palette, not to this block.
 
 ### 4.5 Render orchestration (RENDER)
 
@@ -644,7 +689,7 @@ The mode pane backgrounds (RENDER-05) are delivered by the mode profiles rather 
 |:--------------------------|:----------|:-------------------------------------|
 | `↖ web` action            | `#8be9fd` | cyan — action, matching the identity it opens |
 | `↗ code` action           | `#ff79c6` | pink — action affordance             |
-| `beacon_project_full`     | `#6272a4` | comment — identity / label           |
+| `beacon_project_name`     | `#6272a4` | comment — identity / label           |
 | `beacon_branch_clean`     | `#50fa7b` | green — branch state (synced)        |
 | `beacon_branch_diverged`  | `#ffb86c` | orange — branch state (ahead/behind) |
 | `beacon_branch_untracked` | `#6272a4` | comment — branch state (no upstream) |
@@ -694,7 +739,7 @@ The status line shall **not** call `resolve_url` — it renders per prompt, and 
 
 What this retires is the `url-<pane-guid>.txt` **handoff file** — the second source that drifted from the chip beside it (#5) — not the `↖ web` button, which survives on a different footing (STATUS-BAR-08). The footer link and the button answer different questions: the footer serves a pane running Claude, the button serves any pane at all.
 
-**STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) captured *before* the deliverable suffix is appended to the chip. Branch and repo URLs are not deliverables and shall record nothing.
+**STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) — resolved for this purpose alone, since no chip paints it (STATUS-BAR-02). Branch and repo URLs are not deliverables and shall record nothing.
 
 The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped, so the footer cannot grow without bound.
 
@@ -844,7 +889,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | User var | Source | Empty when |
 |:---|:---|:---|
 | `beacon_project` | PROV-01 | not in a recognized project (uses PROV-06 fallback instead) |
-| `beacon_project_full` | abbreviated remote identity, `<forge>:<owner>/<repo>` for known forges else `host/owner/repo`; appends `#<n>` (issue/PR) or `!<n>` (GitLab MR) when PROV-07 returns a deliverable URL | not in a recognized project |
+| `beacon_project_name` | the project's name — the `origin` remote's repo basename, else the project root's directory name, else the current directory's | never — the directory name is the floor |
 | `beacon_branch` | branch name, prefixed with the ahead/behind indicator only when diverged | not in a repo |
 | `beacon_branch_state` | `clean` / `diverged` / `untracked` | not in a repo |
 | `beacon_branch_default` | `beacon_branch` when the branch is the repo's default (STATUS-BAR-03), else empty | n/a |
@@ -854,7 +899,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | `beacon_task` | plugin-only; carries `" · <task>"` when the resolved task (PROV-02) is non-empty | no task resolved |
 | `beacon_task_nl` | plugin-only; carries the task on an indented second line (`"\n  <task>"`) for the two-line tab label (TITLE-05) | no task resolved |
 | `beacon_title_prefix` | plugin-only; leads title line 1 with the paused glyph (`PAUSED_TITLE_GLYPH`) while paused (TITLE-06), marking the parked state on the tab + window title | `""` in every non-paused state |
-| `beacon_title` | window-title only (TITLE-01), not a status-bar chip; `beacon_project_full` when in a project, else the abbreviated cwd | never — the cwd is the floor |
+| `beacon_title` | window-title only (TITLE-01), not a status-bar chip; the project name when in a project, else the abbreviated cwd — it floors on the *path* where the chip floors on the directory name, since a title has room for one | never — the cwd is the floor |
 
 The per-session handoff file for the `↗ code` action button (see §6.10 caveat 6) lives at `<DATA_DIR>/cache/cwd-<pane-guid>.txt` — `<pane-guid>` is the GUID segment of `ITERM_SESSION_ID` (§6.10 caveat 6) and `<DATA_DIR>` is resolved per the convergence rule above, so the shell, hooks, and slash commands all read and write the same file.
 
@@ -865,7 +910,8 @@ Tab-completion install (CMD-09) writes `~/.zsh/completions/_beacon` and inserts 
 ```zsh
 # Pseudocode
 _beacon_precmd() {
-  beacon-iterm uservar beacon_project "$(_beacon_project_name)"
+  # NOT beacon_project — the plugin is that slot's sole writer (BADGE-02).
+  beacon-iterm uservar beacon_project_name "$(_beacon_project_name)"
 }
 _beacon_chpwd() {
   _beacon_precmd  # re-publishes branch + branch_clean/branch_diverged via _beacon_branch_info
