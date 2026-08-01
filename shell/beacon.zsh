@@ -19,25 +19,13 @@ if [[ ! -x "$_BEACON_ITERM" ]]; then
   return 1
 fi
 
-# Path to the plugin script — used by helpers below (resolve-url, data-dir).
+# Path to the plugin script — used by helpers below (config-get, data-dir).
 # The user-facing `beacon` command on PATH comes from a wrapper installed by
 # `beacon install-cli` to ~/.local/bin/beacon, NOT from a shell alias. The
 # wrapper is what the SessionStart freshness hook (hooks/cli-freshness.sh)
 # can see via `command -v beacon` from non-interactive shells; an alias
 # wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
-
-# tack's route directory, mirroring the plugin's `TACK_HOME or ~/.tack`
-# resolution (scripts/beacon) so a relocated tack home keeps the url-cache
-# signal correct. Each route lives at `<dir>/<slug>.yaml`; the precmd folds
-# the matching route file's mtime into the url cache key so a mid-session
-# tack write (which bumps that mtime) forces one re-resolve without a `cd`
-# or branch switch.
-typeset -g _BEACON_TACK_ROUTES="${TACK_HOME:-$HOME/.tack}/routes"
-
-# `zstat` for the per-prompt route-file mtime probe — a pure-zsh stat that
-# keeps the hot path free of an extra subprocess.
-zmodload -F zsh/stat b:zstat
 
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
@@ -131,76 +119,32 @@ _beacon_local_path() {
   print -r -- "${PWD/#$HOME/~}"
 }
 
-# Abbreviated remote identity (e.g. `gh:owner/repo`), or empty when not in a
-# recognized git project. Used by the status bar's project_full chip. Known
-# forge hosts collapse to a 2-letter prefix; unknown hosts pass through as
-# `host/owner/repo`. Mirrors python's `_project_full_at` / `_abbrev_remote_host`.
-_beacon_project_full() {
+# The project's name (e.g. `beacon`) — the remote's repo basename, else the
+# project root's own directory name. Empty when not in a recognized project, so
+# the caller can tell "no project" from "a project called X"; the status-bar
+# chip floors that to the directory name, the window title to the abbreviated
+# cwd. Mirrors python's `_project_name_at`.
+_beacon_project_name() {
   local root
   root="$(_beacon_project_root)" || { print -r -- ""; return }
   local url=""
   if [[ -d "$root/.git" || -f "$root/.git" ]]; then
     url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
   fi
-  if [[ -z "$url" ]]; then
-    print -r -- ""
+  if [[ -n "$url" ]]; then
+    local path="${url%/}"
+    path="${path%.git}"
+    print -r -- "${path:t}"
     return
   fi
-  local path="$url"
-  if [[ "$path" == *"://"* ]]; then
-    path="${path#*://}"
-    path="${path#*@}"            # strip optional user@ prefix
-  elif [[ "$path" == *":"* ]]; then
-    # ssh form: git@host:owner/repo.git → host/owner/repo
-    local host_path="${path#*@}"
-    local host="${host_path%%:*}"
-    local p="${host_path#*:}"
-    path="$host/$p"
-  fi
-  path="${path%/}"
-  path="${path%.git}"
-  case "$path" in
-    github.com/*)    path="gh:${path#github.com/}"    ;;
-    gitlab.com/*)    path="gl:${path#gitlab.com/}"    ;;
-    bitbucket.org/*) path="bb:${path#bitbucket.org/}" ;;
-  esac
-  print -r -- "$path"
-}
-
-# PROV-07 implementation. Override-point: redefine in your .zshrc
-# AFTER sourcing beacon.zsh to swap in a non-tack URL provider (Linear, Jira,
-# GitHub Issues, etc.). Default impl delegates to the plugin, which knows the
-# full chain (override → tack → branch URL → project URL).
-# Output format: "<url>\t<label>\n" (TAB-separated).
-_beacon_resolve_url() {
-  python3 "$_BEACON_SCRIPT" resolve-url 2>/dev/null
-}
-
-# Suffix derived from a forge issue/PR/MR URL: `#42` for issues/PRs, `!17`
-# for GitLab MRs. Empty when the URL isn't a recognized deliverable. Used
-# to contextualize the project_full chip when PROV-07 returns a deliverable
-# URL. Mirrors python's `_deliverable_suffix`. GitLab patterns come first
-# because their `/-/issues/` and `/-/merge_requests/` paths contain the
-# literal substring `/issues/` that the generic GitHub patterns would also
-# match — we want the GitLab sigil (`!` for MRs) to win on GitLab URLs.
-_beacon_deliverable_suffix() {
-  emulate -L zsh
-  local url="$1"
-  local sigil="" id=""
-  case "$url" in
-    *"/-/merge_requests/"*) sigil="!"; id="${${url##*"/-/merge_requests/"}%%[!0-9]*}" ;;
-    *"/-/issues/"*)         sigil="#"; id="${${url##*"/-/issues/"}%%[!0-9]*}" ;;
-    *"/pull/"*)             sigil="#"; id="${${url##*"/pull/"}%%[!0-9]*}" ;;
-    *"/issues/"*)           sigil="#"; id="${${url##*"/issues/"}%%[!0-9]*}" ;;
-  esac
-  [[ -n "$id" ]] && print -r -- "${sigil}${id}"
+  print -r -- "${root:t}"
 }
 
 # Track last-published values so we only emit on change. The sentinel ensures
 # the first publish always fires — including when the resolved value is empty
 # (e.g. shell starts in a non-project directory). Without this, an empty
 # resolved value would match the initial empty state and we'd skip the publish.
-typeset -g _BEACON_LAST_PROJECT_FULL='__unset__'
+typeset -g _BEACON_LAST_PROJECT_NAME='__unset__'
 typeset -g _BEACON_LAST_TITLE='__unset__'
 typeset -g _BEACON_LAST_BRANCH='__unset__'
 typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
@@ -209,8 +153,6 @@ typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
-typeset -g _BEACON_LAST_URL_SIGNAL='__unset__'
-typeset -g _BEACON_RESOLVED_URL=''
 
 # Per-session file handoff for status-bar action buttons. Action enum 35
 # doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
@@ -324,42 +266,24 @@ _beacon_precmd() {
     _BEACON_LAST_LOCAL_PATH="$lp"
   fi
 
-  # URL resolution is heavier (python startup + possible tack subprocess).
-  # Only re-resolve when the signal changed; otherwise the cached URL is still
-  # valid. Resolving here (before project_full publish) lets the chip
-  # contextualize itself with the deliverable suffix via _beacon_deliverable_suffix.
-  #
-  # cwd and branch don't move when a deliverable/link is recorded on the route
-  # mid-session, but the route file's mtime does — every tack write bumps it.
-  # Folding that mtime into the key lets the badge upgrade to the route URL
-  # within one prompt cycle, while the heavy resolve still fires only on a real
-  # change. The route lives at `<routes>/<branch>.yaml` because the tack step
-  # matches the route slug to the branch, so this adds signal exactly where the
-  # tack step can produce a URL and is a no-op (empty mtime) elsewhere.
-  local tack_mtime=""
-  zstat -A tack_mtime +mtime -- "${_BEACON_TACK_ROUTES}/${b}.yaml" 2>/dev/null
-  local url_signal="${lp}@${b}@${tack_mtime[1]:-}"
-  if [[ "$url_signal" != "$_BEACON_LAST_URL_SIGNAL" ]]; then
-    local raw="$(_beacon_resolve_url)"
-    _BEACON_RESOLVED_URL="${raw%%	*}"
-    _BEACON_LAST_URL_SIGNAL="$url_signal"
-  fi
-  local url="$_BEACON_RESOLVED_URL"
-
-  local pf_base="$(_beacon_project_full)"
-  local pf="$pf_base"
-  [[ -n "$pf_base" ]] && pf="${pf_base}$(_beacon_deliverable_suffix "$url")"
-  if [[ "$pf" != "$_BEACON_LAST_PROJECT_FULL" ]]; then
-    "$_BEACON_ITERM" uservar beacon_project_full "$pf"
-    _BEACON_LAST_PROJECT_FULL="$pf"
+  # The project chip is the project's *name* (STATUS-BAR-02), so it needs no
+  # URL: it reads the same in a plain shell as under Claude, and outside a git
+  # repo it floors on the directory rather than collapsing. That is what took
+  # the per-prompt `resolve-url` (python startup plus a possible tack
+  # subprocess) off this hot path entirely.
+  local pname="$(_beacon_project_name)"
+  local chip="${pname:-${PWD:t}}"
+  if [[ "$chip" != "$_BEACON_LAST_PROJECT_NAME" ]]; then
+    "$_BEACON_ITERM" uservar beacon_project_name "$chip"
+    _BEACON_LAST_PROJECT_NAME="$chip"
   fi
 
   # Window title value (TITLE-01): the project identity when in one, else the
-  # cwd, so a plain shell outside any project shows where it is rather than a
-  # blank title. Kept separate from beacon_project_full — the status-bar chip
-  # collapses when empty, so it must NOT carry the cwd fallback. Local path is
-  # never empty (PWD always set), so the title never goes blank.
-  local title="${pf:-$lp}"
+  # abbreviated cwd — a plain shell outside any project shows where it is
+  # rather than a blank title. It floors differently from the chip on purpose:
+  # a title has room for a path, a chip beside the branch does not. Local path
+  # is never empty (PWD always set), so the title never goes blank.
+  local title="${pname:-$lp}"
   if [[ "$title" != "$_BEACON_LAST_TITLE" ]]; then
     "$_BEACON_ITERM" uservar beacon_title "$title"
     _BEACON_LAST_TITLE="$title"
@@ -370,7 +294,7 @@ _beacon_precmd() {
 _beacon_chpwd() {
   # Force re-publish on directory change — branch may have changed even if
   # project is the same, and project may have changed entirely.
-  _BEACON_LAST_PROJECT_FULL='__unset__'
+  _BEACON_LAST_PROJECT_NAME='__unset__'
   _BEACON_LAST_TITLE='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'
@@ -378,7 +302,6 @@ _beacon_chpwd() {
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'
   _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
-  _BEACON_LAST_URL_SIGNAL='__unset__'
   _beacon_precmd
 }
 

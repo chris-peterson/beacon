@@ -5,7 +5,7 @@ Maintained by `/sextant:spec-status`.
 
 **Last audit:** 2026-07-30
 **Spec version:** v2 (root-level, `SPEC.md`)
-**Coverage:** 165 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+**Coverage:** 164 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
 (the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
 deliverables) join STATUSLINE-01, and STATUS-BAR-07 makes the `↗ code` editor
@@ -74,7 +74,7 @@ a mode state swaps into its profile for a background a color OSC can't express
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
 | CLI-01..12, 14, 16, 17 (gap 13; CLI-04/05/15 retired) | 13 | All Covered | CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`) |
-| BADGE-01..14 (incl. 09a; BADGE-15 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
+| BADGE-01..14 (incl. 09a; BADGE-08, BADGE-15 retired) | 14 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color |
 | TITLE-01..04 | 4 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write |
 | STATUS-BAR-01..03, 05..09 (gap 04) | 8 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor and STATUS-BAR-08 the `↖ web` chip resolving at click time via `cmd_open_url <cwd>`, both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3); STATUS-BAR-09 is the `statusbar.buttons.<name>` block behind both — `cmd` read on the click (with `{dir}` / `{project}` / `{branch}` expanded per argument by `_substitute_cmd_tokens`, `{dir}` suppressing the editor append), `label` baked into the profile by `install_dynamic_profile` and applied by CMD-23 (issue #29) |
 | STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26); STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18) |

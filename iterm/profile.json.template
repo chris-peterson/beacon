@@ -81,7 +81,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_project_full)",
+                "expression": "\\(user.beacon_project_name)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",

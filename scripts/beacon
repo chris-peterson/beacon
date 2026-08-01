@@ -3059,7 +3059,12 @@ def _qualify_deliverable(entry: dict, project_id: str) -> str:
 
 def _project_full_at(cwd: Path) -> str:
     """Abbreviated remote identity, e.g. `gh:owner/repo`. Empty when there's
-    no project or no remote. Mirrors shell's `_beacon_project_full`."""
+    no project or no remote.
+
+    Not a painted value — the project chip carries the project's *name*
+    (STATUS-BAR-02). This is the qualifier that tells the status line whether a
+    deliverable belongs to this project or another (STATUSLINE-03), which is why
+    it survives the chip that used to render it."""
     root = _project_root_at(cwd)
     if not root:
         return ""
@@ -3100,8 +3105,19 @@ def _local_path_at(cwd: Path) -> str:
 _LAST_CHIP_SIGNATURE: tuple[str, ...] | None = None
 
 
+def _project_chip_at(cwd: Path) -> str:
+    """The project chip's value (STATUS-BAR-02): the project's name, and the
+    directory's own name when that isn't a project.
+
+    `_project_name_at` answers empty outside a recognized project because its
+    other caller (tack route lookup) needs that distinction. The chip has no use
+    for a blank slot — it reads the same in a plain shell as under Claude, in a
+    git repo or not — so it floors here. Mirrors the shell's precmd."""
+    return _project_name_at(cwd) or cwd.name or str(cwd)
+
+
 def _publish_chips(cwd: Path) -> None:
-    """Refresh status-bar chips (project_full, branch*) + the `↗ code` handoff
+    """Refresh status-bar chips (project_name, branch*) + the `↗ code` handoff
     file from `cwd`, and persist the resolved URL for the status line. Does NOT
     touch beacon_project / beacon_task — those are owned by the engagement
     renderer.
@@ -3110,24 +3126,22 @@ def _publish_chips(cwd: Path) -> None:
     chips reflect branch creation / tack-context changes that happened while
     the shell was blocked on Claude."""
     global _LAST_CHIP_SIGNATURE
-    project_full = _project_full_at(cwd)
     display, state, _ind, identity = _detect_branch_info(cwd)
     url, label = resolve_url(cwd)
 
-    # The bare forge identity, captured before the deliverable suffix is
-    # appended — it's what qualifies a deliverable as this project's or
-    # another's (STATUSLINE-03).
-    project_id = project_full
+    # The bare forge identity (`gh:acme/widgets`) is not a chip value — the chip
+    # carries the project's name. It is still resolved here because it qualifies
+    # a deliverable as this project's or another's in the status line
+    # (STATUSLINE-03).
+    project_id = _project_full_at(cwd)
     ref = _deliverable_suffix(url)
-    if project_full:
-        project_full = f"{project_full}{ref}"
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
     # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
     # precmd so Claude-session and interactive panes agree.
     is_default = identity == "default"
     pairs = (
-        f"beacon_project_full={project_full}",
+        f"beacon_project_name={_project_chip_at(cwd)}",
         f"beacon_branch={display}",
         f"beacon_branch_state={state}",
         f"beacon_branch_default={display if is_default else ''}",
@@ -4650,7 +4664,7 @@ def cmd_hook(args):
     # WINDOW-TITLE (TITLE-04): the interactive shell sets the session name once
     # on source (shell/beacon.zsh), backgrounded — so its write can land AFTER
     # the plugin's SessionStart set-name and revert an engaged pane's title to
-    # the shell's `\(user.beacon_project_full)` template. render() only (re)sets
+    # the shell's `\(user.beacon_project_name)` template. render() only (re)sets
     # the name on a profile swap, so reclaim it once on the first turn boundary
     # (by then the launch-time shell write has settled). It's a one-shot: after
     # SessionStart nothing else clobbers the name (the shell never re-sources

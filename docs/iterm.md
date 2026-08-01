@@ -88,7 +88,7 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
       <span class="bcn-spring"></span>
-      <span class="bcn-proj">gh:chris-peterson/claude-marketplace<span class="bcn-mk">3</span></span>
+      <span class="bcn-proj">claude-marketplace<span class="bcn-mk">3</span></span>
       <span class="bcn-sep">│</span>
       <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
       <span class="bcn-sep">│</span>
@@ -98,7 +98,7 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
   <ol class="bcn-legend">
     <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
-    <li><span><b>Project chip</b> — the forge identity, abbreviated (<code>gh:</code>, <code>gl:</code>). Appends <code>#42</code> / <code>!17</code> when the session is on a deliverable.</span></li>
+    <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
     <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default).</span></li>
     <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
@@ -137,30 +137,30 @@ The status bar carries a fixed-layout strip the badge has no room for: `↖ web 
 
 It carries only the two things a link can't do — type a command into the pane, and launch a local app. Navigating to the session's URL is the [status line](#the-status-line)'s job, where it's a real hyperlink that works in any terminal.
 
-The project chip answers "what am I working on," not just "what repo am I in" — it appends the deliverable and colors the branch by its git sync state:
+The project chip names the project, and the branch beside it is colored by its git sync state:
 
 <div class="bcn bcn-striprow">
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">In a repo, no tracked deliverable — the chip shows the bare identity.</div>
+    <div class="cap">On the default branch, synced — branch is green.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gh:acme/widgets<b>#42</b></span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitHub PR — chip shows <code>#42</code>, branch is amber (ahead of upstream).</div>
+    <div class="cap">Ahead of upstream — branch is amber.</div>
   </div>
   <div class="bcn-strip">
     <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">gl:platform/auth-svc<b>!17</b></span><span class="bcn-sep">│</span><span class="bcn-branch">passkeys</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">notes</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
     </div>
-    <div class="cap">On a GitLab MR — chip shows <code>!17</code>.</div>
+    <div class="cap">Not a git repo — the chip still names the directory; no branch renders.</div>
   </div>
 </div>
 
-The deliverable comes from [tack](https://github.com/chris-peterson/tack) when it's tracking the branch, or from `gh`/`glab` when an open PR/MR matches it. Without either, the chip shows the bare repo identity. See [Tack integration](/?id=tack-integration-optional) for the resolution order.
+The chip needs no git repo, no remote, and no Claude session to have an answer, so it reads the same in every pane. Which **deliverable** you are on is the status line's job (a clickable `#42`), and the `↖ web` button opens it.
 
 ## The status line
 

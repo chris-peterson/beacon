@@ -964,6 +964,83 @@ class CustomizableStatusBarButtons(unittest.TestCase):
         self.assertIn("failed to write", str(cm.exception))
 
 
+class ProjectChipIsTheProjectName(BeaconTest):
+    """STATUS-BAR-02: the chip carries the project's name, not a forge identity
+    and not a deliverable ref — so it reads the same in a plain shell as under
+    Claude, in a git repo or out of one."""
+
+    def test_the_chip_is_the_project_name(self):
+        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"):
+            self.assertEqual(self.beacon._project_chip_at(Path("/work/widgets")), "widgets")
+
+    def test_outside_a_project_the_chip_names_the_directory(self):
+        # The old chip collapsed to empty here, which is the case the rewrite
+        # exists to fix: a plain shell had no identity on the strip at all.
+        with mock.patch.object(self.beacon, "_project_name_at", return_value=""):
+            self.assertEqual(self.beacon._project_chip_at(Path("/tmp/scratch")), "scratch")
+
+    def test_the_chip_carries_no_deliverable_ref(self):
+        published = {}
+        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widgets"), \
+             mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("topic", "clean", "", "feature")), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
+             mock.patch.object(self.beacon, "_cli",
+                               side_effect=lambda *a: published.update({"args": a})):
+            self.beacon._LAST_CHIP_SIGNATURE = None
+            self.beacon._publish_chips(Path("/work/widgets"))
+        pairs = published["args"][1:]
+        self.assertIn("beacon_project_name=widgets", pairs)
+        self.assertFalse([p for p in pairs if "#42" in p],
+                         "the deliverable ref belongs to the status line, not the chip")
+
+    def test_the_forge_identity_still_qualifies_deliverables(self):
+        # `_project_full_at` outlives the chip that rendered it: STATUSLINE-03
+        # needs it to tell this project's deliverables from another's.
+        recorded = {}
+        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widgets"), \
+             mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("topic", "clean", "", "feature")), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
+             mock.patch.object(self.beacon, "_record_deliverable",
+                               side_effect=lambda *a: recorded.update({"args": a})), \
+             mock.patch.object(self.beacon, "_cli"):
+            self.beacon._LAST_CHIP_SIGNATURE = None
+            self.beacon._publish_chips(Path("/work/widgets"))
+        self.assertEqual(recorded["args"][0], "#42")
+        self.assertEqual(recorded["args"][2], "gh:acme/widgets")
+        self.assertEqual(self.beacon.read_state("resolved.project"), "gh:acme/widgets")
+
+
+class ShellMirrorsTheChipContract(unittest.TestCase):
+    """§6.5: the shell's precmd and the plugin publish the same slot, so a
+    Claude pane and an interactive pane agree. These assert the shell source
+    kept its half of the contract — it can't be imported and run here."""
+
+    def setUp(self):
+        self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+
+    def test_the_shell_publishes_the_project_name_slot(self):
+        self.assertIn("uservar beacon_project_name", self.shell)
+        self.assertNotIn("beacon_project_full", self.shell)
+
+    def test_the_shell_never_publishes_the_plugin_owned_slot(self):
+        # BADGE-02: beacon_project is the plugin's alone.
+        self.assertNotIn("uservar beacon_project ", self.shell)
+
+    def test_the_prompt_path_resolves_no_url(self):
+        # The chip needs no URL, so the per-prompt python + tack subprocesses
+        # are gone. A reintroduced resolve here would be a hot-path regression.
+        for gone in ("_beacon_resolve_url", "_beacon_deliverable_suffix",
+                     "_BEACON_RESOLVED_URL", '"$_BEACON_SCRIPT" resolve-url', "zstat"):
+            with self.subTest(symbol=gone):
+                self.assertNotIn(gone, self.shell)
+
+
 class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
     """Every `__BEACON_*__` in the profile template needs a matching `.replace`
     in `install_dynamic_profile`. A placeholder added to the template alone
@@ -2997,7 +3074,7 @@ class StatusBarLayout(unittest.TestCase):
         self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 1)
         self.assertEqual(
             comps[2]["configuration"]["knobs"]["expression"],
-            r"\(user.beacon_project_full)")
+            r"\(user.beacon_project_name)")
         self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
 
     def test_review_chip_is_gone(self):

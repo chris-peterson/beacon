@@ -406,11 +406,11 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon asks it for the URL most relevant to the current branch and surfaces that URL in two places:
 
 - The status-line link points at it instead of the bare project URL.
-- The project chip appends `#42` (issue/PR) or `!17` (GitLab MR) when the URL is a forge deliverable — `gh:owner/repo#42` instead of just `gh:owner/repo`.
+- The `↖ web` button opens it instead of the repo's front page.
 
 The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly — `gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts — and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-Prefer Linear, Jira, GitHub Issues, or a custom provider? Override `_beacon_resolve_url()` in your `.zshrc` after sourcing `beacon.zsh`. The function returns a `<url>\t<label>` line and slots into PROV-07; see [PROV-07](/spec) and [BADGE-08](/spec) for the full contract.
+Prefer Linear, Jira, GitHub Issues, or a custom provider? There's no hook for that today — the `_beacon_resolve_url()` shell override retired along with the URL the status bar used to need (see [BADGE-08](/spec)). What you can still repoint is the `↖ web` button, at any command you like.
 
 ## Standalone (no tack, no recipes)
 
