@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.1.0
+
+### Customizable status-bar buttons
+
+The `↖ web` and `↗ code` buttons take their label and their command from a `statusbar.buttons` block in `~/.config/beacon/config.json`, with `{dir}` / `{project}` / `{branch}` placeholders for positioning values in the command. See [Customizing the two buttons](https://chris-peterson.github.io/beacon/#/?id=customizing-the-two-buttons).
+
+This replaces `web_cmd`, `code_app`, and `code_args`. A config still setting them renders the defaults rather than erroring, so move them:
+
+| Was | Now |
+|:---|:---|
+| `"web_cmd": "git web"` | `"statusbar": { "buttons": { "web": { "cmd": "git web" } } }` |
+| `"code_app": "code", "code_args": ["-n"]` | `"statusbar": { "buttons": { "code": { "cmd": "code -n" } } }` |
+
+A changed `cmd` applies on the next click. A changed `label` applies on `beacon install-profile`, a new profile-only re-render: iTerm2 keeps an action button's title in the profile and gives it no way to read a user variable, so the label has to be baked in.
+
+### The project chip is the project's name
+
+The status bar's project chip showed an abbreviated forge identity with a deliverable ref pinned to it (`gh:acme/widgets#42`). It now shows the project's name (`widgets`).
+
+That makes it work everywhere the old one didn't: outside a git repo, in a repo with no remote, and in a plain shell with no Claude session, the chip names the directory instead of collapsing to nothing. It also takes a `resolve-url` call — a Python start plus a possible `tack` subprocess — off the shell's every-prompt path, since a name needs no URL.
+
+Which deliverable you're on is the [status line](https://chris-peterson.github.io/beacon/#/iterm?id=the-status-line)'s job, where the ref is a clickable link, and the `↖ web` button still opens it.
+
+**Retired:** the `_beacon_resolve_url()` shell override (BADGE-08). Its only consumer was the chip's deliverable ref, so redefining it would now change nothing.
+
 ## 2.0.0
 
 beacon's per-session context moves off iTerm2 and into the Claude Code status line — a footer Claude renders, that never overlaps terminal output, and that **any** terminal shows. What stays on the iTerm2 strip is what a footer can't do, rebuilt so it can't go stale.
