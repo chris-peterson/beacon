@@ -1006,6 +1006,7 @@ class ProjectChipIsTheProjectName(BeaconTest):
                                return_value=("topic", "clean", "", "feature")), \
              mock.patch.object(self.beacon, "resolve_url",
                                return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
+             mock.patch.object(self.beacon, "_tack_route_urls", return_value=[]), \
              mock.patch.object(self.beacon, "_record_deliverable",
                                side_effect=lambda *a: recorded.update({"args": a})), \
              mock.patch.object(self.beacon, "_cli"):
@@ -1590,13 +1591,14 @@ class DeliverableAccumulation(BeaconTest):
     lands on, so the status line can show what the session has crossed. Only
     forge issue/PR/MR URLs count — a branch or repo page is not a deliverable."""
 
-    def _publish(self, url, project_full="gh:acme/widgets"):
+    def _publish(self, url, project_full="gh:acme/widgets", route=()):
         self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
              mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
+             mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
             self.beacon._publish_chips(Path("/x"))
 
@@ -1660,6 +1662,253 @@ class DeliverableAccumulation(BeaconTest):
         self._publish("https://github.com/acme/widgets/pull/42")
         self.beacon._wipe_session_for_fresh_start()
         self.assertEqual(self._refs(), [])
+
+
+class TackRouteAcquisition(BeaconTest):
+    """STATUSLINE-03 (#31): the bound tack route — not the branch resolver — is
+    what feeds the row. PROV-07 answers "what does this branch point at", so
+    work with no branch to be found by (an issue filed from the default branch,
+    another project's deliverable the session crossed) reached it not at all."""
+
+    ROUTE = {
+        "slug": "cart-rework",
+        "tacks": [
+            {"status": "done",
+             "deliverable": {"url": "https://github.com/acme/widgets/pull/30"},
+             "links": [{"url": "https://github.com/acme/widgets/issues/29"}]},
+            {"status": "in_progress",
+             "links": [{"url": "https://github.com/other/otherproj/issues/9"},
+                       {"url": "https://github.com/acme/widgets/issues/29"}]},
+        ],
+    }
+
+    def _urls(self, route):
+        with mock.patch.object(self.beacon, "_bound_tack_route", return_value=route):
+            return self.beacon._tack_route_urls(Path("/x"), "topic", "widgets")
+
+    def test_every_deliverable_and_link_is_gathered_in_route_order(self):
+        self.assertEqual(self._urls(self.ROUTE), [
+            "https://github.com/acme/widgets/pull/30",
+            "https://github.com/acme/widgets/issues/29",
+            "https://github.com/other/otherproj/issues/9",
+        ])
+
+    def test_no_bound_route_gathers_nothing(self):
+        self.assertEqual(self._urls(None), [])
+
+    def _publish(self, url, route=(), project_full="gh:acme/widgets", reset=True):
+        if reset:
+            self.beacon._LAST_CHIP_SIGNATURE = None
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
+             mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
+            self.beacon._publish_chips(Path("/x"))
+
+    def _entries(self):
+        return self.beacon.read_state_json("deliverables", [])
+
+    def test_an_issue_with_no_branch_reaches_the_row(self):
+        # The motivating session: on `main`, no open PR, so PROV-07 fell through
+        # to the bare repo URL and nothing was recorded.
+        self._publish("https://github.com/acme/widgets",
+                      route=["https://github.com/acme/widgets/issues/9"])
+        self.assertEqual([e["ref"] for e in self._entries()], ["#9"])
+
+    def test_each_entry_carries_the_project_its_own_url_names(self):
+        # Stamping cwd's identity on a foreign ref renders another project's #9
+        # as if it were local.
+        self._publish("https://github.com/acme/widgets",
+                      route=["https://github.com/other/otherproj/issues/9"])
+        self.assertEqual(self._entries()[0]["project"], "gh:other/otherproj")
+
+    def test_the_resolved_url_is_recorded_last(self):
+        # It is the only entry with a live task to title it, and last is
+        # furthest from the DELIVERABLES_MAX eviction edge.
+        self._publish("https://github.com/acme/widgets/pull/42",
+                      route=["https://github.com/acme/widgets/issues/9"])
+        self.assertEqual([e["ref"] for e in self._entries()], ["#9", "#42"])
+
+    def test_a_url_in_both_the_route_and_the_resolver_is_recorded_once(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._publish(url, route=[url])
+        self.assertEqual([e["ref"] for e in self._entries()], ["#42"])
+
+    def test_a_link_added_to_the_route_is_not_gated_out(self):
+        # The chip signature covers branch + resolved URL; a link added to the
+        # route changes neither, so gating on those alone would leave the new
+        # deliverable unrecorded until the branch moved.
+        url = "https://github.com/acme/widgets/pull/42"
+        self._publish(url, route=[])
+        self._publish(url, route=["https://github.com/acme/widgets/issues/9"], reset=False)
+        self.assertEqual([e["ref"] for e in self._entries()], ["#9", "#42"])
+
+
+class ProjectIdentityFromUrl(BeaconTest):
+    """STATUSLINE-03 (#31): an entry's project is derived from its own URL, so a
+    ref from another project renders qualified."""
+
+    def test_github(self):
+        self.assertEqual(
+            self.beacon._project_id_from_url("https://github.com/acme/widgets/pull/42"),
+            "gh:acme/widgets")
+
+    def test_a_nested_gitlab_project_keeps_every_segment(self):
+        self.assertEqual(
+            self.beacon._project_id_from_url(
+                "https://gitlab.com/acme/team/widgets/-/issues/7"),
+            "gl:acme/team/widgets")
+
+    def test_a_group_scoped_epic_resolves_to_the_group(self):
+        self.assertEqual(
+            self.beacon._project_id_from_url("https://gitlab.com/groups/acme/-/epics/7"),
+            "gl:acme")
+
+    def test_a_non_forge_string_resolves_to_nothing(self):
+        self.assertEqual(self.beacon._project_id_from_url("not a url"), "")
+
+
+class WorkItemAndTrackerRefs(BeaconTest):
+    """STATUSLINE-03 (#31): GitLab renamed `/-/issues/<n>` to `/-/work_items/<n>`
+    and the API hands back the new form; epics and milestones are the same class
+    of thing a session crosses. Sigils follow GitLab's own reference syntax."""
+
+    CASES = (
+        ("https://gl.test/a/b/-/work_items/12", "#12", "issue"),
+        ("https://gl.test/a/b/-/issues/12", "#12", "issue"),
+        ("https://gl.test/groups/a/-/epics/3", "&3", "epic"),
+        ("https://gl.test/a/b/-/milestones/5", "%5", "milestone"),
+        ("https://gl.test/a/b/-/merge_requests/8", "!8", "cr"),
+    )
+
+    def test_ref_and_kind(self):
+        for url, ref, kind in self.CASES:
+            with self.subTest(url=url):
+                self.assertEqual(self.beacon._deliverable_suffix(url), ref)
+                self.assertEqual(self.beacon._deliverable_kind(url), kind)
+
+
+class QualifyAgainstGroupScope(BeaconTest):
+    """STATUSLINE-03: an epic or group milestone resolves to the group where the
+    session resolves to a repo inside it, so exact comparison alone would render
+    the tracker the work is filed under as another project's."""
+
+    CASES = (
+        ("gl:acme", "gl:acme/widgets", "&7", "own group's epic reads bare"),
+        ("gl:acme/platform", "gl:acme/platform/widgets", "%2", "nested subgroup"),
+        ("gh:acme/widgets", "gh:acme/widgets", "#32", "own repo"),
+        ("", "gh:acme/widgets", "#9", "entry with no identity"),
+    )
+
+    def test_prefix_of_session_identity_reads_bare(self):
+        for owner, project_id, ref, name in self.CASES:
+            with self.subTest(case=name):
+                entry = {"ref": ref, "project": owner}
+                self.assertEqual(
+                    self.beacon._qualify_deliverable(entry, project_id), ref)
+
+    def test_boundary_keeps_lookalike_group_qualified(self):
+        # Without the trailing slash `gl:acme` would prefix-match `gl:acmecorp/x`
+        # and a genuinely foreign epic would read as local.
+        entry = {"ref": "&7", "project": "gl:acmecorp"}
+        self.assertEqual(
+            self.beacon._qualify_deliverable(entry, "gl:acme/widgets"), "acmecorp:&7")
+
+    def test_foreign_repo_still_qualifies(self):
+        entry = {"ref": "#9", "project": "gh:other/proj"}
+        self.assertEqual(
+            self.beacon._qualify_deliverable(entry, "gh:acme/widgets"), "proj:#9")
+
+
+class OriginUrlMemo(BeaconTest):
+    """A single `_publish_chips` resolves the origin four times over. The remote
+    cannot change inside a hook process, so the lookup is memoized per root."""
+
+    def test_repeated_lookups_shell_out_once(self):
+        completed = subprocess.CompletedProcess(
+            [], 0, stdout="git@github.com:acme/widgets.git\n", stderr="")
+        self.beacon._ORIGIN_URL_CACHE.clear()
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               return_value=completed) as run:
+            first = self.beacon._origin_url_at("/work/widgets")
+            second = self.beacon._origin_url_at("/work/widgets")
+        self.assertEqual(first, "git@github.com:acme/widgets.git")
+        self.assertEqual(second, first)
+        self.assertEqual(run.call_count, 1)
+
+    def test_distinct_roots_are_cached_separately(self):
+        self.beacon._ORIGIN_URL_CACHE.clear()
+        outs = [subprocess.CompletedProcess([], 0, stdout=f"{r}.git\n", stderr="")
+                for r in ("a", "b")]
+        with mock.patch.object(self.beacon.subprocess, "run", side_effect=outs):
+            self.assertEqual(self.beacon._origin_url_at("/work/a"), "a.git")
+            self.assertEqual(self.beacon._origin_url_at("/work/b"), "b.git")
+
+    def test_missing_origin_caches_empty(self):
+        failed = subprocess.CompletedProcess([], 1, stdout="", stderr="")
+        self.beacon._ORIGIN_URL_CACHE.clear()
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               return_value=failed) as run:
+            self.assertEqual(self.beacon._origin_url_at("/work/bare"), "")
+            self.assertEqual(self.beacon._origin_url_at("/work/bare"), "")
+        self.assertEqual(run.call_count, 1)
+
+
+class DropDeliverable(BeaconTest):
+    """CMD-24 (#31): a wider acquisition path records refs the session only
+    mentioned, and the row is capped — so noise left in place evicts real work."""
+
+    URL = "https://github.com/acme/widgets/issues/9"
+
+    def _touch(self, ref, url, project="gh:acme/widgets"):
+        with mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._record_deliverable(ref, url, project)
+
+    def _drop(self, ref):
+        self.beacon.cmd_drop(types.SimpleNamespace(ref=ref))
+
+    def _refs(self):
+        return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def test_the_named_entry_goes_and_the_rest_stay(self):
+        self._touch("#9", self.URL)
+        self._touch("#42", "https://github.com/acme/widgets/pull/42")
+        self._drop("#9")
+        self.assertEqual(self._refs(), ["#42"])
+
+    def test_a_qualified_ref_names_the_same_entry(self):
+        # The row renders another project's entry qualified, so that is the
+        # string the user has in front of them to type.
+        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        self._touch("#9", self.URL, project="gh:other/otherproj")
+        self._drop("otherproj:#9")
+        self.assertEqual(self._refs(), [])
+
+    def test_a_dropped_entry_does_not_come_back(self):
+        # The route is re-read every publish; without remembering the removal
+        # the entry returns on the next turn and drop reads as broken.
+        self._touch("#9", self.URL)
+        self._drop("#9")
+        self._touch("#9", self.URL)
+        self.assertEqual(self._refs(), [])
+
+    def test_an_unknown_ref_exits_nonzero(self):
+        self._touch("#9", self.URL)
+        with self.assertRaises(SystemExit) as ctx, \
+             mock.patch.object(self.beacon.sys, "stderr", io.StringIO()):
+            self._drop("#404")
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertEqual(self._refs(), ["#9"])
+
+    def test_a_fresh_session_forgets_what_was_dropped(self):
+        self._touch("#9", self.URL)
+        self._drop("#9")
+        self.beacon._wipe_session_for_fresh_start()
+        self._touch("#9", self.URL)
+        self.assertEqual(self._refs(), ["#9"])
 
 
 class ConfigurableCodeButton(BeaconTest):
@@ -2917,6 +3166,17 @@ class StatusLineProvider(BeaconTest):
         # CRs lead; issues follow, newest first. Bare for this project,
         # qualified for another.
         self.assertEqual(self._lines(), ["!3", "otherproj:#75 · #4"])
+
+    def test_an_epic_and_a_milestone_share_the_issue_line(self):
+        # They are what the work is *for*, like an issue — so they trail the CRs
+        # rather than each claiming a line and wrapping the row.
+        self.beacon.write_state("resolved.project", "gl:acme/widgets")
+        self._touch("!3", "https://gl.test/acme/widgets/-/merge_requests/3", "gl:acme/widgets")
+        self._touch("&7", "https://gl.test/groups/acme/-/epics/7", "gl:acme")
+        self._touch("%2", "https://gl.test/acme/widgets/-/milestones/2", "gl:acme/widgets")
+        # `&7` bare: the epic's own group is where this repo lives, so the
+        # tracker the work is filed under is not another project's.
+        self.assertEqual(self._lines(), ["!3", "%2 · &7"])
 
     def test_each_deliverable_is_its_own_link(self):
         self.beacon.write_state("resolved.project", "gh:acme/widgets")

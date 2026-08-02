@@ -1,6 +1,6 @@
 ---
 description: Show or set session beacon signals (project, task, status)
-argument-hint: "[show | status <value> [description] | resume | task <label> | project <name> | icon <path|url> | clear | install-cli [--dir <path>]]"
+argument-hint: "[show | status <value> [description] | resume | task <label> | project <name> | icon <path|url> | clear | drop <ref> | install-cli [--dir <path>]]"
 ---
 
 Run the beacon command with the user's arguments. If no arguments were provided, run `show`.

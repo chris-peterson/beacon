@@ -243,6 +243,7 @@ _beacon() {
     'serve:serve the wip payload over localhost, or manage the always-on unit'
     'prune:remove per-session state for long-idle sessions'
     'forget:remove per-session state for one session, by its per-pane hash'
+    'drop:remove one deliverable from the status-line row'
     'export:emit a lossless JSON backup of all per-session state'
     'import:restore per-session state from a beacon export file'
     'completions:install or print shell completions'
@@ -301,6 +302,9 @@ _beacon() {
       ;;
     forget)
       (( CURRENT == 3 )) && _message 'session hash'
+      ;;
+    drop)
+      (( CURRENT == 3 )) && _message 'deliverable ref or URL'
       ;;
     export)
       compadd -- --out-file --compress
@@ -593,20 +597,35 @@ def p_package_name(cwd: Path):
     return None
 
 
+_ORIGIN_URL_CACHE: dict[str, str] = {}
+
+
+def _origin_url_at(root) -> str:
+    """`remote.origin.url` for `root`, memoized for the process. Empty when
+    there's no repo or no origin.
+
+    A single `_publish_chips` wants it four times over — the route lookup's
+    project name, the chip's, the forge identity, and the URL resolver's — and
+    every caller runs in a short-lived hook process, far too short for the
+    remote to change underneath them. Only the one-shot command paths reach
+    this; `serve`'s request loop reads state files and never resolves a URL."""
+    key = str(root)
+    if key not in _ORIGIN_URL_CACHE:
+        out = subprocess.run(
+            ["git", "config", "remote.origin.url"],
+            cwd=root, capture_output=True, text=True, timeout=2, check=False,
+        )
+        _ORIGIN_URL_CACHE[key] = out.stdout.strip() if out.returncode == 0 else ""
+    return _ORIGIN_URL_CACHE[key]
+
+
 def p_git_remote(cwd: Path):
     """Repo basename from git remote (e.g. `beacon`, `auth-svc`) — the last
     path segment of the remote URL, dropping owner/group prefixes. The full
     owner-bearing identity lives in `_project_full_at` (status-bar chip);
     the badge wants a short, scannable label. Returns None when not in a
     git repo or no origin is configured."""
-    root = find_project_root(cwd)
-    out = subprocess.run(
-        ["git", "config", "remote.origin.url"],
-        cwd=root, capture_output=True, text=True, timeout=2,
-    )
-    if out.returncode != 0:
-        return None
-    url = out.stdout.strip()
+    url = _origin_url_at(find_project_root(cwd))
     if not url:
         return None
     # Strip protocol/host. Two URL forms:
@@ -750,9 +769,8 @@ def _tack_landed_urls() -> set[str]:
     }
 
 
-def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
-    """URL for the session's tack route via the in_progress-deliverable →
-    done-deliverable → first-link sub-chain.
+def _bound_tack_route(cwd: Path, branch: str, project: str | None = None) -> dict | None:
+    """The tack route this session is working, or None.
 
     Route selection mirrors the dashboard's _resolve_session so the ↖ web
     button and the fleet-view reference chip never diverge: the session→route
@@ -762,7 +780,7 @@ def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[s
     is the fallback when no pin binds this session."""
     routes = _tack_routes()
     if not routes:
-        return "", ""
+        return None
 
     sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
     slug = None
@@ -780,9 +798,38 @@ def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[s
     if not slug:
         slug, _group = _tack_route_for(cwd, branch, project)
     if not slug:
-        return "", ""
+        return None
+    return next((r for r in routes if r.get("slug") == slug), None)
 
-    route = next((r for r in routes if r.get("slug") == slug), None)
+
+def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list[str]:
+    """Every deliverable and tracker link the bound route holds, in route
+    order, deduped. STATUSLINE-03's acquisition path.
+
+    PROV-07 answers a narrower question — *which one* URL this branch points at
+    — so it surfaces a single ref out of everything a well-kept route records.
+    The status line wants the set: the issue the work answers, the CR that
+    lands it, the release that ships it. Work with no branch to be found by (an
+    issue filed from the default branch, another project's deliverable the
+    session crossed) reaches the row only through here.
+
+    Within a tack the deliverable precedes its links, and tacks come in route
+    order, so the most recent work sorts last and survives DELIVERABLES_MAX."""
+    route = _bound_tack_route(cwd, branch, project)
+    if not route:
+        return []
+    urls = []
+    for t in route.get("tacks") or []:
+        candidates = [(t.get("deliverable") or {}).get("url")]
+        candidates += [ln.get("url") for ln in (t.get("links") or [])]
+        urls += [u for u in candidates if u and u not in urls]
+    return urls
+
+
+def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
+    """URL for the session's tack route via the in_progress-deliverable →
+    done-deliverable → first-link sub-chain."""
+    route = _bound_tack_route(cwd, branch, project)
     if not route:
         return "", ""
     tacks = route.get("tacks", []) or []
@@ -2978,10 +3025,40 @@ _DELIVERABLE_PATTERNS = (
     (re.compile(r"/releases/tag/([^/?#]+)"), "", "release"),
     (re.compile(r"/-/tags/([^/?#]+)"),       "", "release"),
     (re.compile(r"/-/merge_requests/(\d+)"), "!", "cr"),
+    # GitLab renamed `/-/issues/<n>` to `/-/work_items/<n>`; both are live and
+    # the API hands back the new one. Sigils are GitLab's own reference syntax
+    # (`#` issue, `!` MR, `&` epic, `%` milestone), so a ref reads the same on
+    # the row as it does typed into a GitLab comment.
+    (re.compile(r"/-/work_items/(\d+)"),     "#", "issue"),
     (re.compile(r"/-/issues/(\d+)"),         "#", "issue"),
+    (re.compile(r"/-/epics/(\d+)"),          "&", "epic"),
+    (re.compile(r"/-/milestones/(\d+)"),     "%", "milestone"),
     (re.compile(r"/pull/(\d+)"),             "#", "cr"),
     (re.compile(r"/issues/(\d+)"),           "#", "issue"),
 )
+
+
+def _project_id_from_url(url: str) -> str:
+    """The forge identity (`gh:acme/widgets`) of the project a deliverable URL
+    belongs to. Empty when the URL isn't forge-shaped.
+
+    STATUSLINE-03 renders a ref bare or qualified by comparing this against the
+    session's own identity, so an entry has to carry the project *its own URL*
+    names. Taking the cwd's identity was safe only while every entry came from
+    the branch resolver, where the URL belonged to the current project by
+    construction; an entry learned from a tack route can point anywhere, and
+    stamping it with the cwd's identity renders another project's `#9` as if it
+    were local."""
+    m = re.match(r"https?://([^/]+)/(.+)", url or "")
+    if not m:
+        return ""
+    host, path = m.group(1), m.group(2)
+    # GitLab puts everything after `/-/`, so the project path is what precedes
+    # it and may be nested any depth; elsewhere it's `<owner>/<repo>`.
+    path = path.split("/-/", 1)[0] if "/-/" in path else "/".join(path.split("/")[:2])
+    # An epic or a group milestone is group-scoped (`/groups/<group>/-/epics/3`).
+    path = path.removeprefix("groups/").strip("/")
+    return _abbrev_remote_host(f"{host}/{path}") if path else ""
 
 
 def _deliverable_suffix(url: str) -> str:
@@ -3030,6 +3107,11 @@ def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") ->
     Every entry is re-stamped against tack on each call, so a CR that merged (or
     a release that shipped) mid-session moves to the delivered line without
     waiting for anything to touch it again."""
+    # A dropped URL stays dropped for the session (CMD-24). The acquisition path
+    # re-offers the whole route every publish, so removing an entry without
+    # remembering the removal would put it back on the next turn.
+    if url in read_state_json("deliverables.dropped", []):
+        return
     landed = _tack_landed_urls()
     prior = {e.get("url"): e.get("title", "")
              for e in read_state_json("deliverables", []) if isinstance(e, dict)}
@@ -3047,14 +3129,51 @@ def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") ->
 
 def _qualify_deliverable(entry: dict, project_id: str) -> str:
     """`#42` for a deliverable in `project_id`, `otherproj:#42` for one
-    elsewhere. The qualifier is the repo segment of the forge identity
+    elsewhere. The qualifier is the last segment of the forge identity
     (`gh:acme/widgets` → `widgets`), so both sides of the comparison are
-    derived the same way and a rename can't make a local ref read as foreign."""
+    derived the same way and a rename can't make a local ref read as foreign.
+
+    The forge prefix is stripped as well as the owner: a group-scoped identity
+    (`gl:acme`, which a GitLab epic resolves to) has no `/` to split on, and
+    would otherwise qualify as `gl:acme:&7`.
+
+    An entry whose identity is a path-boundary prefix of the session's reads
+    bare too. A GitLab epic or group milestone resolves to the *group*
+    (`gl:acme`) where the session resolves to a repo inside it
+    (`gl:acme/widgets`), so exact comparison alone would qualify your own
+    group's epic as `acme:&7` — foreign-looking, for the tracker the work is
+    filed under. The boundary is what keeps `gl:acme` off `gl:acmecorp/x`, and
+    a repo-scoped entry is unaffected: both sides are then `owner/repo`, so
+    neither can prefix the other."""
     ref = entry.get("ref", "")
     owner = entry.get("project", "")
-    if not owner or owner == project_id:
+    if not owner or owner == project_id or project_id.startswith(owner + "/"):
         return ref
-    return f"{owner.rsplit('/', 1)[-1]}:{ref}"
+    return f"{owner.split(':', 1)[-1].rsplit('/', 1)[-1]}:{ref}"
+
+
+def cmd_drop(args):
+    """CMD-24: take one deliverable off this session's status-line row.
+
+    Acquisition can't tell a deliverable the session is working from one it only
+    mentioned in passing, and the row is capped — so noise left in place evicts
+    real work. The removal is remembered (`deliverables.dropped`) because the
+    route is re-read every publish and would otherwise put the entry straight
+    back. Session-scoped like the list itself: a fresh session starts clean."""
+    target = (getattr(args, "ref", "") or "").strip()
+    project_id = read_state("resolved.project") or ""
+    entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    matched = [e for e in entries
+               if target in (e.get("ref"), e.get("url"), _qualify_deliverable(e, project_id))]
+    if not matched:
+        print(f"no deliverable matching {target!r} on this session's row", file=sys.stderr)
+        sys.exit(2)
+    kept = [e for e in entries if e not in matched]
+    write_state("deliverables", json.dumps(kept))
+    dropped = read_state_json("deliverables.dropped", [])
+    dropped += [e["url"] for e in matched if e.get("url") and e["url"] not in dropped]
+    write_state("deliverables.dropped", json.dumps(dropped))
+    print(f"dropped {target} ({len(kept)} deliverable(s) remaining)")
 
 
 def _project_full_at(cwd: Path) -> str:
@@ -3068,13 +3187,9 @@ def _project_full_at(cwd: Path) -> str:
     root = _project_root_at(cwd)
     if not root:
         return ""
-    out = subprocess.run(
-        ["git", "config", "remote.origin.url"],
-        cwd=root, capture_output=True, text=True, timeout=2,
-    )
-    if out.returncode != 0 or not out.stdout.strip():
+    url = _origin_url_at(root)
+    if not url:
         return ""
-    url = out.stdout.strip()
     if "://" in url:
         path = url.split("://", 1)[1]
         if "@" in path:
@@ -3126,7 +3241,7 @@ def _publish_chips(cwd: Path) -> None:
     chips reflect branch creation / tack-context changes that happened while
     the shell was blocked on Claude."""
     global _LAST_CHIP_SIGNATURE
-    display, state, _ind, identity = _detect_branch_info(cwd)
+    display, state, indicator, identity = _detect_branch_info(cwd)
     url, label = resolve_url(cwd)
 
     # The bare forge identity (`gh:acme/widgets`) is not a chip value — the chip
@@ -3135,6 +3250,10 @@ def _publish_chips(cwd: Path) -> None:
     # (STATUSLINE-03).
     project_id = _project_full_at(cwd)
     ref = _deliverable_suffix(url)
+    # `display` leads with the ahead/behind indicator when diverged; route
+    # lookup correlates on the branch name itself.
+    branch = display[len(indicator):].lstrip() if indicator else display
+    route_urls = _tack_route_urls(cwd, branch, _project_name_at(cwd))
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
     # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
@@ -3155,7 +3274,10 @@ def _publish_chips(cwd: Path) -> None:
     # The URL rides the signature but not the uservar payload: two URLs can
     # differ while every chip stays identical (a branch-tree URL narrowing to
     # a sibling), and the status line reads the persisted value below.
-    signature = pairs + (f"url={url}", f"label={label}")
+    # The route's URL set rides the signature too: a link added to the route
+    # changes nothing about the branch or the resolved URL, and gating on those
+    # alone would leave the new deliverable unrecorded until the branch moved.
+    signature = pairs + (f"url={url}", f"label={label}") + tuple(route_urls)
     if signature == _LAST_CHIP_SIGNATURE:
         return
     _LAST_CHIP_SIGNATURE = signature
@@ -3169,6 +3291,13 @@ def _publish_chips(cwd: Path) -> None:
     write_state("resolved.url", url)
     write_state("resolved.url_label", label)
     write_state("resolved.project", project_id)
+    # The route first, the resolved URL last: only the latter has a live task to
+    # title it, and recording it last keeps the work in hand furthest from the
+    # DELIVERABLES_MAX eviction edge.
+    for r_url in route_urls:
+        r_ref = _deliverable_suffix(r_url)
+        if r_ref and r_url != url:
+            _record_deliverable(r_ref, r_url, _project_id_from_url(r_url) or project_id)
     if ref:
         # The badge's own task, when the chain drew it from the PR title (or the
         # user said so outright). Any other tier — a branch name, an ai-title —
@@ -3176,7 +3305,7 @@ def _publish_chips(cwd: Path) -> None:
         # read as noise next to the ref it follows.
         snap = read_state_json("resolved", {})
         title = (snap.get("task") or "") if snap.get("task_provider") in ("pr", "override") else ""
-        _record_deliverable(ref, url, project_id, title)
+        _record_deliverable(ref, url, _project_id_from_url(url) or project_id, title)
 
     key = _iterm_cache_key()
     if key:
@@ -4089,6 +4218,7 @@ def _wipe_session_for_fresh_start() -> None:
     # previous tenant's deliverables and the footer credits it with work it
     # never touched.
     remove_state("deliverables")
+    remove_state("deliverables.dropped")
     _clear_cc_signals()
     _clear_description()
 
@@ -4194,13 +4324,17 @@ def _statusline_open_lines() -> list[str]:
     live = [e for e in read_state_json("deliverables", [])
             if isinstance(e, dict) and not e.get("delivered")]
     lines = []
-    for kind, sgr in (("cr", STATUSLINE_CR_SGR), ("issue", STATUSLINE_ISSUE_SGR)):
+    # An epic and a milestone are the same class of thing as an issue — what the
+    # work is for, not what ships it — so they share the trailing line rather
+    # than earning one each and pushing the row toward wrapping.
+    for kinds, sgr in ((("cr",), STATUSLINE_CR_SGR),
+                       (("issue", "epic", "milestone"), STATUSLINE_ISSUE_SGR)):
         refs = []
         for e in reversed(live):
-            if _deliverable_kind(e.get("url", "")) != kind:
+            if _deliverable_kind(e.get("url", "")) not in kinds:
                 continue
             ref = f"\033[{sgr}m{_osc8(e.get('url', ''), _qualify_deliverable(e, project_id))}\033[0m"
-            title = " ".join((e.get("title") or "").split()) if kind == "cr" else ""
+            title = " ".join((e.get("title") or "").split()) if "cr" in kinds else ""
             if title:
                 if len(title) > STATUSLINE_TITLE_MAX:
                     title = title[:STATUSLINE_TITLE_MAX - 1].rstrip() + "…"
@@ -4807,6 +4941,9 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp = sub.add_parser("forget", help="remove per-session state for one session, by its per-pane hash")
     sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
 
+    sp = sub.add_parser("drop", help="remove one deliverable from this session's status-line row")
+    sp.add_argument("ref", help="the deliverable's ref (#42, !17, otherproj:#9) or its URL")
+
     sp = sub.add_parser("export",
                         help="emit a lossless JSON backup of all per-session state (joins to a tack export on claude_session_id)")
     sp.add_argument("--out-file", metavar="FILE", default=None,
@@ -4860,7 +4997,7 @@ def main(argv=None):
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "forget": cmd_forget, "export": cmd_export, "import": cmd_import,
+        "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir, "config-get": cmd_config_get,
     }
     if not args.cmd:

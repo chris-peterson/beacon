@@ -172,7 +172,7 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 **HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_name`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), `description`, and the accumulated `deliverables` (STATUSLINE-03, whose list is scoped to one Claude session). Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
+**HOOK-08a.** When SessionStart fires with `source` other than `resume` (i.e. `startup` or `clear`), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, `signal.status`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), `description`, and the accumulated `deliverables` plus the `deliverables.dropped` record (STATUSLINE-03 / CMD-24, both scoped to one Claude session). Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `signal.status = waiting` + `pending-attention` and render red. `resume` is excluded because resumed sessions continue prior context by design.
 
 **HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_name`, the six `beacon_branch*` slots), the `cwd-<pane-guid>.txt` handoff file, and the persisted `resolved.url` / `resolved.url_label` from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
 
@@ -275,6 +275,12 @@ The mode takes an argument rather than each mode getting its own command because
 **CMD-21.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
 
 **CMD-23.** When the user invokes `install-profile`, the plugin shall re-render the base and mode dynamic profiles (STATUS-BAR-01) from the template and the current user config, and nothing else — no wrapper, no completions, no shell integration, no fleet-layout advisory. This is the apply path for a changed button label (STATUS-BAR-09): iTerm2 reloads the `DynamicProfiles` directory on change, so the re-render reaches every open pane without a restart. Off iTerm2 the subcommand shall exit non-zero saying so, rather than writing a profile nothing will load.
+
+**CMD-24.** When the user invokes `drop <ref>`, the plugin shall remove the matching deliverable from the session's row (STATUSLINE-03) and record its URL in `deliverables.dropped` so acquisition does not re-record it. `<ref>` matches an entry's stored ref (`#42`), its rendered qualified form (`otherproj:#9` — what the row put in front of the user), or its URL. When nothing matches, the plugin shall say so on stderr and exit non-zero.
+
+Acquisition cannot tell a deliverable the session is working from one it merely crossed — a URL pasted as a reference is indistinguishable from one being worked — and the list is capped, so noise left in place evicts real work. The removal has to be remembered rather than merely applied: the bound route is re-read on every publish, and a forgotten drop would put the entry back on the next turn. Both the list and the drop record are session-scoped and cleared by the fresh-start wipe (HOOK-08a).
+
+Whether recording should be gated behind config — an opt-out for sessions that cross many references — is deliberately left open; the intent is on by default, and living with it answers the question better than guessing at it.
 
 ---
 
@@ -739,7 +745,14 @@ The status line shall **not** call `resolve_url` — it renders per prompt, and 
 
 What this retires is the `url-<pane-guid>.txt` **handoff file** — the second source that drifted from the chip beside it (#5) — not the `↖ web` button, which survives on a different footing (STATUS-BAR-08). The footer link and the button answer different questions: the footer serves a pane running Claude, the button serves any pane at all.
 
-**STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the URL resolver lands on: whenever PROV-07 returns a forge issue/PR/MR URL (one carrying a `_deliverable_suffix`), the plugin shall append `{ref, url, project}` to the session's `deliverables` state, where `project` is the bare forge identity (`gh:acme/widgets`) — resolved for this purpose alone, since no chip paints it (STATUS-BAR-02). Branch and repo URLs are not deliverables and shall record nothing.
+**STATUSLINE-03.** A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the session has touched as `{ref, url, project}` entries in its `deliverables` state, from two sources, in this order:
+
+1. **The bound tack route** — every deliverable URL and every tracker link across its tacks, in route order. PROV-07 answers a narrower question (*which one* URL does this branch point at) and returns a single URL per route, so it surfaces one ref out of everything a well-kept route records. Work with no branch to be found by — an issue filed from the default branch, another project's deliverable the session crossed — reaches the row only through this source.
+2. **PROV-07's resolution**, when it carries a `_deliverable_suffix`. Recorded last, so the deliverable in hand is the freshest entry and the furthest from the cap's eviction edge; it is also the only one with a live task to title it (see *Titles* below).
+
+Branch and repo URLs are not deliverables and shall record nothing. Each entry's `project` is the bare forge identity (`gh:acme/widgets`) **derived from that entry's own URL** — the identity is resolved for this purpose alone, since no chip paints it (STATUS-BAR-02). Taking it from the session's cwd was sound only while every entry came from the branch resolver, where the URL belonged to the current project by construction; an entry learned from a route can point anywhere, and cwd's identity would render another project's `#9` as if it were local.
+
+A session with no tack route bound gets source 1 empty, and its row is whatever the branch resolver finds — the acquisition path is deliberately tack's, so that beacon reads one record of the session's work rather than keeping a second scanner over the same text (tack's `capture-urls.sh` already watches tool output). The cost is that route hygiene bounds the row.
 
 The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped, so the footer cannot grow without bound.
 
@@ -747,11 +760,17 @@ The list shall be **deduplicated by URL**, and a re-touch shall move the entry t
 
 | Kind | URL | Renders |
 |:---|:---|:---|
-| `cr` | `/pull/<n>`, `/-/merge_requests/<n>` | full weight, leads the open lines, carries a title |
-| `issue` | `/issues/<n>` | dimmed, trails the CRs, bare |
+| `cr` | `/pull/<n>`, `/-/merge_requests/<n>` | `#`/`!`, full weight, leads the open lines, carries a title |
+| `issue` | `/issues/<n>`, `/-/work_items/<n>` | `#`, dimmed, trails the CRs, bare |
+| `epic` | `/-/epics/<n>` | `&`, with the issues |
+| `milestone` | `/-/milestones/<n>` | `%`, with the issues |
 | `release` | `/releases/tag/<v>`, `/-/tags/<v>` | always delivered |
 
-On GitHub a CR and an issue are both `#<n>`, so the line they sit on and the weight they carry are the only cues; GitLab's `!` already differs by sigil. Refs render **bare** (`#4`) when the entry's `project` matches the session's and **qualified** (`otherproj:#4`) when it does not, the qualifier taken as the repo segment of the forge identity so both sides of the comparison derive the same way.
+Sigils follow GitLab's own reference syntax, so a ref reads on the row the way it is typed into a forge comment. `/-/work_items/<n>` is GitLab's rename of `/-/issues/<n>`: both are live, and the API hands back the new form — a session that files an issue through `glab` gets that URL and nothing else.
+
+An epic and a milestone are what work is *for* rather than what ships it, so they share the issue line rather than claiming one each and pushing the row toward the wrap the cap exists to prevent.
+
+On GitHub a CR and an issue are both `#<n>`, so the line they sit on and the weight they carry are the only cues; GitLab's `!` already differs by sigil. Refs render **bare** (`#4`) when the entry's `project` matches the session's and **qualified** (`otherproj:#4`) when it does not, the qualifier taken as the repo segment of the forge identity so both sides of the comparison derive the same way. An entry whose identity is a **path-boundary prefix** of the session's counts as matching: an epic or group milestone resolves to the group (`gl:acme`) where the session resolves to a repo inside it (`gl:acme/widgets`), and the tracker your own work is filed under should not read as another project's. The boundary is load-bearing — it keeps `gl:acme` from matching `gl:acmecorp/x` — and repo-scoped entries are unaffected, both sides being `owner/repo` and so unable to prefix each other.
 
 **Delivered.** An entry is delivered when its URL belongs to a tack that has gone `done` or `dropped`, or when its kind is `release` — a release tag URL only exists once published, so the kind settles it with no tack involved. Delivered entries move to their own line and render `~<ref>~ <verb> <glyph>` in the release green (THEME-02): `merged 🏁`, `released 🚀`, `closed ✓`. The verb is muted against its ref, and the strike is decoration — a four-character struck ref is too subtle to be the signal on its own, and strikethrough is among the first attributes a terminal drops.
 
@@ -853,6 +872,7 @@ state/<session-hash>.resolved.url       # STATUSLINE-02: PROV-07's URL, persiste
 state/<session-hash>.resolved.url_label # STATUSLINE-02: its display label (the link text)
 state/<session-hash>.resolved.project   # STATUSLINE-03: forge identity, for bare-vs-qualified refs
 state/<session-hash>.deliverables       # STATUSLINE-03: [{ref,url,project}] this session has touched
+state/<session-hash>.deliverables.dropped  # CMD-24: URLs the user took off the row, so acquisition doesn't re-add them
 ```
 
 Session hash is SHA-1 (truncated to 12–16 chars — collisions are not a security concern) of the session seed. On iTerm2 the seed is the pane **GUID** (the segment of `$ITERM_SESSION_ID` after the last colon), which is stable for the pane's life; the full `$ITERM_SESSION_ID` is *not* — iTerm2 rewrites its `wNtNpN` positional prefix when a pane is moved between windows, tabs, or splits, so seeding on the full id fragmented a pane's state into a fresh bucket on each move. Off iTerm2 the seed is `claude-session:$CLAUDE_CODE_SESSION_ID` (kept whole), then the tty name, then `default`.
