@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <title>beacon · iTerm2 surface mockups</title>
 <!--
-  Hand-drawn HTML mockups of beacon's iTerm2 per-pane surfaces (badge + status
+  Hand-drawn HTML mockups of beacon's iTerm2 per-pane surfaces (tab + status
   bar), for the docs site. These surfaces only exist on macOS + iTerm2, so they
   can't be captured from the cross-platform demo — they're synthesized here from
   the spec palette (THEME-02 / THEME-03) instead of screenshotted.
@@ -34,7 +34,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   --sep: #7e8290;
   --pink: #ff79c6;       /* ↖ web / ↗ code action affordance */
   --ready: #8b8fa0;      /* idle — at rest (dev, neutral gray) */
-  --green: #50fa7b;      /* branch synced · deliverable · prompt (not a badge state) */
+  --green: #50fa7b;      /* branch synced · deliverable · prompt (not a tab state) */
   --busy: #ffb86c;       /* working · branch diverged */
   --blocked: #ff5555;    /* waiting for you */
   --paused: #6272a4;     /* paused · branch untracked */
@@ -59,11 +59,15 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 .bcn-dots i:nth-child(1) { background: #ff5f57; }
 .bcn-dots i:nth-child(2) { background: #febc2e; }
 .bcn-dots i:nth-child(3) { background: #28c840; }
-.bcn-ttl {
-  font: 12px var(--mono); color: var(--identity);
-  letter-spacing: 0.04em; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
+.bcn-wintab {
+  display: inline-flex; flex-direction: column;
+  font: 12px var(--mono); line-height: 1.4;
+  border-radius: 6px; padding: 0.2rem 0.7rem;
+  background: color-mix(in srgb, var(--ready) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent);
 }
+.bcn-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
+.bcn-wintab .t { color: var(--identity); padding-left: 0.85em; }
 .bcn-bar {
   display: flex; align-items: center; gap: 0.55rem;
   background: var(--bar);
@@ -87,15 +91,6 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 }
 .bcn-body .prompt { color: var(--green); }
 .bcn-body .dim { color: #6272a4; }
-.bcn-badge {
-  position: absolute; right: 0.95rem; top: 0.85rem;
-  font: 700 28px/1 var(--mono); letter-spacing: 0.01em;
-}
-.bcn-badge.ready { color: var(--ready); }
-.bcn-badge.busy { color: var(--busy); }
-.bcn-badge.blocked { color: var(--blocked); }
-.bcn-badge.paused { color: var(--paused); }
-.bcn-badge .task { font-weight: 400; opacity: 0.92; }
 
 /* numbered anatomy markers + legend */
 .bcn-mk {
@@ -105,7 +100,6 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif;
   vertical-align: super; position: relative; top: -0.15em;
 }
-.bcn-badge .bcn-mk { background: #f8f8f2; }
 .bcn-legend {
   list-style: none; counter-reset: bcn; margin: 0.9rem 0 0; padding: 0;
   display: grid; gap: 0.5rem;
@@ -135,14 +129,14 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 .bcn-strip .bcn-bar { border-radius: 0; }
 .bcn-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
 
-/* badge-state gallery */
-.bcn-badges { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+/* tab-state gallery */
+.bcn-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
 .bcn-chip {
   border: 1px solid rgba(139, 233, 253, 0.14); border-radius: 10px;
   background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center;
 }
-.bcn-chip .b { font: 700 19px/1.15 var(--mono); }
-.bcn-chip .b .task { font-weight: 400; opacity: 0.9; }
+.bcn-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
+.bcn-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
 .bcn-chip .ready { color: var(--ready); }
 .bcn-chip .busy { color: var(--busy); }
 .bcn-chip .blocked { color: var(--blocked); }
@@ -157,11 +151,10 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   <div class="bcn-win">
     <div class="bcn-title">
       <span class="bcn-dots"><i></i><i></i><i></i></span>
-      <span class="bcn-ttl">✳ Redesign frontend plugin installation interface<span class="bcn-mk">1</span></span>
+      <span class="bcn-wintab"><b>claude-marketplace<span class="bcn-mk">1</span></b><span class="t">Redesign the install flow</span></span>
     </div>
     <div class="bcn-body">
       <div><span class="prompt">›</span> run just build</div>
-      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">6</span></span>
     </div>
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
@@ -174,20 +167,19 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
     </div>
   </div>
   <ol class="bcn-legend">
-    <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
+    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
     <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default).</span></li>
-    <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
   </ol>
 </div>
 
-<h2>Badge: the traffic light</h2>
-<div class="bcn bcn-badges">
+<h2>Tab: the traffic light</h2>
+<div class="bcn bcn-states">
   <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
-  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task"> : refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting for you</div></div>
+  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
+  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
   <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 

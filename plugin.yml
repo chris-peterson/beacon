@@ -24,14 +24,14 @@ suite:
   dependencies:
     - name: tack
       required: false
-      reason: resolves the branch's CR/PR URL for the badge link
+      reason: supplies the deliverables the Claude Code status line lists
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]
   gloss: A lighthouse you can read from across the harbor.
-  pitch: "Running several Claude windows? Each gets a badge showing whether it's working or waiting for you."
+  pitch: "Running several Claude windows? Each tab shows whether it's working or waiting for you."
   with: tack
-  what: "Puts a colored badge on each terminal window so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The badge is iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
+  what: "Colors each session's tab so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The tab is labeled with the project and the task under it. That's iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
   cmds:
     - ["/beacon:beacon", "Label a pane, or set status with a note"]
     - ["/beacon:session-mode", "Set the session mode — pause, release, retro, done"]
@@ -39,7 +39,7 @@ suite:
   # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
   describe:
     skills:
-      beacon: Label a session's project/task on the iTerm2 badge, and check the beacon CLI wrapper is current on first use per session.
+      beacon: Label a session's project/task on the iTerm2 tab, and check the beacon CLI wrapper is current on first use per session.
     rules:
       keep-session-labeled: Keep this session's beacon work label current
     hooks:

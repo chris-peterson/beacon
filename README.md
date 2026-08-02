@@ -23,7 +23,7 @@ The fleet dashboard (`wip` / `watch` / `serve`) needs only:
 
 - Python 3 — the plugin script and CLI run via the system `python3`.
 
-The per-pane painting layer (badge, status bar, tab color; spec §4) additionally needs:
+The per-pane painting layer (tab label and color, status bar, mode backgrounds; spec §4) additionally needs:
 
 - macOS with iTerm2 — the render adapter is iTerm2-specific. `install` detects iTerm.app and skips these steps when it's absent.
 - zsh — the shell snippet relies on zsh-only features.

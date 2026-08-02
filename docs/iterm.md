@@ -1,6 +1,6 @@
 # In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon paints each session's state onto its own pane — a badge, a status bar, and the tab color. Where the [fleet dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
+On macOS with iTerm2, beacon paints each session's state onto its own pane — the tab's label and color, a status bar, and a background for the mode cycles. Where the [fleet dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
 
 These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On any other terminal beacon skips them and you use the [fleet dashboard](/demo) instead — same state, different view.
 
@@ -26,7 +26,9 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-dots i:nth-child(1) { background: #ff5f57; }
 .bcn-dots i:nth-child(2) { background: #febc2e; }
 .bcn-dots i:nth-child(3) { background: #28c840; }
-.bcn-ttl { font: 12px var(--mono); color: var(--identity); letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcn-wintab { display: inline-flex; flex-direction: column; font: 12px var(--mono); line-height: 1.4; border-radius: 6px; padding: 0.2rem 0.7rem; background: color-mix(in srgb, var(--ready) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent); }
+.bcn-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
+.bcn-wintab .t { color: var(--identity); padding-left: 0.85em; }
 .bcn-bar { display: flex; align-items: center; gap: 0.55rem; background: var(--bar); font: 13px var(--mono); padding: 0.4rem 0.7rem; white-space: nowrap; }
 .bcn-act { color: var(--pink); font-weight: 700; }
 .bcn-sep { color: var(--sep); }
@@ -37,11 +39,7 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-branch.diverged { color: var(--busy); }
 .bcn-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
 .bcn-body .prompt { color: var(--green); }
-.bcn-badge { position: absolute; right: 0.95rem; top: 0.85rem; font: 700 28px/1 var(--mono); letter-spacing: 0.01em; }
-.bcn-badge.ready { color: var(--ready); }
-.bcn-badge .task { font-weight: 400; opacity: 0.92; }
 .bcn-mk { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-left: 0.3em; border-radius: 50%; background: #8be9fd; color: #21222c; font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif; vertical-align: super; position: relative; top: -0.15em; }
-.bcn-badge .bcn-mk { background: #f8f8f2; }
 .bcn-legend { list-style: none; counter-reset: bcn; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
 .bcn-legend li { counter-increment: bcn; display: grid; grid-template-columns: 1.4rem 1fr; align-items: start; font-size: 0.9rem; color: inherit; }
 .bcn-legend li::before { content: counter(bcn); display: inline-flex; align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: #8be9fd; color: #21222c; font-weight: 700; font-size: 0.72rem; }
@@ -50,10 +48,10 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-striprow { display: grid; gap: 0.75rem; }
 .bcn-strip { border: 1px solid rgba(139,233,253,0.14); border-radius: 9px; overflow: hidden; }
 .bcn-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
-.bcn-badges { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+.bcn-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
 .bcn-chip { border: 1px solid rgba(139,233,253,0.14); border-radius: 10px; background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center; }
-.bcn-chip .b { font: 700 19px/1.15 var(--mono); }
-.bcn-chip .b .task { font-weight: 400; opacity: 0.9; }
+.bcn-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
+.bcn-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
 .bcn-chip .b.ready { color: var(--ready); }
 .bcn-chip .b.busy { color: var(--busy); }
 .bcn-chip .b.blocked { color: var(--blocked); }
@@ -63,7 +61,8 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .bcn-tabstrip { display: grid; gap: 5px; width: 15rem; flex: 0 0 auto; }
 .bcn-tab { display: flex; align-items: center; gap: 0.55rem; font: 600 13px var(--mono); color: var(--fg); background: var(--body); border-left: 4px solid var(--sep); border-radius: 5px; padding: 0.6rem 0.65rem; }
 .bcn-tab i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.bcn-tab .t { font-weight: 400; color: var(--identity); }
+.bcn-tab .lbl { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+.bcn-tab .t { font-weight: 400; color: var(--identity); padding-left: 0.85em; }
 .bcn-tab.ready { border-left-color: var(--ready); } .bcn-tab.ready i { background: var(--ready); }
 .bcn-tab.busy { border-left-color: var(--busy); background: linear-gradient(rgba(255,184,108,0.13), rgba(255,184,108,0.13)), var(--body); } .bcn-tab.busy i { background: var(--busy); }
 .bcn-tab.blocked { border-left-color: var(--blocked); background: linear-gradient(rgba(255,85,85,0.16), rgba(255,85,85,0.16)), var(--body); } .bcn-tab.blocked i { background: var(--blocked); }
@@ -73,17 +72,16 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 
 ## Anatomy of a painted pane
 
-The badge sits top-right, the status bar runs along the bottom, and everything else is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
+The tab carries the session's identity and its state, the status bar runs along the bottom, and the pane itself is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
 
 <div class="bcn">
   <div class="bcn-win">
     <div class="bcn-title">
       <span class="bcn-dots"><i></i><i></i><i></i></span>
-      <span class="bcn-ttl">✳ Redesign frontend plugin installation interface<span class="bcn-mk">1</span></span>
+      <span class="bcn-wintab"><b>claude-marketplace<span class="bcn-mk">1</span></b><span class="t">Redesign the install flow</span></span>
     </div>
     <div class="bcn-body">
       <div><span class="prompt">›</span> run just build</div>
-      <span class="bcn-badge ready">claude-marketplace<span class="bcn-mk">6</span></span>
     </div>
     <div class="bcn-bar">
       <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
@@ -96,23 +94,22 @@ The badge sits top-right, the status bar runs along the bottom, and everything e
     </div>
   </div>
   <ol class="bcn-legend">
-    <li><span><b>Window title</b> — Claude Code's, not beacon's. beacon never paints the title, terminal colors, or cursor.</span></li>
+    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
     <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default).</span></li>
-    <li><span><b>Badge</b> — project name (and task), in the status traffic-light color. The one surface big enough to read in Mission Control.</span></li>
   </ol>
 </div>
 
-## The badge: a traffic light
+## The tab: a traffic light
 
-The badge is always on, and its color is the highest-leverage signal beacon paints — it's the only surface large enough to read in Mission Control / Exposé, so a glance across many windows tells you which session needs you. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set. The **tab color** mirrors it, so a strip of tabs carries the same state without opening any of them.
+The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set.
 
-<div class="bcn bcn-badges">
+<div class="bcn bcn-states">
   <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
-  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task"> : refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task"> : refunds</span></div><div class="cap">waiting for you</div></div>
+  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
+  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
   <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 
@@ -120,20 +117,30 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
 
 <div class="bcn bcn-tabcol">
   <div class="bcn-tabstrip">
-    <div class="bcn-tab blocked"><i></i>checkout-api<span class="t"> : refunds</span></div>
-    <div class="bcn-tab busy"><i></i>widgets-web<span class="t"> : #42</span></div>
-    <div class="bcn-tab ready"><i></i>auth-svc</div>
-    <div class="bcn-tab busy"><i></i>beacon<span class="t"> : #14</span></div>
-    <div class="bcn-tab paused"><i></i>infra-tf</div>
+    <div class="bcn-tab blocked"><i></i><span class="lbl">checkout-api<span class="t">refunds</span></span></div>
+    <div class="bcn-tab busy"><i></i><span class="lbl">widgets-web<span class="t">#42</span></span></div>
+    <div class="bcn-tab ready"><i></i><span class="lbl">auth-svc</span></div>
+    <div class="bcn-tab busy"><i></i><span class="lbl">beacon<span class="t">#14</span></span></div>
+    <div class="bcn-tab paused"><i></i><span class="lbl">infra-tf</span></div>
   </div>
   <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
 </div>
 
-The text is the project name, optionally followed by `: <task>` when a task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon pause "leaving for lunch"`, `/beacon release`, `/beacon retro`, `/beacon done` (or any `/beacon status …`). A pause note isn't painted on the pane — it surfaces in the [fleet dashboard](/demo) as recall context, and the next prompt clears it.
+Line 1 is the project name; line 2 is the task, and it collapses when no task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon pause "leaving for lunch"`, `/beacon release`, `/beacon retro`, `/beacon done` (or any `/beacon status …`). A pause note isn't painted on the tab — it surfaces in the [fleet dashboard](/demo) as recall context and in the [status line](#the-status-line), and the next prompt clears it.
+
+### Turning the badge on
+
+beacon can also paint an iTerm2 **badge** — the large project/task overlay in the pane's top-right corner. It's off by default, because the tab already carries the same two values and its color says the same thing. If you work in one window at a time rather than a strip of tabs, the badge is the bigger target — it's the one surface large enough to read in Mission Control / Exposé. Turn it on in `~/.config/beacon/config.json`:
+
+```json
+{ "badge": "on" }
+```
+
+Re-run `beacon install-profile` to pick it up; the color follows the same states as the tab.
 
 ## The status bar
 
-The status bar carries a fixed-layout strip the badge has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
+The status bar carries a fixed-layout strip the tab has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
 
 It carries only the two things a link can't do — type a command into the pane, and launch a local app. Navigating to the session's URL is the [status line](#the-status-line)'s job, where it's a real hyperlink that works in any terminal.
 
@@ -178,7 +185,7 @@ v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
 Every ref is a clickable link. Empty lines are omitted, so an ordinary session is one line of open work.
 
 - **Delivered** work is kept on screen — shipping is rare and it's what the session has to show for itself. It reads by its verb and glyph, in the same green beacon reserves for releases.
-- **Change requests** lead the open work and carry a title: the same string the badge shows, so the two surfaces never describe one PR differently.
+- **Change requests** lead the open work and carry a title: the same string the tab shows, so the two surfaces never describe one PR differently.
 - **Issues** trail, dimmed and bare — several share a line, and titling each would wrap the row.
 - Refs in the current project render bare (`#4`); refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
 
@@ -188,11 +195,13 @@ Every ref is a clickable link. Empty lines are omitted, so an ordinary session i
 
 ## What beacon doesn't paint
 
-beacon paints the badge, the status bar, and the tab color — and nothing else. The terminal background and foreground, any background image, the window title, the tab title, and the cursor color and shape all belong to Claude Code, your own profile, or other tools, and beacon leaves them alone. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the badge color already signals both — a duplicate notification adds no information and can briefly overlay the badge.
+beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
+
+The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, which is why Claude Code's own title no longer shows.
 
 ## Recommended layout
 
-beacon paints per-*profile* surfaces it fully controls (badge, status bar, colors). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
+beacon paints per-*profile* surfaces it fully controls (status bar, colors, mode backgrounds). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
 
 The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable; set them in **iTerm2 → Preferences → Appearance**:
 
@@ -201,7 +210,7 @@ The tab signal + two-line `project` / `task` label are tuned for a **tall left t
 | Tabs on the left | `TabViewType` | `2` | a left column is the natural home for a fleet; the tab color becomes a scannable strip (Appearance → Tabs) |
 | Larger tab labels | `UseCustomTabBarFontSize` + `CustomTabBarFontSize` | `on` + `18` | default labels are unreadably small in a left strip (Appearance → Tabs) |
 | Taller tabs | `DefaultTabBarHeight` | `90` | gives the two-line project/task label room to show both lines (Appearance → Tabs) |
-| Status bar at the bottom | `StatusBarPosition` | `1` | keeps the status strip clear of the top-right badge (Appearance → General) |
+| Status bar at the bottom | `StatusBarPosition` | `1` | puts the strip at the far edge from the tabs, and clear of the badge if you turn one on (Appearance → General) |
 | HTML tab titles | `HTMLTabTitles` | `on` | renders the bold project accent in the two-line tab label (Appearance → Tabs) |
 
 Audit your current setup at any time — it reports only what differs and writes nothing:
@@ -222,4 +231,4 @@ Two related knobs are left entirely to taste — beacon renders identically whic
 
 ## Setup
 
-Per-pane painting is wired up by `/beacon install` on macOS + iTerm2: it writes the dynamic profile (status bar + badge sizing), adds the shell `source` line, and switches new sessions into the beacon profile. iTerm2 reloads the profile live, so there's no restart. It closes by auditing the [recommended layout](#recommended-layout) and naming any app-wide setting that differs — advisory only, since beacon never writes those. Off iTerm2 these steps are skipped automatically. See [Install](/?id=install).
+Per-pane painting is wired up by `/beacon install` on macOS + iTerm2: it writes the dynamic profiles (the base profile and one per mode cycle), adds the shell `source` line, and switches new sessions into the beacon profile. iTerm2 reloads the profile live, so there's no restart. It closes by auditing the [recommended layout](#recommended-layout) and naming any app-wide setting that differs — advisory only, since beacon never writes those. Off iTerm2 these steps are skipped automatically. See [Install](/?id=install).

@@ -5,7 +5,7 @@ At-a-glance awareness across concurrent Claude Code sessions.
 beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan a whole fleet without focusing each one. It does this two ways:
 
 - a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
-- **per-pane painting in iTerm2** — a badge, status bar, and tab color on each pane
+- **per-pane painting in iTerm2** — a labeled, state-colored tab and a status bar on each pane
 
 A glance across the windows tells you which session needs you:
 
@@ -125,7 +125,7 @@ The fleet view reads session state and paints no pane, so it runs anywhere Pytho
 | Capability | Where it works |
 |:---|:---|
 | Fleet dashboard — `wip`, `watch`, `serve`, and the browser dashboard | Any OS, any terminal (needs Python 3) |
-| Per-pane painting — badge, status bar, tab color | macOS + iTerm2 |
+| Per-pane painting — tab label and color, status bar | macOS + iTerm2 |
 | Click a dashboard card to raise its window | macOS + iTerm2 |
 | Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
 
@@ -134,7 +134,7 @@ The fleet view reads session state and paints no pane, so it runs anywhere Pytho
 1. Install the plugin (see [Install](#install)) — the hooks populate session state on any platform.
 2. Run `beacon serve` and open `http://127.0.0.1:8787/` in a browser.
 
-That's the full fleet view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The badge / status bar / tab color need iTerm2 and are skipped automatically.
+That's the full fleet view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The tab and status-bar painting needs iTerm2 and is skipped automatically.
 
 ## Fleet dashboard (any terminal)
 
@@ -174,9 +174,9 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — a **badge** (project + task in a status-driven traffic-light color), a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor), and the **tab color** (mirrors the badge). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task and colored by a status-driven traffic light, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
-See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the badge states, and what the status-bar chips mean.
+See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, and what the status-bar chips mean.
 
 ### Customizing the two buttons
 
@@ -278,7 +278,7 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 
 The first two commands install the Claude plugin (hooks, slash command, skill, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon:beacon install` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion.
 
-On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profile (status bar + badge sizing). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
+On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
 
 To keep `serve` running for an external dashboard, install the always-on service separately — see [Always-on serve service](#always-on-serve-service-optional).
 
@@ -293,16 +293,16 @@ beacon <TAB>        # subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the badge color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
+- the tab color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
 - `/beacon:session-mode pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
-- `/beacon:beacon status waiting "bg refresh ~30 min"` flips the badge to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
+- `/beacon:beacon status waiting "bg refresh ~30 min"` flips the tab to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
 
-The label and status commands paint the pane's badge — the same traffic-light colors the [fleet view](/demo) uses. Here's what each one produces:
+The label and status commands paint the pane's tab — the same traffic-light colors the [fleet view](/demo) uses. Here's what each one produces:
 
 <!--
-  Bespoke command→badge figure in the spec palette (BADGE_COLOR_PALETTE), same
+  Bespoke command→tab figure in the spec palette (BADGE_COLOR_PALETTE), same
   idioms as the .fleet figure above and the .bcn figures on /iterm and /palette.
   Replaces the generic animated session player; the play-by-play it showed still
   lives in plugin.yml's suite.examples (read by the marketplace hub).
@@ -338,11 +338,11 @@ The label and status commands paint the pane's badge — the same traffic-light 
 }
 .cf-arrow { color: var(--faint); font: 400 1.05rem/1 var(--mono); text-align: center; }
 .cf-out { display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; }
-.cf-badge { font: 700 1.05rem/1.15 var(--mono); white-space: nowrap; }
-.cf-badge .t { font-weight: 400; opacity: 0.9; }
-.cf-badge.ready { color: var(--ready); }
-.cf-badge.blocked { color: var(--blocked); }
-.cf-badge.paused { color: var(--paused); }
+.cf-tab { display: inline-flex; flex-direction: column; align-self: flex-start; font: 700 1.05rem/1.3 var(--mono); white-space: nowrap; border-radius: 6px; padding: 0.15rem 0.6rem; }
+.cf-tab .t { font-weight: 400; color: var(--muted); font-size: 0.85em; padding-left: 0.85em; }
+.cf-tab.ready { color: var(--ready); background: color-mix(in srgb, var(--ready) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent); }
+.cf-tab.blocked { color: var(--blocked); background: color-mix(in srgb, var(--blocked) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blocked) 32%, transparent); }
+.cf-tab.paused { color: var(--paused); background: color-mix(in srgb, var(--paused) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paused) 32%, transparent); }
 .cf-cap { font: 400 0.78rem/1.4 var(--mono); color: var(--muted); }
 </style>
 
@@ -351,7 +351,7 @@ The label and status commands paint the pane's badge — the same traffic-light 
     <code class="cf-cmd">/beacon:beacon set task perms</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-badge ready">ai-sdlc<span class="t"> : perms</span></span>
+      <span class="cf-tab ready">ai-sdlc<span class="t">perms</span></span>
       <span class="cf-cap">labeled — neutral gray while idle</span>
     </span>
   </div>
@@ -359,15 +359,15 @@ The label and status commands paint the pane's badge — the same traffic-light 
     <code class="cf-cmd">/beacon:beacon status waiting "bg refresh"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-badge blocked">ai-sdlc<span class="t"> : perms</span></span>
-      <span class="cf-cap">you flag yourself waiting — the badge goes red</span>
+      <span class="cf-tab blocked">ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-cap">you flag yourself waiting — the tab goes red</span>
     </span>
   </div>
   <div class="cf-row">
     <code class="cf-cmd">/beacon:session-mode pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-badge paused">ai-sdlc<span class="t"> : perms</span></span>
+      <span class="cf-tab paused">ai-sdlc<span class="t">perms</span></span>
       <span class="cf-cap">parked — the pane dims to purple</span>
     </span>
   </div>
@@ -395,8 +395,8 @@ beacon pause "afk"
 
 If reaching for beacon's own commands feels heavier than the built-ins, beacon also picks up Claude Code's native slash commands:
 
-- **`/rename <label>`** becomes the session's `task` — it's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the badge (`project: <label>`) and in the fleet view.
-- **`/color <name>`** is surfaced in the fleet view (a swatch on the dashboard card) as your own tag. It does **not** repaint the badge — that color stays the ready/busy/blocked status light.
+- **`/rename <label>`** becomes the session's `task` — it's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the fleet view.
+- **`/color <name>`** is surfaced in the fleet view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab — that color stays the ready/busy/blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
 `pause` / `wrap` sit above the task label; between `beacon task` and `/rename`, the most recent one wins.

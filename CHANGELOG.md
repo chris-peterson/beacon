@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### The docs lead with the tab
+
+Since v1.26.0 the pane badge has been opt-in and off by default, and the tab carries what it used to: the color is the ready / busy / blocked state, and the label is `project` over an indented `task`. The docs hadn't caught up — they still introduced the badge as the surface you read a session from.
+
+[In iTerm2](https://chris-peterson.github.io/beacon/#/iterm) and [The beacon palette](https://chris-peterson.github.io/beacon/#/palette) now describe the tab, and [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm?id=turning-the-badge-on) covers `"badge": "on"` for a one-window-at-a-time workflow, where the badge is still the bigger target.
+
+The iTerm2 page also corrects what beacon claimed not to paint: it does own the window title now, via the session name, so a `/rename`d Claude session keeps its project in Mission Control and the window switcher.
+
 ## 2.1.0
 
 ### Customizable status-bar buttons
