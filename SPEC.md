@@ -5,7 +5,7 @@ At-a-glance session awareness across concurrent Claude Code sessions. Each sessi
 beacon surfaces that state two ways:
 
 - a **terminal-agnostic fleet view** (§3.8) — `wip` / `watch` / `serve` read every session's state and render it as a snapshot, a live TTY view, or a localhost HTTP feed for an external dashboard. A session row in that dashboard can be clicked to focus its window (§3.9). The fleet view paints no per-pane surface, so it works in any terminal with Python 3.
-- an **iTerm2 per-pane render adapter** (§4) — paints a single session's state onto its own pane (badge, status bar, tab color) so the user can scan many panes without focusing each.
+- an **iTerm2 per-pane render adapter** (§4) — paints a single session's state onto its own pane (tab label and color, status bar, mode backgrounds, and an opt-in badge) so the user can scan many panes without focusing each.
 
 This document specifies requirements in [EARS](https://alistairmavin.com/ears/) form. §3 is render-agnostic and applies to any adapter; §4 collects the iTerm2-specific implementation (macOS, zsh).
 

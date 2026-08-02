@@ -20,10 +20,10 @@ The CLI repaints the pane as it runs, so the user sees the change immediately; y
 
 | Mode | What the pane becomes |
 |:---|:---|
-| `pause` | Muted-purple badge over the pause profile (faint `\|\|`-button watermark). The only mode that auto-clears — the next prompt resumes the session. |
-| `release` | Green badge over the release profile: deep "launch-sky" navy with a faint rocket watermark. |
-| `retro` | White badge over the retro profile: muted green with a faint checklist-clipboard watermark. |
-| `done` | Dim-gray badge over the done profile: near-black "powered off" with a faint checkered finish-flag watermark. Drops the task from the badge so it shows the project alone. |
+| `pause` | Muted-purple tab over the pause profile (faint `\|\|`-button watermark), and a `⏸` on the tab and window title. The only mode that auto-clears — the next prompt resumes the session. |
+| `release` | Green tab over the release profile: deep "launch-sky" navy with a faint rocket watermark. |
+| `retro` | White tab over the retro profile: muted green with a faint checklist-clipboard watermark. |
+| `done` | Dim-gray tab over the done profile: near-black "powered off" with a faint checkered finish-flag watermark. Drops the task line so the tab shows the project alone. |
 | `resume` | Clears the mode and returns the pane to the dev cycle. |
 
 Apart from `pause`, a mode persists until the session runs `resume` / `clear` or ends — it does not auto-clear on the next prompt.
