@@ -33,39 +33,6 @@ Since v1.26.0 the pane badge has been opt-in and off by default, and the tab car
 
 The iTerm2 page also corrects what beacon claimed not to paint: it does own the window title now, via the session name, so a `/rename`d Claude session keeps its project in Mission Control and the window switcher.
 
-## Unreleased
-
-### The status line reads your whole tack route
-
-The second status-line row — what the session has to show for itself — was fed by one thing: the deliverable the *current branch* points at. An issue filed from `main` with no branch and no open PR reached it not at all.
-
-It now reads every deliverable and tracker link on the tack route bound to the session, plus the branch resolution as before. Nothing to configure: if a route is bound, the issue you filed through `/anchor:issue` and the CR that answers it are both on the row. With no route bound the row is what the branch resolver finds, as it was.
-
-Each entry now carries the project **its own URL** names, so another project's `#9` renders `otherproj:#9` instead of passing for a local ref.
-
-### GitLab work items, epics, and milestones
-
-`/-/work_items/<n>` — GitLab's rename of `/-/issues/<n>`, and what the API hands back — is recognized as an issue. Epics (`&7`) and milestones (`%2`) are classified rather than ignored, and ride the issue line. Sigils are GitLab's own, so a ref reads the way you'd type it into a comment. An epic belongs to a group rather than a repo, so it reads bare when that group is the one your repo lives in — the tracker your own work is filed under shouldn't look like another project's.
-
-### `beacon drop <ref>`
-
-Takes one deliverable off the row and keeps it off:
-
-```console
-$ beacon drop otherproj:#9
-dropped otherproj:#9 (3 deliverable(s) remaining)
-```
-
-A URL you pasted as a reference looks exactly like one you're working, and the row is capped at eight — so noise left in place evicts real work. Matches the ref as rendered, the bare ref, or the URL. Session-scoped: a fresh session starts clean.
-
-### The docs lead with the tab
-
-Since v1.26.0 the pane badge has been opt-in and off by default, and the tab carries what it used to: the color is the ready / busy / blocked state, and the label is `project` over an indented `task`. The docs hadn't caught up — they still introduced the badge as the surface you read a session from.
-
-[In iTerm2](https://chris-peterson.github.io/beacon/#/iterm) and [The beacon palette](https://chris-peterson.github.io/beacon/#/palette) now describe the tab, and [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm?id=turning-the-badge-on) covers `"badge": "on"` for a one-window-at-a-time workflow, where the badge is still the bigger target.
-
-The iTerm2 page also corrects what beacon claimed not to paint: it does own the window title now, via the session name, so a `/rename`d Claude session keeps its project in Mission Control and the window switcher.
-
 ## 2.1.0
 
 ### Customizable status-bar buttons
