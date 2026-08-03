@@ -739,7 +739,7 @@ class CustomizableStatusBarButtons(unittest.TestCase):
             self.assertEqual(self.beacon._statusbar_button("web"),
                              {"label": "↖ web", "cmd": ""})
             self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ code", "cmd": "code --maximized"})
+                             {"label": "↗ code", "cmd": "code"})
 
     def test_label_and_cmd_are_read_from_the_block(self):
         with self._buttons(web={"label": "↖ repo", "cmd": "git web"}):
@@ -749,14 +749,14 @@ class CustomizableStatusBarButtons(unittest.TestCase):
     def test_one_field_set_leaves_the_other_at_its_default(self):
         with self._buttons(code={"label": "↗ edit"}):
             self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ edit", "cmd": "code --maximized"})
+                             {"label": "↗ edit", "cmd": "code"})
 
     def test_a_blank_value_falls_back_rather_than_disabling(self):
         # A whitespace-only label would render an invisible button, and a blank
         # code cmd has nothing to launch — both mean "the default" instead.
         with self._buttons(code={"label": "   ", "cmd": ""}):
             self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ code", "cmd": "code --maximized"})
+                             {"label": "↗ code", "cmd": "code"})
 
     def test_a_non_dict_block_is_ignored(self):
         # A hand-edited config can put a string where the block goes; defaults
@@ -1924,9 +1924,19 @@ class ConfigurableCodeButton(BeaconTest):
     def _button(self, name, **fields):
         return self._config(statusbar={"buttons": {name: fields}})
 
-    def test_default_is_code_maximized(self):
+    def test_default_is_a_bare_code_invocation(self):
         with self._config():
-            self.assertEqual(self.beacon._code_launch_argv(), ["code", "--maximized"])
+            self.assertEqual(self.beacon._code_launch_argv(), ["code"])
+
+    def test_default_carries_no_option_the_vscode_cli_does_not_know(self):
+        # An option VS Code's CLI doesn't recognize is forwarded to
+        # Electron/Chromium, and on a cold start (no instance running) that
+        # makes VS Code drop the directory positional and open a Welcome
+        # window instead — so the button lands nowhere. `--maximized` was such
+        # an option, and it never maximized either: VS Code has no CLI flag for
+        # window state (that is `window.newWindowDimensions` in settings).
+        # Ship a bare program; startup options are the user's to add knowingly.
+        self.assertEqual([a for a in self.beacon._code_launch_argv() if a.startswith("-")], [])
 
     def test_cmd_is_honored(self):
         with self._button("code", cmd="subl -n -w"):
@@ -2458,6 +2468,32 @@ class SessionEndDisengages(BeaconTest):
         self.cli_calls.clear()
         self._fire({"reason": "resume"})
         self.assertTrue(self._engaged(), "`resume` reason must not disengage the pane")
+
+    def test_exit_hands_the_session_name_back_to_the_interactive_title(self):
+        # The bug: disengage blanks every user var TITLE_FORMAT interpolates
+        # (beacon_project, beacon_task_nl, beacon_title_prefix) but left the
+        # name pointing at that template, so the tab label and window title
+        # rendered empty after `exit`. The shell's own source-time set-name is
+        # a one-shot that already ran (and skipped, the pane being engaged), so
+        # nothing reclaimed the name. Disengage must set it to the interactive
+        # template the shell would have used.
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t0p0:ABC-123"}):
+            self.beacon.render()
+            self.cli_calls.clear()
+            self._fire({"reason": "other"})
+        name_call = ("set-name", "w0t0p0:ABC-123", self.beacon.INTERACTIVE_TITLE_FORMAT)
+        self.assertIn(
+            name_call, self.cli_calls,
+            "Exit must hand the name back to the interactive title, not leave "
+            "it on a template whose vars disengage just blanked",
+        )
+        # And after the profile swap: `SetProfile=` resets the name to the target
+        # profile's own (RENDER-05), so a handback emitted first is wiped by it.
+        self.assertGreater(
+            self.cli_calls.index(name_call),
+            self.cli_calls.index(("set-profile", "beacon-dev")),
+            "the name handback must follow the profile swap, which resets the name",
+        )
 
     def test_absent_reason_disengages(self):
         # A SessionEnd with no `reason` key collapses to "" via the `or ""`

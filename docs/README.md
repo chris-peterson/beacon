@@ -187,7 +187,7 @@ Each button's text and what it runs come from `~/.config/beacon/config.json`. Th
   "statusbar": {
     "buttons": {
       "web":  { "label": "↖ web",  "cmd": "" },
-      "code": { "label": "↗ code", "cmd": "code --maximized" }
+      "code": { "label": "↗ code", "cmd": "code" }
     }
   }
 }
@@ -255,13 +255,13 @@ It builds the URL from your `origin` remote, so SSH remotes work on GitHub and G
 
 #### What `↗ code` opens
 
-The pane's working directory, in `code --maximized`. Change the flags, or name a different editor entirely — whatever you put here gets the directory appended:
+The pane's working directory, in `code`. Add flags, or name a different editor entirely — whatever you put here gets the directory appended:
 
 ```json
 { "statusbar": { "buttons": { "code": { "cmd": "code -n" } } } }
 ```
 
-A bare program (`"cmd": "code"`) passes no flags of its own, just the directory.
+The default passes no flags of its own, just the directory. Check any flag you add against your editor's own `--help`: VS Code hands an option it doesn't recognize to Electron/Chromium, and on a cold start that makes it drop the directory and open a Welcome window instead. There is no CLI flag for a maximized window — that's the `window.newWindowDimensions` setting in VS Code itself.
 
 ## Install
 

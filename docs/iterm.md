@@ -98,7 +98,7 @@ The tab carries the session's identity and its state, the status bar runs along 
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
-    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code --maximized</code> by default).</span></li>
+    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code</code> by default).</span></li>
   </ol>
 </div>
 

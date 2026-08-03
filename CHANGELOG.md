@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### `↗ code` lands in the right directory again
+
+The button's default command was `code --maximized`. VS Code's CLI has no `--maximized` option — it hands one it doesn't recognize to Electron/Chromium, and on a cold start (nothing running yet) that makes it drop the directory and open a Welcome window. Click the button with VS Code already open and the directory arrived; click it as the day's first launch and you got an empty editor. It never maximized anything either: VS Code exposes no CLI flag for window state.
+
+The default is now a bare `code`. If you want a maximized window, that's `"window.newWindowDimensions": "maximized"` in VS Code's own settings. Startup flags you add to `statusbar.buttons.code.cmd` are worth checking against your editor's `--help` first, for the same reason.
+
+### The tab keeps its name when you exit Claude
+
+Ending a session returns the pane to its unmanaged look, which blanks the user vars the tab label and window title interpolate. The name itself was left pointing at them, so the tab went blank on `exit`. It now hands the name back to the interactive title — the project you're in, else the directory — which the shell prompt keeps current.
+
 ## 2.2.0
 
 ### The status line reads your whole tack route

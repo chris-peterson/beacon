@@ -380,6 +380,13 @@ PAUSED_TITLE_GLYPH = "⏸ "
 # single-line " · " form.
 TITLE_FORMAT = r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.beacon_task_nl)"
 
+# The name an *unmanaged* pane carries (TITLE-04): `beacon_title`, the shell's
+# "project else abbreviated cwd", republished every precmd and so never empty.
+# The shell sets this same template once on source, and skips it when the pane is
+# already Claude-owned — so disengagement is what hands the name back. Must stay
+# in step with the set-name call in shell/beacon.zsh.
+INTERACTIVE_TITLE_FORMAT = r"\(user.beacon_title)"
+
 BASE_PROFILE_NAME = "beacon-dev"
 
 # Mode profiles (RENDER-05): the SDLC mode cycles that own a dedicated dynamic
@@ -964,9 +971,16 @@ def cmd_copy_url(_args):
 # The two status-bar action buttons and their defaults (STATUS-BAR-09). An
 # empty `web` cmd is not a missing value — it selects beacon's own PROV-07
 # resolution, which is the default the button ships with.
+#
+# The `code` default carries no startup option on purpose. VS Code's CLI
+# forwards an option it doesn't recognize to Electron/Chromium, and on a cold
+# start (nothing running yet) that makes it drop the directory positional and
+# open a Welcome window — the button lands nowhere. `--maximized`, the 2.0
+# default, was such an option, and it never maximized either: VS Code has no CLI
+# flag for window state, only the `window.newWindowDimensions` setting.
 STATUSBAR_BUTTON_DEFAULTS = {
     "web": {"label": "↖ web", "cmd": ""},
-    "code": {"label": "↗ code", "cmd": "code --maximized"},
+    "code": {"label": "↗ code", "cmd": "code"},
 }
 
 
@@ -981,10 +995,10 @@ def _statusbar_button(name: str) -> dict:
     static knob and cannot interpolate a user var the way the text chips do
     (§6.10), so a changed label needs an `install-profile` re-render.
 
-    A blank or absent `cmd` means the button's default — for `code` that is
-    `code --maximized`, and for `web` it is the empty string that selects
-    PROV-07. One rule covers both, so there is no third "explicitly disabled"
-    state for a caller to interpret."""
+    A blank or absent `cmd` means the button's default — for `code` that is a
+    bare `code`, and for `web` it is the empty string that selects PROV-07. One
+    rule covers both, so there is no third "explicitly disabled" state for a
+    caller to interpret."""
     default = STATUSBAR_BUTTON_DEFAULTS[name]
     section = _load_config().get("statusbar")
     buttons = section.get("buttons") if isinstance(section, dict) else None
@@ -1000,7 +1014,7 @@ def _statusbar_button(name: str) -> dict:
 
 def _code_launch_argv() -> list[str]:
     """STATUS-BAR-07: the editor invocation for the `↗ code` button — its
-    configured `cmd`, shell-split, else `code --maximized`."""
+    configured `cmd`, shell-split, else a bare `code`."""
     return shlex.split(_statusbar_button("code")["cmd"])
 
 
@@ -3607,7 +3621,7 @@ def _logical_state_for(state: dict) -> str:
     return STATUS_TO_BADGE_STATE.get(status, "ready")
 
 
-def _set_session_title() -> None:
+def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
     """WINDOW-TITLE / TITLE-05: set this session's iTerm2 *session name* to the
     two-line title template so `project` over `task` surfaces as the tab label
     and line 1 (`project`) as the single-line OS window title, surviving Claude
@@ -3617,10 +3631,11 @@ def _set_session_title() -> None:
     interpolated template, so iTerm2 re-evaluates it live as SetUserVar updates
     flow in — it need only be re-set when a profile swap resets it, not every
     hook. Real iTerm sessions only; the synthesized `claude-session:` id has no
-    addressable surface."""
+    addressable surface. `fmt` is the managed template by default and
+    INTERACTIVE_TITLE_FORMAT when disengaging, so the sid guard has one home."""
     sid = os.environ.get("ITERM_SESSION_ID") or ""
     if ":" in sid and not sid.startswith("claude-session:"):
-        _cli("set-name", sid, TITLE_FORMAT)
+        _cli("set-name", sid, fmt)
 
 
 def apply(state: dict):
@@ -3876,6 +3891,13 @@ def _disengage() -> None:
     # no-op when already on the base profile.
     _cli("set-profile", BASE_PROFILE_NAME)
     _cli("clear")
+    # Blanking the badge user vars above empties everything TITLE_FORMAT
+    # interpolates, so the name has to move too or the tab label and OS window
+    # title go blank on exit. The shell's own set-name is a one-shot at source
+    # time that skipped this pane (it was engaged), so nothing else reclaims it:
+    # hand the name back to the interactive template here (TITLE-04). After the
+    # profile swap, which resets the name to the target profile's own (RENDER-05).
+    _set_session_title(INTERACTIVE_TITLE_FORMAT)
 
 
 def cmd_clear(args):
@@ -4798,7 +4820,7 @@ def cmd_hook(args):
     # WINDOW-TITLE (TITLE-04): the interactive shell sets the session name once
     # on source (shell/beacon.zsh), backgrounded — so its write can land AFTER
     # the plugin's SessionStart set-name and revert an engaged pane's title to
-    # the shell's `\(user.beacon_project_name)` template. render() only (re)sets
+    # the shell's INTERACTIVE_TITLE_FORMAT template. render() only (re)sets
     # the name on a profile swap, so reclaim it once on the first turn boundary
     # (by then the launch-time shell write has settled). It's a one-shot: after
     # SessionStart nothing else clobbers the name (the shell never re-sources
