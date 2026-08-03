@@ -1668,12 +1668,24 @@ class TackRouteAcquisition(BeaconTest):
     """STATUSLINE-03 (#31): the bound tack route — not the branch resolver — is
     what feeds the row. PROV-07 answers "what does this branch point at", so
     work with no branch to be found by (an issue filed from the default branch,
-    another project's deliverable the session crossed) reached it not at all."""
+    another project's deliverable the session crossed) reached it not at all.
+
+    Acquisition is scoped to the current session: a route spans the project's
+    lifetime and the row spans one Claude session. Offering the whole route made
+    HOOK-08a's wipe pointless — the next hook refilled the row with the
+    project's shipping history, which a long-lived route holds in full."""
+
+    SESSION_START = "2026-08-03T16:00:00.000+00:00"
 
     ROUTE = {
         "slug": "cart-rework",
         "tacks": [
-            {"status": "done",
+            # Shipped in an earlier session: the row must not claim it.
+            {"status": "done", "done_at": "2026-07-01T09:00:00.000Z",
+             "deliverable": {"url": "https://github.com/acme/widgets/pull/21"},
+             "links": [{"url": "https://github.com/acme/widgets/issues/20"}]},
+            # Shipped during this session.
+            {"status": "done", "done_at": "2026-08-03T17:30:00.000Z",
              "deliverable": {"url": "https://github.com/acme/widgets/pull/30"},
              "links": [{"url": "https://github.com/acme/widgets/issues/29"}]},
             {"status": "in_progress",
@@ -1682,28 +1694,49 @@ class TackRouteAcquisition(BeaconTest):
         ],
     }
 
-    def _urls(self, route):
+    def _urls(self, route, started=None):
+        if started is not False:
+            self.beacon.write_state("session_started_at", started or self.SESSION_START)
         with mock.patch.object(self.beacon, "_bound_tack_route", return_value=route):
             return self.beacon._tack_route_urls(Path("/x"), "topic", "widgets")
 
-    def test_every_deliverable_and_link_is_gathered_in_route_order(self):
+    def test_this_session_s_deliverables_and_links_gather_in_route_order(self):
         self.assertEqual(self._urls(self.ROUTE), [
             "https://github.com/acme/widgets/pull/30",
             "https://github.com/acme/widgets/issues/29",
             "https://github.com/other/otherproj/issues/9",
         ])
 
+    def test_work_delivered_before_the_session_is_left_off(self):
+        urls = self._urls(self.ROUTE)
+        self.assertNotIn("https://github.com/acme/widgets/pull/21", urls)
+        self.assertNotIn("https://github.com/acme/widgets/issues/20", urls,
+                         "a history tack's links go with its deliverable")
+
+    def test_without_a_session_stamp_only_the_active_tack_qualifies(self):
+        # A pane engaged before the stamp existed has no window to test against.
+        # Fail toward a thin row rather than a stale one.
+        self.assertEqual(self._urls(self.ROUTE, started=False), [
+            "https://github.com/other/otherproj/issues/9",
+            "https://github.com/acme/widgets/issues/29",
+        ])
+
     def test_no_bound_route_gathers_nothing(self):
         self.assertEqual(self._urls(None), [])
 
-    def _publish(self, url, route=(), project_full="gh:acme/widgets", reset=True):
+    def _publish(self, url, route=(), project_full="gh:acme/widgets", reset=True,
+                 bound=None):
         if reset:
             self.beacon._LAST_CHIP_SIGNATURE = None
+        # _bound_tack_route is patched even when a test doesn't care: the
+        # resolved-URL guard consults it, and unpatched it would shell out to the
+        # developer's real `tack list`.
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
              mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
+             mock.patch.object(self.beacon, "_bound_tack_route", return_value=bound), \
              mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
             self.beacon._publish_chips(Path("/x"))
@@ -1736,6 +1769,43 @@ class TackRouteAcquisition(BeaconTest):
         url = "https://github.com/acme/widgets/pull/42"
         self._publish(url, route=[url])
         self.assertEqual([e["ref"] for e in self._entries()], ["#42"])
+
+    def test_a_resolution_that_shipped_in_an_earlier_session_is_not_recorded(self):
+        # With no tack in_progress, PROV-07 falls through to the most recently
+        # completed deliverable (_tack_url_for step b), so on a route with
+        # nothing open it keeps naming work that shipped before this session.
+        # Fine as a ↖ web click target, but recording it credits this session
+        # with someone else's delivery — the symptom that read as a stale row.
+        url = "https://github.com/acme/widgets/pull/33"
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish(url, bound={
+            "slug": "beacon",
+            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+                       "deliverable": {"url": url}}],
+        })
+        self.assertEqual(self._entries(), [])
+
+    def test_a_resolution_delivered_during_the_session_is_recorded(self):
+        url = "https://github.com/acme/widgets/pull/33"
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish(url, bound={
+            "slug": "beacon",
+            "tacks": [{"status": "done", "done_at": "2026-08-03T17:00:00.000Z",
+                       "deliverable": {"url": url}}],
+        })
+        self.assertEqual([e["ref"] for e in self._entries()], ["#33"])
+
+    def test_a_resolution_the_route_does_not_hold_is_recorded(self):
+        # The guard only rejects known-stale route deliverables. A branch or PR
+        # the resolver found on its own is this session's work by construction.
+        url = "https://github.com/acme/widgets/pull/99"
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish(url, bound={
+            "slug": "beacon",
+            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+                       "deliverable": {"url": "https://github.com/acme/widgets/pull/33"}}],
+        })
+        self.assertEqual([e["ref"] for e in self._entries()], ["#99"])
 
     def test_a_link_added_to_the_route_is_not_gated_out(self):
         # The chip signature covers branch + resolved URL; a link added to the
@@ -2494,6 +2564,25 @@ class SessionEndDisengages(BeaconTest):
             self.cli_calls.index(("set-profile", "beacon-dev")),
             "the name handback must follow the profile swap, which resets the name",
         )
+
+    def test_name_handback_precedes_blanking_the_title_vars(self):
+        # Ordering is the difference between a benign interrupted disengage and a
+        # permanently blank tab. `_cli` swallows failures, so a handback emitted
+        # after the blanking has no retry: the pane keeps the managed template
+        # with nothing to interpolate for the rest of its life. Blanking last
+        # degrades to a stale label instead. Observed in the wild as a live pane
+        # reading `name = <b></b>` with beacon_project already empty.
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t0p0:ABC-123"}):
+            self.beacon.render()
+            self.cli_calls.clear()
+            self._fire({"reason": "other"})
+        handback = self.cli_calls.index(
+            ("set-name", "w0t0p0:ABC-123", self.beacon.INTERACTIVE_TITLE_FORMAT))
+        for var in ("beacon_project", "beacon_task_nl", "beacon_title_prefix"):
+            self.assertGreater(
+                self.cli_calls.index(("uservar", var, "")), handback,
+                f"{var} must be blanked after the name handback, not before",
+            )
 
     def test_absent_reason_disengages(self):
         # A SessionEnd with no `reason` key collapses to "" via the `or ""`
@@ -3393,6 +3482,66 @@ class ReviewFeatureRemoved(BeaconTest):
 
     def test_completions_do_not_offer_review(self):
         self.assertNotIn("'review:", self.beacon.ZSH_COMPLETION)
+
+
+class PruneCollectsCacheFiles(BeaconTest):
+    """WIP-06: prune sweeps the per-pane cache files, not just state. They key on
+    the pane GUID while state keys on the hash — a one-way SHA-1 of that GUID —
+    so the sweep goes by mtime. Before this, the cache grew a file per pane ever
+    opened and nothing ever collected them."""
+
+    OLD = 1_600_000_000.0
+
+    def _seed(self):
+        cd = self.beacon.CACHE_DIR
+        cd.mkdir(parents=True, exist_ok=True)
+        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt",
+                     "cwd-FRESH-GUID.txt", "engaged-FRESH-GUID"):
+            (cd / name).write_text("/some/path\n")
+        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt"):
+            os.utime(cd / name, (self.OLD, self.OLD))
+        return cd
+
+    def _prune(self):
+        self.beacon.cmd_prune(self.beacon.argparse.Namespace(keep="30d"))
+
+    def test_idle_cache_files_are_removed_and_recent_ones_kept(self):
+        cd = self._seed()
+        self._prune()
+        self.assertFalse((cd / "cwd-STALE-GUID.txt").exists())
+        self.assertFalse((cd / "engaged-STALE-GUID").exists())
+        self.assertTrue((cd / "cwd-FRESH-GUID.txt").exists())
+        self.assertTrue((cd / "engaged-FRESH-GUID").exists())
+
+    def test_retired_url_handoff_files_are_collected(self):
+        # No writer creates these since 2.0 moved `↖ web` to click-time
+        # resolution, so every one on disk is a leftover no code reads.
+        cd = self._seed()
+        self._prune()
+        self.assertFalse((cd / "url-STALE-GUID.txt").exists())
+
+    def test_current_pane_is_kept_however_stale_its_files_look(self):
+        # Mirrors the state sweep's current-session protection: collecting the
+        # live pane's engagement marker would tell the shell it is unengaged and
+        # let it clobber the name the plugin owns (BADGE-14, TITLE-04).
+        cd = self._seed()
+        for name in ("cwd-MINE.txt", "engaged-MINE"):
+            (cd / name).write_text("")
+            os.utime(cd / name, (self.OLD, self.OLD))
+        with mock.patch.object(self.beacon, "_iterm_cache_key", return_value="MINE"):
+            self._prune()
+        self.assertTrue((cd / "cwd-MINE.txt").exists())
+        self.assertTrue((cd / "engaged-MINE").exists())
+        self.assertFalse((cd / "engaged-STALE-GUID").exists())
+
+    def test_unrelated_cache_entries_are_left_alone(self):
+        cd = self._seed()
+        other = cd / "something-else.json"
+        other.write_text("{}")
+        os.utime(other, (self.OLD, self.OLD))
+        self._prune()
+        self.assertTrue(other.exists(),
+                        "the sweep is scoped to the two per-pane filename shapes")
 
 
 class ExportImport(BeaconTest):

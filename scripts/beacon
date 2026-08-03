@@ -776,6 +776,74 @@ def _tack_landed_urls() -> set[str]:
     }
 
 
+_ACTIVE_TACK_STATUSES = frozenset({"in_progress"})
+
+
+def _iso_epoch(s: str) -> float | None:
+    """Epoch seconds for an ISO-8601 stamp, or None when it can't be read. tack
+    writes `…Z` and beacon writes `…+00:00`, so the two can't be compared as
+    strings."""
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _session_started_at() -> str:
+    """When the current Claude session began, stamped at every fresh-start
+    boundary (SessionStart other than `resume`, and the in-session commands that
+    re-bootstrap context).
+
+    STATUSLINE-03's row is scoped to one Claude session while the tack route it
+    reads from is scoped to the project, so the row needs a window of its own
+    rather than inheriting the route's lifetime. Held in beacon's own state
+    rather than read from the route's `sessions[]`: tack records a session only
+    on the route it is pinned to, and how ephemeral the row is shouldn't depend
+    on that bookkeeping."""
+    return read_state("session_started_at") or ""
+
+
+def _tack_touched_this_session(tack: dict, started_at: float | None) -> bool:
+    """Whether a tack is part of what *this* session did (STATUSLINE-03). The
+    route offers its whole history; only the tack being worked now and the ones
+    that completed since this session started belong on the row. The rest is the
+    project's shipping log, which the row would otherwise present as this
+    session's work — the outcome HOOK-08a's wipe intends to prevent and cannot
+    on its own, since acquisition re-offers the whole route on the next hook.
+
+    With no session stamp (a pane engaged before the stamp existed) only the
+    active tack qualifies: a thin row beats a stale one."""
+    if tack.get("status") in _ACTIVE_TACK_STATUSES:
+        return True
+    done = _iso_epoch(tack.get("done_at") or "")
+    return bool(started_at and done and done >= started_at)
+
+
+def _url_delivered_before_session(cwd: Path, branch: str, url: str,
+                                  project: str | None = None) -> bool:
+    """True when `url` is a bound-route deliverable whose tack finished before
+    this session started.
+
+    PROV-07 answers *where this session's work lives* and falls back to the
+    most-recently-completed deliverable when no tack is active (`_tack_url_for`
+    step b), so on a route with nothing open it keeps naming something that
+    shipped in an earlier session. That is a serviceable click target for
+    `↖ web`, but it is not an accomplishment: recording it on the row credits
+    this session with work it never touched."""
+    if not url:
+        return False
+    route = _bound_tack_route(cwd, branch, project)
+    if not route:
+        return False
+    started = _iso_epoch(_session_started_at())
+    for t in route.get("tacks") or []:
+        if (t.get("deliverable") or {}).get("url") == url:
+            return not _tack_touched_this_session(t, started)
+    return False
+
+
 def _bound_tack_route(cwd: Path, branch: str, project: str | None = None) -> dict | None:
     """The tack route this session is working, or None.
 
@@ -821,12 +889,20 @@ def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list
     session crossed) reaches the row only through here.
 
     Within a tack the deliverable precedes its links, and tacks come in route
-    order, so the most recent work sorts last and survives DELIVERABLES_MAX."""
+    order, so the most recent work sorts last and survives DELIVERABLES_MAX.
+
+    Scoped to the current session (`_tack_touched_this_session`): a route's
+    lifetime is the project's, the row's is one Claude session, so offering the
+    whole route here is what let a fresh session's row read as a release log of
+    work it never touched."""
     route = _bound_tack_route(cwd, branch, project)
     if not route:
         return []
+    started = _iso_epoch(_session_started_at())
     urls = []
     for t in route.get("tacks") or []:
+        if not _tack_touched_this_session(t, started):
+            continue
         candidates = [(t.get("deliverable") or {}).get("url")]
         candidates += [ln.get("url") for ln in (t.get("links") or [])]
         urls += [u for u in candidates if u and u not in urls]
@@ -2102,6 +2178,39 @@ def _watch_polling(since, interval):
         sys.stdout.flush()
 
 
+def _prune_cache(cutoff: float) -> int:
+    """Sweep the per-pane handoff files and engagement markers (WIP-06). These
+    are keyed by pane GUID, not session hash, and the hash is a one-way SHA-1 of
+    the GUID — so a pruned session's cache files cannot be derived from its
+    state files, and the sweep goes by the file's own mtime instead. Both writers
+    rewrite on every prompt (`cwd-*.txt`) or re-touch on every hook
+    (`engaged-*`), so mtime tracks the pane's activity the same way
+    `_session_last_activity` does. The current pane is always kept, matching the
+    state sweep. Without this the cache grew without bound: files accumulated for
+    every pane ever opened, long after the matching state was pruned."""
+    key = _iterm_cache_key()
+    keep = {f"cwd-{key}.txt", f"engaged-{key}"} if key else set()
+    removed = 0
+    # `url-*.txt` is the URL handoff file 2.0 retired (STATUS-BAR-08 resolves at
+    # click time now). No writer creates one, but every pane that ran an earlier
+    # version left one behind and nothing has ever collected them — so the sweep
+    # names it explicitly rather than leaving thousands of files no code reads.
+    # Patterns are enumerated, not inferred, because the cache dir also holds
+    # non-per-pane files the sweep must not touch.
+    for pattern in ("cwd-*.txt", "engaged-*", "url-*.txt"):
+        for p in CACHE_DIR.glob(pattern):
+            if p.name in keep:
+                continue
+            try:
+                if p.stat().st_mtime >= cutoff:
+                    continue
+                p.unlink()
+                removed += 1
+            except OSError:
+                pass
+    return removed
+
+
 def cmd_prune(args):
     """Remove per-session state for sessions idle longer than the threshold —
     a GC for the panes beacon has accumulated state for. The current session is
@@ -2120,7 +2229,9 @@ def cmd_prune(args):
             except OSError:
                 pass
         sessions += 1
-    print(f"pruned {sessions} session(s) idle longer than {raw} ({files} state files removed)")
+    cached = _prune_cache(cutoff)
+    print(f"pruned {sessions} session(s) idle longer than {raw} "
+          f"({files} state files, {cached} cache files removed)")
 
 
 def _forget_session(sh: str) -> tuple[bool, int]:
@@ -3267,7 +3378,8 @@ def _publish_chips(cwd: Path) -> None:
     # `display` leads with the ahead/behind indicator when diverged; route
     # lookup correlates on the branch name itself.
     branch = display[len(indicator):].lstrip() if indicator else display
-    route_urls = _tack_route_urls(cwd, branch, _project_name_at(cwd))
+    proj_name = _project_name_at(cwd)
+    route_urls = _tack_route_urls(cwd, branch, proj_name)
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
     # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
@@ -3312,7 +3424,9 @@ def _publish_chips(cwd: Path) -> None:
         r_ref = _deliverable_suffix(r_url)
         if r_ref and r_url != url:
             _record_deliverable(r_ref, r_url, _project_id_from_url(r_url) or project_id)
-    if ref:
+    # A resolution that only names something delivered in an earlier session is a
+    # location, not this session's work — see _url_delivered_before_session.
+    if ref and not _url_delivered_before_session(cwd, branch, url, proj_name):
         # The badge's own task, when the chain drew it from the PR title (or the
         # user said so outright). Any other tier — a branch name, an ai-title —
         # is spatial context rather than a name for the deliverable, and would
@@ -3878,10 +3992,6 @@ def _disengage() -> None:
     remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
-    _cli("uservar", "beacon_project", "")
-    _cli("uservar", "beacon_task", "")
-    _cli("uservar", "beacon_task_nl", "")
-    _cli("uservar", "beacon_title_prefix", "")
     # A mode state (paused/release/retro/done) swapped the pane into a mode profile
     # whose de-emphasized background the color-only `clear` below cannot undo
     # (RENDER-05). apply() swaps back to the base profile when *transitioning*
@@ -3891,13 +4001,21 @@ def _disengage() -> None:
     # no-op when already on the base profile.
     _cli("set-profile", BASE_PROFILE_NAME)
     _cli("clear")
-    # Blanking the badge user vars above empties everything TITLE_FORMAT
-    # interpolates, so the name has to move too or the tab label and OS window
-    # title go blank on exit. The shell's own set-name is a one-shot at source
-    # time that skipped this pane (it was engaged), so nothing else reclaims it:
-    # hand the name back to the interactive template here (TITLE-04). After the
-    # profile swap, which resets the name to the target profile's own (RENDER-05).
+    # Hand the name back to the interactive template (TITLE-04) *before* blanking
+    # the badge user vars, and after the profile swap that resets the name to the
+    # target profile's own (RENDER-05). Order is load-bearing: the vars are
+    # everything TITLE_FORMAT interpolates, so a pane left on the managed template
+    # with them blanked renders a blank tab label and blank OS window title. The
+    # shell's own set-name is a one-shot at source time that skipped this pane (it
+    # was engaged) and never re-runs, so nothing else reclaims the name — and
+    # `_cli` swallows failures, so a handback that ran last and failed would strand
+    # the pane blank for the rest of its life. Blanking last means an interrupted
+    # disengage leaves a stale label rather than an empty one.
     _set_session_title(INTERACTIVE_TITLE_FORMAT)
+    _cli("uservar", "beacon_project", "")
+    _cli("uservar", "beacon_task", "")
+    _cli("uservar", "beacon_task_nl", "")
+    _cli("uservar", "beacon_title_prefix", "")
 
 
 def cmd_clear(args):
@@ -4241,6 +4359,11 @@ def _wipe_session_for_fresh_start() -> None:
     # never touched.
     remove_state("deliverables")
     remove_state("deliverables.dropped")
+    # The window the row is scoped to (_session_started_at). Stamped at the same
+    # boundary as the wipe so the two agree: the wipe empties the row, and this
+    # keeps acquisition from refilling it with the route's earlier work.
+    write_state("session_started_at",
+                datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
     _clear_cc_signals()
     _clear_description()
 

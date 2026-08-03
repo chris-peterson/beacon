@@ -12,6 +12,26 @@ The default is now a bare `code`. If you want a maximized window, that's `"windo
 
 Ending a session returns the pane to its unmanaged look, which blanks the user vars the tab label and window title interpolate. The name itself was left pointing at them, so the tab went blank on `exit`. It now hands the name back to the interactive title — the project you're in, else the directory — which the shell prompt keeps current.
 
+The handback also moved ahead of the blanking. It runs over Apple Events, and if it didn't land, the pane stayed blank permanently — the shell sets the name once at startup and skips a pane Claude owns, so nothing came along later to reclaim it. Done in this order, a handback that fails leaves the last label you had instead.
+
+If you have a pane already stuck this way, `beacon clear` in it restores the label.
+
+### The status-line row is this session's work again
+
+The delivered row is meant to cover one Claude session, and a new session cleared it. Acquisition then refilled it: it read every deliverable and tracker link the bound tack route held, and a route lives as long as the project does. So a session that had shipped nothing opened with a row of merged PRs and old release tags, and there was no way to tell that from a session that had genuinely just landed them.
+
+A tack now reaches the row only if the session touched it: it's the one in progress, or it completed after the session started. The resolved URL is held to the same bar, which matters more than it sounds — with nothing open on a route, that resolver falls back to the most recently completed deliverable, so it kept nominating work from previous sessions. `↖ web` and the status line's own link still go there (a stale click target beats none), but the row no longer counts it as delivered.
+
+Nothing to configure, and route hygiene still bounds what the row can show. A pane that was already running keeps its current row until its next session.
+
+### `prune` collects the per-pane cache too
+
+`prune` swept per-session state and left the pane cache alone — the working-directory handoff files and engagement markers the status-bar buttons and the shell read. Those are named by pane, so one accumulated for every pane you have ever opened and nothing removed them; long-running installs have thousands.
+
+The same `--since` cutoff now applies to both, going by each file's own timestamp (both writers touch them continuously while a pane is alive, so an untouched one belongs to a pane that's gone). Your current pane is always kept.
+
+The sweep also picks up the `url-` handoff files 2.0 stopped writing when `↖ web` moved to resolving at click time. Nothing has read those since, and on this machine they were about half the directory.
+
 ## 2.2.0
 
 ### The status line reads your whole tack route
