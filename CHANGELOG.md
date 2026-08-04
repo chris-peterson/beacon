@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### The status-line link stops naming last session's PR
+
+2.2.1 kept work from earlier sessions off the delivered row but left one way in. The link the row falls back to when a session has touched nothing is the resolved URL, and on a tack route with nothing open, that resolver nominates the most recently completed deliverable — so a fresh session still opened with the PR you merged yesterday, which is what the fix was supposed to end.
+
+The link now skips a delivery that landed before the session started and takes the next answer down the chain: an open PR or MR for the current branch, else the branch page, else the repository. On a branch whose PR the route hasn't caught up with, that means the row shows your actual PR instead of the route's last one.
+
+`↖ web` is unaffected — it resolves when you click it, it's asking where the project's work lives rather than what this session did, and an old merged PR is a fine place to land.
+
 ## 2.2.1
 
 ### `↗ code` lands in the right directory again

@@ -986,6 +986,37 @@ def _forge_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     return item.get(probe["url_key"], ""), probe["label"](item)
 
 
+def _location_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
+    """PROV-07's location tiers — an open PR/MR for the branch, else the branch
+    tree, else the project. Named separately from `resolve_url` because the
+    status line substitutes them when the tack tier answers with a delivery that
+    predates the session (STATUSLINE-02)."""
+    # 3. forge probe — cached by the shell's `cwd@branch` signal, so this
+    # fires once per branch change, not per prompt.
+    url, label = _forge_url(cwd, branch, remote)
+    if url:
+        return url, label
+
+    # 4. branch URL
+    url, label = _branch_url(cwd, branch, remote)
+    if url:
+        return url, label
+
+    # 5. project URL
+    if remote:
+        return remote, p_git_remote(cwd) or p_project_dir(cwd) or ""
+
+    # 6. empty
+    return "", ""
+
+
+def _location_url_at(cwd: Path) -> tuple[str, str]:
+    """`_location_url` resolving branch and remote the way `resolve_url` does —
+    notably `p_branch`, which reports no branch on the default one, so the
+    default branch lands on the project URL rather than a tree URL."""
+    return _location_url(cwd, p_branch(cwd), _git_remote_url_normalized(cwd))
+
+
 def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     """Implements PROV-07. Returns (url, label)."""
     cwd = cwd or Path.cwd()
@@ -1005,24 +1036,7 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     if url:
         return url, label
 
-    # 3. forge probe — cached by the shell's `cwd@branch` signal, so this
-    # fires once per branch change, not per prompt.
-    url, label = _forge_url(cwd, branch, remote)
-    if url:
-        return url, label
-
-    # 4. branch URL
-    url, label = _branch_url(cwd, branch, remote)
-    if url:
-        return url, label
-
-    # 5. project URL
-    if remote:
-        label = p_git_remote(cwd) or p_project_dir(cwd) or ""
-        return remote, label
-
-    # 6. empty
-    return "", ""
+    return _location_url(cwd, branch, remote)
 
 
 def cmd_resolve_url(_args):
@@ -3367,7 +3381,19 @@ def _publish_chips(cwd: Path) -> None:
     the shell was blocked on Claude."""
     global _LAST_CHIP_SIGNATURE
     display, state, indicator, identity = _detect_branch_info(cwd)
+    # `display` leads with the ahead/behind indicator when diverged; route
+    # lookup correlates on the branch name itself.
+    branch = display[len(indicator):].lstrip() if indicator else display
+    proj_name = _project_name_at(cwd)
     url, label = resolve_url(cwd)
+    # STATUSLINE-02: `_tack_url_for` falls back to the newest completed
+    # deliverable when the route has nothing open, so a fresh session on an idle
+    # route would lead its row with a PR that shipped in an earlier session. The
+    # `↖ web` button still wants that target and resolves at click time, so the
+    # substitution is scoped to the persisted link: the location tiers answer
+    # instead — an open PR for the branch, else the branch tree, else the project.
+    if _url_delivered_before_session(cwd, branch, url, proj_name):
+        url, label = _location_url_at(cwd)
 
     # The bare forge identity (`gh:acme/widgets`) is not a chip value — the chip
     # carries the project's name. It is still resolved here because it qualifies
@@ -3375,10 +3401,6 @@ def _publish_chips(cwd: Path) -> None:
     # (STATUSLINE-03).
     project_id = _project_full_at(cwd)
     ref = _deliverable_suffix(url)
-    # `display` leads with the ahead/behind indicator when diverged; route
-    # lookup correlates on the branch name itself.
-    branch = display[len(indicator):].lstrip() if indicator else display
-    proj_name = _project_name_at(cwd)
     route_urls = _tack_route_urls(cwd, branch, proj_name)
 
     # Hybrid branch slots (#20): the default branch fills its own de-emphasized
@@ -3424,8 +3446,10 @@ def _publish_chips(cwd: Path) -> None:
         r_ref = _deliverable_suffix(r_url)
         if r_ref and r_url != url:
             _record_deliverable(r_ref, r_url, _project_id_from_url(r_url) or project_id)
-    # A resolution that only names something delivered in an earlier session is a
-    # location, not this session's work — see _url_delivered_before_session.
+    # The substitution above takes a pre-session delivery off the link, which
+    # leaves one case it can't reach: a tack marked done while its PR is still
+    # open on this branch, which the forge probe hands straight back. Recording it
+    # would credit this session with a delivery it had no part in.
     if ref and not _url_delivered_before_session(cwd, branch, url, proj_name):
         # The badge's own task, when the chain drew it from the PR title (or the
         # user said so outright). Any other tier — a branch name, an ai-title —
@@ -4444,7 +4468,10 @@ def _statusline_link_segment() -> str:
     "what am I shipping" before "what does it answer".
 
     A session that has touched no deliverable falls back to the single resolved
-    URL (a branch or repo page), which is the same rendering with one element.
+    URL (an open PR for the branch, else a branch or repo page), which is the same
+    rendering with one element. `_publish_chips` keeps a delivery from an earlier
+    session out of that slot, so the fallback names a location and never a ref the
+    session had no part in.
 
     Reads only what `_publish_chips` persisted; never re-resolves — the row
     renders per prompt, and `resolve_url` shells to git and can shell to

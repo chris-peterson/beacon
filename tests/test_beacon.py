@@ -1724,13 +1724,15 @@ class TackRouteAcquisition(BeaconTest):
     def test_no_bound_route_gathers_nothing(self):
         self.assertEqual(self._urls(None), [])
 
+    LOCATION = ("https://github.com/acme/widgets", "widgets")
+
     def _publish(self, url, route=(), project_full="gh:acme/widgets", reset=True,
-                 bound=None):
+                 bound=None, location=LOCATION):
         if reset:
             self.beacon._LAST_CHIP_SIGNATURE = None
         # _bound_tack_route is patched even when a test doesn't care: the
         # resolved-URL guard consults it, and unpatched it would shell out to the
-        # developer's real `tack list`.
+        # developer's real `tack list`. _location_url_at likewise shells to git.
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
@@ -1738,6 +1740,7 @@ class TackRouteAcquisition(BeaconTest):
              mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
              mock.patch.object(self.beacon, "_bound_tack_route", return_value=bound), \
              mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
+             mock.patch.object(self.beacon, "_location_url_at", return_value=location), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
             self.beacon._publish_chips(Path("/x"))
 
@@ -1794,6 +1797,47 @@ class TackRouteAcquisition(BeaconTest):
                        "deliverable": {"url": url}}],
         })
         self.assertEqual([e["ref"] for e in self._entries()], ["#33"])
+
+    def test_a_resolution_that_shipped_earlier_is_kept_off_the_link(self):
+        # Keeping it out of `deliverables` isn't enough on its own: the link
+        # segment falls back to the resolved URL exactly when the row is empty, so
+        # a fresh session on an idle route led with a PR that shipped days ago.
+        # The location tiers answer instead. `↖ web` resolves at click time and
+        # still gets PROV-07's own answer.
+        url = "https://github.com/acme/widgets/pull/33"
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish(url, bound={
+            "slug": "beacon",
+            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+                       "deliverable": {"url": url}}],
+        })
+        self.assertEqual(self.beacon.read_state("resolved.url"), self.LOCATION[0])
+        self.assertEqual(self.beacon.read_state("resolved.url_label"), self.LOCATION[1])
+
+    def test_a_resolution_delivered_during_the_session_stays_on_the_link(self):
+        url = "https://github.com/acme/widgets/pull/33"
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish(url, bound={
+            "slug": "beacon",
+            "tacks": [{"status": "done", "done_at": "2026-08-03T17:00:00.000Z",
+                       "deliverable": {"url": url}}],
+        })
+        self.assertEqual(self.beacon.read_state("resolved.url"), url)
+
+    def test_the_substituted_location_can_itself_be_a_deliverable(self):
+        # The location tiers lead with the forge probe, so a session working a
+        # branch whose PR the route hasn't caught up with gets its own ref on the
+        # row rather than the route's last delivery.
+        self.beacon.write_state("session_started_at", self.SESSION_START)
+        self._publish("https://github.com/acme/widgets/pull/33",
+                      bound={
+                          "slug": "beacon",
+                          "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+                                     "deliverable": {
+                                         "url": "https://github.com/acme/widgets/pull/33"}}],
+                      },
+                      location=("https://github.com/acme/widgets/pull/40", "widgets#40"))
+        self.assertEqual([e["ref"] for e in self._entries()], ["#40"])
 
     def test_a_resolution_the_route_does_not_hold_is_recorded(self):
         # The guard only rejects known-stale route deliverables. A branch or PR
