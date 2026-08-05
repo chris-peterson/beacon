@@ -1673,7 +1673,11 @@ class TackRouteAcquisition(BeaconTest):
     Acquisition is scoped to the current session: a route spans the project's
     lifetime and the row spans one Claude session. Offering the whole route made
     HOOK-08a's wipe pointless — the next hook refilled the row with the
-    project's shipping history, which a long-lived route holds in full."""
+    project's shipping history, which a long-lived route holds in full. What the
+    scope keeps is the route's *open* work — `pending` as well as `in_progress`
+    — since a route commonly carries the tack it is working as pending until
+    ship time, and gating on `in_progress` alone emptied the row for whole
+    sessions."""
 
     SESSION_START = "2026-08-03T16:00:00.000+00:00"
 
@@ -1691,6 +1695,9 @@ class TackRouteAcquisition(BeaconTest):
             {"status": "in_progress",
              "links": [{"url": "https://github.com/other/otherproj/issues/9"},
                        {"url": "https://github.com/acme/widgets/issues/29"}]},
+            # Filed, not started: its issue is what the open work answers.
+            {"status": "pending",
+             "links": [{"url": "https://github.com/acme/widgets/issues/32"}]},
         ],
     }
 
@@ -1705,6 +1712,7 @@ class TackRouteAcquisition(BeaconTest):
             "https://github.com/acme/widgets/pull/30",
             "https://github.com/acme/widgets/issues/29",
             "https://github.com/other/otherproj/issues/9",
+            "https://github.com/acme/widgets/issues/32",
         ])
 
     def test_work_delivered_before_the_session_is_left_off(self):
@@ -1713,12 +1721,27 @@ class TackRouteAcquisition(BeaconTest):
         self.assertNotIn("https://github.com/acme/widgets/issues/20", urls,
                          "a history tack's links go with its deliverable")
 
-    def test_without_a_session_stamp_only_the_active_tack_qualifies(self):
+    def test_without_a_session_stamp_only_open_tacks_qualify(self):
         # A pane engaged before the stamp existed has no window to test against.
         # Fail toward a thin row rather than a stale one.
         self.assertEqual(self._urls(self.ROUTE, started=False), [
             "https://github.com/other/otherproj/issues/9",
             "https://github.com/acme/widgets/issues/29",
+            "https://github.com/acme/widgets/issues/32",
+        ])
+
+    def test_a_pending_tack_reaches_the_row(self):
+        # A route that marks its tack done only at ship time has nothing
+        # in_progress for most of a session; gating on that alone left the row
+        # empty exactly while the work was underway.
+        route = {"slug": "cart-rework", "tacks": [
+            {"status": "pending",
+             "deliverable": {"url": "https://github.com/acme/widgets/pull/40"},
+             "links": [{"url": "https://github.com/acme/widgets/issues/39"}]},
+        ]}
+        self.assertEqual(self._urls(route), [
+            "https://github.com/acme/widgets/pull/40",
+            "https://github.com/acme/widgets/issues/39",
         ])
 
     def test_no_bound_route_gathers_nothing(self):
@@ -2899,6 +2922,7 @@ class InstallGating(unittest.TestCase):
         returns = {
             "_install_cli_wrapper": Path("/tmp/beacon"),
             "_install_completions": None,
+            "_install_statusline": None,
             "_install_shell_source": None,
             "_service_install": True,
             "install_dynamic_profile": (True, "profile written"),
@@ -2916,7 +2940,7 @@ class InstallGating(unittest.TestCase):
         return buf.getvalue()
 
     _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile")
-    _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions")
+    _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions", "_install_statusline")
 
     def test_dashboard_only_skips_iterm_steps(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
@@ -2928,7 +2952,7 @@ class InstallGating(unittest.TestCase):
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
         self.assertIn("[1/3]", out)
-        self.assertIn("[3/3]", out)  # includes the status-line advisory step
+        self.assertIn("[3/3]", out)  # includes the status-line wiring step
         self.assertIn("beacon wip", out)
         self.assertIn("beacon serve install", out)
 
@@ -2948,6 +2972,60 @@ class InstallGating(unittest.TestCase):
             out = self._run_install()
         self.assertIn("no iTerm2 restart required", out)
         self.assertNotIn("DEFERRED", out)
+
+
+class StatuslineWiring(unittest.TestCase):
+    """STATUSLINE-01: install wires `statusLine` into Claude Code's user
+    settings.json, since nothing else makes the footer row exist. Left as a
+    printed block, the step was skipped or applied to one project's
+    settings.local.json, so the row was absent everywhere else. The write is
+    scoped to that one key and never replaces a statusLine the user chose."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.tmp)
+        self.addCleanup(self._tmp.cleanup)
+        self.settings = self.tmp / "settings.json"
+
+    def _install(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon._install_statusline(self.settings)
+        return buf.getvalue()
+
+    def _written(self):
+        return json.loads(self.settings.read_text())
+
+    def test_writes_the_block_when_absent(self):
+        self.settings.write_text(json.dumps({"model": "opus"}))
+        self._install()
+        data = self._written()
+        self.assertEqual(data["statusLine"]["command"], "beacon statusline")
+        self.assertEqual(data["model"], "opus", "unrelated settings must survive")
+
+    def test_creates_the_file_when_missing(self):
+        self._install()
+        self.assertEqual(self._written()["statusLine"]["command"], "beacon statusline")
+
+    def test_an_existing_statusline_is_left_alone(self):
+        mine = {"type": "command", "command": "my-own-prompt"}
+        self.settings.write_text(json.dumps({"statusLine": mine}))
+        out = self._install()
+        self.assertEqual(self._written()["statusLine"], mine)
+        self.assertIn("already defines a statusLine", out)
+        self.assertIn("beacon statusline", out, "the block to paste is still shown")
+
+    def test_rerun_is_a_no_op(self):
+        self._install()
+        out = self._install()
+        self.assertIn("already wired", out)
+
+    def test_unparseable_settings_are_not_clobbered(self):
+        self.settings.write_text("{ not json")
+        out = self._install()
+        self.assertEqual(self.settings.read_text(), "{ not json")
+        self.assertIn("unreadable", out)
 
 
 @unittest.skipIf(sys.platform == "win32", "launchd/systemd service is POSIX-only")

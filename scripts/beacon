@@ -776,7 +776,11 @@ def _tack_landed_urls() -> set[str]:
     }
 
 
-_ACTIVE_TACK_STATUSES = frozenset({"in_progress"})
+# Open statuses only — a completed tack reaches the row through the `done_at`
+# window in _tack_in_session_scope instead. Both open statuses count: a route is
+# commonly kept with its tack filed `pending` and marked done at ship time, so
+# `in_progress` alone left the row empty for as long as the work was underway.
+_OPEN_TACK_STATUSES = frozenset({"in_progress", "pending"})
 
 
 def _iso_epoch(s: str) -> float | None:
@@ -805,17 +809,22 @@ def _session_started_at() -> str:
     return read_state("session_started_at") or ""
 
 
-def _tack_touched_this_session(tack: dict, started_at: float | None) -> bool:
-    """Whether a tack is part of what *this* session did (STATUSLINE-03). The
-    route offers its whole history; only the tack being worked now and the ones
-    that completed since this session started belong on the row. The rest is the
-    project's shipping log, which the row would otherwise present as this
-    session's work — the outcome HOOK-08a's wipe intends to prevent and cannot
-    on its own, since acquisition re-offers the whole route on the next hook.
+def _tack_in_session_scope(tack: dict, started_at: float | None) -> bool:
+    """Whether a tack belongs on *this* session's row (STATUSLINE-03): the
+    route's open work, plus whatever it landed since the session started.
+
+    What the scope exists to exclude is the project's shipping log — a route
+    carries months of `done` tacks, and offering those made a fresh session's
+    row read as a release of work it never touched, which HOOK-08a's wipe cannot
+    prevent on its own since acquisition re-offers the whole route on the next
+    hook. Open work is the opposite case: a `pending` tack's issue link is
+    exactly the "what am I shipping it for" the row's trailing line is for, and
+    routes are commonly kept with the tack marked `done` only at ship time, so
+    gating on `in_progress` alone left the row empty for whole sessions.
 
     With no session stamp (a pane engaged before the stamp existed) only the
-    active tack qualifies: a thin row beats a stale one."""
-    if tack.get("status") in _ACTIVE_TACK_STATUSES:
+    open tacks qualify: a thin row beats a stale one."""
+    if tack.get("status") in _OPEN_TACK_STATUSES:
         return True
     done = _iso_epoch(tack.get("done_at") or "")
     return bool(started_at and done and done >= started_at)
@@ -840,7 +849,7 @@ def _url_delivered_before_session(cwd: Path, branch: str, url: str,
     started = _iso_epoch(_session_started_at())
     for t in route.get("tacks") or []:
         if (t.get("deliverable") or {}).get("url") == url:
-            return not _tack_touched_this_session(t, started)
+            return not _tack_in_session_scope(t, started)
     return False
 
 
@@ -891,7 +900,7 @@ def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list
     Within a tack the deliverable precedes its links, and tacks come in route
     order, so the most recent work sorts last and survives DELIVERABLES_MAX.
 
-    Scoped to the current session (`_tack_touched_this_session`): a route's
+    Scoped to the current session (`_tack_in_session_scope`): a route's
     lifetime is the project's, the row's is one Claude session, so offering the
     whole route here is what let a fresh session's row read as a release log of
     work it never touched."""
@@ -901,7 +910,7 @@ def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list
     started = _iso_epoch(_session_started_at())
     urls = []
     for t in route.get("tacks") or []:
-        if not _tack_touched_this_session(t, started):
+        if not _tack_in_session_scope(t, started):
             continue
         candidates = [(t.get("deliverable") or {}).get("url")]
         candidates += [ln.get("url") for ln in (t.get("links") or [])]
@@ -4737,14 +4746,61 @@ def cmd_install_profile(_args):
     print(f"✓ {msg}")
 
 
+CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
+
+
+def _statusline_settings_value() -> dict:
+    """Claude Code's `statusLine` value pointing at beacon. `beacon` is the PATH
+    wrapper the install just placed."""
+    return {"type": "command", "command": "beacon statusline", "padding": 0}
+
+
 def _statusline_settings_block() -> str:
-    """The `statusLine` block to paste into Claude Code's settings.json so the
-    pause reason surfaces in the footer row (STATUSLINE-01). `beacon` is the
-    PATH wrapper this install just placed."""
-    return json.dumps(
-        {"statusLine": {"type": "command", "command": "beacon statusline", "padding": 0}},
-        indent=2,
-    )
+    """The `statusLine` block to paste by hand, shown when the install declines
+    to write it."""
+    return json.dumps({"statusLine": _statusline_settings_value()}, indent=2)
+
+
+def _install_statusline(settings: Path | None = None) -> None:
+    """STATUSLINE-01: wire `beacon statusline` into Claude Code's user
+    settings.json, which is the only thing that makes the footer row exist.
+
+    Left to a printed block, this step was skipped or applied to one project's
+    `.claude/settings.local.json`, so the row was absent everywhere else and the
+    whole surface read as broken. Writing it is scoped hard: `statusLine` is the
+    one key touched, and an existing one is never replaced — a status line the
+    user already chose outranks beacon's, so that case prints the block and says
+    so rather than deciding for them."""
+    settings = settings or CLAUDE_SETTINGS
+
+    def decline(why: str) -> None:
+        print(f"  ! {why}")
+        print(f"  To use beacon's instead, set `statusLine` in {settings} to:")
+        print(textwrap.indent(_statusline_settings_block(), "  "))
+
+    data = {}
+    if settings.exists():
+        try:
+            data = json.loads(settings.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            decline(f"{settings} is unreadable ({exc}) — leaving it alone")
+            return
+        if not isinstance(data, dict):
+            decline(f"{settings} is not a JSON object — leaving it alone")
+            return
+
+    current = data.get("statusLine")
+    if isinstance(current, dict) and "beacon statusline" in str(current.get("command", "")):
+        print(f"  ✓ already wired: {settings}")
+        return
+    if current is not None:
+        decline(f"{settings} already defines a statusLine — leaving it alone")
+        return
+
+    data["statusLine"] = _statusline_settings_value()
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data, indent=2) + "\n")
+    print(f"  ✓ wrote statusLine to {settings}")
 
 
 def cmd_install(_args):
@@ -4769,11 +4825,9 @@ def cmd_install(_args):
     print()
 
     # Terminal-agnostic: Claude Code renders the status line in any terminal, so
-    # this advisory shows on both paths. Print-to-paste rather than auto-writing
-    # the user's settings.json (STATUSLINE-01).
-    step("Claude Code status line (surfaces the pause reason) — optional")
-    print("  Add this to ~/.claude/settings.json to show the pause reason in the footer:")
-    print(textwrap.indent(_statusline_settings_block(), "  "))
+    # this step runs on both paths.
+    step("Claude Code status line")
+    _install_statusline()
     print()
 
     if not iterm:
