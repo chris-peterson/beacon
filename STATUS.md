@@ -3,7 +3,7 @@
 Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-08-03
+**Last audit:** 2026-08-05
 **Spec version:** v2 (root-level, `SPEC.md`)
 **Coverage:** 169 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
@@ -133,6 +133,14 @@ above the calmer fleet") — recent code realigned to it, not drift.
   contract gain). Revisit if the spec ever moves to strict EARS.
 
 ## Audit history
+
+### 2026-08-05 — Coverage refresh (spec-status)
+
+169 IDs unchanged, all Covered, 0 needs-decision. No new IDs. Records the
+STATUSLINE row note the status-line wiring commit amended in place: `install`
+writes the `statusLine` key into `~/.claude/settings.json` (`_install_statusline`),
+and STATUSLINE-03's session scope now takes a route's open work — `pending` as
+well as `in_progress` (`_OPEN_TACK_STATUSES`, `_tack_in_session_scope`).
 
 ### 2026-08-03 — Status-line link held to the session window (spec-status)
 
