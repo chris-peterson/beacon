@@ -14,20 +14,6 @@ The status line only exists if `statusLine` is set in Claude Code's settings, an
 
 The row now takes the route's open work, `pending` as well as `in_progress`. Completed tacks are unchanged: they still need to have landed after the session started, which is what keeps the project's shipping history off a fresh session's row.
 
-## Unreleased
-
-### `install` wires the status line for you
-
-The status line only exists if `statusLine` is set in Claude Code's settings, and `install` printed that block for you to paste rather than writing it. So the row existed only where the block had been pasted — and pasted into a single project's `.claude/settings.local.json`, it is scoped to that one repo, which from every other repo looks exactly like a status line that never has anything to say.
-
-`install` now writes the block into `~/.claude/settings.json` itself. It touches that one key and leaves the rest of the file alone, and it will not replace a `statusLine` you already set: if you have your own, it says so and prints beacon's for you to merge by hand.
-
-### Open tacks reach the status-line row
-
-2.2.1 scoped the row to one Claude session, and read "this session's work" as the tack in progress plus anything completed since the session started. Routes are commonly kept the other way — the tack is filed as `pending` and marked done at ship time — so on those routes nothing qualified while the work was actually happening, and the row stayed empty until the moment it shipped. The issues and CRs the route was carrying never appeared at all.
-
-The row now takes the route's open work, `pending` as well as `in_progress`. Completed tacks are unchanged: they still need to have landed after the session started, which is what keeps the project's shipping history off a fresh session's row.
-
 ## 2.2.2
 
 ### The status-line link stops naming last session's PR
