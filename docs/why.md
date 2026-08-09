@@ -50,11 +50,13 @@ What they don't do is drive the terminal you already have. Their sessions live i
 
 Reach for an orchestrator when you want agents running unattended in parallel on isolated branches. Reach for beacon when you're driving the sessions and need to know which one wants you.
 
-## Claude Code's own `claude agents`
+## The built-in view: `claude agents`
 
 Worth knowing before you install anything: Claude Code ships a fleet view. `claude agents` lists the sessions it dispatched into the background, with per-row status — Working, Needs input, Done, Needs attention — plus `--json`, attach, and worktree-backed jobs.
 
 An interactive session you started by typing `claude` in a pane doesn't get a row. Those are the sessions beacon is about, so the two don't overlap much — but if all your parallel work is backgrounded, the built-in view may be all you need.
+
+The gap is easy to see for yourself. Opening it while driving seven interactive sessions reported `2 awaiting input · 0 working · 2 completed` — and both rows awaiting input were 33 days old. None of the live work was in it, because none of it was dispatched; what remained was what had been dispatched and never cleaned up. That's the scope difference and [the graveyard problem](#everything-in-this-category-becomes-a-graveyard) in one screen.
 
 ## iTerm2 tab-status tools
 
@@ -84,7 +86,7 @@ WezTerm reaches further into the rest. `$WEZTERM_PANE` gives a pane the stable i
 
 Session managers demo well and age badly, and beacon is not exempt. The demo has five sessions and every one of them means something. Six weeks later you have sixty, because sessions rarely get *terminated* — you finish the work, close the laptop, and the record stays. Whatever view you built to scan live work turns into a list of things that ended, with the signal you installed it for buried in it.
 
-Nothing here has solved that. It's structural: an agent session has a clear beginning and no clear end, so there's no event to hang cleanup on. What beacon does about it is partial, and worth knowing precisely:
+Nothing here has solved that, including the built-in view — [`claude agents`](#the-built-in-view-claude-agents) opened mid-flight listed four rows, two of them 33 days old, while seven live sessions went unmentioned. It's structural: an agent session has a clear beginning and no clear end, so there's no event to hang cleanup on. What beacon does about it is partial, and worth knowing precisely:
 
 - The fleet view is **time-windowed by default** — `wip`, `watch`, and the dashboard show the last 24 hours, so an ordinary stale session falls out of sight without being deleted (`--since` widens the window, `--all` drops it).
 - `beacon prune [--since 30d]` deletes state for long-idle panes, and `beacon forget <hash>` deletes one. The dashboard's `×` does the same for a card.
