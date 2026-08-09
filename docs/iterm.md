@@ -8,92 +8,102 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
   These figures are drawn in HTML from the spec palette (THEME-02 / THEME-03)
   rather than screenshotted, because the iTerm2 surfaces don't exist off macOS.
   The source of record is dev/iterm-mock.html — edit both together.
+
+  The pf- prefix stays clear of the bcn- namespace that the marketplace hub's
+  session.css owns: shipyard links that stylesheet into every plugin whose
+  plugin.yml declares a suite, its rules land after this block in the cascade,
+  and its .bcn-tab background resolves through a --bcn-state var these figures
+  never set — so an equal-specificity name here silently loses its background.
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
-.bcn {
+.panefig {
   --abyss: #21222c; --body: #282a36; --bar: #30323e; --fg: #f8f8f2;
-  --identity: #9aa3c0; --sep: #7e8290; --pink: #ff79c6;
+  --identity: #9aa3c0; --sep: #a0a4b3; --pink: #ff79c6;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4;
   --green: #50fa7b;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   max-width: 720px; margin: 1rem 0;
 }
-.bcn-win { border: 1px solid rgba(139,233,253,0.14); border-radius: 13px; overflow: hidden; background: var(--body); box-shadow: 0 18px 40px rgba(0,0,0,0.45); }
-.bcn-title { display: flex; align-items: center; gap: 0.6rem; background: var(--abyss); border-bottom: 1px solid rgba(248,248,242,0.07); padding: 0.6rem 0.85rem; }
-.bcn-dots { display: inline-flex; gap: 0.45rem; }
-.bcn-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
-.bcn-dots i:nth-child(1) { background: #ff5f57; }
-.bcn-dots i:nth-child(2) { background: #febc2e; }
-.bcn-dots i:nth-child(3) { background: #28c840; }
-.bcn-wintab { display: inline-flex; flex-direction: column; font: 12px var(--mono); line-height: 1.4; border-radius: 6px; padding: 0.2rem 0.7rem; background: color-mix(in srgb, var(--ready) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent); }
-.bcn-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
-.bcn-wintab .t { color: var(--identity); padding-left: 0.85em; }
-.bcn-bar { display: flex; align-items: center; gap: 0.55rem; background: var(--bar); font: 13px var(--mono); padding: 0.4rem 0.7rem; white-space: nowrap; }
-.bcn-act { color: var(--pink); font-weight: 700; }
-.bcn-sep { color: var(--sep); }
-.bcn-proj { color: var(--identity); }
-.bcn-proj b { color: var(--green); font-weight: 700; }
-.bcn-spring { flex: 1 1 auto; }
-.bcn-branch { color: var(--green); }
-.bcn-branch.diverged { color: var(--busy); }
-.bcn-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
-.bcn-body .prompt { color: var(--green); }
-.bcn-mk { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-left: 0.3em; border-radius: 50%; background: #8be9fd; color: #21222c; font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif; vertical-align: super; position: relative; top: -0.15em; }
-.bcn-legend { list-style: none; counter-reset: bcn; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
-.bcn-legend li { counter-increment: bcn; display: grid; grid-template-columns: 1.4rem 1fr; align-items: start; font-size: 0.9rem; color: inherit; }
-.bcn-legend li::before { content: counter(bcn); display: inline-flex; align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: #8be9fd; color: #21222c; font-weight: 700; font-size: 0.72rem; }
-.bcn-legend b { color: inherit; font-weight: 600; }
-.bcn code { font: 0.85em var(--mono); background: rgba(128,128,128,0.18) !important; padding: 0.05em 0.35em; border-radius: 4px; color: inherit !important; }
-.bcn-striprow { display: grid; gap: 0.75rem; }
-.bcn-strip { border: 1px solid rgba(139,233,253,0.14); border-radius: 9px; overflow: hidden; }
-.bcn-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
-.bcn-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
-.bcn-chip { border: 1px solid rgba(139,233,253,0.14); border-radius: 10px; background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center; }
-.bcn-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
-.bcn-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
-.bcn-chip .b.ready { color: var(--ready); }
-.bcn-chip .b.busy { color: var(--busy); }
-.bcn-chip .b.blocked { color: var(--blocked); }
-.bcn-chip .b.paused { color: var(--paused); }
-.bcn-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
-.bcn-tabcol { display: flex; gap: 1.1rem; align-items: flex-start; flex-wrap: wrap; }
-.bcn-tabstrip { display: grid; gap: 5px; width: 15rem; flex: 0 0 auto; }
-.bcn-tab { display: flex; align-items: center; gap: 0.55rem; font: 600 13px var(--mono); color: var(--fg); background: var(--body); border-left: 4px solid var(--sep); border-radius: 5px; padding: 0.6rem 0.65rem; }
-.bcn-tab i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
-.bcn-tab .lbl { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
-.bcn-tab .t { font-weight: 400; color: var(--identity); padding-left: 0.85em; }
-.bcn-tab.ready { border-left-color: var(--ready); } .bcn-tab.ready i { background: var(--ready); }
-.bcn-tab.busy { border-left-color: var(--busy); background: linear-gradient(rgba(255,184,108,0.13), rgba(255,184,108,0.13)), var(--body); } .bcn-tab.busy i { background: var(--busy); }
-.bcn-tab.blocked { border-left-color: var(--blocked); background: linear-gradient(rgba(255,85,85,0.16), rgba(255,85,85,0.16)), var(--body); } .bcn-tab.blocked i { background: var(--blocked); }
-.bcn-tab.paused { border-left-color: var(--paused); } .bcn-tab.paused i { background: var(--paused); }
-.bcn-tabcol .cap { flex: 1 1 12rem; font-size: 0.9rem; color: #cdd2e6; line-height: 1.5; align-self: center; }
+.pf-win { border: 1px solid rgba(139,233,253,0.14); border-radius: 13px; overflow: hidden; background: var(--body); box-shadow: 0 18px 40px rgba(0,0,0,0.45); }
+.pf-title { display: flex; align-items: center; gap: 0.6rem; background: var(--abyss); border-bottom: 1px solid rgba(248,248,242,0.07); padding: 0.6rem 0.85rem; }
+.pf-dots { display: inline-flex; gap: 0.45rem; }
+.pf-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.pf-dots i:nth-child(1) { background: #ff5f57; }
+.pf-dots i:nth-child(2) { background: #febc2e; }
+.pf-dots i:nth-child(3) { background: #28c840; }
+.pf-wintab { display: inline-flex; flex-direction: column; font: 12px var(--mono); line-height: 1.4; border-radius: 6px; padding: 0.2rem 0.7rem; background: color-mix(in srgb, var(--ready) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent); }
+.pf-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
+.pf-wintab .t { color: var(--identity); padding-left: 0.85em; }
+/* the strip is one fixed-layout row, so it scrolls rather than wraps once the
+   viewport is narrower than it — wrapping would misrepresent what iTerm2 draws */
+.pf-bar { display: flex; align-items: center; gap: 0.55rem; background: var(--bar); font: 13px var(--mono); padding: 0.4rem 0.7rem; white-space: nowrap; overflow-x: auto; scrollbar-width: thin; }
+.pf-act { color: var(--pink); font-weight: 700; }
+.pf-sep { color: var(--sep); }
+.pf-proj { color: var(--identity); }
+.pf-proj b { color: var(--green); font-weight: 700; }
+.pf-spring { flex: 1 1 auto; }
+.pf-branch { color: var(--green); }
+.pf-branch.diverged { color: var(--busy); }
+.pf-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
+.pf-body .prompt { color: var(--green); }
+.pf-mk { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-left: 0.3em; border-radius: 50%; background: #8be9fd; color: #21222c; font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif; vertical-align: super; position: relative; top: -0.15em; }
+.pf-legend { list-style: none; counter-reset: panefig; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.pf-legend li { counter-increment: panefig; display: grid; grid-template-columns: 1.4rem 1fr; align-items: start; font-size: 0.9rem; color: inherit; }
+.pf-legend li::before { content: counter(panefig); display: inline-flex; align-items: center; justify-content: center; width: 1.15rem; height: 1.15rem; border-radius: 50%; background: #8be9fd; color: #21222c; font-weight: 700; font-size: 0.72rem; }
+.pf-legend b { color: inherit; font-weight: 600; }
+.panefig code { font: 0.85em var(--mono); background: rgba(128,128,128,0.18) !important; padding: 0.05em 0.35em; border-radius: 4px; color: inherit !important; }
+.pf-striprow { display: grid; gap: 0.75rem; }
+.pf-strip { border: 1px solid rgba(139,233,253,0.14); border-radius: 9px; overflow: hidden; }
+.pf-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
+.pf-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+.pf-chip { border: 1px solid rgba(139,233,253,0.14); border-radius: 10px; background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center; }
+.pf-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
+.pf-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
+.pf-chip .b.ready { color: var(--ready); }
+.pf-chip .b.busy { color: var(--busy); }
+.pf-chip .b.blocked { color: var(--blocked); }
+.pf-chip .b.paused { color: var(--paused); }
+.pf-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
+.pf-tabcol { display: flex; gap: 1.1rem; align-items: flex-start; flex-wrap: wrap; }
+.pf-tabstrip { display: grid; gap: 5px; width: 15rem; flex: 0 0 auto; }
+.pf-tab { display: flex; align-items: center; gap: 0.55rem; font: 600 13px var(--mono); color: var(--fg); background: var(--body); border-left: 4px solid var(--sep); border-radius: 5px; padding: 0.6rem 0.65rem; }
+.pf-tab i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.pf-tab .pf-lbl { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+.pf-tab .t { font-weight: 400; color: var(--identity); padding-left: 0.85em; }
+.pf-tab.ready { border-left-color: var(--ready); } .pf-tab.ready i { background: var(--ready); }
+.pf-tab.busy { border-left-color: var(--busy); background: linear-gradient(rgba(255,184,108,0.13), rgba(255,184,108,0.13)), var(--body); } .pf-tab.busy i { background: var(--busy); }
+.pf-tab.blocked { border-left-color: var(--blocked); background: linear-gradient(rgba(255,85,85,0.16), rgba(255,85,85,0.16)), var(--body); } .pf-tab.blocked i { background: var(--blocked); }
+.pf-tab.paused { border-left-color: var(--paused); } .pf-tab.paused i { background: var(--paused); }
+/* this caption sits beside the strip on the page, not inside a dark panel like
+   the other .cap variants — so it takes the page's own text color, not theirs */
+.pf-tabcol .cap { flex: 1 1 12rem; font-size: 0.9rem; color: inherit; line-height: 1.5; align-self: center; }
 </style>
 
 ## Anatomy of a painted pane
 
 The tab carries the session's identity and its state, the status bar runs along the bottom, and the pane itself is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
 
-<div class="bcn">
-  <div class="bcn-win">
-    <div class="bcn-title">
-      <span class="bcn-dots"><i></i><i></i><i></i></span>
-      <span class="bcn-wintab"><b>claude-marketplace<span class="bcn-mk">1</span></b><span class="t">Redesign the install flow</span></span>
+<div class="panefig">
+  <div class="pf-win">
+    <div class="pf-title">
+      <span class="pf-dots"><i></i><i></i><i></i></span>
+      <span class="pf-wintab"><b>claude-marketplace<span class="pf-mk">1</span></b><span class="t">Redesign the install flow</span></span>
     </div>
-    <div class="bcn-body">
+    <div class="pf-body">
       <div><span class="prompt">›</span> run just build</div>
     </div>
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-proj">claude-marketplace<span class="bcn-mk">3</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
+    <div class="pf-bar">
+      <span class="pf-act">↖ web<span class="pf-mk">2</span></span>
+      <span class="pf-spring"></span>
+      <span class="pf-proj">claude-marketplace<span class="pf-mk">3</span></span>
+      <span class="pf-sep">│</span>
+      <span class="pf-branch">main<span class="pf-mk">4</span></span>
+      <span class="pf-sep">│</span>
+      <span class="pf-act">↗ code<span class="pf-mk">5</span></span>
     </div>
   </div>
-  <ol class="bcn-legend">
+  <ol class="pf-legend">
     <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
@@ -106,22 +116,22 @@ The tab carries the session's identity and its state, the status bar runs along 
 
 The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set.
 
-<div class="bcn bcn-states">
-  <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
-  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
-  <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
+<div class="panefig pf-states">
+  <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
+  <div class="pf-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
+  <div class="pf-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
+  <div class="pf-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 
 That signal comes into its own with **tabs down the left side**. A left strip turns a fleet of sessions into a scannable column — one row per session, each carrying its state color — so you read the whole fleet at a glance without a single window focused. This is the layout beacon is tuned for, and why the [recommended layout](#recommended-layout) below sets the tabs wider and taller: the default strip is too cramped for the color to register.
 
-<div class="bcn bcn-tabcol">
-  <div class="bcn-tabstrip">
-    <div class="bcn-tab blocked"><i></i><span class="lbl">checkout-api<span class="t">refunds</span></span></div>
-    <div class="bcn-tab busy"><i></i><span class="lbl">widgets-web<span class="t">#42</span></span></div>
-    <div class="bcn-tab ready"><i></i><span class="lbl">auth-svc</span></div>
-    <div class="bcn-tab busy"><i></i><span class="lbl">beacon<span class="t">#14</span></span></div>
-    <div class="bcn-tab paused"><i></i><span class="lbl">infra-tf</span></div>
+<div class="panefig pf-tabcol">
+  <div class="pf-tabstrip">
+    <div class="pf-tab blocked"><i></i><span class="pf-lbl">checkout-api<span class="t">refunds</span></span></div>
+    <div class="pf-tab busy"><i></i><span class="pf-lbl">widgets-web<span class="t">#42</span></span></div>
+    <div class="pf-tab ready"><i></i><span class="pf-lbl">auth-svc</span></div>
+    <div class="pf-tab busy"><i></i><span class="pf-lbl">beacon<span class="t">#14</span></span></div>
+    <div class="pf-tab paused"><i></i><span class="pf-lbl">infra-tf</span></div>
   </div>
   <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
 </div>
@@ -146,22 +156,22 @@ It carries only the two things a link can't do — type a command into the pane,
 
 The project chip names the project, and the branch beside it is colored by its git sync state:
 
-<div class="bcn bcn-striprow">
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+<div class="panefig pf-striprow">
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">widgets</span><span class="pf-sep">│</span><span class="pf-branch">main</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">On the default branch, synced — branch is green.</div>
   </div>
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">widgets</span><span class="pf-sep">│</span><span class="pf-branch diverged">fix/login</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">Ahead of upstream — branch is amber.</div>
   </div>
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">notes</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">notes</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">Not a git repo — the chip still names the directory; no branch renders.</div>
   </div>

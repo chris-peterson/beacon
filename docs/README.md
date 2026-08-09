@@ -12,7 +12,8 @@ A glance across the windows tells you which session needs you:
 <!--
   Bespoke fleet figure drawn in HTML from the spec palette (BADGE_COLOR_PALETTE,
   THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
-  no macOS/iTerm2. Same hues and idioms as the .bcn figures on /iterm and /palette
+  no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm and the
+  .pal- ones on /palette
   — keep the hexes in sync with scripts/beacon. The play-by-play narrative it
   replaces still lives in plugin.yml's suite.session (read by the marketplace hub).
 -->
@@ -20,7 +21,7 @@ A glance across the windows tells you which session needs you:
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 .fleet {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
-  --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290; --sep: #7e8290;
+  --fg: #f8f8f2; --muted: #b8bed6; --faint: #9599a8; --sep: #7e8290;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --cyan: #8be9fd; --green: #50fa7b;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.4rem 0 1.75rem;
@@ -118,6 +119,8 @@ A glance across the windows tells you which session needs you:
 > [!TIP]
 > Want to see it first? [Try the demo](/demo) — one command seeds a fictional fleet and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
 
+Weighing this against tmux, Zellij, a worktree orchestrator, or a terminal built for agents? [Why beacon?](/why) lays out who else is in the space and what each one asks you to give up.
+
 ## Platform support
 
 The fleet view reads session state and paints no pane, so it runs anywhere Python 3 does. The per-pane painting is an iTerm2 render adapter, so it's macOS + iTerm2 only. A coworker on Windows or a non-iTerm terminal gets the whole fleet view and skips only the decorations.
@@ -180,88 +183,7 @@ See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, 
 
 ### Customizing the two buttons
 
-Each button's text and what it runs come from `~/.config/beacon/config.json`. These are the defaults, so a config that says nothing behaves exactly like this:
-
-```json
-{
-  "statusbar": {
-    "buttons": {
-      "web":  { "label": "↖ web",  "cmd": "" },
-      "code": { "label": "↗ code", "cmd": "code" }
-    }
-  }
-}
-```
-
-Set only what you're changing — a missing or blank field means the default.
-
-**`cmd` applies on the next click.** Nothing to re-run. It's resolved on your `PATH` and then, failing that, by asking your login shell, so a git alias or a script both work (an action button doesn't inherit your interactive `PATH`, so `/opt/homebrew/bin` and friends are invisible to it). If neither can find it, the button says so and names the key to fix rather than quietly opening something else.
-
-Both buttons hand your command the pane's directory, but not the same way:
-
-| Button | How the directory arrives |
-|:---|:---|
-| `↗ code` | **appended as the last argument** — `"code -n"` runs `code -n /path/to/repo` |
-| `↖ web` | as the **working directory**, with no argument added — which is what lets `git web` read your `origin` remote |
-
-#### Placing values yourself
-
-When the end of the command isn't where you want the path, put it where you want it:
-
-```json
-{ "statusbar": { "buttons": { "code": {
-      "cmd": "code -n {dir} --goto {dir}/README.md" } } } }
-```
-
-| Placeholder | Expands to | Outside a repo |
-|:---|:---|:---|
-| `{dir}` | the pane's directory | always available |
-| `{project}` | the project's name | empty |
-| `{branch}` | the current branch | empty |
-
-- **`{dir}` turns off the automatic append** for `↗ code`, so the path lands only where you put it. `{project}` and `{branch}` don't — they say nothing about the path, so it's still appended.
-- **A value never splits into extra arguments.** A directory called `My Repo` stays one argument.
-- **An argument that expands to nothing disappears** rather than becoming an empty string, so `"ed {branch}"` outside a repo is just `ed`.
-- **A misspelled placeholder is an error** that names the real ones. Want a literal brace? Double it: `{{`. A bare `{}` isn't a placeholder, so `find -exec … {} \;` is safe.
-
-There's no shell involved: the command is split into a program and arguments and run directly, so `$(…)`, pipes, and redirection aren't available. If you need those, point the button at a script on your `$PATH` — it resolves the same way and gets the directory the same way.
-
-**`label` applies on a re-render**, because iTerm2 stores a button's title in the profile rather than reading it live:
-
-```bash
-beacon install-profile
-```
-
-That rewrites the profiles only — no reinstall of the wrapper, completions, or shell integration — and iTerm2 picks it up immediately, on panes that are already open.
-
-#### What `↖ web` opens
-
-Left alone (`cmd` blank), it opens whatever beacon resolves for the session: the PR/MR/issue when there is one, else the branch or repo page. Resolution happens when you click, against that pane's directory — so the button is right even in a pane beacon isn't tracking, like a shell you're just poking around in, and there's no cached URL for it to get wrong.
-
-Set a `cmd` and you get the repo's front page instead, or wherever else you point it:
-
-```json
-{ "statusbar": { "buttons": { "web": { "cmd": "git web" } } } }
-```
-
-`git web` isn't built into git — it's an alias you add to your own `~/.gitconfig`. This one is [line 48 of `chris-peterson/gitconfig`](https://github.com/chris-peterson/gitconfig/blob/main/.gitconfig#L48):
-
-```gitconfig
-[alias]
-	web = !"git rev-parse --is-inside-work-tree >/dev/null && open \"https://$(git remote get-url origin | sed 's/git@//' | sed 's/\\.git$//' | sed 's/:/\\//' )\""
-```
-
-It builds the URL from your `origin` remote, so SSH remotes work on GitHub and GitLab alike, and it does nothing outside a work tree. It opens with macOS `open` — on Linux, swap that for `xdg-open`.
-
-#### What `↗ code` opens
-
-The pane's working directory, in `code`. Add flags, or name a different editor entirely — whatever you put here gets the directory appended:
-
-```json
-{ "statusbar": { "buttons": { "code": { "cmd": "code -n" } } } }
-```
-
-The default passes no flags of its own, just the directory. Check any flag you add against your editor's own `--help`: VS Code hands an option it doesn't recognize to Electron/Chromium, and on a cold start that makes it drop the directory and open a Welcome window instead. There is no CLI flag for a maximized window — that's the `window.newWindowDimensions` setting in VS Code itself.
+Both buttons read their text and their command from `~/.config/beacon/config.json`, so `↗ code` can open a different editor and `↖ web` a different page. See **[Status-bar buttons](/statusbar)** for the keys, the `{dir}` / `{project}` / `{branch}` placeholders, and when a change takes effect.
 
 ## Install
 
@@ -303,14 +225,14 @@ The label and status commands paint the pane's tab — the same traffic-light co
 
 <!--
   Bespoke command→tab figure in the spec palette (BADGE_COLOR_PALETTE), same
-  idioms as the .fleet figure above and the .bcn figures on /iterm and /palette.
+  idioms as the .fleet figure above and the .pf- / .pal- ones on /iterm and /palette.
   Replaces the generic animated session player; the play-by-play it showed still
   lives in plugin.yml's suite.examples (read by the marketplace hub).
 -->
 <style>
 .cmdfig {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
-  --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290;
+  --fg: #f8f8f2; --muted: #b8bed6; --faint: #9599a8;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4; --cyan: #8be9fd;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.3rem 0 1.6rem;

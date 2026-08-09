@@ -1,6 +1,7 @@
 - [Home](/)
-- [The beacon palette](/palette)
-- Preview
-  - [iTerm2](/iterm)
-  - [Browser (Demo)](/demo)
-- [SPEC](/spec)
+- [Why beacon?](/why)
+- [Try the demo](/demo)
+- [In iTerm2](/iterm)
+- [Status-bar buttons](/statusbar)
+- [The palette](/palette)
+- [Specification](/spec)

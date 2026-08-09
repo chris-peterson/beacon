@@ -24,8 +24,8 @@ body {
 }
 h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 
-/* ── beacon iTerm2 surface mockups — scope everything under .bcn ─────────── */
-.bcn {
+/* ── beacon iTerm2 surface mockups — scope everything under .panefig ─────────── */
+.panefig {
   --abyss: #21222c;
   --body: #282a36;
   --bar: #30323e;
@@ -41,132 +41,132 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   max-width: 760px;
 }
-.bcn-win {
+.pf-win {
   border: 1px solid rgba(139, 233, 253, 0.14);
   border-radius: 13px;
   overflow: hidden;
   background: var(--body);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
 }
-.bcn-title {
+.pf-title {
   display: flex; align-items: center; gap: 0.6rem;
   background: var(--abyss);
   border-bottom: 1px solid rgba(248, 248, 242, 0.07);
   padding: 0.6rem 0.85rem;
 }
-.bcn-dots { display: inline-flex; gap: 0.45rem; }
-.bcn-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
-.bcn-dots i:nth-child(1) { background: #ff5f57; }
-.bcn-dots i:nth-child(2) { background: #febc2e; }
-.bcn-dots i:nth-child(3) { background: #28c840; }
-.bcn-wintab {
+.pf-dots { display: inline-flex; gap: 0.45rem; }
+.pf-dots i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.pf-dots i:nth-child(1) { background: #ff5f57; }
+.pf-dots i:nth-child(2) { background: #febc2e; }
+.pf-dots i:nth-child(3) { background: #28c840; }
+.pf-wintab {
   display: inline-flex; flex-direction: column;
   font: 12px var(--mono); line-height: 1.4;
   border-radius: 6px; padding: 0.2rem 0.7rem;
   background: color-mix(in srgb, var(--ready) 18%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent);
 }
-.bcn-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
-.bcn-wintab .t { color: var(--identity); padding-left: 0.85em; }
-.bcn-bar {
+.pf-wintab b { font-weight: 700; color: var(--ready); letter-spacing: 0.04em; }
+.pf-wintab .t { color: var(--identity); padding-left: 0.85em; }
+.pf-bar {
   display: flex; align-items: center; gap: 0.55rem;
   background: var(--bar);
   font: 13px var(--mono);
   padding: 0.4rem 0.7rem;
   white-space: nowrap;
 }
-.bcn-act { color: var(--pink); font-weight: 700; }
-.bcn-sep { color: var(--sep); }
-.bcn-proj { color: var(--identity); }
-.bcn-proj b { color: var(--green); font-weight: 700; }   /* deliverable suffix #42 / !17 */
-.bcn-spring { flex: 1 1 auto; }
-.bcn-branch { color: var(--green); }
-.bcn-branch.diverged { color: var(--busy); }
-.bcn-branch.untracked { color: var(--paused); }
-.bcn-body {
+.pf-act { color: var(--pink); font-weight: 700; }
+.pf-sep { color: var(--sep); }
+.pf-proj { color: var(--identity); }
+.pf-proj b { color: var(--green); font-weight: 700; }   /* deliverable suffix #42 / !17 */
+.pf-spring { flex: 1 1 auto; }
+.pf-branch { color: var(--green); }
+.pf-branch.diverged { color: var(--busy); }
+.pf-branch.untracked { color: var(--paused); }
+.pf-body {
   position: relative;
   font: 13px var(--mono); color: var(--fg);
   padding: 0.85rem 0.9rem 1.1rem;
   min-height: 96px;
 }
-.bcn-body .prompt { color: var(--green); }
-.bcn-body .dim { color: #6272a4; }
+.pf-body .prompt { color: var(--green); }
+.pf-body .dim { color: #6272a4; }
 
 /* numbered anatomy markers + legend */
-.bcn-mk {
+.pf-mk {
   display: inline-flex; align-items: center; justify-content: center;
   width: 1.05em; height: 1.05em; margin-left: 0.3em;
   border-radius: 50%; background: #8be9fd; color: #21222c;
   font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif;
   vertical-align: super; position: relative; top: -0.15em;
 }
-.bcn-legend {
-  list-style: none; counter-reset: bcn; margin: 0.9rem 0 0; padding: 0;
+.pf-legend {
+  list-style: none; counter-reset: panefig; margin: 0.9rem 0 0; padding: 0;
   display: grid; gap: 0.5rem;
 }
-.bcn-legend li {
-  counter-increment: bcn;
+.pf-legend li {
+  counter-increment: panefig;
   display: grid; grid-template-columns: 1.4rem 1fr; align-items: start;
   font-size: 0.9rem; color: inherit;   /* adapt to docsify light/dark theme */
 }
-.bcn-legend li::before {
-  content: counter(bcn);
+.pf-legend li::before {
+  content: counter(panefig);
   display: inline-flex; align-items: center; justify-content: center;
   width: 1.15rem; height: 1.15rem; border-radius: 50%;
   background: #8be9fd; color: #21222c; font-weight: 700; font-size: 0.72rem;
 }
-.bcn-legend b { color: inherit; font-weight: 600; }
-.bcn code {
+.pf-legend b { color: inherit; font-weight: 600; }
+.panefig code {
   font: 0.85em var(--mono); background: rgba(128,128,128,0.18) !important;
   padding: 0.05em 0.35em; border-radius: 4px; color: inherit !important;
 }
 
 /* compact status-bar-only strips for the variant gallery */
-.bcn-striprow { display: grid; gap: 0.75rem; margin-top: 0.5rem; }
-.bcn-strip {
+.pf-striprow { display: grid; gap: 0.75rem; margin-top: 0.5rem; }
+.pf-strip {
   border: 1px solid rgba(139, 233, 253, 0.14); border-radius: 9px; overflow: hidden;
 }
-.bcn-strip .bcn-bar { border-radius: 0; }
-.bcn-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
+.pf-strip .pf-bar { border-radius: 0; }
+.pf-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
 
 /* tab-state gallery */
-.bcn-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
-.bcn-chip {
+.pf-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+.pf-chip {
   border: 1px solid rgba(139, 233, 253, 0.14); border-radius: 10px;
   background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center;
 }
-.bcn-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
-.bcn-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
-.bcn-chip .ready { color: var(--ready); }
-.bcn-chip .busy { color: var(--busy); }
-.bcn-chip .blocked { color: var(--blocked); }
-.bcn-chip .paused { color: var(--paused); }
-.bcn-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
+.pf-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
+.pf-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
+.pf-chip .ready { color: var(--ready); }
+.pf-chip .busy { color: var(--busy); }
+.pf-chip .blocked { color: var(--blocked); }
+.pf-chip .paused { color: var(--paused); }
+.pf-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
 </style>
 </head>
 <body>
 
 <h2>Anatomy</h2>
-<div class="bcn">
-  <div class="bcn-win">
-    <div class="bcn-title">
-      <span class="bcn-dots"><i></i><i></i><i></i></span>
-      <span class="bcn-wintab"><b>claude-marketplace<span class="bcn-mk">1</span></b><span class="t">Redesign the install flow</span></span>
+<div class="panefig">
+  <div class="pf-win">
+    <div class="pf-title">
+      <span class="pf-dots"><i></i><i></i><i></i></span>
+      <span class="pf-wintab"><b>claude-marketplace<span class="pf-mk">1</span></b><span class="t">Redesign the install flow</span></span>
     </div>
-    <div class="bcn-body">
+    <div class="pf-body">
       <div><span class="prompt">›</span> run just build</div>
     </div>
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web<span class="bcn-mk">2</span></span>
-      <span class="bcn-spring"></span>
-      <span class="bcn-proj">claude-marketplace<span class="bcn-mk">3</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-branch">main<span class="bcn-mk">4</span></span>
-      <span class="bcn-sep">│</span>
-      <span class="bcn-act">↗ code<span class="bcn-mk">5</span></span>
+    <div class="pf-bar">
+      <span class="pf-act">↖ web<span class="pf-mk">2</span></span>
+      <span class="pf-spring"></span>
+      <span class="pf-proj">claude-marketplace<span class="pf-mk">3</span></span>
+      <span class="pf-sep">│</span>
+      <span class="pf-branch">main<span class="pf-mk">4</span></span>
+      <span class="pf-sep">│</span>
+      <span class="pf-act">↗ code<span class="pf-mk">5</span></span>
     </div>
   </div>
-  <ol class="bcn-legend">
+  <ol class="pf-legend">
     <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
@@ -176,30 +176,30 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
 </div>
 
 <h2>Tab: the traffic light</h2>
-<div class="bcn bcn-states">
-  <div class="bcn-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
-  <div class="bcn-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
-  <div class="bcn-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
-  <div class="bcn-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
+<div class="panefig pf-states">
+  <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
+  <div class="pf-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
+  <div class="pf-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
+  <div class="pf-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
 </div>
 
 <h2>Status bar: what the project chip tells you</h2>
-<div class="bcn bcn-striprow">
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch">main</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+<div class="panefig pf-striprow">
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">widgets</span><span class="pf-sep">│</span><span class="pf-branch">main</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">On the default branch, synced — branch is green.</div>
   </div>
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">widgets</span><span class="bcn-sep">│</span><span class="bcn-branch diverged">fix/login</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">widgets</span><span class="pf-sep">│</span><span class="pf-branch diverged">fix/login</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">Ahead of upstream — branch is amber.</div>
   </div>
-  <div class="bcn-strip">
-    <div class="bcn-bar">
-      <span class="bcn-act">↖ web</span><span class="bcn-spring"></span><span class="bcn-proj">notes</span><span class="bcn-sep">│</span><span class="bcn-act">↗ code</span>
+  <div class="pf-strip">
+    <div class="pf-bar">
+      <span class="pf-act">↖ web</span><span class="pf-spring"></span><span class="pf-proj">notes</span><span class="pf-sep">│</span><span class="pf-act">↗ code</span>
     </div>
     <div class="cap">Not a git repo — the chip still names the directory; no branch renders.</div>
   </div>
