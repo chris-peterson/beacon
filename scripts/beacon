@@ -3425,7 +3425,7 @@ def _publish_chips(cwd: Path) -> None:
         f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
         f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
     )
-    # Last-value gate (mirrors shell's precmd sentinels per CLAUDE.md hot
+    # Last-value gate (mirrors shell's precmd sentinels per AGENTS.md hot
     # path policy): Stop fires once per turn, but most turns don't change
     # branch/url. Skip the CLI spawn + file writes when nothing differs.
     # The URL rides the signature but not the uservar payload: two URLs can
