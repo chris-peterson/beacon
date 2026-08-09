@@ -1310,7 +1310,7 @@ class TackUrlHonorsSessionPin(BeaconTest):
     branch (a pin, not a branch-slug match) must still surface its deliverable
     URL; location correlation (via _tack_route_for) is the fallback."""
 
-    ISSUE = "https://gitlab.getty.cloud/ecommerce/elasticache-toolbox/-/issues/2"
+    ISSUE = "https://gl.test/acme/widgets/-/issues/2"
 
     def _tack_url(self, routes, *, sid, branch, tack_route=("", None)):
         def fake_run(cmd, *a, **k):
@@ -1329,16 +1329,16 @@ class TackUrlHonorsSessionPin(BeaconTest):
         ]
         for p in patches: p.start()
         try:
-            return self.beacon._tack_url_for(Path("/tmp/fake"), branch, "elasticache-toolbox")
+            return self.beacon._tack_url_for(Path("/tmp/fake"), branch, "widgets")
         finally:
             for p in patches: p.stop()
 
     def test_pin_resolves_even_when_slug_differs_from_branch(self):
         routes = [{
-            "slug": "elasticache-maintenance-component",
+            "slug": "widget-cache-maintenance",
             "sessions": [{"id": "sid-1", "started_at": "2026-07-08T22:24:34Z"}],
             "tacks": [{"status": "in_progress",
-                       "deliverable": {"label": "elasticache-toolbox#2", "url": self.ISSUE}}],
+                       "deliverable": {"label": "widgets#2", "url": self.ISSUE}}],
         }]
         url, _ = self._tack_url(routes, sid="sid-1",
                                 branch="add-maintenance-cicd-component")
