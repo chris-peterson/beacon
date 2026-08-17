@@ -36,61 +36,69 @@ def _plugin_version() -> str:
     return json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 
 
+def _data_dir_pointer() -> Path:
+    """Where a hook records the data dir Claude Code handed it, so the contexts
+    that get no `CLAUDE_PLUGIN_DATA` can read the answer instead of guessing at
+    it. Sits beside the user config (`_config_file`); the XDG base is recomputed
+    here because this runs at module-load time, before that helper exists."""
+    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base) / "beacon" / "data-dir"
+
+
+def _read_data_dir_pointer() -> Path | None:
+    """The recorded data dir, or None when nothing usable is recorded. Empty,
+    unreadable, or naming a directory that no longer exists all read as absent:
+    the PLUGIN_ROOT derivation still lands somewhere usable, where a dead pointer
+    would strand every env-less context on a path nothing writes — the failure
+    this whole resolution exists to prevent. Raising is not an option either; it
+    would take down every invocation in the session."""
+    try:
+        recorded = _data_dir_pointer().read_text().strip()
+    except (FileNotFoundError, OSError):
+        return None
+    if not recorded:
+        return None
+    path = Path(recorded)
+    return path if path.is_dir() else None
+
+
+def _record_data_dir(resolved: str) -> None:
+    """Stamp the data dir a hook was handed, so the env-less contexts converge on
+    it. Written only when it changed: this runs on every hook, and the common
+    case is a value already correct. Creates the directory it records, so a
+    prompt reading the pointer between this write and the hook's first
+    `write_state` doesn't see it as the dead path above."""
+    if _read_data_dir_pointer() == Path(resolved):
+        return
+    Path(resolved).mkdir(parents=True, exist_ok=True)
+    pointer = _data_dir_pointer()
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(f"{resolved}\n")
+
+
 def _default_data_dir() -> Path:
-    """Match Claude Code's `<plugin>-<owner>` data-dir convention. Hooks
-    receive `CLAUDE_PLUGIN_DATA` from Claude Code, but slash commands and
-    the on-PATH wrapper do not — without convergence those contexts would
-    write to a different directory than hooks read from, and state changes
-    would be invisible across them. Cache installs parse the path; dev
-    installs derive the owner from PLUGIN_ROOT's git remote."""
+    """The data dir for an invocation Claude Code gave no `CLAUDE_PLUGIN_DATA` —
+    slash commands, the on-PATH wrapper, the serve service. Without convergence
+    those contexts write to a different directory than hooks read from and every
+    state change is invisible across them, which is what a `wip` that can't see
+    a live session looks like.
+
+    The recorded pointer (`_data_dir_pointer`, stamped by the last hook that ran)
+    is the authority, because only a hook is *told* which install is loaded.
+    Absent one — a fresh machine where `install` runs before any hook — derive it
+    from PLUGIN_ROOT the way Claude Code names the directory itself: a plugin
+    under `plugins/cache/<marketplace>/<plugin>/<version>` is
+    `<plugin>-<marketplace>`, and a plugin root anywhere else was loaded from a
+    local directory, which Claude Code buckets as `<plugin>-inline`."""
+    recorded = _read_data_dir_pointer()
+    if recorded:
+        return recorded
     base = Path.home() / ".claude" / "plugins"
     try:
         rel = PLUGIN_ROOT.relative_to(base / "cache")
         return base / "data" / f"{rel.parts[1]}-{rel.parts[0]}"
     except (ValueError, IndexError):
-        pass
-    owner = _git_remote_owner(PLUGIN_ROOT)
-    if owner:
-        return base / "data" / f"{PLUGIN_ROOT.name}-{owner}"
-    raise RuntimeError(
-        f"can't derive a data dir from PLUGIN_ROOT={PLUGIN_ROOT}: not under "
-        f"{base / 'cache'} and no parsable git remote. Set CLAUDE_PLUGIN_DATA "
-        f"explicitly or run from a working tree with an origin."
-    )
-
-
-def _git_remote_owner(repo_dir: Path) -> str | None:
-    """Owner segment of `remote.origin.url` (e.g. `chris-peterson` from
-    `git@github.com:chris-peterson/beacon.git`), or None when no remote.
-
-    Inlined parser instead of reusing `p_git_remote` because this runs at
-    module-load time via the `DATA_DIR = ...` assignment, before
-    `p_git_remote` is defined — Python only resolves names at call time
-    but the call happens during import. The duplication is intentional."""
-    try:
-        r = subprocess.run(
-            ["git", "config", "remote.origin.url"],
-            cwd=str(repo_dir), capture_output=True, text=True, timeout=2,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    if r.returncode != 0:
-        return None
-    url = r.stdout.strip()
-    if not url:
-        return None
-    if "://" in url:
-        path = url.split("://", 1)[1]
-        path = path.split("/", 1)[1] if "/" in path else ""
-    elif ":" in url:
-        path = url.split(":", 1)[1]
-    else:
-        path = url
-    path = path.rstrip("/")
-    if path.endswith(".git"):
-        path = path[:-4]
-    parts = [p for p in path.split("/") if p]
-    return parts[0] if parts else None
+        return base / "data" / f"{PLUGIN_ROOT.name}-inline"
 
 
 DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or str(_default_data_dir()))
@@ -213,13 +221,32 @@ PAUSE_RE = re.compile(
 # reminder still counts as a turn.
 SYNTHETIC_PROMPT_RE = re.compile(r"^\s*<[a-z][a-z0-9-]*>")
 
-VALID_STATUSES = {"idle", "working", "waiting", "paused", "release", "retro", "done"}
+VALID_STATUSES = {"idle", "working", "waiting", "paused", "release", "retro", "done", "handoff"}
 VALID_FIELDS = ("project", "task", "status", "url")
+
+# STATE-04: statuses that auto-clear on the next prompt (STATE-04 / STATE-14).
+# `paused` is the original member; `handoff` borrows only this one trait from
+# it (RENDER-05 comments on cmd_handoff explain why nothing else carries over).
+AUTO_RESUME_STATUSES = {"paused", "handoff"}
+
+# A skill firing reaches a hook in two shapes, and only one of them is a tool
+# call: the agent invoking it arrives as a PostToolUse `Skill` call carrying
+# `tool_input.skill`, while a user-typed `/tack:end` is expanded into the prompt
+# itself and fires no tool call at all — the raw slash-command text on
+# UserPromptSubmit is the only signal (same as FRESH_START_RE's commands). Any
+# skill-triggered reaction resolves the name through `_skill_invocation` so it
+# sees both; reading the tool call alone is what made HOOK-11 miss every typed
+# close.
+SLASH_COMMAND_RE = re.compile(r"^\s*/([a-z0-9:_-]+)", re.IGNORECASE)
+
+# HOOK-11's reaction: tack's session-close skill, under either of its names.
+HANDOFF_SKILLS = ("tack:end", "end")
+HANDOFF_DESCRIPTION = "closing out via tack:end"
 
 # Shell-native completion script — installed by `beacon completions zsh`.
 ZSH_COMPLETION = r"""#compdef beacon
 
-_beacon_statuses() { compadd idle working waiting paused release retro done }
+_beacon_statuses() { compadd idle working waiting paused release retro done handoff }
 _beacon_fields()   { compadd project task status url }
 
 _beacon() {
@@ -235,6 +262,7 @@ _beacon() {
     'release:set status=release (ship-it flow in progress) with optional description'
     'retro:set status=retro (post-work follow-up/retro) with optional description'
     'done:set status=done (session complete, ready to hand off) with optional description'
+    'handoff:set status=handoff (mid-transition to another tool/skill/session) with optional description'
     'resume:clear all overrides (full reset to provider chain)'
     'reset:clear all per-session state'
     'render:re-render current state'
@@ -283,7 +311,7 @@ _beacon() {
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    pause|release|retro|done)
+    pause|release|retro|done|handoff)
       (( CURRENT == 3 )) && _message 'description (optional)'
       ;;
     wip)
@@ -335,8 +363,13 @@ _beacon "$@"
 # `ready` is a calm gray so a fresh session has a known default before its first
 # turn. The mode cycles each own a color: `paused` blue-purple, `release` green
 # (pinned — unseen in dev, so it reads as "shipping"), `retro` white, `done` a
-# dim powered-down gray. Only the two neutral states (ready, done) fall outside
-# the Dracula palette (THEME-01). Tunable here without touching call sites.
+# dim powered-down gray, `handoff` a distinct Dracula pink (STATE-14) — chosen
+# over purple specifically because bd93f9 is already the dashboard's --accent
+# color, so a handoff card would otherwise read as ordinary chrome rather than
+# its own mode — so it never reads as a stand-in for `paused`, `done`, or the
+# dashboard's ambient UI. Only the two neutral states (ready, done) fall
+# outside the Dracula palette (THEME-01). Tunable here without touching call
+# sites.
 BADGE_COLOR_PALETTE = {
     "ready":    "8b8fa0",
     "busy":     "ffb86c",
@@ -345,6 +378,7 @@ BADGE_COLOR_PALETTE = {
     "release":  "50fa7b",
     "retro":    "f8f8f2",
     "done":     "5f6072",
+    "handoff":  "ff79c6",
 }
 
 STATUS_TO_BADGE_STATE = {
@@ -355,6 +389,7 @@ STATUS_TO_BADGE_STATE = {
     "release":  "release",
     "retro":    "retro",
     "done":     "done",
+    "handoff":  "handoff",
 }
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
@@ -442,6 +477,23 @@ MODE_PROFILES = {
         "background": "1a1622",
         "image": "done-bg.png",
         "blend": 0.15,
+    },
+    # `handoff` (STATE-14) marks a session mid-transition to another tool,
+    # skill, or session — not paused, not done, just handing off. It borrows
+    # exactly one trait from `paused` (auto-resume on the next prompt,
+    # AUTO_RESUME_STATUSES) and none of its other semantics: it does NOT
+    # freeze the badge identity (STATE-03 stays paused-only), matching
+    # release/retro/done. A deep violet, distinct from paused's bluer purple,
+    # under the Dracula-pink badge — no watermark image: the mode is meant
+    # to read as brief, so there is no dedicated asset to carry (image/blend
+    # None; the profile-generation and /mode-bg code already tolerate a
+    # no-image mode entry via a truthy check).
+    "handoff": {
+        "profile": "beacon-handoff",
+        "guid": "d4a6f108-3c72-4b91-8e05-7a2c9f1d6b48",
+        "background": "33264a",
+        "image": None,
+        "blend": None,
     },
 }
 
@@ -1941,6 +1993,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
 _WIP_DOT_COLOR = {
     "ready": "37", "busy": "33", "blocked": "31",
     "paused": "34", "release": "32", "retro": "97", "done": "90",
+    "handoff": "35",
 }
 
 
@@ -4149,6 +4202,21 @@ def cmd_done(args):
     render()
 
 
+def cmd_handoff(args):
+    """Enter handoff mode (STATE-14): the session is mid-transition to another
+    tool, skill, or session — not paused, not done, just handing off. It
+    borrows exactly one trait from `pause` — it auto-resumes on the next
+    prompt (STATE-04, generalized to AUTO_RESUME_STATUSES) — and none of
+    `pause`'s other semantics: like `retro` / `release` / `done` it does not
+    snapshot the badge identity (STATE-03 is paused-only; a handing-off
+    session is still active, so re-resolution is fine). Absent an intervening
+    prompt it persists until `resume` or the session ends. The pane goes to a
+    deep-violet profile under a pink badge, with no background watermark —
+    the mode is meant to read as brief, so there is no dedicated asset."""
+    _apply_status("handoff", _note_from(args.note))
+    render()
+
+
 def cmd_resume(_args):
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
@@ -4879,6 +4947,23 @@ def _record_focus_handle() -> None:
             write_state("iterm_session_id", guid)
 
 
+def _skill_invocation(payload: dict) -> str | None:
+    """The skill a hook payload records firing, normalized to its plain name
+    (`tack:end` for both a `Skill` tool call and a typed `/tack:end`), or None
+    when the payload records no skill.
+
+    Reacting to a skill means reading both shapes (see SLASH_COMMAND_RE): the
+    agent-invoked tool call on PostToolUse, and the slash command the user typed
+    on UserPromptSubmit, which fires no tool call. What each caller *does* with
+    the reaction still differs by event — a PostToolUse reaction replaces that
+    event's working write, a UserPromptSubmit one replaces STATE-04 auto-resume —
+    so this resolves the name only and leaves the handling to the branch."""
+    if payload.get("tool_name") == "Skill":
+        return (payload.get("tool_input") or {}).get("skill")
+    m = SLASH_COMMAND_RE.match(payload.get("prompt") or "")
+    return m.group(1).lower() if m else None
+
+
 def cmd_hook(args):
     payload = {}
     try:
@@ -4888,6 +4973,12 @@ def cmd_hook(args):
     except Exception:
         payload = {}
     event = args.event
+
+    # Only a hook is told which install is loaded, so record the dir it was
+    # handed for the invocations that get no env to read (`_default_data_dir`).
+    handed_data_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
+    if handed_data_dir:
+        _record_data_dir(handed_data_dir)
 
     # Capture the Claude session ID for cross-session handoff. It's stable
     # for the lifetime of the Claude conversation; a colleague can resume it
@@ -4953,17 +5044,24 @@ def cmd_hook(args):
             # NL pause-intent: the prompt itself becomes the description.
             # Don't touch signal.status — _apply_status writes override.status=paused.
             _apply_status("paused", prompt_text)
+        elif _skill_invocation(payload) in HANDOFF_SKILLS:
+            # HOOK-11's other half: a user-typed `/tack:end` never becomes a
+            # Skill tool call, so this prompt is the whole event. Enters handoff
+            # instead of auto-resuming out of it — STATE-04 belongs to the
+            # *next* prompt, and the working write below would be immediately
+            # superseded by the override anyway (OVR-02).
+            _apply_status("handoff", HANDOFF_DESCRIPTION)
         else:
             if prompt_text and FRESH_START_RE.match(prompt_text):
                 # In-session commands like /recipe re-bootstrap context;
                 # treat them like SessionStart non-resume and drop stale
                 # signals before the prompt lands.
                 _wipe_session_for_fresh_start()
-            elif read_state("override.status") == "paused":
-                # STATE-04 auto-resume: a returning prompt clears the paused
-                # override and its description. Other user-set statuses
-                # (waiting "bg refresh") are deliberate labels and survive
-                # prompt submission.
+            elif read_state("override.status") in AUTO_RESUME_STATUSES:
+                # STATE-04 auto-resume: a returning prompt clears `paused` or
+                # `handoff` and its description. Other user-set statuses
+                # (waiting "bg refresh", or the mode states release/retro/done)
+                # are deliberate labels and survive prompt submission.
                 remove_state("override.status")
                 _clear_description()
             write_state("signal.status", "working")
@@ -5009,12 +5107,23 @@ def cmd_hook(args):
         remove_state("pending-attention")
 
     elif event == "PostToolUse":
-        # Re-assert working between tool calls — a tool just returned and the
-        # agent is back to thinking, even if no further matching PreToolUse
-        # fires before the next Notification or Stop. Deliberately does NOT
-        # clear pending-attention: a late PostToolUse arriving after a fresh
-        # Notification must not undo the sticky waiting marker.
-        write_state("signal.status", "working")
+        # HOOK-11: react directly to tack's own session-close skill firing,
+        # rather than relying on tack's skill text to name beacon — tack is a
+        # separate, tool-agnostic project and carries no beacon-specific
+        # knowledge, so this coupling lives entirely on beacon's side. The
+        # check is against the skill name generically, not hardcoded to one
+        # caller, so a future caller can trigger `handoff` the same way. This
+        # is the agent-invoked half; UserPromptSubmit covers the typed form.
+        if _skill_invocation(payload) in HANDOFF_SKILLS:
+            _apply_status("handoff", HANDOFF_DESCRIPTION)
+        else:
+            # Re-assert working between tool calls — a tool just returned and
+            # the agent is back to thinking, even if no further matching
+            # PreToolUse fires before the next Notification or Stop.
+            # Deliberately does NOT clear pending-attention: a late
+            # PostToolUse arriving after a fresh Notification must not undo
+            # the sticky waiting marker.
+            write_state("signal.status", "working")
 
     render()
 
@@ -5090,6 +5199,10 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("done",
                         help="set status=done (session complete, ready to hand off) with optional description")
+    sp.add_argument("note", nargs="*")
+
+    sp = sub.add_parser("handoff",
+                        help="set status=handoff (mid-transition to another tool/skill/session) with optional description")
     sp.add_argument("note", nargs="*")
 
     sub.add_parser("resume", help="clear all overrides (full reset to provider chain)")
@@ -5209,6 +5322,7 @@ def main(argv=None):
         "status": cmd_status, "project": cmd_project, "icon": cmd_icon,
         "clear": cmd_clear,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
+        "handoff": cmd_handoff,
         "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,

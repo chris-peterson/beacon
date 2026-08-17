@@ -34,6 +34,7 @@
       --release:  #50fa7b;
       --retro:    #f8f8f2;
       --done:     #5f6072;
+      --handoff:  #ff79c6;
 
       /* Console chrome — free to tune; not part of the badge contract. */
       --bg:       #0d0e15;
@@ -276,17 +277,21 @@
     .card.state-release { --state-color: var(--release); }
     .card.state-retro   { --state-color: var(--retro); }
     .card.state-done    { --state-color: var(--done); }
+    .card.state-handoff { --state-color: var(--handoff); }
 
     /* Mode-state cards echo their iTerm2 pane background (RENDER-05): a muted tint
-       in the mode's hue plus a large, faint, centered watermark. The watermark is
-       the *same generated asset the pane paints* (iterm/<phase>-bg.png), streamed
-       by serve at /mode-bg/<state> — so the card and pane can never drift. It
-       rides a ::before below the card content (z-index -1; the card isolates a
-       stacking context) at a low opacity, the fleet analog of the pane's Blend. */
+       in the mode's hue plus, for every mode but handoff, a large, faint, centered
+       watermark. The watermark is the *same generated asset the pane paints*
+       (iterm/<phase>-bg.png), streamed by serve at /mode-bg/<state> — so the card
+       and pane can never drift. It rides a ::before below the card content
+       (z-index -1; the card isolates a stacking context) at a low opacity, the
+       fleet analog of the pane's Blend. `handoff` has no background-image asset
+       (RENDER-05), so its card carries the tint alone. */
     .card.state-paused  { background-color: color-mix(in srgb, #3c3357 26%, var(--panel)); }
     .card.state-release { background-color: color-mix(in srgb, #212c45 34%, var(--panel)); }
     .card.state-retro   { background-color: color-mix(in srgb, #2c4636 20%, var(--panel)); }
     .card.state-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
+    .card.state-handoff { background-color: color-mix(in srgb, #33264a 26%, var(--panel)); }
 
     .card.state-paused::before,
     .card.state-release::before,
@@ -739,7 +744,7 @@
     // /turn/<hash>, keyed by turn timestamp so a newer turn invalidates it.
     const turnCache = new Map();
 
-    const STATES = ["ready", "busy", "blocked", "paused", "release", "retro", "done"];
+    const STATES = ["ready", "busy", "blocked", "paused", "release", "retro", "done", "handoff"];
 
     // Resolve a CSS color name to {css, fg, ok}. fg is a contrast-picked text
     // color for the /color pill. A hidden probe lets the browser do the parsing;
@@ -775,13 +780,13 @@
     // A session lands in the attention band when Claude is blocked on the user
     // (state === "blocked", i.e. status "waiting") or a sticky attention marker
     // is set (HOOK-03b). The band is the loud one — everything else is fleet.
-    // A session in a mode state (paused / release / retro / done) is never
-    // "needs you": the mode is a deliberate user/session declaration that
+    // A session in a mode state (paused / release / retro / done / handoff) is
+    // never "needs you": the mode is a deliberate user/session declaration that
     // outranks a lingering pending-attention marker, exactly as the pane's
-    // logical state does (mode > pending_attention). So a parked or shipping
-    // session keeps its mode-card treatment in the fleet instead of being
-    // hoisted into the band (whose red glow would paint over that treatment).
-    const MODE_STATES = new Set(["paused", "release", "retro", "done"]);
+    // logical state does (mode > pending_attention). So a parked, shipping, or
+    // handing-off session keeps its mode-card treatment in the fleet instead of
+    // being hoisted into the band (whose red glow would paint over that treatment).
+    const MODE_STATES = new Set(["paused", "release", "retro", "done", "handoff"]);
     function needsYou(s) {
       if (MODE_STATES.has(s.state)) return false;
       return s.state === "blocked" || !!s.pending_attention;
@@ -1523,7 +1528,7 @@
     const PIP_CSS = `
       :root {
         --ready:#8b8fa0; --busy:#ffb86c; --blocked:#ff5555; --paused:#6272a4;
-        --release:#50fa7b; --retro:#f8f8f2; --done:#5f6072;
+        --release:#50fa7b; --retro:#f8f8f2; --done:#5f6072; --handoff:#ff79c6;
         --bg:#0d0e15; --panel:#171925; --panel-hi:#1e2130; --line:#2a2e40;
         --line-hi:#39405a; --fg:#e8e8f4; --muted:#808ab4; --faint:#565f80;
         --accent:#bd93f9; --cyan:#8be9fd;
@@ -1568,6 +1573,7 @@
       .pip-row.state-release { --state-color: var(--release); }
       .pip-row.state-retro { --state-color: var(--retro); }
       .pip-row.state-done { --state-color: var(--done); }
+      .pip-row.state-handoff { --state-color: var(--handoff); }
       .pip-row.needs-you {
         border-color: rgba(255,85,85,0.5);
         background: radial-gradient(120% 140% at 100% 0%, rgba(255,85,85,0.12), transparent 55%), var(--panel-hi);
