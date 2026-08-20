@@ -33,13 +33,11 @@ suite:
   with: tack
   what: "Colors each session's tab so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The tab is labeled with the project and the task under it. That's iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
   cmds:
-    - ["/beacon:beacon", "Label a pane, or set status with a note"]
-    - ["/beacon:session-mode", "Set the session mode — pause, release, retro, done"]
+    - ["/beacon:pause", "Park this session, with an optional note"]
+    - ["/beacon:install-beacon", "Bootstrap or refresh the wrapper, completions, and profiles"]
     - ["beacon", "Read the resolved project / task / status anywhere"]
   # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
   describe:
-    skills:
-      beacon: Label a session's project/task on the iTerm2 tab, and check the beacon CLI wrapper is current on first use per session.
     rules:
       keep-session-labeled: Keep this session's beacon work label current
     hooks:
@@ -47,8 +45,8 @@ suite:
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
       hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
-      beacon: Show or set session beacon signals (project, task, status)
-      session-mode: Set this session's beacon mode — release, retro, pause, done, or resume — with an optional note
+      install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
+      pause: Park this session's beacon — set status to paused, with an optional note
   # <<< shipyard:describe <<<
 
 docs:

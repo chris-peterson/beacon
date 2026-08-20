@@ -3,9 +3,9 @@
 Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-08-05
+**Last audit:** 2026-08-20
 **Spec version:** v2 (root-level, `SPEC.md`)
-**Coverage:** 169 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+**Coverage:** 167 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
 (the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
 deliverables) join STATUSLINE-01, and STATUS-BAR-07 makes the `↗ code` editor
@@ -13,7 +13,17 @@ configurable, and STATUS-BAR-08 gives `↖ web` a click-time resolver plus a
 user-command knob (its URL *handoff file* is what 2.0 retires, not the chip).
 STATUS-BAR-02 drops `⇄ review`, whose whole feature went with it (CMD-16
 retired, along with the `moor` / `anchor` soft deps that served it).
-CMD-19/20/22 retire into a single CMD-18 (`/beacon:session-mode`).
+CMD-19/20/22 retire into a single CMD-18, which then retires itself: with no
+mode command at all there is nothing left for `/release` and `/retro` to
+collide with, and the skills that drive mode transitions were written against
+the CLI from the start.
+SKILL-01..03 retire with the skill itself: the plugin ships no
+`skills/` tree, its two conventions moved into the `keep-session-labeled`
+ambient rule (HOOK-10), and the freshness check they duplicated was always
+`hooks/cli-freshness.sh`'s. CMD-25 (`/beacon:pause`) and CMD-26
+(`/beacon:install-beacon`) are the two slash commands the retired `/beacon:beacon`
+wrapper leaves behind, and CMD-13's `install-cli` subcommand folds into
+CMD-08.
 
 The plugin version is **not** recorded here: the release workflow bumps
 `plugin.yml` / `.claude-plugin/plugin.json` when a GitHub Release is published,
@@ -57,8 +67,7 @@ a mode state swaps into its profile for a background a color OSC can't express
 | HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09, 10 | 12 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-08a's fresh-start wipe also stamps `session_started_at`, the window STATUSLINE-03 scopes acquisition to (`_wipe_session_for_fresh_start`); HOOK-09 disengages the pane on SessionEnd, handing the session name back to the interactive template *before* blanking the vars that template interpolates (`_disengage`); HOOK-10 emits the bundled ambient rules (`hooks/emit-rules.sh`, `keep-session-labeled`) at SessionStart |
 | OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
 | STATE-01..13 (incl. 04a) | 14 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree`; STATE-08 is the `retro` synonym for `status retro`; STATE-09 is the `done` mode (`cmd_done`, no snapshot, no auto-resume); STATE-10 is `pause --clear-screen` (`_cli("clear-screen")`, `cmd_clear_screen` in `bin/beacon-iterm`); STATE-11 is the `release` synonym (`cmd_release`); STATE-12 suppresses the task while `done` (blanked in `resolve`, `test_done_suppresses_task_keeps_project`); STATE-13 is the SDLC-cycle grouping (`MODE_PROFILES` keyed by cycle) |
-| SKILL-01..03 | 3 | All Covered | CLI-freshness + conventions |
-| CMD-01..09, 13..15, 17, 18, 21, 23, 24 (gap 10, 11; CMD-12, 16, 19, 20, 22 retired) | 17 | All Covered | CMD-24 is `drop <ref>`, which takes one deliverable off the status-line row and remembers the removal in `deliverables.dropped` so route re-reads don't restore it (`cmd_drop`); CMD-08 install writes the base + mode dynamic profiles; CMD-16 retired in 2.0 with the branch-review feature (chip + `beacon review` subcommand + the moor/anchor soft deps); CMD-18 is the single `/beacon:session-mode <mode>` shim (no model pin) that CMD-19/20/22 folded into in 2.0 (issue #23); CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16); CMD-23 is `install-profile`, the profile-only re-render that applies a changed button label (`cmd_install_profile`) |
+| CMD-01..09, 13..15, 17, 21, 23..26 (gap 10, 11; CMD-12, 16, 18, 19, 20, 22 retired) | 18 | All Covered | CMD-24 is `drop <ref>`, which takes one deliverable off the status-line row and remembers the removal in `deliverables.dropped` so route re-reads don't restore it (`cmd_drop`); CMD-08 install writes the base + mode dynamic profiles and takes the `--dir` that came off the retired `install-cli` (`cmd_install`); CMD-13 now specifies the wrapper `install` writes rather than a subcommand of its own — `install-cli` ran install's first two steps and was what the drift nudge named, which left the version-pinned `.zshrc` source line unrefreshed; CMD-25 is `/beacon:pause` (`commands/pause.md`, user-invocable only) and CMD-26 is `/beacon:install-beacon` (`commands/install-beacon.md`), the only door to the newly-installed plugin root, named by `hooks/cli-freshness.sh`; CMD-16 retired in 2.0 with the branch-review feature (chip + `beacon review` subcommand + the moor/anchor soft deps); CMD-18 (the `/beacon:session-mode` shim CMD-19/20/22 folded into in 2.0, issue #23) is itself retired — its one live clause was staying model-invocable for a skill caller that never materialized, since a skill reaches `beacon release` in one shell call; CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16); CMD-23 is `refresh-iterm-profiles`, the profile-only re-render that applies a changed button label, a moved interpreter, or a GUI-edited profile (`cmd_refresh_iterm_profiles`) — renamed off the `install-*` prefix, which now means the bootstrap only; it is never a first-install step, since `install` calls the same `install_dynamic_profile` renderer |
 | WIP-01..17 | 17 | All Covered | Cross-session introspection / export; WIP-06 `prune` sweeps the per-pane cache (`cwd-*`, `engaged-*`, and the `url-*` files 2.0 retired) on the same `--since` cutoff as state, by each file's own mtime since the pane GUID isn't recoverable from a session hash (`_prune_cache`); WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12: no state carries a text glyph — every fleet row reads by its color dot and `status` (the dashboard conveys a mode via the WIP-17 card treatment); WIP-13 emits `agent_color` (fleet-view identity pill only, never painted); WIP-14 persists `latest_turn_full` + serves it at `GET /turn/<hash>` for card expansion; WIP-15 collapses same-project sessions into a z-stack (newest front, raise on demand); WIP-16 auto-groups the fleet by route group (groupless in an unlabeled bottom section, no toggle); WIP-17 gives mode-state cards the pane-analog treatment (muted tint + centered `||` / rocket / clipboard / finish-flag watermark) and keeps a mode session out of the attention band |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | DUMP-01..04 | 4 | All Covered | `export` / `import` full-fidelity per-session state backup (`_export_payload`, `cmd_export`, `cmd_import`); versioned JSON envelope, gzip optional, mtimes preserved (DUMP-03), hex-hash + path-traversal guard on import; DUMP-04 treats the dump as sensitive (raw payload is the product, not shape-only) |
@@ -80,7 +89,9 @@ Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no
 STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
 (`exclusive-configuration`), CLI-04/05/15 (`bg-image` / `note` /
 `clear-screen`), BADGE-08 and BADGE-15 (watermark), NFR-02 (overlay caching),
-and the entire OVERLAY namespace — are removed, not missing coverage.
+and the entire OVERLAY namespace — are removed, not missing coverage. The whole
+SKILL namespace joins them: beacon ships no skill, so §3.6 holds only the
+retirement note.
 
 Two of those ids were later reused rather than left fallow, and both reuses are
 live contract: the `clear-screen` CLI *capability* returned under STATE-10
@@ -133,6 +144,15 @@ above the calmer fleet") — recent code realigned to it, not drift.
   contract gain). Revisit if the spec ever moves to strict EARS.
 
 ## Audit history
+
+### 2026-08-20 — Coverage refresh (spec-status)
+
+167 IDs, all Covered, 0 needs-decision. Net −2: SKILL-01/02/03 and CMD-18
+retired, CMD-25 (`/beacon:pause`) and CMD-26 (`/beacon:install-beacon`) added. CMD-13
+rewritten in place — `install-cli` folds into CMD-08, which gains `--dir` — and
+CMD-17 loses the `/beacon:beacon` bare-invocation clause with the command. Two
+slash commands remain, both user-invocable only, so no model-facing beacon
+surface is a command.
 
 ### 2026-08-05 — Coverage refresh (spec-status)
 

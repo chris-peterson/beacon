@@ -153,7 +153,7 @@ Each session record carries an `icon` field so a dashboard can show the project'
 
 ## Always-on serve service (optional)
 
-If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon:beacon install`:
+If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon:install-beacon`:
 
 ```bash
 beacon serve install      # launchd agent (macOS) / systemd user unit (Linux)
@@ -195,10 +195,10 @@ claude plugin install beacon@chris-peterson
 Then, inside a Claude Code session, bootstrap everything around the plugin:
 
 ```text
-/beacon:beacon install
+/beacon:install-beacon
 ```
 
-The first two commands install the Claude plugin (hooks, slash command, skill, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon:beacon install` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion.
+The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
 
 On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
 
@@ -216,8 +216,8 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the tab color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
-- `/beacon:session-mode pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
-- `/beacon:beacon status waiting "bg refresh ~30 min"` flips the tab to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
+- `/beacon:pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
+- `beacon status waiting "bg refresh ~30 min"` flips the tab to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
 
 ## Usage
 
@@ -270,7 +270,7 @@ The label and status commands paint the pane's tab — the same traffic-light co
 
 <div class="cmdfig">
   <div class="cf-row">
-    <code class="cf-cmd">/beacon:beacon set task perms</code>
+    <code class="cf-cmd">beacon set task perms</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab ready">ai-sdlc<span class="t">perms</span></span>
@@ -278,7 +278,7 @@ The label and status commands paint the pane's tab — the same traffic-light co
     </span>
   </div>
   <div class="cf-row">
-    <code class="cf-cmd">/beacon:beacon status waiting "bg refresh"</code>
+    <code class="cf-cmd">beacon status waiting "bg refresh"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab blocked">ai-sdlc<span class="t">perms</span></span>
@@ -286,7 +286,7 @@ The label and status commands paint the pane's tab — the same traffic-light co
     </span>
   </div>
   <div class="cf-row">
-    <code class="cf-cmd">/beacon:session-mode pause "lunch"</code>
+    <code class="cf-cmd">/beacon:pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab paused">ai-sdlc<span class="t">perms</span></span>
@@ -295,23 +295,24 @@ The label and status commands paint the pane's tab — the same traffic-light co
   </div>
 </div>
 
-Inside Claude Code:
+Inside Claude Code there is one, for the one thing you park by hand:
 
 ```text
-/beacon:beacon                               # show resolved state (default)
-/beacon:beacon status waiting "bg refresh"   # set status with a description
-/beacon:session-mode pause "out for lunch"   # any mode: pause/release/retro/done
-/beacon:session-mode resume                  # clear all overrides + description
-/beacon:beacon clear status                  # clear just the status override
+/beacon:pause "out for lunch"                # the next prompt resumes it
 ```
 
-At the shell:
+Everything else is the CLI, which you can run from a Claude prompt with `!`. It costs no model turn, so it lands the instant you hit return:
 
 ```bash
-beacon show
-beacon status paused "afk"
-beacon pause "afk"
+beacon show                                  # resolved project / task / status
+beacon set task perms                        # label the unit of work
+beacon status waiting "bg refresh"           # set status with a description
+beacon release                               # any mode: release/retro/done/pause
+beacon resume                                # clear all overrides + description
+beacon clear status                          # clear just the status override
 ```
+
+The modes are mostly entered *for* you — a release flow sets `beacon release`, a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
 
 ### Claude Code's own `/rename` and `/color`
 
@@ -347,7 +348,7 @@ Third-party Claude Code marketplaces have auto-update **off by default**. Either
 - **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
 - **Or update manually** with `claude plugin update beacon@chris-peterson`.
 
-After every upgrade, re-run `/beacon:beacon install` (or just `/beacon:beacon install-cli` if all you need is a fresh wrapper). Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. The plugin's `SessionStart` hook compares `beacon --version` against the installed plugin version on every Claude Code session start and nudges you to refresh when they differ.
+After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell — the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares `beacon --version` against the installed plugin version on every session start and nudges you when they differ.
 
 Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md) for release notes.
 

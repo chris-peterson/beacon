@@ -56,10 +56,20 @@ There's no shell involved: the command is split into a program and arguments and
 **`label` applies on a re-render**, because iTerm2 stores a button's title in the profile rather than reading it live:
 
 ```bash
-beacon install-profile
+beacon refresh-iterm-profiles
 ```
 
 That rewrites the profiles only — no reinstall of the wrapper, completions, or shell integration — and iTerm2 picks it up immediately, on panes that are already open.
+
+You never need it on a fresh install: `beacon install` writes the profiles as one of its steps. It's a re-apply path, and there are three reasons to reach for it:
+
+| Reason | Symptom |
+|:---|:---|
+| you edited a `label` | the button still shows the old title |
+| your `python3` moved (a Homebrew upgrade, say) | the buttons stop doing anything — the interpreter is baked in absolute, because an action shell has no interactive `PATH` |
+| you edited the beacon profile in iTerm2's GUI | whatever you changed, back to beacon's version |
+
+After a **plugin upgrade**, use `/beacon:install-beacon` instead. The profiles embed the plugin's own paths, so re-rendering through a wrapper that still points at the old version would bake that version's paths back in.
 
 ## What `↖ web` opens
 

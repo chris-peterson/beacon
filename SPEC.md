@@ -38,14 +38,14 @@ Status values are organized around the **SDLC cycles** a session moves through, 
 | `idle` | dev | Not actively engaged (turn just ended, just opened, freshly resumed) | Default; Hook Stop (turn finished, calm) |
 | `working` | dev | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse / PostToolUse (any tool) |
 | `waiting` | dev | Claude is actively blocked on the user (permission/idle prompt — highest user-attention priority) | Hook Notification (`idle_prompt` / `permission_prompt`) |
-| `paused` | pause | User has parked the session | `/beacon pause` or `/beacon status paused` |
-| `release` | release | User has entered a release / ship-it flow | `/beacon release` or `/beacon status release` (set by a session or skill) |
-| `retro` | retro | Session is in a post-work follow-up / retro phase | `/beacon retro` or `/beacon status retro` (set by a session or skill) |
-| `done` | done | Session is complete and ready to hand off to another | `/beacon done` or `/beacon status done` (set by a session or skill) |
+| `paused` | pause | User has parked the session | `/beacon:pause` (CMD-25) or `beacon status paused` |
+| `release` | release | User has entered a release / ship-it flow | `beacon release` or `beacon status release` (set by a session or skill) |
+| `retro` | retro | Session is in a post-work follow-up / retro phase | `beacon retro` or `beacon status retro` (set by a session or skill) |
+| `done` | done | Session is complete and ready to hand off to another | `beacon done` or `beacon status done` (set by a session or skill) |
 
 `idle` / `working` / `waiting` are the **dev** cycle: no mode profile, and the badge color is the dynamic stoplight (BADGE-09) — a neutral **gray** at rest, **orange** while working, **red** while blocked on the user. `paused`, `release`, `retro`, and `done` are **mode states** (RENDER-05): each owns a dedicated dynamic profile so the whole pane signals the cycle. `paused` is a user halt; `release` marks a ship-it flow in progress (the one active mode); `retro` is a deliberate closing-out phase a session or skill declares; `done` is the terminal "this session is finished, handing off" signal a closing-out skill reaches for instead of `pause`. They differ in lifecycle — `paused` auto-resumes on the next prompt (STATE-04); `release`, `retro`, and `done` persist until explicitly cleared.
 
-Status accepts a user override via `/beacon status <value> [<description>]` (or `/beacon set status <value>`) and reverts to the provider chain on `/beacon clear status`. The optional description is a free-text note that surfaces in the fleet view (§3.8) as recall context; it lets the user attach a reminder to any user-set status (e.g. `status waiting "bg data refresh ~30 min"`), not just `paused`.
+Status accepts a user override via `beacon status <value> [<description>]` (or `beacon set status <value>`) and reverts to the provider chain on `beacon clear status`. The optional description is a free-text note that surfaces in the fleet view (§3.8) as recall context; it lets the user attach a reminder to any user-set status (e.g. `status waiting "bg data refresh ~30 min"`), not just `paused`.
 
 ### 1.4 Render target
 
@@ -79,7 +79,7 @@ beacon ships as three discrete deliverables. Section 3 organizes requirements ar
 |:---|:---|:---|:---|
 | **D1** | This specification | `SPEC.md`, copied to `docs/spec.md` at docs-build time and served as `/spec` | Requirements, architecture, scope. |
 | **D2** | `beacon-iterm` CLI | A standalone executable on `$PATH` | Translating subcommands into iTerm2 control operations — escape sequences for painted surfaces, Apple Events for out-of-band actions like focus. Stateless; no Claude awareness. |
-| **D3** | `beacon` Claude Code plugin | A plugin tree (hooks, skill, command, scripts, shell snippet, profile installer) | Hook handlers, COR resolver, slash command, skill, shell integration, profile installation. Calls D2 for every iTerm2 surface change. |
+| **D3** | `beacon` Claude Code plugin | A plugin tree (hooks, commands, ambient rules, scripts, shell snippet, profile installer) | Hook handlers, COR resolver, slash commands, ambient rules, shell integration, profile installation. Calls D2 for every iTerm2 surface change. |
 
 **Boundary discipline.** D2 has no knowledge of D3. D3 ships its shell snippet, which calls D2. D2 can be used outside Claude Code entirely (e.g. from CI scripts, ad-hoc terminal tools) — that is the test of whether the seam is clean.
 
@@ -96,7 +96,6 @@ These requirements describe what beacon does conceptually. They would apply unch
 | `HOOK`  | Claude Code hook event handlers |
 | `OVR`   | User overrides (`set` / `clear`) |
 | `STATE` | User-set status, pause / resume semantics |
-| `SKILL` | Skill responsibilities (CLI freshness) |
 | `CMD`   | Slash command surface |
 | `WIP`   | Cross-session introspection / export |
 | `DUMP`  | Full-fidelity state backup / restore |
@@ -144,7 +143,7 @@ The fallback is not parenthesized — it appears as a real path so it reads natu
 
 **PROV-07.** For `url` (the "best URL relevant to this session"), the plugin shall consult providers in this order, returning the first non-empty value:
 
-1. **User override** — set via `/beacon set url <url>`
+1. **User override** — set via `beacon set url <url>`
 2. **Tack-derived URL** — when `tack` is on `$PATH`, select the session's route by the same correlation order the fleet view uses (WIP-02): the session→route pin (the Claude session id in a route's `sessions[]` block, ties broken by latest `started_at`) is authoritative, then location heuristics (`.tack` pin file, branch name, resolved project name). Matching the branch slug alone would miss a route pinned to the session whose slug differs from the branch, so the status-line URL link (STATUSLINE-02) and the fleet-view reference chip (WIP-09) would name different routes. From the selected route, an inner chain of:
    a. The route's first `status: in_progress` tack's `deliverable.url`
    b. The route's most-recently-updated `status: done` tack's `deliverable.url`
@@ -198,7 +197,7 @@ The integrations with `tack`, `gh`, and `glab` are *soft*: beacon detects each a
 
 ### 3.5 User-set status (STATE)
 
-Pause is no longer a separate concept; it is one possible status value (`paused`) the user can set, alongside `idle`, `working`, `waiting`, `release`, `retro`, and `done`. `paused`, `release`, `retro`, and `done` are mode states that own a dedicated profile (RENDER-05); `idle` / `working` / `waiting` are the dev cycle (BADGE-09). Any user-set status accepts an optional description that surfaces in the fleet view (§3.8) as recall context. Skill plan/review signaling is gone with stage (see §3.6 for what remains of SKILL).
+Pause is no longer a separate concept; it is one possible status value (`paused`) the user can set, alongside `idle`, `working`, `waiting`, `release`, `retro`, and `done`. `paused`, `release`, `retro`, and `done` are mode states that own a dedicated profile (RENDER-05); `idle` / `working` / `waiting` are the dev cycle (BADGE-09). Any user-set status accepts an optional description that surfaces in the fleet view (§3.8) as recall context. Skill plan/review signaling is gone with stage (see §3.6).
 
 **STATE-01.** When the user invokes `status <value> [<description>]`, the plugin shall persist `<value>` as `override.status` and `<description>` (if any) as the session's description. `<value>` must be one of `idle`, `working`, `waiting`, `paused`, `release`, `retro`, `done`.
 
@@ -230,11 +229,7 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 ### 3.6 Skill responsibilities (SKILL)
 
-**SKILL-01.** The skill shall instruct Claude not to invoke beacon for signals already covered by hooks (status transitions during a turn).
-
-**SKILL-02.** The skill shall instruct Claude not to narrate its beacon invocations to the user.
-
-**SKILL-03.** The skill shall, on first invocation per session, compare `beacon --version` against `<plugin-root>/.claude-plugin/plugin.json#version` and offer `/beacon:beacon install` (or equivalent) when they differ. This catches CLI-wrapper drift after a plugin upgrade — the same drift signal CMD-13 / Architecture Rule 11 cover from the hook side.
+**SKILL-01, SKILL-02, SKILL-03 — retired.** The plugin ships no skill. The two conventions the skill carried — don't set a status the hooks own, and don't narrate a beacon invocation — are stated in the `keep-session-labeled` ambient rule (HOOK-10), which is in context from SessionStart rather than waiting on a skill the model had to decide to load. The freshness check (SKILL-03) was already the hook's job: `hooks/cli-freshness.sh` runs it at SessionStart on every session (CMD-13, Architecture Rule 11), where the skill's version ran at most once and only if invoked.
 
 ### 3.7 Slash command (CMD)
 
@@ -252,11 +247,13 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-07.** When the user invokes `render`, the plugin shall force a re-render with the current resolved state without changing any state.
 
-**CMD-08.** When the user invokes `install`, the plugin shall perform the terminal-agnostic bootstrap steps (CLI wrapper on `$PATH`, tab completion), then write the beacon dynamic profile (STATUS-BAR-01), printing one line per step. iTerm2 reloads its `DynamicProfiles` directory without a restart, so every install step completes in place — no pref needs iTerm2 quit, so there is no deferred-action step. It shall close by running the read-only layout audit (CLI-18) and surfacing any app-wide Appearance setting that differs from the recommended fleet layout — advisory only, since beacon writes none of them. When no render adapter is applicable — iTerm2 absent (not macOS, or iTerm.app not installed) — the plugin shall perform only the terminal-agnostic steps and point the user at the fleet view (`wip` / `watch` / `serve`). `install` shall not start the serve service (WIP-07) — it is opt-in — but shall point the user at it.
+**CMD-08.** When the user invokes `install [--dir <path>]`, the plugin shall perform the terminal-agnostic bootstrap steps (CLI wrapper on `$PATH` — in `<path>`, default `~/.local/bin` — tab completion, and the Claude Code status line), then write the beacon dynamic profiles (STATUS-BAR-01 / RENDER-05), printing one line per step. Every step is idempotent, so re-running `install` is the supported way to recover from drift. iTerm2 reloads its `DynamicProfiles` directory without a restart, so every install step completes in place — no pref needs iTerm2 quit, so there is no deferred-action step. It shall close by running the read-only layout audit (CLI-18) and surfacing any app-wide Appearance setting that differs from the recommended fleet layout — advisory only, since beacon writes none of them. When no render adapter is applicable — iTerm2 absent (not macOS, or iTerm.app not installed) — the plugin shall perform only the terminal-agnostic steps and point the user at the fleet view (`wip` / `watch` / `serve`). `install` shall not start the serve service (WIP-07) — it is opt-in — but shall point the user at it.
 
 **CMD-09.** When the user invokes `completions zsh`, the plugin shall install a tab-completion script such that `beacon <TAB>` works in a fresh zsh session. With `--print`, the plugin shall print the script to stdout instead of installing. Install location and `fpath` plumbing are implementation details (see §6.5).
 
-**CMD-13.** When the user invokes `install-cli [--dir <path>]`, the plugin shall write an executable wrapper named `beacon` to `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version` and nudges the user to re-run install-cli when they differ. The subcommand shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
+**CMD-13.** The wrapper `install` writes (CMD-08) shall be an executable named `beacon` in `<path>` (default `~/.local/bin`) that execs the source script at `${PLUGIN_ROOT}/scripts/beacon`. The wrapper hardcodes its target path at install time and does not auto-refresh on plugin upgrade — drift is detected by the SessionStart freshness hook (Architecture Rule 11), which compares `beacon --version` against `plugin.json#version`. `install` shall also install zsh completions (CMD-09) so users never need a second command for tab completion to work. When the target directory is not on `$PATH`, the plugin shall print a warning.
+
+The `install-cli` subcommand this requirement once named is **retired**. It ran exactly `install`'s first two steps, and it was the one the drift nudge pointed at — which made it the wrong answer to the situation it was reached for: the `.zshrc` `source` line is version-pinned the same way the wrapper is, and only `install` rewrites it, so refreshing the wrapper alone left the shell integration on the previous version. `--dir` moved to `install` (CMD-08); `completions` remains separately invocable (CMD-09) for a user who wants only that.
 
 **CMD-14.** When the user invokes `copy-url`, the plugin shall copy the resolved `url` signal to the system clipboard. When invoked as `open-url [<dir>]`, the plugin shall open the session's web view for `<dir>` (default: the invoking cwd) per STATUS-BAR-08 — the `web` button's configured `cmd` when set, else the PROV-07 resolution opened in the default browser. Both resolve against a directory rather than reading persisted state, so they are correct from any shell and in any pane. `open-url` additionally backs the `↖ web` status-bar button.
 
@@ -264,23 +261,37 @@ Pause is no longer a separate concept; it is one possible status value (`paused`
 
 **CMD-15.** When the user invokes `json`, the plugin shall print the resolved-state payload (signals, providers, description) as a single JSON object on stdout. This is consumed by the shell integration and by external observers (e.g. iTerm2 status bar coprocesses) that need the full state without parsing the human-readable `show` output.
 
-**CMD-17.** When the `beacon` CLI is invoked with no subcommand, it shall print the usage text to stderr and exit non-zero. When invoked as `beacon --help` / `-h` / `help`, it shall print the usage text to stdout and exit zero. The `/beacon:beacon` slash command shim preserves the bare-invocation convenience by passing `show` when given no arguments.
+**CMD-17.** When the `beacon` CLI is invoked with no subcommand, it shall print the usage text to stderr and exit non-zero. When invoked as `beacon --help` / `-h` / `help`, it shall print the usage text to stdout and exit zero.
 
-**CMD-18.** The plugin shall provide a single `/beacon:session-mode <mode> [<note>]` slash command covering every mode state — `release`, `retro`, `pause`, `done`, and the `resume` that clears them — so entering a mode is one command rather than `/beacon:beacon status <mode>`. It is a thin shim that passes its arguments straight to the CLI's matching subcommand (CMD-04 / STATE-06..11); it carries no behavior of its own, and the pane repaint is immediate because the CLI renders synchronously. The shim instructs the model to do no reasoning beyond running the command and confirming in one line. It shall remain **model-invocable**, so a skill that owns a phase — a release flow, a retro, a session stand-down — can enter the matching mode itself rather than asking the user to type it. It shall **not** pin a `model:` override: a cheaper model would run on a different model than the session, whose prompt cache cannot be reused, forcing a cold prefill of the entire initial context — slower than the one-line reply costs on the session model. The latency of a slash command is prefill, not generation, so keeping the turn on the session model (warm cache) is what makes it fast. For a truly instant, no-model-turn entry, the CLI (`beacon pause`, `beacon retro`, …) is the path.
+**CMD-18 — retired.** The `/beacon:session-mode <mode> [<note>]` command is removed. It survived on one clause — that it stay model-invocable, so a skill owning a phase could enter the matching mode itself — and that caller never materialized: a skill runs `beacon release` in a single shell call, where a slash command spends a whole model turn reaching the same subcommand. The skills that actually drive mode transitions were written against the CLI from the start.
 
-The mode takes an argument rather than each mode getting its own command because `release` and `retro` are load-bearing verbs elsewhere in the surrounding tooling — a bare `/release` or `/retro` is genuinely ambiguous between beacon's mode setter and the ai-sdlc skill of the same name, and beacon's convenience wrapper is the interloper. One argument-taking command fixes both collisions without inventing a synonym for either word, and mirrors the CLI, where the modes already live as subcommands under one binary.
+The collision it was built to resolve stays resolved, and more simply than before: `release` and `retro` are load-bearing verbs elsewhere in the surrounding tooling — a bare `/release` or `/retro` is ambiguous between beacon's mode setter and the skill of the same name, and beacon's convenience wrapper was the interloper. With no mode command at all, there is nothing left to collide. `pause` keeps a command of its own (CMD-25) because it is the one a *user* reaches for by hand.
 
-**CMD-19, CMD-20, CMD-22 — retired.** The per-mode `/beacon:retro`, `/beacon:done`, and `/beacon:release` commands folded into CMD-18.
+**CMD-19, CMD-20, CMD-22 — retired.** The per-mode `/beacon:retro`, `/beacon:done`, and `/beacon:release` commands folded into CMD-18, which is itself now retired — the modes are reached through the CLI.
 
 **CMD-21.** When the user invokes `data-dir`, the plugin shall print the resolved `<DATA_DIR>` path on stdout. This is an internal contract used by the shell integration to locate the per-session handoff files.
 
-**CMD-23.** When the user invokes `install-profile`, the plugin shall re-render the base and mode dynamic profiles (STATUS-BAR-01) from the template and the current user config, and nothing else — no wrapper, no completions, no shell integration, no fleet-layout advisory. This is the apply path for a changed button label (STATUS-BAR-09): iTerm2 reloads the `DynamicProfiles` directory on change, so the re-render reaches every open pane without a restart. Off iTerm2 the subcommand shall exit non-zero saying so, rather than writing a profile nothing will load.
+**CMD-23.** When the user invokes `refresh-iterm-profiles`, the plugin shall re-render the base and mode dynamic profiles (STATUS-BAR-01) from the template and the current user config, and nothing else — no wrapper, no completions, no shell integration, no fleet-layout advisory. This is the apply path for a changed button label (STATUS-BAR-09): iTerm2 reloads the `DynamicProfiles` directory on change, so the re-render reaches every open pane without a restart. Off iTerm2 the subcommand shall exit non-zero saying so, rather than writing a profile nothing will load.
+
+The rendered profile embeds paths — the plugin script behind each action shell, the absolute interpreter, the mode watermark images — so profile content is **plugin-root relative**. The upgrade path is therefore CMD-26, not this subcommand: run through a stale wrapper it would bake the previous version's root into the buttons. What it *is* for is the staleness a version bump can't explain: a `statusbar.buttons.<name>.label` edit (the only one a user initiates), an interpreter that moved out from under the baked absolute path, and reclaiming a profile edited in iTerm2's GUI — which is also why the render never short-circuits on matching content, since iTerm2 re-serializes dynamic profiles back to disk with such edits folded in.
+
+It is never a first-install step: `install` (CMD-08) writes the profiles itself, through the same renderer, so a fresh install has them already and this subcommand only ever re-applies. It keeps a separate subcommand rather than folding into `install` because it fully does its own job — a label lives nowhere but the profile — and because its footprint is `DynamicProfiles/` alone, where `install` also rewrites `.zshrc` and the `$PATH` wrapper to whatever root it ran from. It is deliberately not named `install-*`: that prefix means the bootstrap (CMD-08, CMD-26).
 
 **CMD-24.** When the user invokes `drop <ref>`, the plugin shall remove the matching deliverable from the session's row (STATUSLINE-03) and record its URL in `deliverables.dropped` so acquisition does not re-record it. `<ref>` matches an entry's stored ref (`#42`), its rendered qualified form (`otherproj:#9` — what the row put in front of the user), or its URL. When nothing matches, the plugin shall say so on stderr and exit non-zero.
 
 Acquisition cannot tell a deliverable the session is working from one it merely crossed — a URL pasted as a reference is indistinguishable from one being worked — and the list is capped, so noise left in place evicts real work. The removal has to be remembered rather than merely applied: the bound route is re-read on every publish, and a forgotten drop would put the entry back on the next turn. Both the list and the drop record are session-scoped and cleared by the fresh-start wipe (HOOK-08a).
 
 Whether recording should be gated behind config — an opt-out for sessions that cross many references — is deliberately left open; the intent is on by default, and living with it answers the question better than guessing at it.
+
+**CMD-25.** The plugin shall provide a `/beacon:pause [<note>]` slash command that parks the session — a thin shim onto the CLI's `pause` subcommand (CMD-04 / STATE-07), carrying no behavior of its own. It shall instruct the model to do no reasoning beyond running the command and confirming in one line; the pane repaint is immediate because the CLI renders synchronously.
+
+`pause` is the only mode with a command because it is the only one a *user* reaches for by hand, mid-session, on the way out of the chair. The rest are entered by a skill that owns a phase — a release flow, a retro, a stand-down — and a skill reaches the CLI directly in one shell call. So the command shall be **user-invocable only**: a model-facing door here would duplicate `beacon pause` at the cost of a model turn.
+
+It shall **not** pin a `model:` override. A cheaper model runs on a different model than the session, whose prompt cache cannot be reused, forcing a cold prefill of the entire initial context — slower than the one-line reply costs on the session model. The latency of a slash command is prefill, not generation, so keeping the turn on the session model (warm cache) is what makes it fast. For a truly instant, no-model-turn park, `beacon pause` is the path.
+
+**CMD-26.** The plugin shall provide a `/beacon:install-beacon [--dir <path>]` slash command that runs `install` (CMD-08) from `${CLAUDE_PLUGIN_ROOT}`, and shall be **user-invocable only**. It exists because it is the only door to the *newly installed* plugin root: the wrapper on `$PATH` and the `.zshrc` `source` line both hardcode a version-pinned path, so `beacon install` run through a stale wrapper re-points both at the version it already names. The SessionStart freshness hook (Architecture Rule 11) names this command for that reason, and says so.
+
+The name carries the plugin rather than reading `/beacon:install` because a bare, un-namespaced `/install` is what the user actually types, and every sibling plugin with a `$PATH` wrapper needs the same door — four of them collide on that one word. `install-<plugin>` is unique bare, and unlike `install-<plugin>-cli` it neither stutters against the namespace nor claims the step is CLI-only, which for beacon it is not (CMD-08 writes the status line, the shell source line, and the dynamic profiles too).
 
 ---
 
@@ -484,7 +495,7 @@ flowchart LR
 
 **BADGE-06.** The shell integration shall be idempotent — sourcing it twice in the same shell shall not duplicate hooks or output.
 
-**BADGE-07.** The plugin shall provide an `install-cli` subcommand that drops a `beacon` wrapper at `~/.local/bin/beacon` (or a user-supplied directory via `--dir`) so `beacon <subcommand>` works as an interactive command on PATH and so tab completion (loaded as `_beacon`) attaches to the right command name. The wrapper hardcodes a path to the source script at install time and is the single mechanism by which `beacon` appears on PATH; the shell integration does not define a `beacon` alias. Plugin upgrades do not auto-refresh the wrapper — see CMD-13 and Architecture Rule 11.
+**BADGE-07.** `install` (CMD-08) shall drop a `beacon` wrapper at `~/.local/bin/beacon` (or a user-supplied directory via `--dir`) so `beacon <subcommand>` works as an interactive command on PATH and so tab completion (loaded as `_beacon`) attaches to the right command name. The wrapper hardcodes a path to the source script at install time and is the single mechanism by which `beacon` appears on PATH; the shell integration does not define a `beacon` alias. Plugin upgrades do not auto-refresh the wrapper — see CMD-13 and Architecture Rule 11.
 
 **BADGE-08 — retired.** The shell integration exposed `_beacon_resolve_url()` as a redefinable PROV-07 override. Its only consumer was the deliverable suffix on the project chip; with the chip carrying the project's name (STATUS-BAR-02), the shell resolves no URL at all, so the hook had nothing left to influence — a redefinition would have been a silent no-op. URL resolution now lives solely in the plugin (`resolve_url`), which the `↖ web` button and the status line both read.
 
@@ -513,7 +524,7 @@ When neither flag is set, BADGE-09 applies.
 
 **BADGE-13.** The plugin shall render the badge such that it remains legible when the pane is shrunk to Mission Control / Exposé thumbnail size while not occluding the terminal content beneath it at normal zoom. The plugin shall achieve this through a combination of sizing constraints on the badge's bounding box and partial transparency on the badge color; specific values (height fraction, alpha) are tunable in implementation.
 
-**BADGE-14.** While no beacon-aware action has occurred in a pane, the plugin shall leave the badge unpainted in that pane. A beacon-aware action is any of: a Claude Code hook invocation, a `/beacon` slash command, or a direct `beacon` CLI invocation in that pane. When `beacon clear` is invoked, the plugin shall return the badge to its unpainted state and swap the pane back to the base `beacon-dev` profile (RENDER-05, so clearing mid-mode drops the mode background), requiring a subsequent beacon-aware action to re-engage.
+**BADGE-14.** While no beacon-aware action has occurred in a pane, the plugin shall leave the badge unpainted in that pane. A beacon-aware action is any of: a Claude Code hook invocation, a beacon slash command, or a direct `beacon` CLI invocation in that pane. When `beacon clear` is invoked, the plugin shall return the badge to its unpainted state and swap the pane back to the base `beacon-dev` profile (RENDER-05, so clearing mid-mode drops the mode background), requiring a subsequent beacon-aware action to re-engage.
 
 **BADGE-15.** The pane badge shall be **opt-in and off by default**. The tab now carries the identity — its color is the logical state (RENDER-04) and its two-line label is `project` over `task` (TITLE-05) — so painting the badge with the same `project`/`task` is redundant in a tabs workflow. All badge machinery is retained (`BADGE_FORMAT`, the `BADGE_COLOR_PALETTE`, the `badge-color` / `badge-format` CLI verbs, the profile's `Badge Text`); `"badge": "on"` in `~/.config/beacon/config.json` re-enables it. The toggle is read through a single `config-get` verb and gated at all three paint sites: the profile's `Badge Text` (empty by default), the plugin's `apply` (which skips both `badge-format` and `badge-color` when off, while the tab color stays unconditional), and the shell's source-time `SetBadgeFormat`. Read once — at source in the shell, once per `apply` in the plugin — never in the per-prompt hot path.
 
@@ -837,7 +848,7 @@ The footer is the home rather than an iTerm2 status-bar segment: the refs are on
 │  Inputs (plugin)                Inputs (shell)           │
 │  ├─ Hook events                 ├─ precmd                │
 │  ├─ Slash commands              └─ chpwd                 │
-│  └─ Skill-driven signals                                 │
+│  └─ Ambient-rule signals                                 │
 └──────────────────────────────────────────────────────────┘
                          │
             ┌────────────┴───────────┐
@@ -907,7 +918,7 @@ The escape-sequence subcommands open `/dev/tty` lazily, write, flush, and close;
 
 ### 6.4 Plugin: `beacon`
 
-Python 3 script reacting to hooks, slash commands, and skill signals. Owns the COR resolver, all state files, and the orchestration policy that decides which CLI calls to make for each resolved-state change.
+Python 3 script reacting to hooks and slash commands. Owns the COR resolver, all state files, and the orchestration policy that decides which CLI calls to make for each resolved-state change.
 
 The plugin invokes the CLI via subprocess. It does **not** implement any iTerm2 escape sequence directly — that is exclusively the CLI's job.
 
@@ -1022,13 +1033,13 @@ write state/<sid>.resolved (provenance snapshot incl. profile)
 
 Diff-against-previous keeps the per-render escape-sequence count low — a typical mid-session render among `ready` / `busy` / `blocked` emits zero or two OSC calls (badge + tab color), and only when the logical state actually changed. A mode transition (entering/leaving `paused` / `release` / `retro` / `done`) is the heavier path (swap + re-emit), but it fires only on that rare, user/session-initiated boundary.
 
-### 6.8 Skill
+### 6.8 Ambient rules
 
-A skill at `skills/beacon/SKILL.md` covers CLI-wrapper freshness (SKILL-03) and conventions (SKILL-01, -02). It carries no stage-signaling responsibility — that surface is gone with stage.
+`rules/keep-session-labeled.md`, emitted into context at SessionStart by `hooks/emit-rules.sh` (HOOK-10), is where the model's side of beacon lives: keep the `task` headline current, defer to a bound tack route and to the user's `/rename`, leave status to the hooks, and don't narrate the invocation. The plugin ships no skill — see SKILL-01..03 (retired) for why the rule is the better home.
 
-### 6.9 Slash command
+### 6.9 Slash commands
 
-A single command `/beacon:beacon` exposes all subcommands. See CMD-01 .. CMD-07.
+Two, both thin shims onto CLI subcommands, and each is a command only for a reason the CLI can't cover. `/beacon:pause [<note>]` (CMD-25) is the one mode a user parks by hand. `/beacon:install-beacon [--dir <path>]` (CMD-26) has to run from `${CLAUDE_PLUGIN_ROOT}`. Everything else — every other subcommand, and every mode a skill enters — goes through the `beacon` CLI on `$PATH` (CMD-13), which costs no model turn. Both commands are user-invocable only, so nothing the model reaches for is a slash command.
 
 ### 6.10 Known iTerm2 caveats
 
@@ -1067,11 +1078,11 @@ beacon/
 │   └── plugin.json
 ├── hooks/
 │   └── hooks.json
-├── skills/
-│   └── beacon/
-│       └── SKILL.md
+├── rules/
+│   └── keep-session-labeled.md     # ambient rule, emitted at SessionStart
 ├── commands/
-│   └── beacon.md
+│   ├── install.md
+│   └── pause.md
 ├── scripts/
 │   └── beacon                      # plugin entry: resolver + handlers
 └── shell/
@@ -1080,16 +1091,16 @@ beacon/
 
 ### 7.2 Install model
 
-Plugin install (via Claude marketplace) places the tree at `~/.claude/plugins/cache/<author>/beacon/<version>/`. The user then runs `/beacon install` once per machine. That command:
+Plugin install (via Claude marketplace) places the tree at `~/.claude/plugins/cache/<author>/beacon/<version>/`. The user then runs `beacon install` once per machine. That command:
 
 1. Adds a `source "<plugin-root>/shell/beacon.zsh"` line to `.zshrc`, marked with a sentinel comment so future upgrades update the path in place.
-2. Writes a `beacon` wrapper to `~/.local/bin/beacon` that execs the source script at the install-time path (CMD-13).
+2. Writes a `beacon` wrapper to `~/.local/bin/beacon` — or to `--dir` — that execs the source script at the install-time path (CMD-13).
 3. Writes `~/.zsh/completions/_beacon` and inserts `fpath=(~/.zsh/completions $fpath)` before the user's existing `compinit` (or appends `fpath` + `compinit` if neither is present).
 4. Writes the base `beacon-dev` dynamic profile and its mode variants (`beacon-pause` / `beacon-release` / `beacon-retro` / `beacon-done`) into iTerm2's `DynamicProfiles` directory (STATUS-BAR-01 / RENDER-05).
 
 The user's default profile is never changed: sessions switch into the `beacon-dev` profile at runtime via `set-profile` (§6.6), and no install step, hook, or render ever writes an iTerm2 preference — so nothing in the automatic path requires iTerm2 to be quit. The one path that does write a preference is `configure --write` (CLI-18): explicit, user-invoked, confirmed per setting, and never triggered automatically — it orchestrates the quit-write-relaunch itself.
 
-The wrapper at `~/.local/bin/beacon` does not auto-refresh on plugin upgrade. The plugin's `SessionStart` hook (`hooks/cli-freshness.sh`) detects drift between `beacon --version` and `plugin.json#version` and nudges the user to re-run `install-cli`.
+The wrapper at `~/.local/bin/beacon` does not auto-refresh on plugin upgrade. The plugin's `SessionStart` hook (`hooks/cli-freshness.sh`) detects drift between `beacon --version` and `plugin.json#version` and nudges the user to run `/beacon:install-beacon` (CMD-26) — which is the plugin-root door, not the stale wrapper's own `install`.
 
 ## 8. Out of scope
 

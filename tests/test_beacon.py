@@ -936,13 +936,13 @@ class CustomizableStatusBarButtons(unittest.TestCase):
             self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/work/repo"))
         self.assertEqual(calls[0], ["/bin/ed", "-n", "/work/repo"])
 
-    def test_install_profile_requires_iterm(self):
+    def test_refresh_requires_iterm(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
             with self.assertRaises(SystemExit) as cm:
-                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
         self.assertIn("iTerm2", str(cm.exception))
 
-    def test_install_profile_rerenders_without_the_rest_of_the_bootstrap(self):
+    def test_refresh_rerenders_without_the_rest_of_the_bootstrap(self):
         calls = []
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
              mock.patch.object(self.beacon, "install_dynamic_profile",
@@ -952,15 +952,15 @@ class CustomizableStatusBarButtons(unittest.TestCase):
              mock.patch.object(self.beacon, "_install_shell_source",
                                side_effect=AssertionError("must not run the shell step")):
             with contextlib.redirect_stdout(io.StringIO()):
-                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
         self.assertEqual(calls, ["profile"])
 
-    def test_install_profile_exits_nonzero_when_the_write_fails(self):
+    def test_refresh_exits_nonzero_when_the_write_fails(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
              mock.patch.object(self.beacon, "install_dynamic_profile",
                                return_value=(False, "failed to write")):
             with self.assertRaises(SystemExit) as cm:
-                self.beacon.cmd_install_profile(self.beacon.argparse.Namespace())
+                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
         self.assertIn("failed to write", str(cm.exception))
 
 
@@ -2933,10 +2933,10 @@ class InstallGating(unittest.TestCase):
             self.mocks[name] = p.start()
             self.addCleanup(p.stop)
 
-    def _run_install(self):
+    def _run_install(self, dir=None):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            self.beacon.cmd_install(None)
+            self.beacon.cmd_install(self.beacon.argparse.Namespace(dir=dir))
         return buf.getvalue()
 
     _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile")
@@ -2964,6 +2964,19 @@ class InstallGating(unittest.TestCase):
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
         self.assertIn("[6/6]", out)
+
+    def test_dir_reaches_the_wrapper_step(self):
+        # CMD-13: `--dir` moved onto install when install-cli retired, so it is
+        # the only remaining way to place the wrapper outside ~/.local/bin.
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            self._run_install(dir="~/elsewhere/bin")
+        self.assertEqual(self.mocks["_install_cli_wrapper"].call_args,
+                         mock.call(Path("~/elsewhere/bin").expanduser()))
+
+    def test_no_dir_leaves_the_wrapper_default(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            self._run_install()
+        self.assertEqual(self.mocks["_install_cli_wrapper"].call_args, mock.call(None))
 
     def test_install_completes_in_place(self):
         # 1.0 pivot: no pref needs iTerm2 quit, so install emits no
@@ -3102,7 +3115,7 @@ class ServiceUnit(unittest.TestCase):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 self.assertFalse(self.beacon._service_install(8800))
-        self.assertIn("install-cli", buf.getvalue())
+        self.assertIn("beacon install", buf.getvalue())
 
     def test_uninstall_launchd_removes_unit(self):
         plist = self.tmp / "agent.plist"

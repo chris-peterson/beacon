@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # SessionStart hook: detect CLI wrapper drift after a plugin update.
 #
-# The `install-cli` subcommand drops a wrapper at ~/.local/bin/<name>
+# The `install` subcommand drops a wrapper at ~/.local/bin/<name>
 # whose path is hardcoded at install time. When the plugin updates, the
-# wrapper does NOT auto-update — it still points at wherever install-cli
+# wrapper does NOT auto-update — it still points at wherever install
 # was last run from. This hook fires on each Claude Code session start,
 # compares `<name> --version` against `plugin.json#version`, and emits an
 # additionalContext nudge when they differ. Silent when versions match,
@@ -33,9 +33,11 @@ pv = os.environ["PLUGIN_VERSION"]
 msg = (
     f"PLEASE TELL THE USER (do not skip): the {n} CLI on PATH reports "
     f"version {cv}, but the {n} plugin is at {pv}. Refresh the shell "
-    f"wrapper before relying on the CLI — typically `/{n}:{n} install-cli`, "
-    f"or `git pull` in the local source checkout if the wrapper points "
-    f"there. Until refreshed, CLI invocations may run stale code."
+    f"wrapper before relying on the CLI — run `/{n}:install-{n}`, or `git pull` "
+    f"in the local source checkout if the wrapper points there. Running "
+    f"`{n} install` from the shell will not fix it: the stale wrapper "
+    f"re-installs itself from the version it already names. Until "
+    f"refreshed, CLI invocations may run stale code."
 )
 print(json.dumps({
     "hookSpecificOutput": {

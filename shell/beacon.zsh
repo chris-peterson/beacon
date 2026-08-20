@@ -21,7 +21,7 @@ fi
 
 # Path to the plugin script — used by helpers below (config-get, data-dir).
 # The user-facing `beacon` command on PATH comes from a wrapper installed by
-# `beacon install-cli` to ~/.local/bin/beacon, NOT from a shell alias. The
+# `beacon install` to ~/.local/bin/beacon, NOT from a shell alias. The
 # wrapper is what the SessionStart freshness hook (hooks/cli-freshness.sh)
 # can see via `command -v beacon` from non-interactive shells; an alias
 # wouldn't be visible there.

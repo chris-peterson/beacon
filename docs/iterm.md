@@ -146,7 +146,7 @@ beacon can also paint an iTerm2 **badge** — the large project/task overlay in 
 { "badge": "on" }
 ```
 
-Re-run `beacon install-profile` to pick it up; the color follows the same states as the tab.
+Re-run `beacon refresh-iterm-profiles` to pick it up; the color follows the same states as the tab.
 
 ## The status bar
 

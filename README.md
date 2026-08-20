@@ -15,7 +15,7 @@ git clone https://github.com/chris-peterson/beacon ~/src/beacon
 python3 ~/src/beacon/scripts/beacon install
 ```
 
-This wires up the shell side just like `/beacon:beacon install`, but pointed at your clone. To get the plugin side (slash command, hooks, skill) loaded into Claude Code, use the marketplace install path — `claude --plugin-dir` may not register hooks reliably across versions.
+This wires up the shell side just like an installed `beacon install`, but pointed at your clone. To get the plugin side (slash commands, hooks, ambient rules) loaded into Claude Code, use the marketplace install path — `claude --plugin-dir` may not register hooks reliably across versions.
 
 ## Dependencies
 

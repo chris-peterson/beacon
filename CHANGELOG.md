@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### `/beacon:pause` is the only slash command left for state
+
+Parking a session is the thing you reach for by hand, mid-turn, so `pause` gets a command of its own again.
+
+`/beacon:session-mode` is gone with it. It was kept model-invocable so a skill owning a phase could enter the matching mode itself, and that caller never showed up — a skill runs `beacon release` in one shell call, where a slash command spends a whole model turn to reach the same subcommand. The skills that actually drive modes were written against the CLI from the start. The collision that folded `/beacon:release` and `/beacon:retro` into it is still resolved, more simply: with no mode command at all, there is nothing left to collide with the skills of those names.
+
+### The `/beacon:beacon` wrapper and the beacon skill are gone
+
+Both were doors onto the CLI that cost a model turn to walk through. `! beacon <anything>` from a Claude prompt is faster and needs no reasoning, so the wrapper earned nothing; the skill's two conventions — don't set a status the hooks own, don't narrate the invocation — now live in the `keep-session-labeled` ambient rule, which is in context from SessionStart instead of waiting to be loaded, and its CLI-freshness check was already the SessionStart hook's job.
+
+The `project` slot moved into that rule with them: ask for the *session* or the *tab* to be labeled and Claude sets `project`, the leading line, rather than the task under it.
+
+### `install-cli` folds into `install`
+
+`install-cli` ran exactly `install`'s first two steps, and it was the one the drift nudge pointed you at — which made it the wrong answer to the situation you reached for it in. The `source` line in `.zshrc` is version-pinned the same way the wrapper is, and only `install` rewrites it, so refreshing the wrapper alone left your shell integration on the previous version. `--dir` moved onto `install`; `beacon completions zsh` still stands alone if that's all you want.
+
+### `/beacon:install-beacon` for the upgrade path
+
+The one thing a slash command can do that `! beacon` can't: run from the *newly installed* plugin root. A stale wrapper's `beacon install` re-points everything at the version it already names, which is why the freshness nudge has to name a plugin-root door. It now names `/beacon:install-beacon`, and says why the shell path won't do.
+
+The plugin is in the name because the bare `/install-beacon` is what you end up typing, and every sibling plugin that puts a wrapper on `$PATH` needs the same door — a plain `/install` would be a four-way collision the moment a second one shipped.
+
+### `install-profile` is now `refresh-iterm-profiles`
+
+Same operation, better name. `install-` means the bootstrap now, and this was never one — `beacon install` writes the profiles itself, so you only reach for this to *re-apply* one. It also writes five profiles, not one.
+
+Three things make a rendered profile stale, and only the first is something you did on purpose: a `statusbar.buttons.*.label` edit, a `python3` that moved out from under the baked absolute path (buttons silently stop working, and nothing tells you), and a profile you edited in iTerm2's GUI. After a plugin upgrade, use `/beacon:install-beacon` instead — the profiles embed the plugin's own paths, so re-rendering through a stale wrapper bakes the old version's paths back in.
+
+### Upgrading
+
+| Change | What to do |
+|:---|:---|
+| `/beacon:beacon` removed | run the CLI: `! beacon <subcommand>` |
+| `/beacon:session-mode <mode>` removed | run the CLI: `beacon release` / `retro` / `done` / `resume` |
+| `/beacon:beacon install` removed | use `/beacon:install-beacon` |
+| `beacon install-cli` removed | use `beacon install` (`--dir` moved there) |
+| `beacon install-profile` renamed | use `beacon refresh-iterm-profiles` |
+| beacon skill removed | nothing; the ambient rule covers it |
+
 ## 2.3.0
 
 ### `install` wires the status line for you

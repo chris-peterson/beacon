@@ -248,8 +248,7 @@ _beacon() {
     'import:restore per-session state from a beacon export file'
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
-    'install-cli:install or refresh the beacon wrapper at ~/.local/bin/beacon'
-    'install-profile:re-render the iTerm2 dynamic profiles from config'
+    'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the resolved URL in the default browser'
     'open-code:open a directory in the configured editor'
@@ -319,7 +318,7 @@ _beacon() {
     completions)
       (( CURRENT == 3 )) && compadd zsh
       ;;
-    install-cli)
+    install)
       (( CURRENT == 3 )) && compadd -- --dir
       ;;
   esac
@@ -1092,7 +1091,7 @@ def _statusbar_button(name: str) -> dict:
     on the click, so a new command applies with no reinstall. `label` is baked
     into the dynamic profile at render time: an action component's title is a
     static knob and cannot interpolate a user var the way the text chips do
-    (§6.10), so a changed label needs an `install-profile` re-render.
+    (§6.10), so a changed label needs a `refresh-iterm-profiles` re-render.
 
     A blank or absent `cmd` means the button's default — for `code` that is a
     bare `code`, and for `web` it is the empty string that selects PROV-07. One
@@ -2868,7 +2867,7 @@ def _service_supervisor() -> str:
 def _service_install(port: int, indent: str = "") -> bool:
     wrapper = _wrapper_path()
     if not wrapper.exists():
-        print(f"{indent}! wrapper not found at {wrapper} — run `beacon install-cli` first")
+        print(f"{indent}! wrapper not found at {wrapper} — run `beacon install` first")
         return False
     sup = _service_supervisor()
 
@@ -4703,7 +4702,11 @@ def _install_cli_wrapper(target_dir: Path | None = None) -> Path:
     # The source path is hardcoded into the wrapper at install time — plugin
     # upgrades don't auto-refresh it. The plugin's SessionStart hook
     # (hooks/cli-freshness.sh) compares `beacon --version` against
-    # plugin.json#version and nudges the user to re-run install-cli on drift.
+    # plugin.json#version and nudges the user to re-run install on drift. The
+    # nudge has to name a path under the *new* plugin root, which is why
+    # /beacon:install exists (CMD-26): a stale wrapper re-installs itself from
+    # the old version, and the .zshrc source line is version-pinned the same
+    # way — so refreshing the wrapper alone was never enough.
     source = (PLUGIN_ROOT / "scripts" / "beacon").resolve()
     target_dir = target_dir or (Path.home() / ".local" / "bin")
     target = target_dir / "beacon"
@@ -4724,13 +4727,7 @@ def _install_cli_wrapper(target_dir: Path | None = None) -> Path:
     return target
 
 
-def cmd_install_cli(args):
-    target_dir = Path(args.dir).expanduser() if args.dir else None
-    _install_cli_wrapper(target_dir)
-    _install_completions()
-
-
-def cmd_install_profile(_args):
+def cmd_refresh_iterm_profiles(_args):
     """CMD-23: re-render the dynamic profiles from the template and the user
     config, skipping the rest of the install bootstrap. This is how a changed
     `statusbar.buttons.<name>.label` is applied (STATUS-BAR-09) — iTerm2 watches
@@ -4818,7 +4815,7 @@ def cmd_install(_args):
 
     # Terminal-agnostic surface — the fleet dashboard, works in any terminal.
     step("CLI wrapper on PATH")
-    _install_cli_wrapper()
+    _install_cli_wrapper(Path(_args.dir).expanduser() if _args.dir else None)
     print()
     step("tab completion")
     _install_completions()
@@ -5107,15 +5104,12 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--print", dest="print_only", action="store_true",
                     help="print the script to stdout instead of installing")
 
-    sub.add_parser("install",
-                   help="run all install steps (wrapper, completions, + iTerm2 adapter if present)")
-
-    sp = sub.add_parser("install-cli",
-                        help="install or refresh the beacon wrapper at ~/.local/bin/beacon (+ completions)")
+    sp = sub.add_parser("install",
+                        help="run all install steps (wrapper, completions, + iTerm2 adapter if present)")
     sp.add_argument("--dir", default=None,
-                    help="directory to install into (default: ~/.local/bin)")
+                    help="directory to install the wrapper into (default: ~/.local/bin)")
 
-    sub.add_parser("install-profile",
+    sub.add_parser("refresh-iterm-profiles",
                    help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
 
     sub.add_parser("resolve-url", help="(internal) print resolved url+label as TAB-separated text")
@@ -5218,7 +5212,7 @@ def main(argv=None):
         "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
-        "install-cli": cmd_install_cli, "install-profile": cmd_install_profile,
+        "refresh-iterm-profiles": cmd_refresh_iterm_profiles,
         "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,

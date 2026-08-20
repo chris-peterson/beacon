@@ -14,6 +14,8 @@ beacon shows every concurrent Claude Code session in one fleet view — `beacon 
 
 - **Defer to the user's `/rename`.** A Claude Code `/rename` is shorthand for setting the task — beacon folds it into the same label slot. If the user has renamed the session, treat that as their chosen headline: don't overwrite it with `set task` unless the work has *genuinely* shifted to something the rename no longer describes (a new feature, bug, or phase). Recency wins, so a needless relabel silently discards what the user typed.
 
+- **`project` is the other slot.** `task` is the unit of work; `project` is the place it happens — tab label line 1, the window title, and the status-bar project chip. When the user asks you to label the *session* or the *tab* without separating the two, they mean `project` (`set project "<name>"`, `clear project` to fall back to the git-derived name).
+
 - **Don't set status.** The hooks own the ready / busy / blocked transitions. The user sets `paused` / `waiting` themselves; you don't.
 
 - Run the command silently — don't narrate it to the user.
