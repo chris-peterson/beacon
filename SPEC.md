@@ -1102,5 +1102,6 @@ The wrapper at `~/.local/bin/beacon` does not auto-refresh on plugin upgrade. Th
 - Cross-machine session sync.
 - Historical state browsing (timeline of status transitions, time-on-task).
 - Mobile / remote notifications.
+- **Session-to-session messaging and wake-ups.** Claude Code carries its own cross-session `SendMessage`, including an opt-in one-shot notice when a peer next goes idle. beacon publishes each session's state for the *human* to read — the fleet view, the dashboard, the pane — and never delivers, subscribes to, or waits on anything on a session's behalf. Published state is readable by whatever wants it; a message bus owes delivery to a named recipient, which is a different contract and a different failure mode. The reach differs too: the messaging primitives are macOS and Linux only, where the fleet view runs wherever Python does.
 - Integration with external task systems (Linear, Jira) as a `task` provider.
 - Stage transitions driven by file-content analysis.
