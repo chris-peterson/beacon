@@ -307,12 +307,12 @@ Everything else is the CLI, which you can run from a Claude prompt with `!`. It 
 beacon show                                  # resolved project / task / status
 beacon set task perms                        # label the unit of work
 beacon status waiting "bg refresh"           # set status with a description
-beacon release                               # any mode: release/retro/done/pause
+beacon release                               # any mode: release/retro/done/pause/handoff
 beacon resume                                # clear all overrides + description
 beacon clear status                          # clear just the status override
 ```
 
-The modes are mostly entered *for* you — a release flow sets `beacon release`, a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
+The modes are mostly entered *for* you — a release flow sets `beacon release`, a retro sets `beacon retro` and then `beacon done`, and closing a [tack](https://github.com/chris-peterson/tack) session sets `beacon handoff` — so you rarely type them yourself.
 
 ### Claude Code's own `/rename` and `/color`
 

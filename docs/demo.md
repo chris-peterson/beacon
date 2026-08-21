@@ -35,7 +35,7 @@ A card per session, colored by what each is doing right now — the same colors 
 - **Gray** — idle, at rest, waiting for its next prompt
 - **Amber** — Claude is working
 - **Red** — waiting for you (a permission or idle prompt), or a status you set yourself
-- **Mode colors** — a session you've moved into a cycle: `pause` (purple), `release` (green), `retro` (white on green), `done` (dim gray). See [The beacon palette](/palette).
+- **Mode colors** — a session you've moved into a cycle: `pause` (purple), `release` (green), `retro` (white on green), `done` (dim gray), `handoff` (pink). See [The beacon palette](/palette).
 
 Each card carries the recall context a glance needs: the project, the current task, the [tack](https://github.com/chris-peterson/tack) route chip, the branch, and a free-text note about *why* it's in this state.
 

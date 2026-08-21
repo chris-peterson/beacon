@@ -30,6 +30,11 @@ def _load_beacon(data_dir: Path):
     os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     os.environ["ITERM_SESSION_ID"] = "test-session"
+    # Keep the user config out of the run in both directions: the suite must not
+    # read the developer's own `~/.config/beacon/config.json` (badge, focus
+    # origins), and a hook under test records the data dir it was handed, which
+    # would otherwise overwrite that developer's real pointer with a tempdir.
+    os.environ["XDG_CONFIG_HOME"] = str(data_dir / "xdg-config")
     sys.modules.pop("beacon", None)
     # The script has no .py extension, so spec_from_file_location can't infer
     # a loader. Construct a SourceFileLoader explicitly.
@@ -629,6 +634,265 @@ class ReleaseMode(BeaconTest):
                          "release is a deliberate mode — it persists until cleared")
 
 
+class HandoffMode(BeaconTest):
+    """RENDER-05 / STATE-14: handoff is a mode state with its own profile
+    (beacon-handoff, deep violet, no watermark), set via `handoff`. It borrows
+    exactly one trait from paused — auto-resume on the next prompt (STATE-04,
+    AUTO_RESUME_STATUSES) — and none of its other semantics: like retro/release/
+    done it freezes no identity and carries no badge glyph."""
+
+    def test_handoff_swaps_to_handoff_profile_and_color(self):
+        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.cli_calls.clear()
+
+        self.beacon.apply({**_base_state(), "status": "handoff"})
+
+        self.assertIn(("set-profile", "beacon-handoff"), self.cli_calls,
+                      "entering handoff must swap into the beacon-handoff profile")
+        handoff_hex = self.beacon.BADGE_COLOR_PALETTE["handoff"]
+        self.assertIn(("badge-color", handoff_hex), self.cli_calls)
+        self.assertIn(("tab-color", handoff_hex), self.cli_calls)
+
+    def test_handoff_badge_has_no_glyph(self):
+        self.beacon.apply({**_base_state(), "status": "handoff"})
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_project"),
+            [("uservar", "beacon_project", "acme/widget")],
+            "handoff carries its cue in the profile/background, not a badge glyph",
+        )
+
+    def test_handoff_command_sets_status_without_freezing_identity(self):
+        # Like retro/release/done (and unlike pause/STATE-03), handoff does not
+        # snapshot overrides — it does not freeze the badge identity.
+        self.beacon.write_state("resolved", json.dumps({
+            "project": "shown-proj", "project_provider": "git-remote",
+            "task": "shown-task", "task_provider": "pr",
+        }))
+        self.beacon.cmd_handoff(mock.Mock(note=["closing", "out"]))
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+        self.assertEqual(self.beacon.read_state("description"), "closing out")
+        self.assertIsNone(self.beacon.read_state("override.project"),
+                          "handoff must not freeze the badge identity (paused-only)")
+        self.assertIsNone(self.beacon.read_state("override.task"))
+
+    def test_handoff_auto_resumes_on_next_prompt(self):
+        # Unlike retro/release/done, handoff borrows exactly paused's auto-resume
+        # trait (STATE-04, generalized via AUTO_RESUME_STATUSES).
+        self.beacon.write_state("override.status", "handoff")
+        self.beacon.write_state("description", "closing out via tack:end")
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "next step"}))):
+            self.beacon.cmd_hook(args)
+        self.assertIsNone(self.beacon.read_state("override.status"),
+                          "handoff auto-resumes on the next prompt, like paused")
+        self.assertIsNone(self.beacon.read_state("description"))
+
+
+class HandoffHookTrigger(BeaconTest):
+    """HOOK-11: PostToolUse enters handoff mode when it observes a Skill tool
+    call naming tack's session-close skill (tack:end or its bare end form), in
+    place of the generic working-status write for that event, and stays silent
+    (falls through to the ordinary re-assert) for any other tool or skill."""
+
+    def _post_tool_use(self, payload):
+        args = mock.Mock(event="PostToolUse")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def test_tack_end_triggers_handoff(self):
+        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "tack:end"}})
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+        self.assertEqual(self.beacon.read_state("description"), "closing out via tack:end")
+
+    def test_bare_end_skill_triggers_handoff(self):
+        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "end"}})
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+
+    def test_other_skill_does_not_trigger_handoff(self):
+        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "tack:start"}})
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
+    def test_non_skill_tool_does_not_trigger_handoff(self):
+        self._post_tool_use({"tool_name": "Bash", "tool_input": {"command": "ls"}})
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
+    def test_missing_tool_input_does_not_crash(self):
+        # A PostToolUse payload with no tool_input at all must not raise.
+        self._post_tool_use({"tool_name": "Skill"})
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
+
+class DataDirResolution(BeaconTest):
+    """§6.2: every invocation context has to land on one data dir or hooks write
+    where nothing reads. Only a hook is handed `CLAUDE_PLUGIN_DATA`, so it records
+    that path and the env-less contexts (slash commands, the on-PATH wrapper, the
+    serve service) read it back. Absent a record, the path is derived the way
+    Claude Code names the directory: `<plugin>-<marketplace>` for a cache install,
+    `<plugin>-inline` for a plugin loaded from a local directory."""
+
+    def setUp(self):
+        super().setUp()
+        self._config = tempfile.TemporaryDirectory()
+        self.addCleanup(self._config.cleanup)
+        cfg = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": self._config.name})
+        cfg.start()
+        self.addCleanup(cfg.stop)
+        self._home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home.cleanup)
+        home = mock.patch("pathlib.Path.home", return_value=Path(self._home.name))
+        home.start()
+        self.addCleanup(home.stop)
+
+    def _with_plugin_root(self, root: Path):
+        patcher = mock.patch.object(self.beacon, "PLUGIN_ROOT", root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_cache_install_derives_plugin_marketplace(self):
+        home = Path(self._home.name)
+        self._with_plugin_root(home / ".claude/plugins/cache/chris-peterson/beacon/2.3.0")
+        self.assertEqual(self.beacon._default_data_dir(),
+                         home / ".claude/plugins/data/beacon-chris-peterson")
+
+    def test_local_plugin_root_derives_the_inline_bucket(self):
+        # A plugin root outside the cache was loaded from a local directory,
+        # which Claude Code buckets as `<plugin>-inline`. Deriving anything else
+        # (e.g. from the checkout's git remote) points the wrapper and the fleet
+        # view at a directory the running session's hooks never write.
+        home = Path(self._home.name)
+        self._with_plugin_root(Path("/Users/dev/src/beacon"))
+        self.assertEqual(self.beacon._default_data_dir(),
+                         home / ".claude/plugins/data/beacon-inline")
+
+    def test_recorded_pointer_wins_over_the_derivation(self):
+        self._with_plugin_root(Path("/Users/dev/src/beacon"))
+        recorded = Path(self._home.name) / "elsewhere/beacon-inline"
+        self.beacon._record_data_dir(str(recorded))
+        self.assertEqual(self.beacon._default_data_dir(), recorded)
+
+    def test_blank_or_missing_pointer_falls_through_to_the_derivation(self):
+        home = Path(self._home.name)
+        self._with_plugin_root(Path("/Users/dev/src/beacon"))
+        derived = home / ".claude/plugins/data/beacon-inline"
+        self.assertEqual(self.beacon._default_data_dir(), derived)
+        pointer = self.beacon._data_dir_pointer()
+        pointer.parent.mkdir(parents=True, exist_ok=True)
+        pointer.write_text("   \n")
+        self.assertEqual(self.beacon._default_data_dir(), derived)
+
+    def test_pointer_naming_a_vanished_dir_falls_through(self):
+        # A recorded dir that no longer exists (a temp dir from a test run, a
+        # pruned install) would otherwise strand every env-less context on a path
+        # nothing writes — the exact failure this resolution exists to prevent.
+        home = Path(self._home.name)
+        self._with_plugin_root(Path("/Users/dev/src/beacon"))
+        gone = home / "gone/beacon-inline"
+        self.beacon._record_data_dir(str(gone))
+        self.assertEqual(self.beacon._default_data_dir(), gone)
+        gone.rmdir()
+        self.assertEqual(self.beacon._default_data_dir(),
+                         home / ".claude/plugins/data/beacon-inline")
+
+    def test_record_rewrites_only_on_change(self):
+        home = Path(self._home.name)
+        first_dir = home / "first/beacon-inline"
+        self.beacon._record_data_dir(str(first_dir))
+        pointer = self.beacon._data_dir_pointer()
+        stamp = pointer.stat().st_mtime_ns
+        self.beacon._record_data_dir(str(first_dir))
+        self.assertEqual(pointer.stat().st_mtime_ns, stamp,
+                         "an unchanged pointer must not be rewritten on every hook")
+        second_dir = home / "second/beacon-chris-peterson"
+        self.beacon._record_data_dir(str(second_dir))
+        self.assertEqual(self.beacon._read_data_dir_pointer(), second_dir)
+
+    def test_hook_records_the_dir_it_was_handed(self):
+        handed_dir = Path(self._home.name) / "handed/beacon-inline"
+        args = mock.Mock(event="UserPromptSubmit")
+        handed = {"CLAUDE_PLUGIN_DATA": str(handed_dir)}
+        with mock.patch.dict(os.environ, handed):
+            with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
+                self.beacon.cmd_hook(args)
+        self.assertEqual(self.beacon._read_data_dir_pointer(), handed_dir)
+
+    def test_the_suite_never_writes_the_developers_own_pointer(self):
+        # `_load_beacon` redirects XDG_CONFIG_HOME into the per-test tempdir, so a
+        # hook under test can't overwrite the pointer the developer's own sessions
+        # depend on. Asserted here because the leak is invisible in a green run.
+        self.assertTrue(
+            str(self.beacon._data_dir_pointer()).startswith(self._config.name),
+            f"pointer escaped the test config dir: {self.beacon._data_dir_pointer()}")
+
+
+class SkillInvocationResolver(BeaconTest):
+    """HOOK-11: `_skill_invocation` is the one place a skill-triggered reaction
+    resolves which skill fired, so a reaction can't see one shape and miss the
+    other. It normalizes both to the plain skill name."""
+
+    def test_resolves_agent_invoked_skill_tool_call(self):
+        self.assertEqual(
+            self.beacon._skill_invocation({"tool_name": "Skill", "tool_input": {"skill": "tack:end"}}),
+            "tack:end")
+
+    def test_resolves_typed_slash_command_to_the_same_name(self):
+        self.assertEqual(self.beacon._skill_invocation({"prompt": "/tack:end"}), "tack:end")
+        self.assertEqual(self.beacon._skill_invocation({"prompt": "/Tack:End now"}), "tack:end")
+
+    def test_returns_none_for_a_payload_with_no_skill(self):
+        self.assertIsNone(self.beacon._skill_invocation({"prompt": "keep going"}))
+        self.assertIsNone(self.beacon._skill_invocation({"tool_name": "Bash", "tool_input": {"command": "ls"}}))
+        self.assertIsNone(self.beacon._skill_invocation({}))
+
+
+class HandoffSlashCommandTrigger(BeaconTest):
+    """HOOK-11: a user-typed `/tack:end` is expanded into the prompt itself and
+    fires no `Skill` tool call, so UserPromptSubmit's raw slash-command text is
+    the only signal beacon ever sees for that half of the trigger."""
+
+    def _user_prompt(self, prompt):
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt}))):
+            self.beacon.cmd_hook(args)
+
+    def test_tack_end_slash_command_triggers_handoff(self):
+        self._user_prompt("/tack:end")
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+        self.assertEqual(self.beacon.read_state("description"), "closing out via tack:end")
+
+    def test_bare_end_slash_command_triggers_handoff(self):
+        self._user_prompt("/end")
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+
+    def test_trailing_argument_still_triggers_handoff(self):
+        self._user_prompt("/tack:end wrap it up")
+        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
+
+    def test_sibling_tack_command_does_not_trigger_handoff(self):
+        self._user_prompt("/tack:start #42")
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
+    def test_ordinary_prompt_does_not_trigger_handoff(self):
+        self._user_prompt("keep going")
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+
+    def test_word_prefixed_command_does_not_trigger_handoff(self):
+        self._user_prompt("/endpoints please")
+        self.assertIsNone(self.beacon.read_state("override.status"))
+
+    def test_handoff_auto_resumes_on_the_prompt_after_the_close(self):
+        # The close itself enters handoff; STATE-04 auto-resume applies to the
+        # *next* prompt, not the one that triggered it.
+        self._user_prompt("/tack:end")
+        self._user_prompt("one more thing")
+        self.assertIsNone(self.beacon.read_state("override.status"))
+        self.assertIsNone(self.beacon.read_state("description"))
+
+
 class ModeProfileDerivation(unittest.TestCase):
     """RENDER-05 / §6.6: install derives one mode profile per MODE_PROFILES entry
     from the rendered base — same layout, a de-emphasized Dracula background (and,
@@ -690,12 +954,22 @@ class ModeProfileDerivation(unittest.TestCase):
                             f"{mode} should carry a watermark image")
             self.assertIsNotNone(self.beacon.MODE_PROFILES[mode]["blend"])
 
+    def test_handoff_carries_no_watermark_image(self):
+        # RENDER-05 / STATE-14: handoff is meant to read as brief, so it has no
+        # dedicated watermark asset — background + badge color are its only cue.
+        spec = self.beacon.MODE_PROFILES["handoff"]
+        self.assertIsNone(spec["image"])
+        self.assertIsNone(spec["blend"])
+
     def test_mode_image_files_exist(self):
         # The watermark assets each mode names must be present on disk: they back
         # both the profile background (install) and the /mode-bg/<state> serve
         # route the dashboard card renders (WIP-17). A rename that misses one
-        # would 404 the card and blank the pane background.
+        # would 404 the card and blank the pane background. A mode with no image
+        # (handoff) has nothing to check here.
         for mode, spec in self.beacon.MODE_PROFILES.items():
+            if not spec["image"]:
+                continue
             p = self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]
             self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
 

@@ -18,6 +18,7 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555;
   --paused: #6272a4; --release: #50fa7b; --retro: #f8f8f2; --done: #5f6072;
+  --handoff: #ff79c6;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.25rem 0;
 }
@@ -134,6 +135,17 @@ The four mode cycles are ones you (or a skill) declare. Each swaps the pane into
     </div>
   </div>
 
+  <div class="pal-card">
+    <div class="pal-pane" style="background: #33264a">
+      <span class="tab" style="color: #ff79c6">checkout-api</span>
+    </div>
+    <div class="pal-meta">
+      <h4>handoff <span class="cmd">beacon handoff</span></h4>
+      <p>Control is passing to another tool, skill, or session. The only mode with no watermark — it is meant to read as brief, and like <code>pause</code> it lifts on the next prompt you send.</p>
+      <div class="hexrow"><span><span class="sw" style="background:#ff79c6"></span>tab #ff79c6</span><span><span class="sw" style="background:#33264a"></span>pane #33264a</span></div>
+    </div>
+  </div>
+
 </div>
 
 ## status line — the footer rows
@@ -190,7 +202,7 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 
 - **Green means one thing.** It's absent from the dev stoplight and reserved for `release`, so a green pane is always "shipping," never "idle."
 - **Gray is the calm default.** A session at rest — and a session that's `done` — sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
-- **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple — recognizable whole-pane, not just by the tab.
+- **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple, `handoff` a deep violet — recognizable whole-pane, not just by the tab. `handoff` is the one without a watermark: the mode is meant to be brief, so there is no asset to carry.
 - **No glyphs on the label.** A mode is read by its color and background — the same faint slate watermark on the pane, the [dashboard card](/demo), and the fleet list — never a symbol wedged into the tab text. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
 - **Painted surfaces use hex; the status line uses ANSI.** The pane is beacon's to color exactly. The footer belongs to your terminal, so beacon names a role (bold, dim, green) and lets your theme choose the shade.
 

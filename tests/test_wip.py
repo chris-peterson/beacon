@@ -265,6 +265,20 @@ class WipTest(_WipBase):
         self.assertEqual(by_proj["done-proj"]["state"], "done")
         self.assertNotIn("stale-proj", by_proj)
 
+    def test_since_exempts_handoff_sessions(self):
+        # WIP-03: handoff is a mode state too — mid-transition, not stale — so
+        # it survives past the window like paused/done.
+        old = time.time() - 86400 * 3
+        self._write("handing-off", "anchor.project", "handoff-proj", mtime=old)
+        self._write("handing-off", "override.status", "handoff", mtime=old)
+        self._write("stale", "anchor.project", "stale-proj", mtime=old)
+
+        cutoff = time.time() - 3600
+        by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
+        self.assertIn("handoff-proj", by_proj)
+        self.assertEqual(by_proj["handoff-proj"]["state"], "handoff")
+        self.assertNotIn("stale-proj", by_proj)
+
     def test_since_accepts_durations(self):
         now = time.time()
         self.assertAlmostEqual(self.beacon._parse_since("1d", True), now - 86400, delta=2)

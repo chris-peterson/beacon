@@ -5,7 +5,7 @@ Maintained by `/sextant:spec-status`.
 
 **Last audit:** 2026-08-20
 **Spec version:** v2 (root-level, `SPEC.md`)
-**Coverage:** 167 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
+**Coverage:** 169 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
 (the resolved URL as an OSC-8 link) and STATUSLINE-03 (accumulated
 deliverables) join STATUSLINE-01, and STATUS-BAR-07 makes the `↗ code` editor
@@ -33,14 +33,20 @@ The spec declares IDs in two forms — `**XX-NN.**` throughout, and `**[PERF-NN]
 for the PERF block. Both are normative; a count that reads only the first misses
 PERF entirely, which is what made the `PERF-01..04` row look sourceless.
 
-Status (`signal.status`) has seven values, organized into **SDLC cycles**
+Status (`signal.status`) has eight values, organized into **SDLC cycles**
 (STATE-13): the **dev** cycle — `idle` / `working` / `waiting` — maps to the
 dynamic `ready` / `busy` / `blocked` stoplight (a neutral gray at rest, green
 retired from it, BADGE-09), and rides the base `beacon-dev` profile. `paused`,
-`release`, `retro`, and `done` are **mode states** — each a distinct badge color
-plus a dedicated dynamic profile (background) it swaps into (RENDER-05). No mode
-decorates the badge text; the cue is background + color (BADGE-11). `done` also
-suppresses the task slot, keeping the project (STATE-12).
+`release`, `retro`, `done`, and `handoff` are **mode states** — each a distinct
+badge color plus a dedicated dynamic profile (background) it swaps into
+(RENDER-05). No mode decorates the badge text; the cue is background + color
+(BADGE-11). `done` also suppresses the task slot, keeping the project
+(STATE-12). `handoff` (STATE-14) is the newest mode: a session mid-transition
+to another tool/skill/session, triggered automatically by HOOK-11 whenever
+tack's session-close skill fires — as a `Skill` tool call or as the typed
+`/tack:end` slash command — or by hand via `beacon handoff`. It borrows only
+`paused`'s auto-resume trait (STATE-04, now covering both) and none of its
+other semantics — no identity freeze, no watermark image.
 
 **1.0 pivot (landed).** The 1.0 spec retired the iTerm2 marginalia overlay, the
 `!` / `?` watermarks, the per-state dynamic profiles, `exclusive-configuration`,
@@ -51,9 +57,10 @@ is OSC `badge-color` / `tab-color` on the base `beacon-dev` profile switched
 in via `set-profile`, and the retired surfaces are gone — `install_dynamic_profile`
 sweeps the per-state profiles a pre-1.0 install (and the pre-SDLC-rename names)
 left behind. A bounded set of per-state profiles returns by design — the **mode
-profiles** (`beacon-pause` / `beacon-release` / `beacon-retro` / `beacon-done`):
-a mode state swaps into its profile for a background a color OSC can't express
-(RENDER-05); the dev cycle (ready/busy/blocked) stays OSC overlays on the base.
+profiles** (`beacon-pause` / `beacon-release` / `beacon-retro` / `beacon-done` /
+`beacon-handoff`): a mode state swaps into its profile for a background a color
+OSC can't express (RENDER-05); the dev cycle (ready/busy/blocked) stays OSC
+overlays on the base.
 
 ## Status by category
 
@@ -64,11 +71,11 @@ a mode state swaps into its profile for a background a color OSC can't express
 | PROV-07 | 1 | Covered | `url` chain; branch-slug match (`scripts/beacon` `_tack_url_for`) |
 | PROV-08 | 1 | Covered | `icon` chain: override → discovered project favicon (`_discover_icon_at`), anchored at SessionStart |
 | PROV-09 | 1 | Covered | Harvest Claude Code `/color` / `/rename` / `ai-title` from the transcript tail (`_read_cc_signals`); custom/ai-title feed the task chain, agent-color is fleet-view-only (WIP-13); wiped by HOOK-08a |
-| HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09, 10 | 12 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-08a's fresh-start wipe also stamps `session_started_at`, the window STATUSLINE-03 scopes acquisition to (`_wipe_session_for_fresh_start`); HOOK-09 disengages the pane on SessionEnd, handing the session name back to the interactive template *before* blanking the vars that template interpolates (`_disengage`); HOOK-10 emits the bundled ambient rules (`hooks/emit-rules.sh`, `keep-session-labeled`) at SessionStart |
+| HOOK-01, 01a, 02, 03, 03a..03c, 08, 08a, 08b, 09, 10, 11 | 13 | All Covered | Hook handlers; HOOK-03/03b simplified — permission/idle no longer distinguished on the pane; HOOK-08a's fresh-start wipe also stamps `session_started_at`, the window STATUSLINE-03 scopes acquisition to (`_wipe_session_for_fresh_start`); HOOK-09 disengages the pane on SessionEnd, handing the session name back to the interactive template *before* blanking the vars that template interpolates (`_disengage`); HOOK-10 emits the bundled ambient rules (`hooks/emit-rules.sh`, `keep-session-labeled`) at SessionStart; HOOK-11 enters `handoff` from either shape of tack's session-close skill — a `PostToolUse` `Skill` call naming `tack:end`/`end`, in place of the generic working-status write, and a UserPromptSubmit prompt beginning `/tack:end`, in place of STATE-04 auto-resume (`cmd_hook`; both shapes resolved through `_skill_invocation`, `SkillInvocationResolver` / `HandoffHookTrigger` / `HandoffSlashCommandTrigger`) |
 | OVR-01..05 | 5 | All Covered | User overrides; OVR-05 is the dedicated `icon` override (set/clear, outside the `set <field>` set) |
-| STATE-01..13 (incl. 04a) | 14 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree`; STATE-08 is the `retro` synonym for `status retro`; STATE-09 is the `done` mode (`cmd_done`, no snapshot, no auto-resume); STATE-10 is `pause --clear-screen` (`_cli("clear-screen")`, `cmd_clear_screen` in `bin/beacon-iterm`); STATE-11 is the `release` synonym (`cmd_release`); STATE-12 suppresses the task while `done` (blanked in `resolve`, `test_done_suppresses_task_keeps_project`); STATE-13 is the SDLC-cycle grouping (`MODE_PROFILES` keyed by cycle) |
+| STATE-01..14 (incl. 04a) | 15 | All Covered | User-set status; description persisted + exported to the fleet view (no pane overlay); STATE-03 paused snapshot reads the cached `resolved` state (network-free, preserves overrides), `PauseSnapshotIsNetworkFree`; STATE-08 is the `retro` synonym for `status retro`; STATE-09 is the `done` mode (`cmd_done`, no snapshot, no auto-resume); STATE-10 is `pause --clear-screen` (`_cli("clear-screen")`, `cmd_clear_screen` in `bin/beacon-iterm`); STATE-11 is the `release` synonym (`cmd_release`); STATE-12 suppresses the task while `done` (blanked in `resolve`, `test_done_suppresses_task_keeps_project`); STATE-13 is the SDLC-cycle grouping (`MODE_PROFILES` keyed by cycle); STATE-14 is the `handoff` mode (`cmd_handoff`, no snapshot; auto-resumes via `AUTO_RESUME_STATUSES`, generalized from STATE-04) |
 | CMD-01..09, 13..15, 17, 21, 23..26 (gap 10, 11; CMD-12, 16, 18, 19, 20, 22 retired) | 18 | All Covered | CMD-24 is `drop <ref>`, which takes one deliverable off the status-line row and remembers the removal in `deliverables.dropped` so route re-reads don't restore it (`cmd_drop`); CMD-08 install writes the base + mode dynamic profiles and takes the `--dir` that came off the retired `install-cli` (`cmd_install`); CMD-13 now specifies the wrapper `install` writes rather than a subcommand of its own — `install-cli` ran install's first two steps and was what the drift nudge named, which left the version-pinned `.zshrc` source line unrefreshed; CMD-25 is `/beacon:pause` (`commands/pause.md`, user-invocable only) and CMD-26 is `/beacon:install-beacon` (`commands/install-beacon.md`), the only door to the newly-installed plugin root, named by `hooks/cli-freshness.sh`; CMD-16 retired in 2.0 with the branch-review feature (chip + `beacon review` subcommand + the moor/anchor soft deps); CMD-18 (the `/beacon:session-mode` shim CMD-19/20/22 folded into in 2.0, issue #23) is itself retired — its one live clause was staying model-invocable for a skill caller that never materialized, since a skill reaches `beacon release` in one shell call; CMD-21 is `data-dir` (renumbered 2026-07-06 from a duplicate CMD-16); CMD-23 is `refresh-iterm-profiles`, the profile-only re-render that applies a changed button label, a moved interpreter, or a GUI-edited profile (`cmd_refresh_iterm_profiles`) — renamed off the `install-*` prefix, which now means the bootstrap only; it is never a first-install step, since `install` calls the same `install_dynamic_profile` renderer |
-| WIP-01..17 | 17 | All Covered | Cross-session introspection / export; WIP-06 `prune` sweeps the per-pane cache (`cwd-*`, `engaged-*`, and the `url-*` files 2.0 retired) on the same `--since` cutoff as state, by each file's own mtime since the pane GUID isn't recoverable from a session hash (`_prune_cache`); WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12: no state carries a text glyph — every fleet row reads by its color dot and `status` (the dashboard conveys a mode via the WIP-17 card treatment); WIP-13 emits `agent_color` (fleet-view identity pill only, never painted); WIP-14 persists `latest_turn_full` + serves it at `GET /turn/<hash>` for card expansion; WIP-15 collapses same-project sessions into a z-stack (newest front, raise on demand); WIP-16 auto-groups the fleet by route group (groupless in an unlabeled bottom section, no toggle); WIP-17 gives mode-state cards the pane-analog treatment (muted tint + centered `||` / rocket / clipboard / finish-flag watermark) and keeps a mode session out of the attention band |
+| WIP-01..17 | 17 | All Covered | Cross-session introspection / export; WIP-06 `prune` sweeps the per-pane cache (`cwd-*`, `engaged-*`, and the `url-*` files 2.0 retired) on the same `--since` cutoff as state, by each file's own mtime since the pane GUID isn't recoverable from a session hash (`_prune_cache`); WIP-01 emits `focusable` (FOCUS-03) + `icon` (PROV-08) + `latest_turn` (WIP-11); WIP-08 is the `/icon/<hash>` serve route; WIP-09 emits the session→tack bound `tacks` (route-qualified, existing/emerging); WIP-10 is the bundled reference dashboard `serve` hosts at `/` (`dashboard/index.html`); WIP-11 is the auto-derived `latest_turn` (human prompt / agent reply), written at hook time, ellipsized to card width by the dashboard; WIP-12: no state carries a text glyph — every fleet row reads by its color dot and `status` (the dashboard conveys a mode via the WIP-17 card treatment); WIP-13 emits `agent_color` (fleet-view identity pill only, never painted); WIP-14 persists `latest_turn_full` + serves it at `GET /turn/<hash>` for card expansion; WIP-15 collapses same-project sessions into a z-stack (newest front, raise on demand); WIP-16 auto-groups the fleet by route group (groupless in an unlabeled bottom section, no toggle); WIP-17 gives mode-state cards the pane-analog treatment (muted tint + centered `||` / rocket / clipboard / finish-flag watermark, `handoff` tint-only with no watermark) and keeps a mode session out of the attention band |
 | WATCH-01..02 | 2 | All Covered | Live person-facing recency feed |
 | DUMP-01..04 | 4 | All Covered | `export` / `import` full-fidelity per-session state backup (`_export_payload`, `cmd_export`, `cmd_import`); versioned JSON envelope, gzip optional, mtimes preserved (DUMP-03), hex-hash + path-traversal guard on import; DUMP-04 treats the dump as sensitive (raw payload is the product, not shape-only) |
 | COLOR-01 | 1 | Covered | `--color` + `NO_COLOR` / `FORCE_COLOR` precedence |
@@ -76,13 +83,13 @@ a mode state swaps into its profile for a background a color OSC can't express
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
 | CLI-01..12, 14, 16..18 (gap 13; CLI-04/05/15 retired) | 15 | All Covered | CLI-16 is the `--help` usage table; CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`); CLI-18 is `configure`, the one path that writes an iTerm2 preference — explicit, user-invoked, quit-write-relaunch (`cmd_configure`), never reachable from a hook or render |
-| BADGE-01..15 (incl. 09a; BADGE-08 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color; BADGE-15 is **not** the retired watermark — the id was reused for the opt-in badge gate (off by default, `"badge": "on"` in the user config, read via `config-get` at all three paint sites) |
+| BADGE-01..15 (incl. 09a; BADGE-08 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-09a mode precedence now covers `handoff` too; BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color (`handoff` has no watermark, unlike the other modes); BADGE-15 is **not** the retired watermark — the id was reused for the opt-in badge gate (off by default, `"badge": "on"` in the user config, read via `config-get` at all three paint sites) |
 | TITLE-01..06 | 6 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-02 records that iTerm2 implements the session name as a session-scoped override of the session's copy of the profile `Name` key (§6.10 caveat 7), so an engaged pane reads its profile name back as the raw template while `set-profile` still matches; TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write, and disengagement returns the name to `beacon_title` ahead of blanking the badge user vars, since the shell's own write never re-runs (`test_name_handback_precedes_blanking_the_title_vars`); TITLE-05 is the two-line tab label (`TITLE_FORMAT`, `<b>project</b>` over the indented `beacon_task_nl`), whose line 1 doubles as the single-line OS window title; TITLE-06 leads line 1 with `PAUSED_TITLE_GLYPH` (`⏸`) via `beacon_title_prefix` while paused, marking the parked state where the tab color isn't legible |
 | STATUS-BAR-01..03, 05..09 (gap 04) | 8 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor, defaulting to a bare `code` (VS Code's CLI has no `--maximized`, and passing it through to Electron drops the directory on a cold start), and STATUS-BAR-08 the `↖ web` chip resolving at click time via `cmd_open_url <cwd>`, both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3); STATUS-BAR-09 is the `statusbar.buttons.<name>` block behind both — `cmd` read on the click (with `{dir}` / `{project}` / `{branch}` expanded per argument by `_substitute_cmd_tokens`, `{dir}` suppressing the editor append), `label` baked into the profile by `install_dynamic_profile` and applied by CMD-23 (issue #29) |
 | STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty), wired into `~/.claude/settings.json` by `install` (`_install_statusline`, one key, never replacing an existing `statusLine`); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26), with PROV-07's location tiers substituted when its answer is a route deliverable that shipped before `session_started_at` (`_location_url_at`), leaving click-time `↖ web` on the unsubstituted answer; STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18), acquired from the bound tack route plus PROV-07's own resolution with each entry's project taken from its own URL (issue #31), and scoped to one Claude session by `session_started_at` — a tack reaches the row while open (`in_progress` or `pending`, `_OPEN_TACK_STATUSES`) or completed since the stamp, and PROV-07's resolution is skipped when it names only a route deliverable that shipped earlier (`_tack_in_session_scope`, `_url_delivered_before_session`) |
-| RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
+| RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`, `handoff`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image, `handoff` none) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
-| THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed) |
+| THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed); `handoff` adds a distinct pink (`#ff79c6` badge, `#33264a` pane) not reused from any other mode or from the dashboard's own accent color |
 | NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus`; NFR-06 soft deps are `tack` / `gh` / `glab` / `osascript`, all `_which`-probed — the `moor` and `anchor` deps went with the branch-review feature in 2.0 |
 
 Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no
@@ -153,6 +160,25 @@ rewritten in place — `install-cli` folds into CMD-08, which gains `--dir` — 
 CMD-17 loses the `/beacon:beacon` bare-invocation clause with the command. Two
 slash commands remain, both user-invocable only, so no model-facing beacon
 surface is a command.
+### 2026-08-18 — Coverage refresh (spec-status)
+
+STATUS.md updated: coverage unchanged at 171 Covered; HOOK-11 amended in place
+to cover the typed `/tack:end` slash command alongside the `Skill` tool call,
+and STATE-04 to name the two prompts that set a mode rather than leaving one.
+
+### 2026-08-17 — Add the `handoff` mode state (spec-status)
+
++2 IDs (STATE-14, HOOK-11), both Covered. Adds `handoff` alongside `paused` /
+`release` / `retro` / `done`: a mode state for a session mid-transition to
+another tool/skill/session, entered by hand (`beacon handoff`, STATE-14) or
+automatically when `PostToolUse` observes a `Skill` call naming tack's
+`tack:end` session-close skill (HOOK-11). It borrows only `paused`'s
+auto-resume trait (STATE-04, generalized to `AUTO_RESUME_STATUSES`) — no
+identity-freeze snapshot, no watermark image, no other trace of `paused`'s
+semantics. Every mode-name enumeration this touches (STATE-01/04/08/09/11/13,
+HOOK-03a/09, CMD-04/18, WIP-03/17, BADGE-09a/11, RENDER-04/05, THEME-02,
+STATUS-BAR-01, and the §4/§6 surface lists) was amended in place rather than
+minted as new IDs, matching how `done` was added.
 
 ### 2026-08-05 — Coverage refresh (spec-status)
 

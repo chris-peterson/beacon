@@ -30,6 +30,18 @@ Same operation, better name. `install-` means the bootstrap now, and this was ne
 
 Three things make a rendered profile stale, and only the first is something you did on purpose: a `statusbar.buttons.*.label` edit, a `python3` that moved out from under the baked absolute path (buttons silently stop working, and nothing tells you), and a profile you edited in iTerm2's GUI. After a plugin upgrade, use `/beacon:install-beacon` instead — the profiles embed the plugin's own paths, so re-rendering through a stale wrapper bakes the old version's paths back in.
 
+### A `handoff` mode for a session passing control on
+
+A session mid-transition to another tool, skill, or session had no mode that fit. `paused` freezes the badge identity, and `release` / `retro` / `done` persist until you explicitly resume — so routing a session close into `done` would leave the pane in a terminal mode while the session keeps working past the close.
+
+`handoff` borrows the one trait that fits, auto-resume on the next prompt, and none of `paused`'s other semantics: no identity freeze, no watermark on the pane, just its own background and badge color. It enters automatically when tack's session-close skill fires — beacon watches for the skill rather than asking tack's skill text to name beacon, since tack is a separate, tool-agnostic project — and by hand with `beacon handoff [<note>]`.
+
+### The fleet view finds your sessions when beacon is loaded from a directory
+
+Claude Code hands hooks a `CLAUDE_PLUGIN_DATA`. Slash commands, the `~/.local/bin/beacon` wrapper, and the serve service get none, and derived the directory from the checkout's git remote instead, which always lands on the marketplace name. Load beacon from a local directory (`claude --plugin-dir .`) and the two halves disagreed: hooks wrote a full session record to `beacon-inline` while `wip`, the dashboard, and `statusline` read `beacon-chris-peterson` and found nothing there.
+
+It presents as hooks that never fired, because the pane still paints correctly — a hook process holds a consistent view of its own directory. Every hook now records which install is loaded, at `~/.config/beacon/data-dir`, and the env-less callers read that pointer. One that is empty, unreadable, or names a directory since removed reads as absent, so a stale record can't strand every invocation on a dead path.
+
 ### Upgrading
 
 | Change | What to do |
@@ -40,6 +52,7 @@ Three things make a rendered profile stale, and only the first is something you 
 | `beacon install-cli` removed | use `beacon install` (`--dir` moved there) |
 | `beacon install-profile` renamed | use `beacon refresh-iterm-profiles` |
 | beacon skill removed | nothing; the ambient rule covers it |
+| new `beacon-handoff` mode profile | run `/beacon:install-beacon` to write it |
 
 ## 2.3.0
 
