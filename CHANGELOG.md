@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
 
 ### `/beacon:pause` is the only slash command left for state
 
@@ -41,6 +41,16 @@ A session mid-transition to another tool, skill, or session had no mode that fit
 Claude Code hands hooks a `CLAUDE_PLUGIN_DATA`. Slash commands, the `~/.local/bin/beacon` wrapper, and the serve service get none, and derived the directory from the checkout's git remote instead, which always lands on the marketplace name. Load beacon from a local directory (`claude --plugin-dir .`) and the two halves disagreed: hooks wrote a full session record to `beacon-inline` while `wip`, the dashboard, and `statusline` read `beacon-chris-peterson` and found nothing there.
 
 It presents as hooks that never fired, because the pane still paints correctly — a hook process holds a consistent view of its own directory. Every hook now records which install is loaded, at `~/.config/beacon/data-dir`, and the env-less callers read that pointer. One that is empty, unreadable, or names a directory since removed reads as absent, so a stale record can't strand every invocation on a dead path.
+
+### The docs site splits, and the /iterm figures render again
+
+The tab and status-bar figures on `/iterm` shared a `bcn-` class prefix with the stylesheet shipyard links into every plugin page. Its rules landed after the page's own, and its `.bcn-tab` background resolved through a variable these figures never set — so the ready and paused tabs came out white-on-white with the dot stacked over the label, and the branch chip rendered slate while the legend beside it called green "synced". The figures now sit in a `panefig` namespace nothing else claims. On a phone the status-bar strip clipped the `↗ code` button off while the legend still described it; the strip scrolls now. The tab-strip caption, which was 1.41:1 against a light background, takes the page's own text color.
+
+The home page ran past 11,000px behind a five-entry sidebar, so the status-bar button configuration moves to its own [`/statusbar`](https://chris-peterson.github.io/beacon/#/statusbar) page and the sidebar goes flat. [`/why`](https://chris-peterson.github.io/beacon/#/why) is new: what to weigh beacon against tmux, Zellij, a worktree orchestrator, or a terminal built for agents — including where those win, and the problem none of the category has solved, that sessions have no clear end so any view of them drifts into a list of finished work.
+
+### beacon won't carry session-to-session messages
+
+Claude Code now has cross-session `SendMessage`, which sits close enough to what the fleet view computes that it's worth answering once: beacon is not going to surface or wrap it. beacon publishes state anything may read, where a message bus owes delivery to a named recipient — a different contract with different failure modes. The messaging primitives are also macOS and Linux only, and the fleet view runs wherever Python does, Windows included.
 
 ### Upgrading
 
