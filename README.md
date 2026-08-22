@@ -64,7 +64,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, `beacon-kitty`) or driver plugins.
 
-The behavioral contract for hooks vs shell is documented in [`AGENTS.md`](AGENTS.md): the plugin owns `status` (and its optional description) and writes to its user-var slots; the shell owns `project`/`branch`/`cwd`/`url` and writes to disjoint slots; the CLI is unaware of either.
+The behavioral contract for hooks vs shell is documented in [`AGENTS.md`](AGENTS.md): the plugin owns `mode` (with its note) and `activity`, and writes to its user-var slots; the shell owns `project`/`branch`/`cwd` and writes to disjoint slots; the CLI is unaware of either.
 
 `beacon wip` / `watch` / `serve` (spec §3.8) are the terminal-agnostic fleet surface on D3 — they enumerate every session's state and render a snapshot (TTY, JSON, or localhost HTTP) for external dashboards rather than painting iTerm2, so they don't route through D2 and work in any terminal. `beacon serve install` keeps `serve` running under launchd/systemd. The per-session state-file directory is the single source of record: the iTerm2 paint and the fleet view both read it, and `serve` re-reads it per request, so they can't disagree.
 

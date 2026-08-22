@@ -5,11 +5,13 @@ changing (or adding) any source illustration:
     python3 iterm/make-bg.py            # every phase
     python3 iterm/make-bg.py release    # one phase
 
-Each phase's source is iterm/resources/<phase>-src.png; running it writes two
-artifacts:
+A phase's source is either a committed illustration at
+iterm/resources/<phase>-src.png, or drawn by the marks.py function its `draw=`
+key names — for a mark that wants a geometric primitive rather than a picture.
+Either way, running it writes two artifacts:
 
-  iterm/resources/<phase>-bg.png  the full-size mark iTerm2 paints (MODE_PROFILES
-                             `image`) and serve streams at /mode-bg/<state>.
+  iterm/resources/<phase>-bg.png  the full-size mark iTerm2 paints (MODE_SPECS
+                             `image`) and serve streams at /mode-bg/<mode>.
   docs/images/wm-<phase>.png a trimmed thumbnail the palette doc embeds (both
                              the pane and the dashboard consume the -bg.png via
                              serve, but the static docs site has no serve, so it
@@ -17,14 +19,17 @@ artifacts:
                              can't drift from the real mark).
 
 PHASES below declares each source's treatment (see watermark.py) — the human
-labels how a given source should translate; nothing is auto-detected. Sources
-are committed alongside so regeneration never depends on a network fetch."""
+labels how a given source should translate; nothing is auto-detected. Found
+sources are committed alongside so regeneration never depends on a network
+fetch; drawn ones regenerate from marks.py, so their `-src.png` is an output
+rather than an input."""
 
 import sys
 from pathlib import Path
 
 from PIL import Image
 
+from marks import MARKS
 from watermark import ALPHA_CUTOFF, slate_watermark
 
 HERE = Path(__file__).resolve().parent
@@ -32,15 +37,16 @@ RESOURCES = HERE / "resources"
 DOCS_IMAGES = HERE.parent / "docs" / "images"
 THUMB_MAX = 240
 
-# phase -> slate_watermark() kwargs. tonal (filled art w/ its own alpha) is the
-# default; retro's clipboard arrived fully opaque (a white field) and reads
-# better tilted, and done's arrived as a dark silhouette on a flattened
-# checkerboard.
+# phase -> config. `treatment` and the source-cleanup modifiers go to
+# slate_watermark() (see watermark.py); `draw` names a marks.py function and
+# means the source is generated rather than committed art. tonal (filled art
+# with its own alpha) is the default; done's source arrived as a dark silhouette
+# on a flattened checkerboard.
 PHASES = {
     "pause": dict(treatment="tonal"),
     "release": dict(treatment="tonal"),
-    "retro": dict(treatment="tonal", drop_bg=True, rotate=-50),
     "done": dict(treatment="silhouette"),
+    "retro": dict(treatment="tonal", draw="clipboard"),
 }
 
 
@@ -62,10 +68,16 @@ def main(argv: list[str]) -> None:
     if unknown:
         raise SystemExit(f"unknown phase(s): {', '.join(unknown)}; choose from {', '.join(PHASES)}")
     for phase in phases:
+        config = dict(PHASES[phase])
+        draw = config.pop("draw", None)
         src = RESOURCES / f"{phase}-src.png"
-        if not src.exists():
+        if draw:
+            # A drawn source is written to the same path a found one occupies, so
+            # the committed tree shows what went into every mark either way.
+            MARKS[draw]().save(src)
+        elif not src.exists():
             raise SystemExit(f"missing source art: {src}")
-        mark = slate_watermark(src, **PHASES[phase])
+        mark = slate_watermark(src, **config)
         bg = RESOURCES / f"{phase}-bg.png"
         mark.save(bg)
         thumb = _write_thumbnail(mark, phase)

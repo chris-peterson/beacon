@@ -130,7 +130,7 @@ class WipTest(_WipBase):
 
     def test_enumerates_anchored_sessions(self):
         self._write("aaa", "anchor.project", "alpha")
-        self._write("aaa", "signal.status", "working")
+        self._write("aaa", "activity", "working")
         self._write("bbb", "anchor.project", "beta")
         self._write("bbb", "claude_session_id", "sid-beta")
 
@@ -138,8 +138,9 @@ class WipTest(_WipBase):
         projects = {s["project"] for s in sessions}
         self.assertEqual(projects, {"alpha", "beta"})
         alpha = next(s for s in sessions if s["project"] == "alpha")
-        self.assertEqual(alpha["status"], "working")
-        self.assertEqual(alpha["state"], "busy")
+        self.assertEqual(alpha["activity"], "working")
+        self.assertEqual(alpha["mode"], {"name": "dev", "note": "", "glyph": ""})
+        self.assertEqual(alpha["color_state"], "busy")
 
     def test_task_in_payload(self):
         # task is a first-class field (WIP-01): an explicit override surfaces,
@@ -182,7 +183,7 @@ class WipTest(_WipBase):
     def test_drops_sessions_without_a_location(self):
         # Only a claude_session_id, no project/cwd anchor → not a work stream.
         self._write("ghost", "claude_session_id", "sid-ghost")
-        self._write("ghost", "signal.status", "working")
+        self._write("ghost", "activity", "working")
         self.assertEqual(self._sessions(), [])
 
     def test_one_record_per_claude_session_newest_wins(self):
@@ -209,20 +210,43 @@ class WipTest(_WipBase):
 
     # --- status → logical state ---
 
-    def test_status_maps_to_logical_state(self):
+    def test_axes_resolve_independently(self):
+        # The record carries both, and `color_state` follows activity alone — so a
+        # moded session still reports whether it needs the user.
         self._write("s1", "anchor.project", "p1")
-        self._write("s1", "override.status", "paused")
+        self._write("s1", "mode", json.dumps({"name": "pause", "note": "brb"}))
         self._write("s2", "anchor.project", "p2")
-        self._write("s2", "signal.status", "working")
+        self._write("s2", "activity", "working")
         self._write("s3", "anchor.project", "p3")
-        self._write("s3", "override.status", "waiting")
+        self._write("s3", "activity", "waiting")
         self._write("s3", "pending-attention", "permission")
+        self._write("s4", "anchor.project", "p4")
+        self._write("s4", "mode", json.dumps({"name": "release", "note": "v2.5"}))
+        self._write("s4", "activity", "waiting")
 
         by_proj = {s["project"]: s for s in self._sessions()}
-        self.assertEqual(by_proj["p1"]["state"], "paused")
-        self.assertEqual(by_proj["p2"]["state"], "busy")
-        self.assertEqual(by_proj["p3"]["state"], "blocked")
+        self.assertEqual(by_proj["p1"]["mode"],
+                         {"name": "pause", "note": "brb",
+                          "glyph": self.beacon.MODE_SPECS["pause"]["glyph"]})
+        self.assertEqual(by_proj["p1"]["activity"], "idle")
+        self.assertEqual(by_proj["p1"]["color_state"], "ready")
+        self.assertEqual(by_proj["p2"]["color_state"], "busy")
+        self.assertEqual(by_proj["p3"]["color_state"], "blocked")
         self.assertTrue(by_proj["p3"]["pending_attention"])
+        # The state the merged field could not represent: shipping *and* blocked.
+        self.assertEqual(by_proj["p4"]["mode"]["name"], "release")
+        self.assertEqual(by_proj["p4"]["activity"], "waiting")
+        self.assertEqual(by_proj["p4"]["color_state"], "blocked",
+                         "a mode must not hide that the session needs the user")
+
+    def test_unknown_mode_name_reads_as_dev(self):
+        # Live state still holds values retired in the pre-SDLC rename. A mode
+        # name this version doesn't know is not a mode.
+        self._write("legacy", "anchor.project", "p")
+        self._write("legacy", "mode", json.dumps({"name": "wrapping", "note": "x"}))
+        s = self._sessions()[0]
+        self.assertEqual(s["mode"], {"name": "dev", "note": "", "glyph": ""},
+                         "an unrecognized mode name is not a mode, and carries no note")
 
     # --- window filter ---
 
@@ -242,41 +266,27 @@ class WipTest(_WipBase):
         # dropped.
         old = time.time() - 86400 * 3
         self._write("parked", "anchor.project", "parked-proj", mtime=old)
-        self._write("parked", "override.status", "paused", mtime=old)
+        self._write("parked", "mode", json.dumps({"name": "pause"}), mtime=old)
         self._write("stale", "anchor.project", "stale-proj", mtime=old)
 
         cutoff = time.time() - 3600
         by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
         self.assertIn("parked-proj", by_proj)
-        self.assertEqual(by_proj["parked-proj"]["state"], "paused")
+        self.assertEqual(by_proj["parked-proj"]["mode"]["name"], "pause")
         self.assertNotIn("stale-proj", by_proj)
 
     def test_since_exempts_done_sessions(self):
-        # WIP-03: a done session is a mode state — deliberately set aside for
-        # handoff — so it too survives past the window, like paused.
+        # WIP-03: a done session is a mode state — deliberately set aside —
+        # so it too survives past the window, like paused.
         old = time.time() - 86400 * 3
         self._write("finished", "anchor.project", "done-proj", mtime=old)
-        self._write("finished", "override.status", "done", mtime=old)
+        self._write("finished", "mode", json.dumps({"name": "done"}), mtime=old)
         self._write("stale", "anchor.project", "stale-proj", mtime=old)
 
         cutoff = time.time() - 3600
         by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
         self.assertIn("done-proj", by_proj)
-        self.assertEqual(by_proj["done-proj"]["state"], "done")
-        self.assertNotIn("stale-proj", by_proj)
-
-    def test_since_exempts_handoff_sessions(self):
-        # WIP-03: handoff is a mode state too — mid-transition, not stale — so
-        # it survives past the window like paused/done.
-        old = time.time() - 86400 * 3
-        self._write("handing-off", "anchor.project", "handoff-proj", mtime=old)
-        self._write("handing-off", "override.status", "handoff", mtime=old)
-        self._write("stale", "anchor.project", "stale-proj", mtime=old)
-
-        cutoff = time.time() - 3600
-        by_proj = {s["project"]: s for s in self._sessions(since=cutoff)}
-        self.assertIn("handoff-proj", by_proj)
-        self.assertEqual(by_proj["handoff-proj"]["state"], "handoff")
+        self.assertEqual(by_proj["done-proj"]["mode"]["name"], "done")
         self.assertNotIn("stale-proj", by_proj)
 
     def test_since_accepts_durations(self):
@@ -582,18 +592,14 @@ class IconTest(_WipBase):
         icon = next(s for s in self._sessions() if s["hash"] == "withicon")["icon"]
         self.assertEqual(icon, "/icon/withicon")
 
-    def test_icon_field_http_override_passthrough(self):
-        self._write("online", "anchor.project", "proj")
-        self._write("online", "override.icon", "https://example.com/favicon.ico")
-        icon = next(s for s in self._sessions() if s["hash"] == "online")["icon"]
-        self.assertEqual(icon, "https://example.com/favicon.ico")
-
-    def test_icon_field_http_override_scheme_is_case_insensitive(self):
-        # An uppercase scheme is still a URL passthrough, not a local-file path.
-        self._write("loud", "anchor.project", "proj")
-        self._write("loud", "override.icon", "HTTPS://example.com/favicon.ico")
-        icon = next(s for s in self._sessions() if s["hash"] == "loud")["icon"]
-        self.assertEqual(icon, "HTTPS://example.com/favicon.ico")
+    def test_icon_ignores_a_stale_override_file(self):
+        # The icon override retired in 2.5.0 (no live session carried one in three
+        # months), so a leftover file is data nothing reads — not a URL the
+        # dashboard should still load.
+        self._write("stale", "anchor.project", "proj")
+        self._write("stale", "override.icon", "https://example.com/favicon.ico")
+        icon = next(s for s in self._sessions() if s["hash"] == "stale")["icon"]
+        self.assertIsNone(icon)
 
     def test_icon_field_null_when_absent(self):
         self._write("plain", "anchor.project", "proj")
@@ -649,9 +655,12 @@ class WatchViewTest(unittest.TestCase):
         self.beacon = _load_beacon(Path(self._tmp.name))
 
     def _session(self, **kw):
-        base = dict(state="ready", status="idle", project="proj",
-                    branch=None, route=None, description="", age_seconds=10)
+        """A wip record. `mode` / `note` are given flat for readability and folded
+        into the nested tuple the payload actually carries (WIP-01)."""
+        base = dict(color_state="ready", mode="dev", activity="idle", project="proj",
+                    branch=None, route=None, note="", age_seconds=10)
         base.update(kw)
+        base["mode"] = {"name": base.pop("mode"), "note": base.pop("note")}
         return base
 
     def _rows(self, sessions, cols=120):
@@ -684,46 +693,78 @@ class WatchViewTest(unittest.TestCase):
 
     def test_columns_grid_aligned(self):
         rows = self._body(self._rows([
-            self._session(project="x", status="idle", age_seconds=5),
-            self._session(project="much-longer-project-name", status="waiting", age_seconds=50),
+            self._session(project="x", activity="idle", age_seconds=5),
+            self._session(project="much-longer-project-name", activity="waiting", age_seconds=50),
         ]))
         self.assertEqual(rows[0].index("idle"), rows[1].index("waiting"))
 
-    def test_description_truncated_to_width(self):
-        s = self._session(project="p", description="a very long description that keeps going")
-        self.assertIn("very long description", "\n".join(self._rows([s], cols=200)))
+    def test_columns_align_across_double_width_glyphs(self):
+        # 🚀 📋 🏁 are one character but *two* terminal columns (East Asian `W`),
+        # so padding by len() leaves every glyph-bearing row a column short and
+        # the grid visibly ragged. ⏸ and … are single-width, so the set is mixed
+        # and no flat per-glyph fudge works either.
+        cases = [("release", "release·idle"), ("pause", "pause·idle"), ("dev", "idle")]
+        rows = self._body(self._rows(
+            [self._session(project="proj", mode=m, activity="idle") for m, _ in cases],
+            cols=200))
+        # Anchor on the whole state cell: "idle" is a substring of "release·idle".
+        starts = [self.beacon._display_width(row[: row.index(cell)])
+                  for row, (_, cell) in zip(rows, cases)]
+        self.assertEqual(len(set(starts)), 1,
+                         f"state column starts at differing widths: {starts}")
+
+    def test_display_width_counts_columns_not_characters(self):
+        self.assertEqual(self.beacon._display_width("🚀"), 2)
+        self.assertEqual(self.beacon._display_width("⏸"), 1)
+        self.assertEqual(self.beacon._display_width("…"), 1)
+        self.assertEqual(self.beacon._display_width("abc"), 3)
+
+    def test_note_truncated_to_width(self):
+        s = self._session(project="p", mode="pause",
+                          note="a very long note that keeps going")
+        self.assertIn("very long note", "\n".join(self._rows([s], cols=200)))
         narrow = self._body(self._rows([s], cols=40))[0]
         self.assertIn("…", narrow)
         self.assertLessEqual(len(narrow), 40)
 
-    def test_first_description_line_only(self):
-        row = self._body(self._rows([self._session(description="line one\nline two")], cols=200))[0]
+    def test_first_note_line_only(self):
+        row = self._body(self._rows([
+            self._session(mode="pause", note="line one\nline two"),
+        ], cols=200))[0]
         self.assertIn("line one", row)
         self.assertNotIn("line two", row)
 
-    def test_paused_reason_uses_dash_no_glyph(self):
-        # WIP-12: no state carries a text glyph — a paused row reads by its color
-        # dot and `paused` status, its reason using the plain `—` lead-in.
+    def test_moded_row_shows_both_axes(self):
+        # The fleet has to show a moded session's activity too: a session blocked
+        # on the user is blocked whatever mode it declared, and the merged field
+        # could only ever surface the mode.
         row = self._body(self._rows([
-            self._session(state="paused", status="paused", description="stepping away"),
+            self._session(mode="release", activity="waiting", color_state="blocked",
+                          note="cutting v2.5"),
         ], cols=200))[0]
-        self.assertIn("— stepping away", row)
-        self.assertNotIn("||", row)
+        self.assertIn("release·waiting", row)
+        self.assertIn("— cutting v2.5", row)
 
-    def test_paused_without_reason_has_no_glyph(self):
-        # WIP-12: with no description a paused row carries no reason segment at
-        # all — the `paused` status label and color dot are the cue.
-        row = self._body(self._rows([
-            self._session(state="paused", status="paused", description=""),
-        ], cols=200))[0]
-        self.assertNotIn("||", row)
+    def test_moded_row_carries_the_mode_glyph(self):
+        # The same glyph the tab shows, so a row and its tab read identically.
+        row = self._body(self._rows([self._session(mode="pause")], cols=200))[0]
+        self.assertIn(self.beacon.MODE_SPECS["pause"]["glyph"], row)
 
-    def test_any_state_uses_dash_not_glyph(self):
+    def test_dev_row_shows_activity_alone_and_no_glyph(self):
         row = self._body(self._rows([
-            self._session(state="ready", description="working on it"),
+            self._session(mode="dev", activity="working", note=""),
         ], cols=200))[0]
-        self.assertIn("— working on it", row)
-        self.assertNotIn("||", row)
+        self.assertIn("working", row)
+        self.assertNotIn("·", row.split("working")[0].split("●")[1],
+                         "a dev-cycle row has no mode to join to its activity")
+        for glyph in (m["glyph"] for m in self.beacon.MODE_SPECS.values()):
+            self.assertNotIn(glyph, row)
+
+    def test_note_uses_dash_lead_in(self):
+        row = self._body(self._rows([
+            self._session(mode="retro", note="writing it up"),
+        ], cols=200))[0]
+        self.assertIn("— writing it up", row)
 
     def test_supports_raw_false_without_termios(self):
         # A None entry in sys.modules makes `import termios` raise ImportError,
@@ -903,7 +944,7 @@ class ForgetTest(unittest.TestCase):
 
     def test_forget_removes_all_state_files(self):
         self._write("abcdef01", "anchor.project", "p")
-        self._write("abcdef01", "override.status", "paused")
+        self._write("abcdef01", "activity", "working")
         self._write("beef0099", "anchor.project", "keep")  # a different session
         valid, files = self.beacon._forget_session("abcdef01")
         self.assertTrue(valid)

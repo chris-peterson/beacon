@@ -64,7 +64,7 @@ beacon is not the only thing painting iTerm2 tabs from Claude Code hooks. [claud
 
 Both are smaller than beacon, and if attention state is all you want, that's the reason to prefer them. Three things separate them:
 
-- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done / handoff, plus a status bar, the window title, and a [status line](/iterm?id=the-status-line) listing the session's open PRs and issues.
+- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus a status bar, the window title, and a [status line](/iterm?id=the-status-line) listing the session's open PRs and issues.
 - **What has to be running.** They need an iTerm2 Python AutoLaunch script (and an iTerm2 restart) or a resident LaunchAgent holding a websocket. beacon paints with escape sequences and a hot-reloaded profile, so neither is required. beacon's own `serve` is a daemon, but it's opt-in and only powers the dashboard.
 - **Where it stops working.** They're macOS and iTerm2, entirely. beacon's fleet view is the primary product and runs anywhere Python does.
 
@@ -90,7 +90,7 @@ Nothing here has solved that, including the built-in view — [`claude agents`](
 
 - The fleet view is **time-windowed by default** — `wip`, `watch`, and the dashboard show the last 24 hours, so an ordinary stale session falls out of sight without being deleted (`--since` widens the window, `--all` drops it).
 - `beacon prune [--since 30d]` deletes state for long-idle panes, and `beacon forget <hash>` deletes one. The dashboard's `×` does the same for a card.
-- A session in a **mode** — `pause`, `release`, `retro`, `done`, `handoff` — is exempt from that window, because a parked session is one you meant to come back to. The cost is that it never ages out on its own: the `done` you send to mark work finished is what keeps the card on the board until you prune it.
+- A session in a **mode** — `pause`, `release`, `retro`, `done` — is exempt from that window, because a parked session is one you meant to come back to. The cost is that it never ages out on its own: the `done` you send to mark work finished is what keeps the card on the board until you prune it.
 
 So the default is *hiding* rather than *ending*, the sessions you explicitly marked linger longest, and the cleanup is manual. If you want a tool that knows when work is over, an orchestrator that owns the session lifecycle is the answer.
 

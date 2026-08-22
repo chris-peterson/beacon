@@ -5,12 +5,12 @@ At-a-glance awareness across concurrent Claude Code sessions.
 beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan a whole fleet without focusing each one. It does this two ways:
 
 - a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
-- **per-pane painting in iTerm2** — a labeled, state-colored tab and a status bar on each pane
+- **per-pane painting in iTerm2** — a labeled tab, colored by what Claude is doing and marked by the phase you declared, plus a status bar on each pane
 
 A glance across the windows tells you which session needs you:
 
 <!--
-  Bespoke fleet figure drawn in HTML from the spec palette (BADGE_COLOR_PALETTE,
+  Bespoke fleet figure drawn in HTML from the spec palette (COLOR_PALETTE,
   THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
   no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm and the
   .pal- ones on /palette
@@ -177,7 +177,7 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task and colored by a status-driven traffic light, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, and what the status-bar chips mean.
 
@@ -209,7 +209,7 @@ To keep `serve` running for an external dashboard, install the always-on service
 In a fresh tab:
 
 ```bash
-beacon show         # resolved project / task / status (with description if set)
+beacon show         # resolved project / task, the declared mode + note, and the activity
 beacon <TAB>        # subcommands with descriptions
 ```
 
@@ -217,14 +217,14 @@ Then run `claude` in that tab and type any prompt:
 
 - the tab color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
 - `/beacon:pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
-- `beacon status waiting "bg refresh ~30 min"` flips the tab to red and records your note in the dashboard — useful when *you* are waiting on something async, not Claude
+- `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still goes red
 
 ## Usage
 
-The label and status commands paint the pane's tab — the same traffic-light colors the [fleet view](/demo) uses. Here's what each one produces:
+The label and mode commands paint the pane's tab. Color always reports what Claude is doing; a mode adds a glyph beside the name. Here's what each one produces:
 
 <!--
-  Bespoke command→tab figure in the spec palette (BADGE_COLOR_PALETTE), same
+  Bespoke command→tab figure in the spec palette (COLOR_PALETTE), same
   idioms as the .fleet figure above and the .pf- / .pal- ones on /iterm and /palette.
   Replaces the generic animated session player; the play-by-play it showed still
   lives in plugin.yml's suite.examples (read by the marketplace hub).
@@ -278,19 +278,27 @@ The label and status commands paint the pane's tab — the same traffic-light co
     </span>
   </div>
   <div class="cf-row">
-    <code class="cf-cmd">beacon status waiting "bg refresh"</code>
+    <code class="cf-cmd">(Claude hits a permission prompt)</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab blocked">ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">you flag yourself waiting — the tab goes red</span>
+      <span class="cf-cap">the tab goes red — Claude needs you</span>
     </span>
   </div>
   <div class="cf-row">
     <code class="cf-cmd">/beacon:pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-tab paused">ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">parked — the pane dims to purple</span>
+      <span class="cf-tab ready">⏸ ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-cap">parked — a ⏸ on the tab, the pane dims to purple</span>
+    </span>
+  </div>
+  <div class="cf-row">
+    <code class="cf-cmd">beacon release "v2.5.0"</code>
+    <span class="cf-arrow">→</span>
+    <span class="cf-out">
+      <span class="cf-tab blocked">🚀 ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-cap">shipping <em>and</em> blocked on you — both, at once</span>
     </span>
   </div>
 </div>
@@ -307,12 +315,12 @@ Everything else is the CLI, which you can run from a Claude prompt with `!`. It 
 beacon show                                  # resolved project / task / status
 beacon set task perms                        # label the unit of work
 beacon status waiting "bg refresh"           # set status with a description
-beacon release                               # any mode: release/retro/done/pause/handoff
+beacon release                               # any mode: release/retro/done/pause
 beacon resume                                # clear all overrides + description
 beacon clear status                          # clear just the status override
 ```
 
-The modes are mostly entered *for* you — a release flow sets `beacon release`, a retro sets `beacon retro` and then `beacon done`, and closing a [tack](https://github.com/chris-peterson/tack) session sets `beacon handoff` — so you rarely type them yourself.
+The modes are mostly entered *for* you — a release flow sets `beacon release`, and a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
 
 ### Claude Code's own `/rename` and `/color`
 
