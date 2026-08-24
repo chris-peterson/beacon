@@ -3654,6 +3654,28 @@ def _hex_to_color_components(hex_str: str) -> dict:
     }
 
 
+# An action component draws its title inside the `maxwidth` knob, and the layout
+# sets "remove empty components" — so a title wider than the cap leaves the
+# button blank rather than truncated. The template's caps fit the default labels;
+# a longer one from `statusbar.buttons.<name>.label` (STATUS-BAR-09) needs the cap
+# grown with it. Sized from the layout font's advance width (Menlo-Regular 18pt),
+# rounded up generously: maxwidth is a ceiling, not a fixed width, so an
+# over-estimate costs nothing, where an under-estimate erases the button.
+STATUSBAR_TITLE_ADVANCE = 12.0
+STATUSBAR_TITLE_PADDING = 16
+
+
+def _fit_action_button_widths(profile: dict) -> None:
+    layout = profile.get("Status Bar Layout") or {}
+    for component in layout.get("components") or []:
+        knobs = (component.get("configuration") or {}).get("knobs") or {}
+        title = (knobs.get("action") or {}).get("title")
+        if not title:
+            continue
+        needed = int(len(title) * STATUSBAR_TITLE_ADVANCE) + STATUSBAR_TITLE_PADDING
+        knobs["maxwidth"] = max(knobs.get("maxwidth") or 0, needed)
+
+
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
     and one derived mode profile per MODE_PROFILES entry (beacon-pause,
@@ -3716,8 +3738,13 @@ def install_dynamic_profile() -> tuple[bool, str]:
     # shell, which emits no badge-color OSC. Without this the base inherits the
     # parent profile's badge color (e.g. Default's red). Single-sourced from
     # BADGE_COLOR_PALETTE so the profile default and the rendered `ready` color
-    # never drift.
-    base_profile["Badge Color"] = _hex_to_color_components(BADGE_COLOR_PALETTE["ready"])
+    # never drift. Written to all three keys for the same reason the mode
+    # backgrounds are (below): which set iTerm2 reads depends on the parent
+    # profile's light/dark switch.
+    badge_color = _hex_to_color_components(BADGE_COLOR_PALETTE["ready"])
+    for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
+        base_profile[key] = badge_color
+    _fit_action_button_widths(base_profile)
     try:
         target.write_text(json.dumps({"Profiles": [base_profile]}, indent=2))
     except OSError as e:
@@ -3735,7 +3762,16 @@ def install_dynamic_profile() -> tuple[bool, str]:
             mode_profile = copy.deepcopy(base_profile)
             mode_profile["Name"] = spec["profile"]
             mode_profile["Guid"] = spec["guid"]
-            mode_profile["Background Color"] = _hex_to_color_components(spec["background"])
+            # All three keys: iTerm2 reads the plain key when the profile has
+            # "Use Separate Colors for Light and Dark Mode" off and the (Light)
+            # / (Dark) pair when it is on. That switch belongs to the parent
+            # profile (RENDER-05 inherits it rather than forcing a value, so a
+            # user's own light/dark colors survive), so the mode background has
+            # to be written for whichever set the parent turns out to read.
+            background = _hex_to_color_components(spec["background"])
+            for key in ("Background Color", "Background Color (Light)",
+                        "Background Color (Dark)"):
+                mode_profile[key] = background
             if spec["image"]:
                 # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
                 # asset stays centered and proportional on any pane size. Blend

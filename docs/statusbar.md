@@ -5,7 +5,7 @@ The iTerm2 status bar carries two action buttons — `↖ web` at the left edge 
 reference for pointing them somewhere else; for what the strip looks like and
 what the chips between them mean, see [In iTerm2](/iterm).
 
-Each button's text and what it runs come from `~/.config/beacon/config.json`.
+Each button's text and what it runs come from `~/.config/beacon/config.json` — or `$XDG_CONFIG_HOME/beacon/config.json` when you have that variable set, which is the file every beacon command reads.
 
 These are the defaults, so a config that says nothing behaves exactly like this:
 
@@ -61,13 +61,14 @@ beacon refresh-iterm-profiles
 
 That rewrites the profiles only — no reinstall of the wrapper, completions, or shell integration — and iTerm2 picks it up immediately, on panes that are already open.
 
-You never need it on a fresh install: `beacon install` writes the profiles as one of its steps. It's a re-apply path, and there are three reasons to reach for it:
+You never need it on a fresh install: `beacon install` writes the profiles as one of its steps. It's a re-apply path, and these are the reasons to reach for it:
 
 | Reason | Symptom |
 |:---|:---|
 | you edited a `label` | the button still shows the old title |
 | your `python3` moved (a Homebrew upgrade, say) | the buttons stop doing anything — the interpreter is baked in absolute, because an action shell has no interactive `PATH` |
 | you edited the beacon profile in iTerm2's GUI | whatever you changed, back to beacon's version |
+| you changed the colors on your `Default` profile | beacon's panes keep the old scheme — the parent's colors are copied in when the profile loads, not read live |
 
 After a **plugin upgrade**, use `/beacon:install-beacon` instead. The profiles embed the plugin's own paths, so re-rendering through a wrapper that still points at the old version would bake that version's paths back in.
 

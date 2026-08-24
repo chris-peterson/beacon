@@ -5,7 +5,6 @@
       "Guid": "ec2933e2-0e56-4d96-9a63-245d5ec7c527",
       "Dynamic Profile Parent Name": "Default",
       "Show Status Bar": true,
-      "Use Separate Colors for Light and Dark Mode": false,
       "Blend": 1.0,
       "BM Growl": false,
       "Send Terminal Generated Alerts": false,

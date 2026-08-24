@@ -82,7 +82,7 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 
 ## Anatomy of a painted pane
 
-The tab carries the session's identity and its state, the status bar runs along the bottom, and the pane itself is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
+The tab carries the session's identity and its state, the status bar runs along the top, and the pane itself is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
 
 <div class="panefig">
   <div class="pf-win">
@@ -216,7 +216,7 @@ It stays off for the rest of the session.
 
 ## What beacon doesn't paint
 
-beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
+beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
 
 The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, which is why Claude Code's own title no longer shows.
 
@@ -224,15 +224,7 @@ The window title is the one surface it *did* take over: beacon sets the session 
 
 beacon paints per-*profile* surfaces it fully controls (status bar, colors, mode backgrounds). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
 
-The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable; set them in **iTerm2 → Preferences → Appearance**:
-
-| Setting | `defaults` key | Set to | Why it matters |
-|:---|:---|:---:|:---|
-| Tabs on the left | `TabViewType` | `2` | a left column is the natural home for a fleet; the tab color becomes a scannable strip (Appearance → Tabs) |
-| Larger tab labels | `UseCustomTabBarFontSize` + `CustomTabBarFontSize` | `on` + `18` | default labels are unreadably small in a left strip (Appearance → Tabs) |
-| Taller tabs | `DefaultTabBarHeight` | `90` | gives the two-line project/task label room to show both lines (Appearance → Tabs) |
-| Status bar at the bottom | `StatusBarPosition` | `1` | puts the strip at the far edge from the tabs, and clear of the badge if you turn one on (Appearance → General) |
-| HTML tab titles | `HTMLTabTitles` | `on` | renders the bold project accent in the two-line tab label (Appearance → Tabs) |
+The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable, and they all live in **iTerm2 → Preferences → Appearance**. [CLI-18](/spec) lists each one: its `defaults` key, the value to set, and why it matters.
 
 Audit your current setup at any time — it reports only what differs and writes nothing:
 
@@ -246,9 +238,9 @@ Rather than hunt through the Preferences window, let beacon apply them for you:
 beacon-iterm configure --write
 ```
 
-It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a fleet of work open.** (Prefer the GUI? The `defaults` key and Appearance location for each setting are in the table above.)
+It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a fleet of work open.** (Prefer the GUI? Every setting is under Appearance → Tabs, except the status bar under Appearance → General.)
 
-Two related knobs are left entirely to taste — beacon renders identically whichever you choose and never touches them: **pane/window dimming** (Appearance → Dimming; dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning) and, if you don't use left tabs, **status-bar position** top vs. bottom.
+One related knob is left entirely to taste — beacon renders identically whichever way you set it and never touches it: **pane/window dimming** (Appearance → Dimming). Dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning.
 
 ## Setup
 

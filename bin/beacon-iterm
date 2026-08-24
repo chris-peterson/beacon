@@ -283,6 +283,12 @@ def cmd_set_name(args):
 # `configure` only audits and names each value for the user to set in
 # Preferences → Appearance.
 RECOMMENDED_LAYOUT = (
+    {"key": "HideTab", "want": "0", "type": "bool",
+     "label": "Tab bar always visible",
+     "why": "iTerm2 hides the bar at one tab per window, which is where a "
+            "single-pane session lives — the tab color and two-line label are "
+            "the whole signal, so that window carries none",
+     "where": "Appearance → Tabs"},
     {"key": "TabViewType", "want": "2", "type": "int", "label": "Tabs on the left",
      "why": "a tall left strip is the natural home for a fleet of sessions; "
             "the tab color reads as a scannable column",
@@ -298,9 +304,10 @@ RECOMMENDED_LAYOUT = (
     {"key": "DefaultTabBarHeight", "want": "90", "type": "float", "label": "Taller tabs",
      "why": "gives the two-line project/task label room to show both lines",
      "where": "Appearance → Tabs"},
-    {"key": "StatusBarPosition", "want": "1", "type": "int",
-     "label": "Status bar at the bottom",
-     "why": "keeps the status strip clear of the top-right badge",
+    {"key": "StatusBarPosition", "want": "0", "type": "int",
+     "label": "Status bar at the top",
+     "why": "reads as a header for the pane; the bottom is where Claude Code "
+            "renders beacon's own status line, and the two stack there",
      "where": "Appearance → General"},
     {"key": "HTMLTabTitles", "want": "1", "type": "bool",
      "label": "HTML tab titles (on)",

@@ -924,6 +924,15 @@ class ModeProfileDerivation(unittest.TestCase):
                         / "iTerm2" / "DynamicProfiles")
         base = json.loads((profiles_dir / "beacon-dev.json").read_text())["Profiles"][0]
         self.assertNotIn("Background Color", base, "base inherits its background")
+        self.assertNotIn("Use Separate Colors for Light and Dark Mode", base,
+                         "the light/dark switch is the parent profile's to set — "
+                         "forcing it off points a stock profile at its white "
+                         "light-mode background")
+        # Whichever set that switch selects, the ready-gray default has to be there.
+        ready = self.beacon.BADGE_COLOR_PALETTE["ready"]
+        for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
+            self.assertAlmostEqual(base[key]["Red Component"],
+                                   int(ready[0:2], 16) / 255.0, msg=key)
 
         seen_guids = {base["Guid"]}
         for mode, spec in self.beacon.MODE_PROFILES.items():
@@ -934,16 +943,46 @@ class ModeProfileDerivation(unittest.TestCase):
             seen_guids.add(prof["Guid"])
             # Same layout (single-sourced) — a mode profile differs only by background.
             self.assertEqual(prof["Status Bar Layout"], base["Status Bar Layout"])
-            self.assertAlmostEqual(
-                prof["Background Color"]["Red Component"],
-                int(spec["background"][0:2], 16) / 255.0,
-            )
+            for key in ("Background Color", "Background Color (Light)",
+                        "Background Color (Dark)"):
+                self.assertAlmostEqual(
+                    prof[key]["Red Component"],
+                    int(spec["background"][0:2], 16) / 255.0,
+                    msg=f"{mode}: {key}",
+                )
             if spec["image"]:
                 self.assertTrue(prof["Background Image Location"].endswith(spec["image"]))
                 self.assertEqual(prof["Background Image Mode"], 3)
                 self.assertEqual(prof["Blend"], spec["blend"])
             else:
                 self.assertNotIn("Background Image Location", prof)
+
+    def test_a_long_button_label_grows_its_width_cap(self):
+        # iTerm2 draws an action title inside `maxwidth` and the layout removes
+        # components that come out empty, so a label wider than the cap blanks
+        # the button instead of truncating it.
+        profile = {"Status Bar Layout": {"components": [
+            {"configuration": {"knobs": {"maxwidth": 90,
+                                         "action": {"title": "↗ code"}}}},
+            {"configuration": {"knobs": {"maxwidth": 90,
+                                         "action": {"title": "jetbrains-ultimate"}}}},
+            {"configuration": {"knobs": {"maxwidth": 240}}},
+        ]}}
+        self.beacon._fit_action_button_widths(profile)
+        caps = [c["configuration"]["knobs"]["maxwidth"]
+                for c in profile["Status Bar Layout"]["components"]]
+        self.assertEqual(caps[0], 90, "a default-length label keeps the template's cap")
+        self.assertGreater(caps[1], 90, "a longer label needs a wider cap")
+        self.assertEqual(caps[2], 240, "a non-action component is left alone")
+
+    def test_default_button_labels_fit_the_template_caps(self):
+        # The template's caps are the floor, so the shipped labels must already
+        # fit them — otherwise the default install blanks its own buttons.
+        for name in self.beacon.STATUSBAR_BUTTON_DEFAULTS:
+            label = self.beacon.STATUSBAR_BUTTON_DEFAULTS[name]["label"]
+            needed = (int(len(label) * self.beacon.STATUSBAR_TITLE_ADVANCE)
+                      + self.beacon.STATUSBAR_TITLE_PADDING)
+            self.assertLessEqual(needed, 90, f"{name}: {label!r}")
 
     def test_mode_images_match_their_cue(self):
         # Every mode carries a slate watermark now (paused ||-button, release
@@ -4116,6 +4155,26 @@ class ConfigureLayoutAudit(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("StatusBarPosition", out)
         self.assertIn("1 of", out)
+
+    def test_tab_bar_stays_visible_at_one_tab(self):
+        # A single-pane window is where most sessions live, and iTerm2 hides the
+        # tab bar there by default — taking the tab color and two-line label with
+        # it, which is the whole per-pane signal.
+        spec = self._spec("HideTab")
+        self.assertEqual(spec["want"], "0")
+        self.assertEqual(spec["type"], "bool")
+        self.assertEqual(self.iterm._defaults_write_args(spec), ["-bool", "false"])
+
+    def test_status_bar_sits_at_the_top(self):
+        # The bottom of the pane is Claude Code's, where beacon renders its own
+        # status line.
+        self.assertEqual(self._spec("StatusBarPosition")["want"], "0")
+
+    def _spec(self, key):
+        for s in self.iterm.RECOMMENDED_LAYOUT:
+            if s["key"] == key:
+                return s
+        self.fail(f"{key} is not in RECOMMENDED_LAYOUT")
 
     def test_never_writes_a_pref(self):
         record = []
