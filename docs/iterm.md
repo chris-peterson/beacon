@@ -218,6 +218,8 @@ It stays off for the rest of the session.
 
 beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
 
+Splitting a beacon pane opens the new pane where the old one is, rather than at your home directory — the profile carries that as a pane-scoped rule. New tabs and windows are left to your own profile's setting.
+
 The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, which is why Claude Code's own title no longer shows.
 
 ## Recommended layout

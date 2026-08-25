@@ -957,6 +957,26 @@ class ModeProfileDerivation(unittest.TestCase):
             else:
                 self.assertNotIn("Background Image Location", prof)
 
+    def test_a_split_pane_starts_where_the_pane_it_split_from_is(self):
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        profiles_dir = (Path(self._home.name) / "Library" / "Application Support"
+                        / "iTerm2" / "DynamicProfiles")
+        base = json.loads((profiles_dir / "beacon-dev.json").read_text())["Profiles"][0]
+        self.assertEqual(base["AWDS Pane Option"], "Recycle")
+        # iTerm2 ignores the option unless its paired directory key is present,
+        # even though Recycle never reads the value.
+        self.assertIn("AWDS Pane Directory", base)
+        # iTerm2 reads a per-scope rule only in Advanced mode.
+        self.assertEqual(base["Custom Directory"], "Advanced")
+        # The two scopes beacon does not claim stay the parent's to answer.
+        for unclaimed in ("AWDS Tab Option", "AWDS Window Option", "Working Directory"):
+            self.assertNotIn(unclaimed, base)
+        for spec in self.beacon.MODE_PROFILES.values():
+            mode = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
+            self.assertEqual(mode["AWDS Pane Option"], "Recycle",
+                             f"{spec['profile']} must not change where a split opens")
+
     def test_a_long_button_label_grows_its_width_cap(self):
         # iTerm2 draws an action title inside `maxwidth` and the layout removes
         # components that come out empty, so a label wider than the cap blanks

@@ -1099,11 +1099,6 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     return _location_url(cwd, branch, remote)
 
 
-def cmd_resolve_url(_args):
-    url, label = resolve_url()
-    sys.stdout.write(f"{url}\t{label}\n")
-
-
 def cmd_copy_url(_args):
     """Resolve the current URL (PROV-07) and pipe it through pbcopy."""
     url, _ = resolve_url()
@@ -5261,8 +5256,6 @@ def _build_parser() -> "argparse.ArgumentParser":
     sub.add_parser("refresh-iterm-profiles",
                    help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
 
-    sub.add_parser("resolve-url", help="(internal) print resolved url+label as TAB-separated text")
-
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
     sp = sub.add_parser("open-url",
@@ -5338,7 +5331,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "resolve-url", "data-dir", "config-get", "statusline"}
+_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "config-get", "statusline"}
 
 
 def main(argv=None):
@@ -5363,7 +5356,7 @@ def main(argv=None):
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "refresh-iterm-profiles": cmd_refresh_iterm_profiles,
-        "resolve-url": cmd_resolve_url, "copy-url": cmd_copy_url,
+        "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,

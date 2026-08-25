@@ -3,7 +3,7 @@
 Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-08-20
+**Last audit:** 2026-08-24
 **Spec version:** v2 (root-level, `SPEC.md`)
 **Coverage:** 169 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
@@ -82,12 +82,12 @@ overlays on the base.
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
-| CLI-01..12, 14, 16..18 (gap 13; CLI-04/05/15 retired) | 15 | All Covered | CLI-16 is the `--help` usage table; CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`); CLI-18 is `configure`, the one path that writes an iTerm2 preference — explicit, user-invoked, quit-write-relaunch (`cmd_configure`), never reachable from a hook or render |
+| CLI-01..12, 14, 16..18 (gap 13; CLI-04/05/15 retired) | 15 | All Covered | CLI-16 is the `--help` usage table; CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`); CLI-18 is `configure`, the one path that writes an iTerm2 preference — explicit, user-invoked, quit-write-relaunch (`cmd_configure`), never reachable from a hook or render; its seven audited settings are now a spec table (`RECOMMENDED_LAYOUT` in `bin/beacon-iterm`), adding `HideTab=0` (iTerm2 hides the tab bar at one tab per window, taking the whole per-pane signal with it) and moving `StatusBarPosition` to `0` (the bottom of the pane is where Claude Code renders STATUSLINE-01) |
 | BADGE-01..15 (incl. 09a; BADGE-08 retired) | 15 | All Covered | Badge text + color + engagement; watermark removed; BADGE-09 stoplight is gray/orange/red (green retired to `release`); BADGE-09a mode precedence now covers `handoff` too; BADGE-11 leaves the badge text undecorated — no mode glyph, the cue is background + color (`handoff` has no watermark, unlike the other modes); BADGE-15 is **not** the retired watermark — the id was reused for the opt-in badge gate (off by default, `"badge": "on"` in the user config, read via `config-get` at all three paint sites) |
 | TITLE-01..06 | 6 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-02 records that iTerm2 implements the session name as a session-scoped override of the session's copy of the profile `Name` key (§6.10 caveat 7), so an engaged pane reads its profile name back as the raw template while `set-profile` still matches; TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write, and disengagement returns the name to `beacon_title` ahead of blanking the badge user vars, since the shell's own write never re-runs (`test_name_handback_precedes_blanking_the_title_vars`); TITLE-05 is the two-line tab label (`TITLE_FORMAT`, `<b>project</b>` over the indented `beacon_task_nl`), whose line 1 doubles as the single-line OS window title; TITLE-06 leads line 1 with `PAUSED_TITLE_GLYPH` (`⏸`) via `beacon_title_prefix` while paused, marking the parked state where the tab color isn't legible |
-| STATUS-BAR-01..03, 05..09 (gap 04) | 8 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor, defaulting to a bare `code` (VS Code's CLI has no `--maximized`, and passing it through to Electron drops the directory on a cold start), and STATUS-BAR-08 the `↖ web` chip resolving at click time via `cmd_open_url <cwd>`, both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3); STATUS-BAR-09 is the `statusbar.buttons.<name>` block behind both — `cmd` read on the click (with `{dir}` / `{project}` / `{branch}` expanded per argument by `_substitute_cmd_tokens`, `{dir}` suppressing the editor append), `label` baked into the profile by `install_dynamic_profile` and applied by CMD-23 (issue #29) |
+| STATUS-BAR-01..03, 05..09 (gap 04) | 8 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor, defaulting to a bare `code` (VS Code's CLI has no `--maximized`, and passing it through to Electron drops the directory on a cold start), and STATUS-BAR-08 the `↖ web` chip resolving at click time via `cmd_open_url <cwd>`, both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3); STATUS-BAR-09 is the `statusbar.buttons.<name>` block behind both — `cmd` read on the click (with `{dir}` / `{project}` / `{branch}` expanded per argument by `_substitute_cmd_tokens`, `{dir}` suppressing the editor append), `label` baked into the profile by `install_dynamic_profile` and applied by CMD-23 (issue #29), its `maxwidth` knob grown to fit the baked title by `_fit_action_button_widths` since iTerm2 blanks an action component whose title overflows the cap; STATUS-BAR-01 additionally pins the base profile's colour behaviour to the parent (no `Use Separate Colors for Light and Dark Mode` override, no colour keys of its own) and carries the pane-scoped `AWDS Pane Option: Recycle` + its paired `AWDS Pane Directory`, which iTerm2 ignores unless both are present |
 | STATUSLINE-01..03 | 3 | All Covered | Claude Code status-line provider (`cmd_statusline`): STATUSLINE-01 the ` · `-joined row (pause reason, silent when every segment is empty), wired into `~/.claude/settings.json` by `install` (`_install_statusline`, one key, never replacing an existing `statusLine`); STATUSLINE-02 the resolved URL as an OSC-8 link read from persisted `resolved.url` state, never re-resolving (issue #26), with PROV-07's location tiers substituted when its answer is a route deliverable that shipped before `session_started_at` (`_location_url_at`), leaving click-time `↖ web` on the unsubstituted answer; STATUSLINE-03 the accumulated `deliverables` list, bare vs project-qualified, capped and deduped, dropped by the fresh-start wipe (issue #18), acquired from the bound tack route plus PROV-07's own resolution with each entry's project taken from its own URL (issue #31), and scoped to one Claude session by `session_started_at` — a tack reaches the row while open (`in_progress` or `pending`, `_OPEN_TACK_STATUSES`) or completed since the stamp, and PROV-07's resolution is skipped when it names only a route deliverable that shipped earlier (`_tack_in_session_scope`, `_url_delivered_before_session`) |
-| RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`, `handoff`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image, `handoff` none) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping |
+| RENDER-01..06 | 6 | All Covered | RENDER-04: OSC `badge-color` / `tab-color` on the base `beacon-dev` profile for the dev cycle (ready/busy/blocked); RENDER-05: mode states (`paused`, `release`, `retro`, `done`, `handoff`) swap into a dedicated profile (distinct background; `paused`/`release`/`done` also a faint watermark image, `handoff` none) and re-emit the wiped OSC; RENDER-06: the beacon profile disables iTerm2's native notification-center + terminal-generated alerts (deduped against BADGE-09 color); the `MODE_PROFILES` table owns the mode mapping; each mode background is written to the plain and the `(Light)` / `(Dark)` keys alike, so it lands whichever set the parent's light/dark switch selects (`install_dynamic_profile`) |
 | TAB-01..03 | 3 | All Covered | TAB-01: OSC `tab-color` on every status change, mirroring the badge state |
 | THEME-01..03 | 3 | All Covered | Dracula palette across badge, tab, status-bar chips (blocked-idle row removed); `handoff` adds a distinct pink (`#ff79c6` badge, `#33264a` pane) not reused from any other mode or from the dashboard's own accent color |
 | NFR-01, 03..11 (NFR-02 retired) | 10 | All Covered | Timing reqs advisory; NFR-04 bounds `focus`; NFR-06 soft deps are `tack` / `gh` / `glab` / `osascript`, all `_which`-probed — the `moor` and `anchor` deps went with the branch-review feature in 2.0 |
@@ -106,7 +106,22 @@ live contract: the `clear-screen` CLI *capability* returned under STATE-10
 **BADGE-15** now numbers the opt-in badge gate. `exclusive-configuration` also
 returned, as CLI-18's quit-write-relaunch orchestration, under a new id.
 
-## Open items (from the 2026-07-06 spec-sync)
+## Open items
+
+**⚠ Resolved 2026-08-24** (both found by that day's spec-sync, both fixed rather
+than carried):
+
+- ~~**`resolve-url` orphan**~~ — the subcommand had no requirement and no
+  caller: the shell dropped it from the per-prompt path (a test asserts it stays
+  gone), no hook, status-bar action, or dashboard reached it, and it was hidden
+  from completions. `cmd_resolve_url` and its three registrations are deleted;
+  the `resolve_url()` function they wrapped keeps its live callers. `copy-url`
+  is untouched — CMD-14 covers it and it is user-facing.
+- ~~**PERF-01..04 in the retired bullet form**~~ — normalized to the `XX-NN.`
+  heading form every other category uses, so a single-pattern inventory pass
+  reads all 169 instead of silently undercounting by four.
+
+### From the 2026-07-06 spec-sync
 
 All divergences from the 2026-07-06 spec-sync are now **closed** — captured to
 spec, resolved by hand, or explicitly declined. Kept here as the decision record.
@@ -151,6 +166,15 @@ above the calmer fleet") — recent code realigned to it, not drift.
   contract gain). Revisit if the spec ever moves to strict EARS.
 
 ## Audit history
+
+### 2026-08-24 — Full spec-sync + coverage refresh (spec-sync, spec-status)
+
+Coverage unchanged at 169/169 Covered. CLI-18 (audit table, `HideTab`,
+`StatusBarPosition` → top), STATUS-BAR-01 (colour inheritance, pane-scoped
+`AWDS Pane Option`), STATUS-BAR-09 (button width cap) and RENDER-05 (three
+colour keys per mode background) gained evidence. Both divergences the sync
+found were fixed in the same pass: the `resolve-url` orphan deleted, and
+PERF-01..04 normalized onto the current ID-heading form.
 
 ### 2026-08-20 — Coverage refresh (spec-status)
 
