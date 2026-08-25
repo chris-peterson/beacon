@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.1
+
+### Panes keep your color scheme on a fresh install
+
+A first install painted panes near-white. The base profile forced iTerm2's "Use Separate Colors for Light and Dark Mode" off, and that switch decides which color keys iTerm2 reads — off, a dark-mode pane resolves to the parent profile's *light* background. The switch is the parent profile's to answer now, and the two colors beacon does set in a profile, the mode backgrounds and the ready-gray badge default, are written for either setting.
+
+### A long status-bar button label no longer blanks the button
+
+An action button draws its title inside a width cap, under a layout that removes components rendering empty — so a `statusbar.buttons.<name>.label` wider than the six-character default erased the button instead of truncating it. The cap now grows with the label you configure.
+
+### Splits open where the pane they split from is
+
+A split off a beacon pane started at `$HOME`, so every split cost a re-navigation back into the project the parent pane was already in. It inherits the parent pane's directory now, in every mode. New tabs and windows stay your own profile's to answer.
+
+### Two more layout recommendations from `beacon-iterm configure`
+
+The audit now covers **tab bar always visible**: iTerm2 hides the bar at one tab per window, which is where a single-pane session lives, and it takes the tab color and two-line label with it. And it recommends the **status bar at the top** rather than the bottom, since the bottom of the pane is where Claude Code renders beacon's own status line.
+
+### Upgrading
+
+The internal `resolve-url` subcommand is gone. It had no caller left and was already hidden from completions; `copy-url` and `open-url` are the supported doors onto the same resolution.
+
 ## 2.4.0
 
 ### `/beacon:pause` is the only slash command left for state
