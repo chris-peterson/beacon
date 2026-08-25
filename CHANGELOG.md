@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.5.0
 
 ### `status` splits into `mode` and `activity`
 
@@ -73,6 +73,12 @@ The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a s
 ### Dashboard: stacked cards reveal on hover
 
 Where several sessions share a project, the dashboard stacks their cards. Hovering a tucked-behind card now brings that whole card forward, above the front one — you read the real card. It replaces a floating tooltip that showed the tucked card's task and latest turn, a second and partial rendering of something you could just be shown. Clicking still pins the raise, and keyboard focus gets the same reveal.
+
+### `cd` in a beacon shell is roughly 40x faster
+
+A directory change in a beacon-integrated shell cost ~574ms, and a plain prompt redraw ~63ms. A `cd` is now ~15ms and a redraw ~14ms.
+
+Nearly all of that was python interpreter startup: every prompt published seven iTerm2 user-var slots and paid a `beacon-iterm` process for each one. The shell writes those escape sequences itself now — straight to the terminal device, encoded by a zsh-native base64 — so a redraw spawns nothing. Branch resolution collapses four git invocations into one, and the origin URL is remembered per project root.
 
 ### Opening a terminal spawns no python
 
