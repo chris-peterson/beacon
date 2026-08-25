@@ -21,14 +21,8 @@ Real-world source art doesn't arrive uniform, so a phase declares a *treatment*
 Plus source-cleanup / orientation modifiers, since not every source is a clean,
 upright cutout:
 
-  drop_bg     Flood-fill the border-connected background to transparent (retro's
-              clipboard arrived fully opaque — a solid white field). Interior
-              regions walled off by darker outlines (the board face) are kept.
   erase       Blank fractional rects before processing (for a source that carries
               a stock watermark to remove).
-  rotate      Turn the mark clockwise by N degrees (retro's clipboard reads better
-              tilted). Applied after drop_bg so the removed background doesn't get
-              trapped behind the rotation's transparent corners.
 
 This module is the one place the treatment lives; make-bg.py drives it over the
 phase->config table so all four marks stay tunable here.
@@ -51,8 +45,6 @@ ALPHA_CUTOFF = 24
 # Transparent margin around the trimmed mark, as a fraction of SIZE, so it doesn't
 # run edge to edge once iTerm2 fits it to the pane.
 PAD_FRAC = 0.10
-# drop_bg: color distance from a corner seed that still counts as background.
-BG_FLOOD_THRESH = 60
 # silhouette: source luma below (255 - FLOOR) starts to register as ink; GAIN
 # steepens the ramp so mid-grays (JPEG ringing around the flag) don't haze in.
 SILHOUETTE_FLOOR = 40
@@ -71,22 +63,6 @@ def _erase(rgba: Image.Image, rects) -> None:
     for x0, y0, x1, y1 in rects:
         box = (round(x0 * w), round(y0 * h), round(x1 * w), round(y1 * h))
         a.paste(0, box)
-    rgba.putalpha(a)
-
-
-def _drop_border_bg(rgba: Image.Image, thresh: int = BG_FLOOD_THRESH) -> None:
-    """Make the border-connected background transparent via a flood fill from each
-    corner. Interior regions fenced off by darker outlines are left opaque."""
-    w, h = rgba.size
-    rgb = rgba.convert("RGB")
-    for corner in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
-        ImageDraw.floodfill(rgb, corner, _SENTINEL, thresh=thresh)
-    a = rgba.getchannel("A")
-    a_px, rgb_px = a.load(), rgb.load()
-    for y in range(h):
-        for x in range(w):
-            if rgb_px[x, y] == _SENTINEL:
-                a_px[x, y] = 0
     rgba.putalpha(a)
 
 
@@ -148,20 +124,13 @@ def _fit_center(mark: Image.Image) -> Image.Image:
 
 
 def slate_watermark(src_path: Path, *, treatment: str = "tonal",
-                    drop_bg: bool = False, erase=(), rotate: float = 0) -> Image.Image:
+                    erase=()) -> Image.Image:
     """Translate a source illustration into the SIZE-square slate watermark PNG
     (transparent background) baked into a mode profile. See the module docstring
-    for `treatment` / `drop_bg` / `erase` / `rotate`."""
+    for `treatment` / `erase`."""
     src = Image.open(src_path).convert("RGBA")
     if erase:
         _erase(src, erase)
-    if drop_bg:
-        _drop_border_bg(src)
-    if rotate:
-        # PIL rotates counter-clockwise for a positive angle; negate so `rotate`
-        # reads as clockwise degrees. expand keeps the whole mark; the new corners
-        # fill transparent (drop_bg has already run, so no background is trapped).
-        src = src.rotate(-rotate, resample=Image.BICUBIC, expand=True, fillcolor=(0, 0, 0, 0))
     if treatment == "tonal":
         mark = _slate_ramp(src)
     elif treatment == "silhouette":

@@ -45,52 +45,58 @@ HOME = Path.home()
 
 # A fictional commerce org's concurrent work. Each entry is one dashboard card.
 # Most start working/idle; the fleet drifts toward `waiting` as it runs.
+#   activity: idle|working|waiting — what the hooks would observe
+#   mode + note: a declared phase and its annotation (omit for the dev cycle)
 #   route: (slug, group) → a [slug] chip; None means unrouted.
 SESSIONS = [
-    dict(project="checkout-api", task="idempotency keys for refunds", status="working",
+    dict(project="checkout-api", task="idempotency keys for refunds", activity="working",
          age=3, route=("checkout", "payments"),
-         desc="stripe webhook retries were double-charging",
          turn=("agent", "Added the idempotency-key column and a unique index; wiring the refund handler to look it up before charging")),
-    dict(project="checkout-api", task="rebase on main", status="waiting",
+    dict(project="checkout-api", task="rebase on main", activity="waiting",
          age=95, route=("checkout", "payments"),
-         desc="merge conflict in the refund handler — needs you",
          turn=("agent", "Hit a conflict in refund_handler.py between your idempotency change and main's retry backoff — which side wins?")),
-    dict(project="ledger-svc", task="double-entry migration", status="working",
+    dict(project="ledger-svc", task="double-entry migration", activity="working",
          age=240, route=("ledger", "payments"),
          turn=("human", "make sure the backfill is idempotent — it'll get re-run")),
-    dict(project="storefront-web", task="PDP gallery redesign", status="idle",
+    dict(project="storefront-web", task="PDP gallery redesign", activity="idle",
          age=720, route=("storefront", "web"),
-         desc="waiting on the Figma handoff"),
-    dict(project="storefront-web", task="a/b test cleanup", status="working",
+         mode="pause", note="waiting on the Figma handoff"),
+    dict(project="storefront-web", task="a/b test cleanup", activity="working",
          age=480, route=("storefront", "web"),
          turn=("agent", "Removed the three expired experiment flags and their dead branches")),
-    dict(project="search-indexer", task="embedding reindex", status="working",
+    dict(project="search-indexer", task="embedding reindex", activity="working",
          age=1500, route=("search", "discovery"),
          turn=("agent", "Reindexing batch 14 of 60 — throughput is holding at ~8k docs/s")),
-    dict(project="mobile-ios", task="deep-link QA", status="idle", age=2400),
+    dict(project="mobile-ios", task="deep-link QA", activity="idle", age=2400),
     dict(project="data-pipeline", task="backfill stuck on warehouse quota",
-         status="waiting", age=3600,
-         desc="bigquery slot exhaustion — escalated to data-platform",
+         activity="waiting", age=3600,
          turn=("human", "can you bump the slot reservation or do we need to wait?")),
-    dict(project="auth-svc", task="passkey rollout", status="working",
+    # Shipping *and* blocked on you — the state a single merged field could not
+    # represent. The card keeps its release treatment and turns its dot red.
+    dict(project="auth-svc", task="passkey rollout", activity="waiting",
+         mode="release", note="v4.2.0 — canary at 5%",
          age=300, route=("auth", "platform"),
-         turn=("agent", "Conditional-UI autofill works in Safari and Chrome; testing the Firefox fallback now")),
+         turn=("agent", "Canary is green at 5%; ramping to 25% needs your sign-off")),
     dict(project="infra-terraform", task="vpc peering to the new region",
-         status="paused", age=18000,
-         desc="parked on a netops change ticket"),
-    dict(project="notifications", task="digest email templates", status="idle", age=900),
-    dict(project="analytics-dbt", task="revenue model v2", status="working",
+         activity="idle", mode="pause", age=18000,
+         note="parked on a netops change ticket"),
+    dict(project="notifications", task="digest email templates", activity="idle", age=900),
+    dict(project="release-tooling", task="cut 3.1.0", activity="working",
+         mode="release", note="Shipping\n_Phase 3: CI pipeline_", age=45),
+    dict(project="beacon", task="session retro", activity="idle",
+         mode="retro", note="writing it up", age=600),
+    dict(project="analytics-dbt", task="revenue model v2", activity="working",
          age=160, route=("analytics", "discovery"),
          turn=("agent", "Rebuilt the revenue mart; reconciling the v1/v2 totals — off by $1.2k in deferred revenue")),
 ]
 
-# Next state for a session the sim picks (waiting sessions are sticky — only a
+# Next activity for a session the sim picks (waiting sessions are sticky — only a
 # user click returns them, so they're never auto-mutated). Repeats are no-ops,
-# which keeps the board calm; `working` carries a real chance of stalling.
+# which keeps the board calm; `working` carries a real chance of stalling. A
+# session's mode is never simulated: a mode is declared, not observed.
 ACTIVE_NEXT = {
     "working": ["working", "working", "idle", "waiting"],
     "idle":    ["idle", "idle", "working"],
-    "paused":  ["paused", "paused", "paused", "working"],
 }
 
 
@@ -104,20 +110,17 @@ def _write(path: Path, value: str, mtime: float | None = None) -> None:
         os.utime(path, (mtime, mtime))
 
 
-def _set_status(state: Path, sh: str, status: str) -> None:
-    """Write the authoritative status file (leaving mtime at now, so the session
+def _set_activity(state: Path, sh: str, activity: str) -> None:
+    """Write the hook-owned activity file (leaving mtime at now, so the session
     surfaces as freshly active) and sync the two waiting-only markers: the
     attention ring, and the focus handle that makes the card clickable. A
-    waiting card is the only kind a user can click to return."""
-    sig, ovr = state / f"{sh}.signal.status", state / f"{sh}.override.status"
+    waiting card is the only kind a user can click to return.
+
+    The session's mode is untouched — the simulator moves one axis, which is what
+    lets a releasing card go red without losing its release treatment."""
     pend, handle = state / f"{sh}.pending-attention", state / f"{sh}.iterm_session_id"
-    if status == "paused":
-        _write(ovr, "paused")
-        sig.unlink(missing_ok=True)
-    else:
-        _write(sig, status)
-        ovr.unlink(missing_ok=True)
-    if status == "waiting":
+    _write(state / f"{sh}.activity", activity)
+    if activity == "waiting":
         _write(pend, "permission")
         _write(handle, f"demo:{sh}")
     else:
@@ -127,7 +130,7 @@ def _set_status(state: Path, sh: str, status: str) -> None:
 
 def seed(data_dir: Path, tack_home: Path) -> list[dict]:
     """Wipe and write the initial fleet at staggered ages. Returns the live model
-    (hash + current status per session) the simulator mutates."""
+    (hash + current activity per session) the simulator mutates."""
     state, routes = data_dir / "state", tack_home / "routes"
     for d in (state, routes):
         if d.exists():
@@ -143,22 +146,22 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
         _write(state / f"{sh}.anchor.project", s["project"], mt)
         _write(state / f"{sh}.anchor.cwd", cwd, mt)
         _write(state / f"{sh}.claude_session_id", f"demo-sess-{i}", mt)
-        status_field = "override.status" if s["status"] == "paused" else "signal.status"
-        _write(state / f"{sh}.{status_field}", s["status"], mt)
+        _write(state / f"{sh}.activity", s["activity"], mt)
+        if s.get("mode"):
+            _write(state / f"{sh}.mode",
+                   json.dumps({"name": s["mode"], "note": s.get("note", "")}), mt)
         if s.get("task"):
             _write(state / f"{sh}.override.task", s["task"], mt)
-        if s.get("desc"):
-            _write(state / f"{sh}.description", s["desc"], mt)
         if s.get("turn"):
             role, text = s["turn"]
             _write(state / f"{sh}.latest_turn",
                    json.dumps({"role": role, "text": text,
                                "at": datetime.fromtimestamp(mt, timezone.utc).isoformat()}),
                    mt)
-        if s["status"] == "waiting":  # waiting-only markers: ring + clickable handle
+        if s["activity"] == "waiting":  # waiting-only markers: ring + clickable handle
             _write(state / f"{sh}.pending-attention", "permission", mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
-        fleet.append({"sh": sh, "project": s["project"], "status": s["status"]})
+        fleet.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
 
     for s in SESSIONS:  # routes are matched by project name; in-file slug is the chip
         if s.get("route"):
@@ -172,16 +175,16 @@ def simulate(state: Path, fleet: list[dict], interval: float) -> None:
     state. Waiting sessions are left alone so they accumulate until cleared."""
     while True:
         time.sleep(interval)
-        active = [s for s in fleet if s["status"] != "waiting"]
+        active = [s for s in fleet if s["activity"] != "waiting"]
         if not active:
             continue
         s = random.choice(active)
-        nxt = random.choice(ACTIVE_NEXT[s["status"]])
-        if nxt == s["status"]:
+        nxt = random.choice(ACTIVE_NEXT[s["activity"]])
+        if nxt == s["activity"]:
             continue
-        _set_status(state, s["sh"], nxt)
-        print(f"  {s['project']}: {s['status']} → {nxt}", flush=True)
-        s["status"] = nxt
+        _set_activity(state, s["sh"], nxt)
+        print(f"  {s['project']}: {s['activity']} → {nxt}", flush=True)
+        s["activity"] = nxt
 
 
 def _load_beacon(data_dir: Path, tack_home: Path):

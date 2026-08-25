@@ -1,5 +1,90 @@
 # Changelog
 
+## Unreleased
+
+### `status` splits into `mode` and `activity`
+
+A session's state is now two independent fields rather than one. **`activity`** — idle, working, waiting — is what the hooks observe. **`mode`** — pause, release, retro, done — is what you or a skill declare.
+
+They were one `status` field, merged by priority, and the declared value won. A session in `release` or `retro` could not report that it was blocked on you — entering a mode suppressed the signal meant to interrupt you. `release · waiting` had no representation at all.
+
+With many tabs open, only one **pane** is visible, so the tab strip is where a session signals you when you're looking elsewhere. It has two slots, and there are now two axes:
+
+| Slot | Now carries |
+|:---|:---|
+| tab **color** | `activity` — gray at rest, orange working, red when Claude needs you |
+| tab **glyph** | `mode` — `⏸` pause, `🚀` release, `📋` retro, `🏁` done |
+
+Nothing arbitrates between them, since they never share a surface: a release that hits a permission prompt is a red tab beside a `🚀`. The pane background still carries the mode, but only in the focused pane.
+
+So a mode no longer hides whether a session needs you, and every mode is visible from a tab you aren't looking at. Previously only `paused` marked the tab label, leaving four of five modes distinguishable by hue alone.
+
+### `beacon status` sets modes only
+
+`beacon status working` is now an error naming the mode verbs. It used to pin the activity above the hooks, and the pin never expired: thirteen sessions in local state carried one, most 77–90 days old, and **eight contradicted the live hook signal** — tabs painted `working` while the session was blocked on the user. The hooks own activity; there is no longer a way to overrule them.
+
+`beacon status dev` leaves whatever mode is set. `beacon pause` / `release` / `retro` / `done` are unchanged.
+
+### Pausing no longer pins your project and task
+
+Pausing used to snapshot the resolved project and task into overrides so the identity held still while parked, and resuming *kept* them. One pause therefore pinned a session's labels permanently, above every provider that would otherwise refresh them. Local state held tasks pinned to branch names the session had left and a project label a version and a half stale, none of it distinguishable from a label someone set deliberately.
+
+Pause now writes the mode and its note, and nothing else. The fleet view already reads the last-rendered snapshot for the same stability, and a snapshot can't outrank a live provider.
+
+### `beacon json` emits the payload CMD-15 specifies
+
+The payload documented "signals, providers, description" and shipped three of the seven keys `resolve()` returns. `beacon json | jq -r .task` printed `null` unconditionally — not "no task set", but "never emitted".
+
+```json
+{
+  "project": "beacon",   "project_provider": "git-remote",
+  "task": "split status into mode and activity",
+  "task_provider": "override",
+  "mode": { "name": "release", "note": "cutting v2.5" },
+  "activity": "waiting",
+  "branch": "...", "url": "...", "cwd": "...", "claude_session": "..."
+}
+```
+
+Every signal now ships with the provider that supplied it. That matters for `task` specifically: the branch name is the task chain's third tier, so `task` and `branch` are routinely byte-identical, and only the provider distinguishes a label you chose from a fallback. That pair is what [anchor#2](https://github.com/chris-peterson/anchor/issues/2) needed.
+
+**Breaking:** `status` and `description` are gone from this payload, with no aliases. A `status` alias would have to merge the two axes back into one field, reproducing the defect for any consumer reading it.
+
+### Announcing a break in prose no longer parks your session
+
+Typing "brb" or "stepping away" used to park the session, mark it `⏸`, and exempt it from the fleet's activity window. Across three months of local state it authored **zero** notes — every one came from an explicit `pause`, `release`, `retro`, or `done`. Those phrases also now signal the opposite: they're what you say when handing work off to run unattended, so the pane was parked while the session kept working. Say it however you like; use `/beacon:pause` to park.
+
+### A note belongs to its mode
+
+A mode's note is stored with the mode and cleared with it, so it can't outlive what it annotates. It surfaces in the Claude Code status line (led by the mode's glyph) and the fleet view; it is never painted on the pane, where there's no room for prose. Recall context is `latest_turn`'s job — derived from the transcript, needing nothing from the agent.
+
+### `retro` gets a new mark
+
+`retro`'s watermark was a detailed illustration whose linework was illegible at watermark opacity. It's now a ticked clipboard matching its `📋` glyph, drawn from code (`iterm/marks.py`) rather than committed art, so the next adjustment is an edit rather than a redraw.
+
+### The `handoff` mode is gone
+
+The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a session mid-transition to another tool or session, and what separated it from `done` was a single turn: it lifted on your next prompt. The phase it named — a work session closing out — is what `done` already says, and what a route tracker records durably rather than for one turn on a tab.
+
+`beacon handoff` is gone, and `beacon status handoff` is an error naming the modes that remain. The automatic trigger goes with it: tack's session-close skill firing no longer moves the pane into a mode, so `/tack:end` leaves whatever mode is set. Declare `beacon done` when you want the finished pane to say so.
+
+`install` sweeps the stale `beacon-handoff` profile, so run `/beacon:install-beacon` once to clear it from iTerm2's picker.
+
+### Dashboard: stacked cards reveal on hover
+
+Where several sessions share a project, the dashboard stacks their cards. Hovering a tucked-behind card now brings that whole card forward, above the front one — you read the real card. It replaces a floating tooltip that showed the tucked card's task and latest turn, a second and partial rendering of something you could just be shown. Clicking still pins the raise, and keyboard focus gets the same reveal.
+
+### Also
+
+- The `url` and `icon` overrides are removed. Neither was carried by any session in three months of local state, and the icon reaches only the dashboard, never a terminal surface. Icon auto-discovery is unchanged.
+- `beacon show` reports the two axes separately, with a provider on the signals that have a provider chain and none on the two that have a single writer each.
+- The fleet view (`wip`, `watch`, the dashboard) shows both axes: `release·waiting` in the text views, and a mode-tinted card with a red dot in the dashboard.
+- **Breaking:** `wip.json` carries `mode` as the same nested `{name, note}` tuple `beacon json` does, rather than a flat `mode` string beside a top-level `note`. Both payloads now describe the value identically, so a consumer reading either writes one accessor.
+- `install` now sweeps stale beacon profiles by comparing against what it just wrote, instead of carrying a list of every profile name retired since 0.x.
+- **Breaking:** `wip.json` and `beacon json` can no longer carry `handoff` as a mode name. A stored value this version doesn't recognize reads as `dev`, so a session left in the old mode reports the dev cycle rather than needing a migration.
+- Fixed: mode watermarks on dashboard cards were sized from the card's *width*, and the assets are square while a card is far wider than it is tall — so the mark came out taller than the card and was cropped to a middle band, reading as an off-centre fragment. They size from the height now, the CSS analog of the Scale Aspect Fit the pane uses.
+- Fixed: `beacon watch` column alignment with the new glyphs. `🚀` `📋` `🏁` are one character but two terminal columns wide, so padding by character count left every glyph-bearing row a column short.
+
 ## 2.4.1
 
 ### Panes keep your color scheme on a fresh install

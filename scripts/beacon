@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """beacon — at-a-glance session awareness for Claude Code in iTerm2.
 
-Resolves three signals (project, task, status) via chain-of-responsibility
-providers, then invokes bin/beacon-iterm to surface results. The CLI is the
-only writer to iTerm2. Status carries an optional free-text description
-(the "marginalia overlay" body) the user can attach via `status <value>
-[<description>]`; `pause [<note>]` is a synonym for `status paused [<note>]`.
+Resolves a session's signals — `project` and `task` via chain-of-responsibility
+providers, plus the two independent state axes `mode` and `activity` — then
+invokes bin/beacon-iterm to surface them. The CLI is the only writer to iTerm2.
+
+`activity` (idle / working / waiting) is what the hooks observe, written several
+times a turn. `mode` (pause / release / retro / done, absent = dev) is
+what a user or skill declares, and carries an optional note as a tuple with it:
+`pause [<note>]`. The two resolve independently, so entering a mode no longer
+discards the one signal meant to interrupt you.
 """
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ import sys
 import tempfile
 import textwrap
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -181,34 +186,12 @@ FRESH_START_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Last-assistant-text idle pattern. When pending-attention or signal.status
-# = waiting would render the badge red but the transcript shows Claude's
-# most recent reply was an idle "Ready..." (final, awaiting-user message),
-# the markers are stale (the prior Stop hook never fired or arrived after
-# the next session reused the pane). The heuristic forgives the missing
-# Stop and clears them.
+# Last-assistant-text idle pattern. When pending-attention or `activity =
+# waiting` would paint the tab red but the transcript shows Claude's most recent
+# reply was an idle "Ready..." (final, awaiting-user message), the markers are
+# stale (the prior Stop hook never fired or arrived after the next session
+# reused the pane). The heuristic forgives the missing Stop and clears them.
 IDLE_LOOK_RE = re.compile(r"^\s*ready\b", re.IGNORECASE)
-
-PAUSE_RE = re.compile(
-    r"^\s*(?:"
-    r"(?:afk|brb|bbiab)(?:\s|$)"
-    r"|pause(?:\s+(?:until|for|while|'?til)\b|\s*$)"
-    r"|break(?:\s+(?:until|for|'?til|in|after)\b|\s*$)"
-    r"|stepping\s+(?:away|out)\b"
-    r"|step\s+(?:away|out)\b"
-    r"|going\s+(?:afk|away|out)\b"
-    r"|going\s+to\s+(?:lunch|bed|sleep|the\s+\S+|grab\s+\S+|get\s+\S+|a\s+meeting|standup)\b"
-    r"|out\s+(?:for|until|'?til|to\s+lunch)\b"
-    r"|back\s+(?:in|at|by|until|'?til|after)\s+\S+"
-    r"|gone\s+(?:for|until|'?til)\s+\S+"
-    r"|(?:grabbing|getting|having)\s+(?:lunch|coffee|dinner|food)\b"
-    r"|in\s+(?:standup|a\s+meeting|a\s+call)\b"
-    r"|on\s+a\s+call\b"
-    r"|taking\s+a\s+break\b"
-    r"|lunch\s*$"
-    r")",
-    re.IGNORECASE,
-)
 
 # Harness-injected prompts that aren't a human turn: a finished background task
 # waking the agent (<task-notification>), an out-of-band <system-reminder>, and
@@ -221,49 +204,54 @@ PAUSE_RE = re.compile(
 # reminder still counts as a turn.
 SYNTHETIC_PROMPT_RE = re.compile(r"^\s*<[a-z][a-z0-9-]*>")
 
-VALID_STATUSES = {"idle", "working", "waiting", "paused", "release", "retro", "done", "handoff"}
-VALID_FIELDS = ("project", "task", "status", "url")
+# The two axes a session's state resolves on, independently (RES-06). They were
+# one field until 2.5.0, merged by a provider chain that let a declared mode
+# discard observed activity — so a releasing session could not report that it was
+# blocked on the user, the one signal meant to interrupt.
+#
+# activity is what the hooks observe and is written several times a turn; mode is
+# what a user or skill declares and is rare (~4% of rendered states). That ratio
+# is why they take the tab surfaces they do: activity paints the tab *color*,
+# always present; mode paints the tab *glyph*, absent by default (MODE_SPECS).
+# The activity values, single-sourced from the color mapping below rather than
+# listed twice — a value in one and not the other resolves to a default silently.
+DEFAULT_ACTIVITY = "idle"
 
-# STATE-04: statuses that auto-clear on the next prompt (STATE-04 / STATE-14).
-# `paused` is the original member; `handoff` borrows only this one trait from
-# it (RENDER-05 comments on cmd_handoff explain why nothing else carries over).
-AUTO_RESUME_STATUSES = {"paused", "handoff"}
+# The absence of a mode. `dev` is not stored — it *is* the empty mode file — so
+# it names the default in argument lists and reads back out of resolve(), and
+# `beacon status dev` is how you leave a mode. The modes themselves are the keys
+# of MODE_SPECS below, which is also where MODES comes from.
+DEV_MODE = "dev"
 
-# A skill firing reaches a hook in two shapes, and only one of them is a tool
-# call: the agent invoking it arrives as a PostToolUse `Skill` call carrying
-# `tool_input.skill`, while a user-typed `/tack:end` is expanded into the prompt
-# itself and fires no tool call at all — the raw slash-command text on
-# UserPromptSubmit is the only signal (same as FRESH_START_RE's commands). Any
-# skill-triggered reaction resolves the name through `_skill_invocation` so it
-# sees both; reading the tool call alone is what made HOOK-11 miss every typed
-# close.
-SLASH_COMMAND_RE = re.compile(r"^\s*/([a-z0-9:_-]+)", re.IGNORECASE)
+# Modes that auto-clear on the next prompt (STATE-04). The others are
+# deliberate declarations that persist until explicitly left.
+AUTO_RESUME_MODES = {"pause"}
 
-# HOOK-11's reaction: tack's session-close skill, under either of its names.
-HANDOFF_SKILLS = ("tack:end", "end")
-HANDOFF_DESCRIPTION = "closing out via tack:end"
+# Overrides remain only where a signal has a real provider chain beneath them,
+# so the `override.` prefix still distinguishes a tier from its alternatives.
+# `url` and `icon` had one each and no live session in three months carried
+# either, so both retired in 2.5.0 (OVR-01 / OVR-05).
+VALID_FIELDS = ("project", "task")
 
 # Shell-native completion script — installed by `beacon completions zsh`.
 ZSH_COMPLETION = r"""#compdef beacon
 
-_beacon_statuses() { compadd idle working waiting paused release retro done handoff }
-_beacon_fields()   { compadd project task status url }
+_beacon_modes()  { compadd dev pause release retro done }
+_beacon_fields() { compadd project task }
 
 _beacon() {
   local -a commands=(
     'show:show resolved signals'
-    'set:set an override (project|task|status)'
+    'set:set an override (project|task)'
     'task:set task override'
-    'status:set status override with optional description'
+    'status:enter a mode with an optional note, or dev to leave one'
     'project:set project override'
-    'icon:set the session icon override (local path or http(s) URL); no value clears it'
     'clear:clear one or all overrides'
-    'pause:set status=paused with optional description'
-    'release:set status=release (ship-it flow in progress) with optional description'
-    'retro:set status=retro (post-work follow-up/retro) with optional description'
-    'done:set status=done (session complete, ready to hand off) with optional description'
-    'handoff:set status=handoff (mid-transition to another tool/skill/session) with optional description'
-    'resume:clear all overrides (full reset to provider chain)'
+    'pause:enter pause mode with an optional note'
+    'release:enter release mode (ship-it flow in progress) with an optional note'
+    'retro:enter retro mode (post-work follow-up) with an optional note'
+    'done:enter done mode (session complete, ready to hand off) with an optional note'
+    'resume:drop the overrides and leave any mode'
     'reset:clear all per-session state'
     'render:re-render current state'
     'wip:list active work streams across all beacon sessions'
@@ -293,26 +281,21 @@ _beacon() {
     set)
       case "$CURRENT" in
         3) _beacon_fields ;;
-        4)
-          case "${words[3]}" in
-            status) _beacon_statuses ;;
-            *)      _message 'value' ;;
-          esac
-          ;;
+        4) _message 'value' ;;
       esac
       ;;
     status)
       case "$CURRENT" in
-        3) _beacon_statuses ;;
-        4) _message 'description (optional)' ;;
+        3) _beacon_modes ;;
+        4) _message 'note (optional)' ;;
       esac
       ;;
     task|project) (( CURRENT == 3 )) && _message 'value' ;;
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    pause|release|retro|done|handoff)
-      (( CURRENT == 3 )) && _message 'description (optional)'
+    pause|release|retro|done)
+      (( CURRENT == 3 )) && _message 'note (optional)'
       ;;
     wip)
       compadd -- --json --since --all
@@ -355,63 +338,49 @@ _beacon() {
 _beacon "$@"
 """
 
-# Logical status states → badge color hex (no leading #). Logical names are
-# the contract (BADGE-09, BADGE-10); hex values come from the Dracula palette
-# (THEME-01, THEME-02) and are tunable here without touching call sites.
-# Logical states → badge hex, organized by SDLC cycle (STATE-13). The dev cycle's
-# stoplight is neutral-gray / orange / red (green is retired from it, THEME-01):
-# `ready` is a calm gray so a fresh session has a known default before its first
-# turn. The mode cycles each own a color: `paused` blue-purple, `release` green
-# (pinned — unseen in dev, so it reads as "shipping"), `retro` white, `done` a
-# dim powered-down gray, `handoff` a distinct Dracula pink (STATE-14) — chosen
-# over purple specifically because bd93f9 is already the dashboard's --accent
-# color, so a handoff card would otherwise read as ordinary chrome rather than
-# its own mode — so it never reads as a stand-in for `paused`, `done`, or the
-# dashboard's ambient UI. Only the two neutral states (ready, done) fall
-# outside the Dracula palette (THEME-01). Tunable here without touching call
-# sites.
-BADGE_COLOR_PALETTE = {
+# Logical color states → hex (no leading #). Logical names are the contract
+# (BADGE-09); hex values come from the Dracula palette (THEME-01, THEME-02) and
+# are tunable here without touching call sites.
+#
+# Three entries, because the tab color answers one question — does this session
+# need me right now — and answers it the same way in every pane. A mode used to
+# own a hue here too, which meant the tab spent its only always-painted channel
+# on the 4% axis and had nothing left for the 96% one. The mode is legible from
+# another tab as its glyph and, once focused, as its pane
+# background (MODE_SPECS).
+#
+# Green is deliberately absent: `ready` is a calm neutral gray so a fresh session
+# has a known default before its first turn, and green stays the "go / good" hue
+# the branch chip owns (THEME-01, THEME-03).
+COLOR_PALETTE = {
     "ready":    "8b8fa0",
     "busy":     "ffb86c",
     "blocked":  "ff5555",
-    "paused":   "6272a4",
-    "release":  "50fa7b",
-    "retro":    "f8f8f2",
-    "done":     "5f6072",
-    "handoff":  "ff79c6",
 }
 
-STATUS_TO_BADGE_STATE = {
+ACTIVITY_TO_COLOR_STATE = {
     "idle":     "ready",
     "working":  "busy",
     "waiting":  "blocked",
-    "paused":   "paused",
-    "release":  "release",
-    "retro":    "retro",
-    "done":     "done",
-    "handoff":  "handoff",
 }
+
+# Every activity has a color, so this mapping is also the list of valid values.
+ACTIVITIES = tuple(ACTIVITY_TO_COLOR_STATE)
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries " · <task>" when set, "" when absent (BADGE-03). Both writers
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
-# Paused title glyph (TITLE-06): leads line 1 while paused. A glyph, not the word
-# "paused", because the tab and the single-line OS window title are the same
-# string (§4.8) — a word would crowd the tab, so the parked state reads as a
-# compact mark on both. Tune the glyph here in one place.
-PAUSED_TITLE_GLYPH = "⏸ "
-
 # Two-line tab/window-title Name (TITLE-05): the project sits on line 1, the
 # task on an indented line 2 via beacon_task_nl (a leading newline when set, ""
 # when absent) so the tab reads project over task while the single-line OS
-# window title shows line 1. beacon_title_prefix leads line 1 with the paused
-# glyph (PAUSED_TITLE_GLYPH) while paused (TITLE-06), "" the rest of the time. The
-# project is wrapped in <b> as the one sparing HTML accent so the identity reads
-# as the title (needs iTerm2 HTML tab titles, CLI-18); the task stays plain.
-# Distinct from BADGE_FORMAT so the badge (when enabled, BADGE-15) keeps its
-# single-line " · " form.
+# window title shows line 1. beacon_title_prefix leads line 1 with the current
+# mode's glyph (MODE_SPECS, TITLE-06), "" in the dev cycle. The project is
+# wrapped in <b> as the one sparing HTML accent so the identity reads as the
+# title (needs iTerm2 HTML tab titles, CLI-18); the task stays plain. Distinct
+# from BADGE_FORMAT so the badge (when enabled, BADGE-15) keeps its single-line
+# " · " form.
 TITLE_FORMAT = r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.beacon_task_nl)"
 
 # The name an *unmanaged* pane carries (TITLE-04): `beacon_title`, the shell's
@@ -421,23 +390,36 @@ TITLE_FORMAT = r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.
 # in step with the set-name call in shell/beacon.zsh.
 INTERACTIVE_TITLE_FORMAT = r"\(user.beacon_title)"
 
-BASE_PROFILE_NAME = "beacon-dev"
+# The prefix beacon claims in iTerm2's shared DynamicProfiles directory. Install
+# writes only names in it, and sweeps only names in it (_make_profiles).
+PROFILE_NAMESPACE = "beacon"
+BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 
-# Mode profiles (RENDER-05): the SDLC mode cycles that own a dedicated dynamic
-# profile because their cue — a background color, optionally a faint background
-# image — can't be expressed by the badge-color OSC, which only sets the badge.
-# Entering or leaving a mode swaps the session's profile; the dev cycle (ready /
-# busy / blocked) stays an OSC overlay on the base beacon-dev profile. Keyed by
-# logical state (== the status value that selects it). Each entry:
+# Every mode, and everything that renders one. This dict is the canonical list —
+# `MODES` below is its keys, in the order the CLI offers them — so a mode exists
+# exactly once and cannot be half-declared. Each entry:
+#   glyph      — tab glyph leading line 1 of the session name (TITLE-06)
 #   profile    — the dynamic-profile name switched into via set-profile (CLI-14)
 #   guid       — fixed Guid so re-installs replace the profile in place
 #   background — distinct pane background hex (no leading #)
-#   image      — optional faint background-image watermark (file under iterm/)
-#   blend      — iTerm2 Blend for that image (lower = fainter); None when no image
-# Hexes are tunable here without touching call sites (THEME-01).
-MODE_PROFILES = {
-    "paused": {
-        "profile": "beacon-pause",
+#   image      — faint background-image watermark (file under iterm/resources)
+#   blend      — iTerm2 Blend for that image (lower = fainter)
+#
+# Mode profiles exist (RENDER-05) because a mode's second cue is a pane
+# background — a color and a faint watermark — and no OSC sets one. Entering or
+# leaving a mode swaps the session's profile; the dev cycle has no profile of its
+# own and stays an OSC overlay on the base.
+#
+# The glyph is the mode's *stronger* surface: the background is visible only in
+# the focused pane, and a session running many tabs shows one pane at a time,
+# so the glyph is what carries a mode across tabs. Each glyph matches its mode's
+# watermark so the tab and the pane say the same thing. `dev` is absent — the
+# default carries no mark, so a glyph always means "this session declared
+# something". Hexes are tunable here without touching call sites (THEME-01).
+MODE_SPECS = {
+    "pause": {
+        "glyph": "⏸",
+        "profile": f"{PROFILE_NAMESPACE}-pause",
         "guid": "7f3d8a1c-2b6e-4c5a-9f01-3e8d4a2b6c5f",
         "background": "3c3357",
         "image": "pause-bg.png",
@@ -445,26 +427,28 @@ MODE_PROFILES = {
     },
     # `release` is the one active mode: a ship-it flow is in progress. A deep
     # "launch-sky" navy (darkened Dracula `comment` #6272a4, so it stays on-palette
-    # per THEME-01) carries a faint rocket watermark rising through the pane, under
-    # a green badge that reads as go against the night sky — a launch in flight,
-    # not a session set aside.
+    # per THEME-01) carries a faint rocket watermark rising through the pane — a
+    # launch in flight, not a session set aside.
     "release": {
-        "profile": "beacon-release",
+        "glyph": "🚀",
+        "profile": f"{PROFILE_NAMESPACE}-release",
         "guid": "c5f9a3d8-7e4b-4a2c-9d1f-6b0e8c3a5d72",
         "background": "212c45",
         "image": "release-bg.png",
         "blend": 0.30,
     },
-    # `retro` is the post-work follow-up phase: a muted green pane under a white
-    # badge, so a wrapping-up session reads apart from the green release badge and
-    # the dev stoplight. Carries a faint checklist-clipboard watermark — looking back
-    # over the work.
+    # `retro` is the post-work follow-up phase: a muted green pane carrying a
+    # ticked-clipboard watermark — work looked back over. Blend is higher than the
+    # illustration it replaced needed: flat geometry carries far less ink, so the
+    # 0.15 that kept a detailed drawing from reading as noise left this one
+    # invisible.
     "retro": {
-        "profile": "beacon-retro",
+        "glyph": "📋",
+        "profile": f"{PROFILE_NAMESPACE}-retro",
         "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
         "background": "2c4636",
         "image": "retro-bg.png",
-        "blend": 0.15,
+        "blend": 0.25,
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
     # closing-out skill reaches for instead of pause: a near-black "powered off"
@@ -472,30 +456,37 @@ MODE_PROFILES = {
     # mode so a finished pane reads as lights-out — half the others' blend to hold
     # that. Also suppresses the task slot (STATE-12).
     "done": {
-        "profile": "beacon-done",
+        "glyph": "🏁",
+        "profile": f"{PROFILE_NAMESPACE}-done",
         "guid": "b4e2f6a0-1c3d-4e5f-8a90-2b6c7d8e9f01",
         "background": "1a1622",
         "image": "done-bg.png",
         "blend": 0.15,
     },
-    # `handoff` (STATE-14) marks a session mid-transition to another tool,
-    # skill, or session — not paused, not done, just handing off. It borrows
-    # exactly one trait from `paused` (auto-resume on the next prompt,
-    # AUTO_RESUME_STATUSES) and none of its other semantics: it does NOT
-    # freeze the badge identity (STATE-03 stays paused-only), matching
-    # release/retro/done. A deep violet, distinct from paused's bluer purple,
-    # under the Dracula-pink badge — no watermark image: the mode is meant
-    # to read as brief, so there is no dedicated asset to carry (image/blend
-    # None; the profile-generation and /mode-bg code already tolerate a
-    # no-image mode entry via a truthy check).
-    "handoff": {
-        "profile": "beacon-handoff",
-        "guid": "d4a6f108-3c72-4b91-8e05-7a2c9f1d6b48",
-        "background": "33264a",
-        "image": None,
-        "blend": None,
-    },
 }
+
+# Every mode has a spec, so this mapping is also the list of valid values —
+# the same single-sourcing ACTIVITIES gets from ACTIVITY_TO_COLOR_STATE.
+MODES = tuple(MODE_SPECS)
+
+
+def _mode_glyph(mode: str | None) -> str:
+    """A mode's tab glyph, "" in the dev cycle (which carries no mark)."""
+    spec = MODE_SPECS.get(mode)
+    return spec["glyph"] if spec else ""
+
+
+def _wip_display_name(record: dict, mode: str) -> str:
+    """`<glyph> project (branch)` — the identity column both fleet renderers
+    show, composed once so a row and its tab carry the same mark."""
+    branch = f" ({record['branch']})" if record.get("branch") else ""
+    return f"{_mode_glyph_for({'mode': mode})}{record['project']}{branch}"
+
+
+def _first_line(text: str) -> str:
+    """The first line of a mode note. The fleet views give a note one line, and
+    a multi-line note would otherwise break the row grid."""
+    return text.splitlines()[0] if text else ""
 
 
 def session_hash() -> str:
@@ -624,8 +615,52 @@ def p_override(field: str):
     return read_state(f"override.{field}")
 
 
-def p_signal(field: str):
-    return read_state(f"signal.{field}")
+def read_mode() -> tuple[str, str]:
+    """The declared mode and its note, as the tuple they are written as.
+
+    Mode and note are one value with one writer: only entering a mode sets
+    either, and leaving one drops both. Storing them together is what makes that
+    structural — a note cannot outlive the mode it annotates, or exist without
+    one, so no caller has to remember to clear it. Absent file, unreadable file,
+    or a mode name this version doesn't know all read as the dev cycle.
+    """
+    return _mode_tuple(read_state_json("mode", {}))
+
+
+def _mode_tuple(raw: object) -> tuple[str, str]:
+    """`(name, note)` out of a stored mode object. Every reader goes through
+    here — the pane's own, the fleet scan, and the wip record — so an unknown
+    mode name cannot mean the dev cycle on one surface and itself on another.
+    """
+    if not isinstance(raw, dict):
+        return DEV_MODE, ""
+    name = str(raw.get("name") or "")
+    if name not in MODES:
+        return DEV_MODE, ""
+    return name, str(raw.get("note") or "")
+
+
+def write_mode(name: str, note: str = "") -> None:
+    """Enter `name` (a MODES member) with an optional note, or return to the dev
+    cycle when `name` is DEV_MODE — which removes the file rather than storing a
+    sentinel, so "no mode" has exactly one representation on disk."""
+    if name == DEV_MODE:
+        remove_state("mode")
+        return
+    write_state("mode", json.dumps({"name": name, "note": note}, indent=2))
+
+
+def read_activity() -> str:
+    """What the hooks last observed. Unlike mode there is no declared tier: an
+    activity pinned above the hooks is a value that goes stale the moment the
+    session moves on, and every instance of it found in three months of live
+    state was contradicting the hooks it outranked."""
+    return _normalize_activity(read_state("activity"))
+
+
+def _normalize_activity(raw: object) -> str:
+    """A stored activity, floored to the default when absent or unknown."""
+    return raw if raw in ACTIVITIES else DEFAULT_ACTIVITY
 
 
 def p_package_name(cwd: Path):
@@ -1376,24 +1411,45 @@ def cmd_config_get(args):
 
 
 def cmd_json(_args):
-    """Print the resolved session state as a JSON object — for handoff,
-    cmd+click of the embedded URL, or piping into jq / your own tooling."""
+    """Print the resolved session state as a JSON object (CMD-15) — for handoff
+    to another tool, or piping into jq.
+
+    Every resolved signal ships with the provider that supplied it, which is what
+    lets a consumer tell a real label from a fallback. `task` in particular can be
+    byte-identical to `branch` in the same payload, because the branch name is the
+    task chain's third tier (PROV-02); a consumer rendering both wants to drop the
+    duplicate, and `task_provider == "branch"` says so exactly where a string
+    comparison only guesses.
+
+    `mode` is a nested tuple rather than two flat keys because mode and note are
+    one value with one writer: only entering a mode sets either, and leaving one
+    drops both. The two state axes carry no provider — one writer each, so naming
+    a tier would invent a distinction that doesn't exist.
+    """
     cwd = Path.cwd()
     state = resolve(cwd)
     url, _ = resolve_url(cwd)
-    claude_sid = read_state("claude_session_id") or ""
     home = str(Path.home())
     cwd_str = str(cwd)
     if cwd_str == home or cwd_str.startswith(home + "/"):
         cwd_str = "~" + cwd_str[len(home):]
     payload = {
         "project": state["project"],
+        "project_provider": state["project_provider"],
+        # null, not "", when nothing supplied one: an absent task is the common
+        # case (PROV-02 has no default tier) and it is not the same thing as a
+        # task resolved to an empty string.
+        "task": state["task"] or None,
+        "task_provider": state["task_provider"] if state["task"] else None,
+        "mode": {"name": state["mode"], "note": state["note"],
+                 "glyph": _mode_glyph(state["mode"])},
+        "activity": state["activity"],
+        # Not a signal, and not resolved through a chain: empty means "on the
+        # repo's default branch", not "unknown" and not "detached".
         "branch": p_branch(cwd) or "",
-        "status": state["status"],
-        "description": state.get("description", ""),
         "url": url,
         "cwd": cwd_str,
-        "claude_session": claude_sid,
+        "claude_session": read_state("claude_session_id") or "",
     }
     print(json.dumps(payload, indent=2))
 
@@ -1422,7 +1478,7 @@ DEFAULT_WINDOW_SECONDS = 86400
 def _all_session_hashes() -> list[str]:
     """Distinct session hashes with state on disk. Filenames are
     `<hash>.<field>`; the hash is dot-free hex while fields (e.g.
-    `override.status`) carry dots, so the hash is everything before the
+    `override.task`) carry dots, so the hash is everything before the
     first dot."""
     hashes = set()
     try:
@@ -1440,6 +1496,18 @@ def _read_state_for(sh: str, field: str) -> str | None:
         return v or None
     except (FileNotFoundError, OSError):
         return None
+
+
+def _read_mode_for(sh: str) -> tuple[str, str]:
+    """read_mode() for an arbitrary hash — the fleet-scan counterpart, reading
+    the same tuple the pane's own resolver does."""
+    raw = _read_state_for(sh, "mode")
+    if not raw:
+        return DEV_MODE, ""
+    try:
+        return _mode_tuple(json.loads(raw))
+    except (ValueError, TypeError):
+        return DEV_MODE, ""
 
 
 def _session_last_activity(sh: str) -> float:
@@ -1753,25 +1821,13 @@ def _tack_route_for(cwd: Path | None, branch: str | None,
     return (None, None)
 
 
-def _icon_url_override(sh: str) -> str | None:
-    """The icon override when it's an http(s) URL the dashboard loads directly
-    (PROV-08); None when there's no override or it names a local file. Sole home
-    of the URL-vs-local-file decision, shared by the two resolvers below."""
-    override = _read_state_for(sh, "override.icon")
-    return override if override and re.match(r"^https?://", override, re.IGNORECASE) else None
-
-
 def _icon_local_path(sh: str) -> Path | None:
-    """The on-disk icon file for a session — the override path when it points
-    at a local file, else the discovered anchor (PROV-08). None when the value
-    is an http(s) URL, the file is gone, or its suffix isn't an allowed image
+    """The on-disk icon file for a session: the icon discovered at the anchor
+    (PROV-08). None when the file is gone or its suffix isn't an allowed image
     type. That extension check is the /icon route's exfil guard (WIP-08): the
-    request supplies only a hash, so the served path is always beacon's own,
-    but a user override could name any local file — restricting to image
-    types keeps the loopback route from streaming, say, ~/.ssh/id_rsa."""
-    if _icon_url_override(sh):
-        return None
-    raw = _read_state_for(sh, "override.icon") or _read_state_for(sh, "anchor.icon")
+    request supplies only a hash, so the served path is beacon's own discovery
+    rather than anything a caller named."""
+    raw = _read_state_for(sh, "anchor.icon")
     if not raw:
         return None
     p = Path(raw).expanduser()
@@ -1781,12 +1837,11 @@ def _icon_local_path(sh: str) -> Path | None:
 
 
 def _session_icon_ref(sh: str) -> str | None:
-    """The `icon` field for a wip record (PROV-08). An http(s) override is
-    returned as-is — an online icon loads from any dashboard origin. A local
-    file becomes the serve route reference `/icon/<hash>`, which the live
-    dashboard resolves against the loopback endpoint it already polls (WIP-08).
-    None when no icon resolves — the record's `icon` field is then null."""
-    return _icon_url_override(sh) or (f"/icon/{sh}" if _icon_local_path(sh) else None)
+    """The `icon` field for a wip record (PROV-08): the serve route reference
+    `/icon/<hash>`, which the live dashboard resolves against the loopback
+    endpoint it already polls (WIP-08). None when no icon resolves — the
+    record's `icon` field is then null."""
+    return f"/icon/{sh}" if _icon_local_path(sh) else None
 
 
 def _resolve_session(sh: str, session_index: dict | None = None,
@@ -1815,14 +1870,12 @@ def _resolve_session(sh: str, session_index: dict | None = None,
     if not project:
         return None
 
-    status = (_read_state_for(sh, "override.status")
-              or _read_state_for(sh, "signal.status")
-              or "idle")
+    mode, note = _read_mode_for(sh)
+    activity = _normalize_activity(_read_state_for(sh, "activity"))
     pending = (STATE_DIR / f"{sh}.pending-attention").exists()
-    state = _logical_state_for({
-        "status": status,
-        "pending_attention": pending,
-    })
+    # The fleet reads the axes the way a tab paints them, so a glance at either
+    # surface answers the same question: color for activity, glyph for mode.
+    color_state = _color_state_for({"activity": activity, "pending_attention": pending})
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
     branch = (_branch_for(cwd_path, branch_cache) if compute_branch else None) if cwd_path else None
@@ -1847,7 +1900,7 @@ def _resolve_session(sh: str, session_index: dict | None = None,
                 task = (json.loads(raw) or {}).get("task") or None
             except (ValueError, TypeError):
                 task = None
-    if state == "done":
+    if mode == "done":
         task = None
 
     lt_raw = _read_state_for(sh, "latest_turn")
@@ -1867,9 +1920,16 @@ def _resolve_session(sh: str, session_index: dict | None = None,
         "route": route,
         "route_group": route_group,
         "tacks": tacks,
-        "status": status,
-        "state": state,
-        "description": _read_state_for(sh, "description") or "",
+        # Nested, matching `beacon json` (CMD-15): mode and note are one value
+        # with one writer, so a consumer can't reach the note without the mode it
+        # annotates. Both published payloads carry the tuple in the same shape —
+        # a flat top-level `note` here is the shape that let the old
+        # `description` drift into claiming to be session-level recall context.
+        "mode": {"name": mode, "note": note, "glyph": _mode_glyph(mode)},
+        "activity": activity,
+        # The color a tab in this state is painted, so the dashboard dot and the
+        # tab agree without the browser re-deriving the mapping.
+        "color_state": color_state,
         "icon": _session_icon_ref(sh),
         "cwd": display_cwd,
         "branch": branch,
@@ -1910,8 +1970,8 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 
 
 def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> dict:
-    # Paused sessions are exempt from the activity window: a parked session is
-    # deliberately set aside and stays relevant however long it sits, so it
+    # Sessions in a mode are exempt from the activity window: a declared mode is
+    # deliberate and stays relevant however long it sits, so it
     # survives past since_epoch where an idle/working session of the same age
     # would be dropped. (The fleet view pins these to the right.)
     now = time.time()
@@ -1948,7 +2008,8 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     survivors = []
     for s in no_sid + list(newest_by_sid.values()):
         epoch = s["_epoch"]
-        if since_epoch is not None and epoch < since_epoch and s.get("state") not in MODE_PROFILES:
+        if (since_epoch is not None and epoch < since_epoch
+                and _record_mode(s)[0] == DEV_MODE):
             continue
         survivors.append(s)
     # Phase B — fill the per-cwd git branch (and the branch-dependent route
@@ -1985,18 +2046,43 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     }
 
 
-_WIP_DOT_COLOR = {
-    "ready": "37", "busy": "33", "blocked": "31",
-    "paused": "34", "release": "32", "retro": "97", "done": "90",
-    "handoff": "35",
-}
+# The fleet dot mirrors the tab: activity, three colors, and nothing else. A
+# mode reads as its glyph in the same row, exactly as it does on a tab.
+_WIP_DOT_COLOR = {"ready": "37", "busy": "33", "blocked": "31"}
 
 
-def _wip_reason_segment(state: str, reason: str) -> str:
-    """WIP-12: format a fleet-view reason segment. No state carries a text glyph
-    — every row reads by its color dot and status alone (BADGE-11); the reason
-    uses a `—` lead-in, present only when there is a description."""
-    return f"— {reason}" if reason else ""
+def _record_mode(record: dict) -> tuple[str, str]:
+    """The `(name, note)` tuple out of a wip record's nested `mode` (WIP-01).
+    One accessor so the fleet renderers don't each reach two levels in, and so
+    the payload's shape has exactly one place to change."""
+    return _mode_tuple(record.get("mode"))
+
+
+def _wip_state_cell(mode: str, activity: str) -> str:
+    """The fleet row's state column: `release·waiting` when a mode is declared,
+    the bare activity otherwise. Both axes, because a moded session that is
+    blocked on the user has to read as blocked — the merged field could show only
+    one of the two, and the mode was the one that won."""
+    return f"{mode}·{activity}" if mode != DEV_MODE else activity
+
+
+def _wip_note_segment(note: str) -> str:
+    """WIP-12: a mode's note, with a `—` lead-in, present only when set."""
+    return f"— {note}" if note else ""
+
+
+def _display_width(s: str) -> int:
+    """Terminal columns `s` occupies, not characters. The mode glyphs are the
+    reason: 🚀 📋 🏁 are one character but two columns wide (East Asian `W`), so
+    padding a column by len() leaves every glyph-bearing row one short and the
+    grid visibly ragged. `⏸` and `…` are single-width, so the set is mixed and
+    a flat per-glyph fudge would not do either."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
+
+
+def _ljust(s: str, width: int) -> str:
+    """str.ljust by display width (see _display_width)."""
+    return s + " " * max(0, width - _display_width(s))
 
 
 def _fmt_age(secs: int | None) -> str:
@@ -2026,12 +2112,17 @@ def _print_wip_human(payload: dict) -> None:
         group = by_route[route]
         grp = group[0].get("route_group")
         print(_color("1", route + (f"  [{grp}]" if grp else "")))
+        modes = {s["hash"]: _record_mode(s) for s in group}
+        cells = {s["hash"]: _wip_state_cell(modes[s["hash"]][0], s["activity"])
+                 for s in group}
+        cellw = max(len(c) for c in cells.values())
+        names = {s["hash"]: _wip_display_name(s, modes[s["hash"]][0]) for s in group}
+        namew = max(_display_width(n) for n in names.values())
         for s in group:
-            dot = _color(_WIP_DOT_COLOR.get(s["state"], "37"), "●")
-            branch = f" ({s['branch']})" if s.get("branch") else ""
-            first_line = s["description"].splitlines()[0] if s["description"] else ""
-            seg = _wip_reason_segment(s["state"], first_line)
-            desc = f"  {seg}" if seg else ""
+            dot = _color(_WIP_DOT_COLOR.get(s["color_state"], "37"), "●")
+            mode_note = modes[s["hash"]][1]
+            seg = _wip_note_segment(_first_line(mode_note))
+            note = f"  {seg}" if seg else ""
             # Current focus is the last bound tack (WIP-09); tag it
             # existing/emerging so a glance distinguishes resumed tracked work
             # from work spun up this session.
@@ -2039,7 +2130,8 @@ def _print_wip_human(payload: dict) -> None:
             if s.get("tacks"):
                 cur = s["tacks"][-1]
                 tk = _color("2", f"  {cur['tack_id']}·{cur['kind']}")
-            print(f"  {dot} {s['project']}{branch}  {s['status']:<8} {_fmt_age(s['age_seconds'])}{tk}{desc}")
+            print(f"  {dot} {_ljust(names[s['hash']], namew)}  "
+                  f"{cells[s['hash']]:<{cellw}}  {_fmt_age(s['age_seconds'])}{tk}{note}")
     if payload.get("window_since"):
         print()
         print(_color("2", f"window: since {payload['window_since']} — pass --all for full history"))
@@ -2082,7 +2174,6 @@ def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
 
     rows = []
     for s in sessions:
-        branch = f" ({s['branch']})" if s.get("branch") else ""
         # Show the route only when it carries signal the project name doesn't.
         # A route resolved by matching the project (the tier-3 case in
         # _tack_route_for) just echoes it; a pin- or branch-derived route does
@@ -2090,39 +2181,39 @@ def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
         proj = s.get("project") or ""
         route_slug = s.get("route") or ""
         echoes_project = not route_slug or route_slug.lower() in {proj.lower(), proj.rsplit("/", 1)[-1].lower()}
+        mode, mode_note = _record_mode(s)
         rows.append({
-            "dot": _color(_WIP_DOT_COLOR.get(s["state"], "37"), "●"),
-            "name": f"{s['project']}{branch}",
-            "status": s["status"],
+            "dot": _color(_WIP_DOT_COLOR.get(s["color_state"], "37"), "●"),
+            "name": _wip_display_name(s, mode),
+            "state": _wip_state_cell(mode, s["activity"]),
             "age": _fmt_age(s["age_seconds"]),
             "route": "" if echoes_project else f"[{route_slug}]",
-            "desc": s["description"].splitlines()[0] if s["description"] else "",
-            "state": s["state"],
+            "note": _first_line(mode_note),
         })
-    namew = max(len(r["name"]) for r in rows)
-    statusw = max(len(r["status"]) for r in rows)
+    namew = max(_display_width(r["name"]) for r in rows)
+    statew = max(len(r["state"]) for r in rows)
     agew = max(len(r["age"]) for r in rows)
     routew = max(len(r["route"]) for r in rows)
 
     # Every column is padded to a fixed width, so the visible prefix width
     # (dot + space + columns + separators) is the same for every row.
-    used = 2 + namew + 2 + statusw + 2 + agew
+    used = 2 + namew + 2 + statew + 2 + agew
     if routew:
         used += 2 + routew
 
     for r in rows:
-        cells = f"{r['name'].ljust(namew)}  {r['status'].ljust(statusw)}  {r['age'].rjust(agew)}"
+        cells = f"{_ljust(r['name'], namew)}  {r['state'].ljust(statew)}  {r['age'].rjust(agew)}"
         if routew:
             cells += "  " + _color("2", r["route"].ljust(routew))
-        desc = ""
-        if r["desc"]:
+        note = ""
+        if r["note"]:
             avail = cols - used - 4
             if avail > 1:
-                d = r["desc"] if len(r["desc"]) <= avail else r["desc"][: avail - 1] + "…"
-                seg = _wip_reason_segment(r["state"], d)
+                d = r["note"] if len(r["note"]) <= avail else r["note"][: avail - 1] + "…"
+                seg = _wip_note_segment(d)
                 if seg:
-                    desc = _color("2", f"  {seg}")
-        lines.append(f"{r['dot']} {cells}{desc}")
+                    note = _color("2", f"  {seg}")
+        lines.append(f"{r['dot']} {cells}{note}")
     return lines
 
 
@@ -2511,7 +2602,7 @@ def _badge_enabled() -> bool:
     """BADGE-15: the pane badge is opt-in and off by default. The tab (color +
     two-line project/task identity) now carries what the badge used to, so
     painting it too is redundant in a tabs workflow. The machinery is retained —
-    BADGE_FORMAT, BADGE_COLOR_PALETTE, the badge-color / badge-format CLI verbs —
+    BADGE_FORMAT, COLOR_PALETTE, the badge-color / badge-format CLI verbs —
     and `"badge": "on"` in the user config re-enables it, so a later
     lifecycle-phase repurposing reuses the same gate."""
     val = _load_config().get("badge")
@@ -2575,10 +2666,11 @@ def wip_http_server(port: int):
     expanded. The bulk /wip.json carries only the single-line excerpt (WIP-11);
     this reads the companion `latest_turn_full` state, CORS-open like wip.json.
 
-    GET /mode-bg/<state> — the mode watermark PNG a mode card renders (WIP-17):
-    the very asset the iTerm2 pane paints (iterm/resources/<phase>-bg.png), so the card
-    and pane can't drift. The filename is resolved from MODE_PROFILES by state,
-    never from the URL, so there's nothing to traverse. CORS-open like wip.json.
+    GET /mode-bg/<mode> — the mode watermark PNG a moded card renders (WIP-17):
+    the very asset the iTerm2 pane paints (iterm/resources/<mode>-bg.png), so the
+    card and pane can't drift. The filename is resolved from MODE_SPECS by mode
+    name, never from the URL, so there's nothing to traverse. CORS-open like
+    wip.json.
 
     POST /forget — delete a session's per-session state (FORGET-01), the
     dashboard's close button on a timed-out card. Mutating, so it shares the
@@ -2677,10 +2769,10 @@ def wip_http_server(port: int):
             self.end_headers()
             self.wfile.write(data)
 
-        def _send_mode_bg(self, state: str) -> None:
-            # The mark file comes from our own MODE_PROFILES constant keyed by the
-            # logical state — never from the URL — so there is no path to traverse.
-            spec = MODE_PROFILES.get(state)
+        def _send_mode_bg(self, mode: str) -> None:
+            # The mark file comes from our own MODE_SPECS constant keyed by the
+            # mode name — never from the URL — so there is no path to traverse.
+            spec = MODE_SPECS.get(mode)
             img = spec.get("image") if spec else None
             p = (PLUGIN_ROOT / "iterm" / "resources" / img) if img else None
             try:
@@ -3050,25 +3142,24 @@ def resolve(cwd: Path | None = None) -> dict:
         ("ai-title", lambda: read_state("cc.ai_title")),
     ])
 
-    status, p_status = chain([
-        ("override", lambda: p_override("status")),
-        ("signal",   lambda: p_signal("status")),
-    ])
-    if not status:
-        status, p_status = "idle", "default"
+    # The two state axes resolve independently — no chain between them, which is
+    # the whole point. Merging them by priority meant the declared value won and
+    # the observed one was discarded, so a session in `release` or `retro` could
+    # not report that it was blocked on the user (RES-06).
+    mode, note = read_mode()
+    activity = read_activity()
 
-    # STATE-12: the `done` cycle suppresses the task slot — a completed session
-    # shows its project alone. Reversible and non-destructive: applied here at
-    # resolve time, not by deleting any task override, so resume restores it.
-    if status == "done":
+    # STATE-12: `done` suppresses the task slot — a completed session shows its
+    # project alone. Reversible and non-destructive: applied here at resolve
+    # time, not by deleting any task override, so leaving the mode restores it.
+    if mode == "done":
         task, p_task = "", "done"
 
-    description = (read_state("description") or "").strip()
     return {
         "project": project, "project_provider": p_proj,
         "task": task, "task_provider": p_task,
-        "status": status, "status_provider": p_status,
-        "description": description,
+        "mode": mode, "note": note.strip(),
+        "activity": activity,
         "pending_attention": _state_path("pending-attention").exists(),
     }
 
@@ -3637,7 +3728,7 @@ def _hex_to_color_components(hex_str: str) -> dict:
     """Convert a 6-digit hex color (no leading #) to iTerm2's dynamic-profile
     color dict — sRGB float components, opaque. Mirrors the float form the
     base template uses for chip text (THEME-03), so a mode background stays
-    single-sourced from its MODE_PROFILES hex."""
+    single-sourced from its MODE_SPECS hex."""
     r = int(hex_str[0:2], 16) / 255.0
     g = int(hex_str[2:4], 16) / 255.0
     b = int(hex_str[4:6], 16) / 255.0
@@ -3674,7 +3765,7 @@ def _fit_action_button_widths(profile: dict) -> None:
 
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
-    and one derived mode profile per MODE_PROFILES entry (beacon-pause,
+    and one derived mode profile per MODE_SPECS entry (beacon-pause,
     beacon-release, beacon-retro, beacon-done; RENDER-05) into iTerm2's
     DynamicProfiles directory. iTerm2
     watches the directory and reloads on change without restart, so the write
@@ -3733,11 +3824,11 @@ def install_dynamic_profile() -> tuple[bool, str]:
     # fresh pane reads gray before the first status render — and in a plain
     # shell, which emits no badge-color OSC. Without this the base inherits the
     # parent profile's badge color (e.g. Default's red). Single-sourced from
-    # BADGE_COLOR_PALETTE so the profile default and the rendered `ready` color
+    # COLOR_PALETTE so the profile default and the rendered `ready` color
     # never drift. Written to all three keys for the same reason the mode
     # backgrounds are (below): which set iTerm2 reads depends on the parent
     # profile's light/dark switch.
-    badge_color = _hex_to_color_components(BADGE_COLOR_PALETTE["ready"])
+    badge_color = _hex_to_color_components(COLOR_PALETTE["ready"])
     for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
         base_profile[key] = badge_color
     _fit_action_button_widths(base_profile)
@@ -3752,7 +3843,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
     # background-image watermark). Deriving rather than hand-maintaining sibling
     # templates keeps the layout single-sourced so the profiles never drift.
     written = [str(target)]
-    for mode, spec in MODE_PROFILES.items():
+    for mode, spec in MODE_SPECS.items():
         mode_target = target_dir / f"{spec['profile']}.json"
         try:
             mode_profile = copy.deepcopy(base_profile)
@@ -3780,20 +3871,35 @@ def install_dynamic_profile() -> tuple[bool, str]:
         except (OSError, ValueError, KeyError) as e:
             return False, f"failed to write {mode_target}: {e}"
 
-    # Sweep the retired profiles so an upgrade stops loading them as orphaned
-    # rows: the pre-1.0 per-state profiles, and the pre-SDLC-rename base (bare
-    # `beacon`) and mode names (`beacon-paused` / `beacon-wrapping` /
-    # `beacon-releasing`), now `beacon-dev` / `beacon-pause` / `beacon-retro` /
-    # `beacon-release` (STATE-13).
-    for retired in ("beacon-ready.json", "beacon-busy.json",
-                    "beacon-blocked.json", "beacon-blocked-idle.json",
-                    "beacon-drifted.json", "beacon.json",
-                    "beacon-paused.json", "beacon-wrapping.json",
-                    "beacon-releasing.json"):
+    # Sweep beacon profiles this install didn't just write, so a profile whose
+    # name retired stops showing up as an orphaned row in iTerm2's picker. Keyed
+    # on what was written rather than on a list of past names, which is what kept
+    # every rename since 0.x accumulating here. DynamicProfiles is a shared
+    # directory, so a candidate has to *be* a beacon profile — one whose declared
+    # `Name` sits in beacon's own namespace — not merely be named like one; a
+    # stray file, or JSON that isn't a dynamic profile at all, is left alone.
+    keep = {Path(p).name for p in written}
+    try:
+        # Only beacon's own namespace: the DynamicProfiles dir is shared, and
+        # parsing every other tool's profile to decide it isn't ours is work
+        # the filename already answers. The Name check below still gates the
+        # unlink, so a same-prefix file from elsewhere survives.
+        stale_files = [p for p in target_dir.glob(f"{PROFILE_NAMESPACE}*.json")
+                       if p.name not in keep]
+    except OSError:
+        stale_files = []
+    for stale in stale_files:
         try:
-            (target_dir / retired).unlink(missing_ok=True)
-        except OSError:
-            pass
+            profiles = json.loads(stale.read_text()).get("Profiles") or []
+            names = [str(p.get("Name") or "") for p in profiles if isinstance(p, dict)]
+        except (OSError, ValueError, AttributeError, TypeError):
+            continue
+        if names and all(n == PROFILE_NAMESPACE or n.startswith(f"{PROFILE_NAMESPACE}-")
+                         for n in names):
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     return True, "wrote " + " + ".join(written)
 
@@ -3833,23 +3939,35 @@ def remove_engagement_marker() -> None:
         pass
 
 
-def _logical_state_for(state: dict) -> str:
-    """Resolve the logical color state per BADGE-09a precedence:
-    mode status (`paused` / `release` / `retro` / `done`) >
-    `pending_attention` > `status` — an explicit mode is the most deliberate
-    user/session intent, pending attention demands action, status reflects what
-    hooks have observed.
+def _color_state_for(state: dict) -> str:
+    """The logical color state the tab is painted (BADGE-09): `ready` / `busy` /
+    `blocked`, from `activity` alone. No mode reaches this — a mode is legible
+    from another tab as its glyph and, once focused, as its pane background, so
+    the one always-painted channel is spent on the axis that actually varies.
 
-    - mode states (BADGE-10, RENDER-05): each distinct, so a parked, shipping,
-      or wrapping-up session doesn't compete with one blocked on the user.
-    - `pending_attention` → `blocked` (red): a permission or idle prompt both
-      read as "needs the user"; beacon no longer distinguishes them."""
-    status = state.get("status")
-    if status in MODE_PROFILES:
-        return status
+    `pending_attention` (HOOK-03b) forces `blocked` over the activity mapping,
+    because hook delivery isn't ordered: a late PostToolUse for an earlier tool
+    can arrive after a fresh permission prompt, and without the sticky marker
+    the tab would flip back to `busy` while the user is still being asked."""
     if state.get("pending_attention"):
         return "blocked"
-    return STATUS_TO_BADGE_STATE.get(status, "ready")
+    return ACTIVITY_TO_COLOR_STATE.get(state.get("activity"),
+                                      ACTIVITY_TO_COLOR_STATE[DEFAULT_ACTIVITY])
+
+
+def _mode_glyph_for(state: dict) -> str:
+    """The glyph leading line 1 of the session name (TITLE-06) — the mode's only
+    cross-tab surface. Trailing space so it separates from the project without
+    the template having to carry one; empty in the dev cycle."""
+    glyph = _mode_glyph(state.get("mode"))
+    return f"{glyph} " if glyph else ""
+
+
+def _profile_for(state: dict) -> str:
+    """The dynamic profile the pane sits in (RENDER-05): the mode's, or the base
+    profile in the dev cycle. Call sites never name an iTerm profile."""
+    spec = MODE_SPECS.get(state.get("mode"))
+    return spec["profile"] if spec else BASE_PROFILE_NAME
 
 
 def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
@@ -3870,21 +3988,19 @@ def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
 
 
 def apply(state: dict):
-    s = state["status"]
-
     prev = read_state_json("resolved", {})
 
     # BADGE-14: marker presence is the shell snippet's engagement gate.
     place_engagement_marker()
 
-    # BADGE-09 / -09a: resolve the logical color state, then the profile it
-    # implies. A mode state (paused / release / retro / done) owns a profile
-    # (RENDER-05): its background can't be expressed by the badge-color OSC, so
-    # it swaps profiles. Every other state is an OSC overlay on the base profile.
-    logical = _logical_state_for(state)
-    paused = logical == "paused"
-    target_profile = (MODE_PROFILES[logical]["profile"]
-                      if logical in MODE_PROFILES else BASE_PROFILE_NAME)
+    # The two axes paint two disjoint surfaces, so nothing here arbitrates
+    # between them: activity picks the tab color (BADGE-09), the mode picks the
+    # glyph (TITLE-06) and the profile whose background it owns (RENDER-05).
+    # `release` + `waiting` therefore paints a red tab over the release pane —
+    # a state the merged field could not represent at all.
+    color_state = _color_state_for(state)
+    glyph = _mode_glyph_for(state)
+    target_profile = _profile_for(state)
 
     # RENDER-05: switch profiles when the target changes — which also covers
     # the first render (prev carries no profile). set-profile must precede the
@@ -3904,11 +4020,11 @@ def apply(state: dict):
         # — and on the first render, which is also a swap (prev has no profile).
         _set_session_title()
 
-    # RENDER-04: tab color for the logical state (and the badge color too when
-    # the badge is enabled). Repaint when the state changed, or unconditionally
-    # after a profile switch wiped the OSC.
-    if switched or logical != prev.get("logical_state"):
-        hex_color = BADGE_COLOR_PALETTE.get(logical, BADGE_COLOR_PALETTE["ready"])
+    # RENDER-04: tab color for the logical color state (and the badge color too
+    # when the badge is enabled). Repaint when the state changed, or
+    # unconditionally after a profile switch wiped the OSC.
+    if switched or color_state != prev.get("color_state"):
+        hex_color = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
         if badge_on:
             _cli("badge-color", hex_color)
         _cli("tab-color", hex_color)
@@ -3937,22 +4053,24 @@ def apply(state: dict):
         # nicety, so the two-line title just carries the bare task.
         _cli("uservar", "beacon_task_nl", f"\n  {task_text}" if task_text else "")
 
-    # TITLE-06: while paused, line 1 (tab + single-line OS window title) leads
-    # with the paused glyph — a compact mark the window list (Mission Control /
-    # ⌘`) shows where the tab color isn't legible. The pause *reason* itself is
-    # surfaced by the Claude Code status line (STATUSLINE-01), a footer row that
-    # doesn't overlap terminal output; the badge was too poor a home for it.
-    prev_paused = prev.get("logical_state") == "paused"
-    if paused != prev_paused or (switched and paused):
-        _cli("uservar", "beacon_title_prefix", PAUSED_TITLE_GLYPH if paused else "")
+    # TITLE-06: line 1 (tab label + single-line OS window title) leads with the
+    # mode's glyph. This is what makes a mode readable from a tab the user isn't
+    # looking at — the pane background it also owns is only visible in the focused
+    # pane, and the tab color now answers a different question. A glyph, not the
+    # word, because line 1 is shared by the tab and the window title and cannot
+    # differ between them. The mode's *note* is not here: it goes to the Claude
+    # Code status line (STATUSLINE-01), a footer row with room for prose.
+    if glyph != prev.get("mode_glyph", "") or (switched and glyph):
+        _cli("uservar", "beacon_title_prefix", glyph)
 
     snapshot = {
         "project": state["project"], "project_provider": state["project_provider"],
         "task": state["task"], "task_provider": state["task_provider"],
-        "status": s, "status_provider": state["status_provider"],
-        "description": state.get("description", ""),
+        "mode": state["mode"], "note": state.get("note", ""),
+        "activity": state["activity"],
         "pending_attention": state.get("pending_attention", False),
-        "logical_state": logical,
+        "color_state": color_state,
+        "mode_glyph": glyph,
         "profile": target_profile,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
@@ -3990,14 +4108,19 @@ def _resolve_for_display() -> dict:
     # project it has wandered into, so it carries no @marker.
     #
     # The marker is live "where the subprocess is right now" context, so it
-    # applies only while the session is actively working (busy). At rest —
-    # idle, blocked on a prompt, or paused — the badge shows the session's
-    # resting identity and the task re-resolves from the anchor. This is what
-    # removes a wander once the session comes home: the returning turn's Stop
-    # renders at rest (status → idle) and drops the marker even if the last
-    # working render fired while the cwd was still away, and a session that
-    # blocks or ends mid-wander never freezes a stale @marker into its snapshot.
-    if anchor_cwd is not None and _logical_state_for(state) == "busy":
+    # applies only while the session is actively working in the dev cycle. At
+    # rest — idle, blocked on a prompt — or in any declared mode, the tab shows
+    # the session's resting identity and the task re-resolves from the anchor.
+    # This is what removes a wander once the session comes home: the returning
+    # turn's Stop renders at rest (activity → idle) and drops the marker even if
+    # the last working render fired while the cwd was still away, and a session
+    # that blocks or ends mid-wander never freezes a stale @marker into its
+    # snapshot. The dev-cycle half of that used to come free: a mode won the
+    # merged field outright, so a moded session could never read `busy`. Now that
+    # a mode and `working` coexist, the gate has to say so.
+    if (anchor_cwd is not None
+            and state["mode"] == DEV_MODE
+            and _color_state_for(state) == "busy"):
         live_cwd = Path.cwd()
         live_root = _project_root(live_cwd)
         if live_root is not None and live_root != find_project_root(anchor_cwd):
@@ -4028,17 +4151,22 @@ def render():
 def cmd_show(_args):
     state = _resolve_for_display()
     rows = []
-    for field in ("project", "task", "status"):
+    for field in ("project", "task"):
         value = state[field]
         provider = state[f"{field}_provider"]
-        if value and provider and provider != "default":
+        if value and provider:
             rows.append((field, value, provider))
-    if state.get("description"):
-        rows.append(("description", state["description"], None))
+    # Only the chained signals carry a provider. The two state axes have one
+    # writer each, so naming a tier for them would invent a distinction that
+    # doesn't exist; `activity` shows unconditionally because it always has a
+    # value, `mode` only when one is declared.
+    if state["mode"] != DEV_MODE:
+        rows.append(("mode", state["mode"], None))
+        if state.get("note"):
+            rows.append(("note", state["note"], None))
+    rows.append(("activity", state["activity"], None))
     if state.get("pending_attention"):
         rows.append(("attention", "pending", None))
-    if not rows:
-        return
     width = max(len(v) for _, v, _ in rows)
     for field, value, provider in rows:
         suffix = f"  ({provider})" if provider else ""
@@ -4047,20 +4175,12 @@ def cmd_show(_args):
 
 def _set_field(field: str, value: str):
     if field not in VALID_FIELDS:
-        sys.exit(f"unknown field: {field}")
-    if field == "status" and value not in VALID_STATUSES:
-        sys.exit(f"invalid status: {value} (allowed: {sorted(VALID_STATUSES)})")
+        sys.exit(f"unknown field: {field} (allowed: {', '.join(VALID_FIELDS)})")
     write_state(f"override.{field}", value)
 
 
 def cmd_set(args):
-    field = args.field
-    _set_field(field, " ".join(args.value))
-    if field == "status":
-        # `set status <value>` is the orthogonal-field form. It carries no
-        # description argument, so any previously-set description belongs
-        # to an earlier status and is no longer relevant — drop it.
-        _clear_description()
+    _set_field(args.field, " ".join(args.value))
     render()
 
 
@@ -4074,48 +4194,31 @@ def cmd_project(args):
     render()
 
 
-def cmd_icon(args):
-    """Set or clear the session's icon override (PROV-08). With a value — a
-    local path or an http(s) URL — it overrides the auto-discovered project
-    icon; with no value it clears the override, falling back to discovery.
-    The icon is fleet-view enrichment, not a painted surface, so this does
-    not render the pane."""
-    value = " ".join(args.value).strip() if args.value else ""
-    if value:
-        write_state("override.icon", value)
-        print(f"icon override set: {value}")
-    else:
-        remove_state("override.icon")
-        print("icon override cleared")
-
-
 def _disengage() -> None:
     """BADGE-14 disengagement: return the pane to its unpainted, unmanaged
-    look. Clears overrides, description, and sticky red markers, drops the
+    look. Clears overrides, the mode, and sticky red markers, drops the
     engagement marker and the resolved snapshot, blanks the badge user vars,
     and reverts badge / tab color to default. Callers must NOT render()
     afterward — render() would re-place the engagement marker and re-engage.
     Shared by `clear` (OVR-04) and the SessionEnd hook (HOOK-09)."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
-    remove_state("override.icon")
-    _clear_description()
+    write_mode(DEV_MODE)
     # Drop any sticky red markers — if the session is genuinely blocked,
     # the next Notification re-asserts both.
     remove_state("pending-attention")
-    if read_state("signal.status") == "waiting":
-        remove_state("signal.status")
+    if read_activity() == "waiting":
+        remove_state("activity")
     _clear_cc_signals()
     remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
-    # A mode state (paused/release/retro/done) swapped the pane into a mode profile
-    # whose de-emphasized background the color-only `clear` below cannot undo
-    # (RENDER-05). apply() swaps back to the base profile when *transitioning*
-    # to a non-mode state, but disengagement bypasses apply(), so a session that
-    # ends (or is cleared) mid-mode would keep its "powered off" / paused
-    # background. Swap back to base here so the pane reads as unmanaged. Harmless
-    # no-op when already on the base profile.
+    # A mode swapped the pane into a mode profile whose background the color-only
+    # `clear` below cannot undo (RENDER-05). apply() swaps back to the base
+    # profile when *leaving* a mode, but disengagement bypasses apply(), so a
+    # session that ends (or is cleared) mid-mode would keep its "powered off" /
+    # paused background. Swap back to base here so the pane reads as unmanaged.
+    # Harmless no-op when already on the base profile.
     _cli("set-profile", BASE_PROFILE_NAME)
     _cli("clear")
     # Hand the name back to the interactive template (TITLE-04) *before* blanking
@@ -4138,43 +4241,10 @@ def _disengage() -> None:
 def cmd_clear(args):
     if args.field:
         remove_state(f"override.{args.field}")
-        if args.field == "status":
-            _clear_description()
         render()
         return
 
     _disengage()
-
-
-def _clear_description() -> None:
-    """Drop the description text (surfaced in the fleet view, not painted)."""
-    remove_state("description")
-
-
-def _apply_status(value: str, description: str) -> None:
-    """Set `override.status = value` and the optional description. For
-    `paused`, snapshot the current resolved project + task so the badge
-    keeps its identity while the session is parked (STATE-03). For other
-    values (e.g. `waiting "bg refresh"`), don't snapshot — the user is
-    labeling current state, not parking. The description is persisted and
-    surfaced in the fleet view (STATE-02); it is not painted on the pane."""
-    if value == "paused":
-        # Freeze the project/task the badge is *currently showing* by reading
-        # the last-rendered snapshot, rather than re-resolving from scratch.
-        # Re-resolving runs the task chain's p_pr_title provider — a gh/glab
-        # network call — in this hot, user-facing path; reading the cached
-        # snapshot keeps pause network-free. It also preserves an active
-        # project/task override (the old re-resolve discarded it, so a labeled
-        # pane silently relabeled itself on pause). Fall back to a live resolve
-        # only when nothing has been rendered yet this session.
-        snap = read_state_json("resolved", {}) or resolve()
-        for field in ("project", "task"):
-            if snap.get(field) and snap.get(f"{field}_provider") != "default":
-                write_state(f"override.{field}", snap[field])
-    write_state("override.status", value)
-    _clear_description()
-    if description:
-        write_state("description", description)
 
 
 def _note_from(words) -> str:
@@ -4183,12 +4253,18 @@ def _note_from(words) -> str:
 
 
 def cmd_status(args):
-    _apply_status(args.value, _note_from(args.description))
+    """`status <mode>` — enter a mode, or `dev` to leave one.
+
+    Activity is deliberately not settable. It named the same field until 2.5.0,
+    and every pinned activity found in live state was contradicting the hooks it
+    outranked — tabs painted `working` for months while the session underneath
+    was blocked on the user, which is the failure this split exists to remove."""
+    write_mode(args.mode, _note_from(args.note))
     render()
 
 
 def cmd_pause(args):
-    _apply_status("paused", _note_from(args.note))
+    write_mode("pause", _note_from(args.note))
     render()
     # --clear-screen (#8): a clean stand-down wipes the terminal too. The agent
     # can't clear its own buffer (captured stdout), but the CLI writes straight
@@ -4199,61 +4275,44 @@ def cmd_pause(args):
 
 
 def cmd_release(args):
-    """Enter release mode (RENDER-05): a ship-it / release flow is in progress —
-    the one active mode a session or skill declares while cutting/deploying a
-    release. Unlike pause it does not freeze the badge identity (the session is
-    still active) and does not auto-resume on the next prompt (STATE-04 is
-    paused-only) — it persists until `resume` / `clear` or the session ends. The
-    pane goes to the amber 'launch-pad' profile (warm background with a faint
-    rocket watermark) under a green badge."""
-    _apply_status("release", _note_from(args.note))
+    """Enter release mode: a ship-it / release flow is in progress — the one
+    active mode a session or skill declares while cutting or deploying a release.
+    Unlike pause it does not auto-resume on the next prompt (AUTO_RESUME_MODES) —
+    it persists until `status dev` / `resume` / `clear` or the session ends. The
+    tab takes a 🚀; the pane takes the deep launch-sky navy with its rocket
+    watermark."""
+    write_mode("release", _note_from(args.note))
     render()
 
 
 def cmd_retro(args):
-    """Enter retro mode (RENDER-05): a post-work follow-up / retro phase a
-    session or skill declares. Unlike pause it does not freeze the badge
-    identity (the session is still active) and does not auto-resume on the next
-    prompt (STATE-04 is paused-only) — it persists until `resume` / `clear` or
-    the session ends. The pane goes to the muted-green profile under a white
-    badge."""
-    _apply_status("retro", _note_from(args.note))
+    """Enter retro mode: a post-work follow-up / retro phase a session or skill
+    declares. Like release it does not auto-resume on the next prompt — it
+    persists until `status dev` / `resume` / `clear` or the session ends. The tab
+    takes a 📋; the pane takes the muted green with its ticked-clipboard
+    watermark."""
+    write_mode("retro", _note_from(args.note))
     render()
 
 
 def cmd_done(args):
-    """Enter done mode (RENDER-05): the session is complete and ready to hand off
-    to another — the terminal mode a closing-out skill reaches for instead of
-    `pause`. Like retro it does not freeze the badge identity and does not
-    auto-resume on the next prompt (STATE-04 is paused-only) — it persists until
-    `resume` / `clear` or the session ends. The pane goes to the dimmest 'powered
-    off' profile (near-black background with a faint `⏻` power-symbol watermark)
-    under a dim-gray badge, and the task slot is suppressed so the badge shows
-    the project alone (STATE-12)."""
-    _apply_status("done", _note_from(args.note))
-    render()
-
-
-def cmd_handoff(args):
-    """Enter handoff mode (STATE-14): the session is mid-transition to another
-    tool, skill, or session — not paused, not done, just handing off. It
-    borrows exactly one trait from `pause` — it auto-resumes on the next
-    prompt (STATE-04, generalized to AUTO_RESUME_STATUSES) — and none of
-    `pause`'s other semantics: like `retro` / `release` / `done` it does not
-    snapshot the badge identity (STATE-03 is paused-only; a handing-off
-    session is still active, so re-resolution is fine). Absent an intervening
-    prompt it persists until `resume` or the session ends. The pane goes to a
-    deep-violet profile under a pink badge, with no background watermark —
-    the mode is meant to read as brief, so there is no dedicated asset."""
-    _apply_status("handoff", _note_from(args.note))
+    """Enter done mode: the session is complete and ready to hand off to another
+    — the terminal mode a closing-out skill reaches for instead of `pause`. Like
+    retro it does not auto-resume on the next prompt. The tab takes a 🏁; the pane
+    takes the dimmest 'powered off' near-black with its checkered-flag watermark,
+    and the task slot is suppressed so the tab shows the project alone
+    (STATE-12)."""
+    write_mode("done", _note_from(args.note))
     render()
 
 
 def cmd_resume(_args):
+    """Return the session to auto-detected defaults: drop the overrides and leave
+    whatever mode is set. Activity is untouched — it is the hooks' to report, and
+    the next hook restates it anyway."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
-    remove_state("override.icon")
-    _clear_description()
+    write_mode(DEV_MODE)
     render()
 
 
@@ -4457,20 +4516,20 @@ def _looks_idle(text: str | None) -> bool:
 
 def _recover_stale_red() -> None:
     """Stop / PreToolUse / UserPromptSubmit are responsible for clearing
-    pending-attention and signal.status=waiting (HOOK-03b). When one of
+    pending-attention and `activity = waiting` (HOOK-03b). When one of
     those hooks didn't fire — typically because the prior Claude session
     was killed mid-permission-prompt — the markers outlive the actual
     blocked state. Peek at the transcript: if the last assistant message
     reads as idle ("Ready..."), drop the stale markers so resolve() and
     apply() don't render red against a session that's actually idle."""
     if not (_state_path("pending-attention").exists()
-            or read_state("signal.status") == "waiting"):
+            or read_activity() == "waiting"):
         return
     if not _looks_idle(_last_assistant_text()):
         return
     remove_state("pending-attention")
-    if read_state("signal.status") == "waiting":
-        remove_state("signal.status")
+    if read_activity() == "waiting":
+        remove_state("activity")
 
 
 def _wipe_session_for_fresh_start() -> None:
@@ -4479,8 +4538,8 @@ def _wipe_session_for_fresh_start() -> None:
     tenant. Keeps `claude_session_id` (just written by the caller)."""
     for f in VALID_FIELDS:
         remove_state(f"override.{f}")
-    remove_state("override.icon")
-    remove_state("signal.status")
+    write_mode(DEV_MODE)
+    remove_state("activity")
     remove_state("pending-attention")
     remove_state("latest_turn")
     remove_state("latest_turn_full")
@@ -4497,7 +4556,6 @@ def _wipe_session_for_fresh_start() -> None:
     write_state("session_started_at",
                 datetime.now(timezone.utc).isoformat(timespec="milliseconds"))
     _clear_cc_signals()
-    _clear_description()
 
 
 def _clear_cc_signals() -> None:
@@ -4524,6 +4582,10 @@ def cmd_render(_args):
 
 STATUSLINE_SEPARATOR = " · "
 STATUSLINE_LINK_COLOR = "36"
+# A mode's note reads as de-emphasized context, not as an alert: the tab already
+# says which mode, so the note is the detail you look down for. Dracula `comment`
+# in the 256-color space, matching the identity role it plays elsewhere.
+_MODE_NOTE_COLOR = "38;5;61"
 # STATUSLINE-03: change requests lead the row and carry full weight; issues
 # trail, dimmed. Same hue for both — the palette's "one hue, two weights" split
 # between an actionable thing and its context (THEME-03) — so the row reads as
@@ -4558,14 +4620,17 @@ def _osc8(url: str, text: str) -> str:
     return f"\033]8;;{url}\a{text}\033]8;;\a"
 
 
-def _statusline_pause_segment() -> str:
-    """`⏸ <reason>`, colored, while paused with a note; empty otherwise."""
-    if read_state("override.status") != "paused":
+def _statusline_mode_segment() -> str:
+    """`<glyph> <note>` for the declared mode, colored; empty in the dev cycle or
+    with no note. This is where a mode's prose goes: the tab carries the glyph
+    alone (line 1 is shared with the OS window title, so it has no room), and the
+    status line is a footer Claude owns that never overlaps terminal output."""
+    mode, note = read_mode()
+    note = " ".join(note.split())
+    if mode == DEV_MODE or not note:
         return ""
-    reason = " ".join((read_state("description") or "").split())
-    if not reason:
-        return ""
-    return f"\033[{_WIP_DOT_COLOR['paused']}m{PAUSED_TITLE_GLYPH}{reason}\033[0m"
+    glyph = _mode_glyph(mode)
+    return f"\033[{_MODE_NOTE_COLOR}m{glyph} {note}\033[0m"
 
 
 def _statusline_link_segment() -> str:
@@ -4658,12 +4723,13 @@ def cmd_statusline(_args):
         sys.stdin.read()
     except Exception:
         pass
-    # One line per class, most urgent first: why the session is parked, what it
-    # has shipped, then the open work split by kind. Shipping is rare, and
-    # burying it among the open refs is what made it unreadable on a shared row.
+    # One line per class, most urgent first: what mode the session declared and
+    # why, what it has shipped, then the open work split by kind. Shipping is
+    # rare, and burying it among the open refs is what made it unreadable on a
+    # shared row.
     rows = [
         STATUSLINE_SEPARATOR.join(
-            s for s in (_statusline_pause_segment(), _statusline_link_segment()) if s),
+            s for s in (_statusline_mode_segment(), _statusline_link_segment()) if s),
         _statusline_delivered_line(),
         *_statusline_open_lines(),
     ]
@@ -4979,23 +5045,6 @@ def _record_focus_handle() -> None:
             write_state("iterm_session_id", guid)
 
 
-def _skill_invocation(payload: dict) -> str | None:
-    """The skill a hook payload records firing, normalized to its plain name
-    (`tack:end` for both a `Skill` tool call and a typed `/tack:end`), or None
-    when the payload records no skill.
-
-    Reacting to a skill means reading both shapes (see SLASH_COMMAND_RE): the
-    agent-invoked tool call on PostToolUse, and the slash command the user typed
-    on UserPromptSubmit, which fires no tool call. What each caller *does* with
-    the reaction still differs by event — a PostToolUse reaction replaces that
-    event's working write, a UserPromptSubmit one replaces STATE-04 auto-resume —
-    so this resolves the name only and leaves the handling to the branch."""
-    if payload.get("tool_name") == "Skill":
-        return (payload.get("tool_input") or {}).get("skill")
-    m = SLASH_COMMAND_RE.match(payload.get("prompt") or "")
-    return m.group(1).lower() if m else None
-
-
 def cmd_hook(args):
     payload = {}
     try:
@@ -5054,7 +5103,7 @@ def cmd_hook(args):
         # _session_seed), which outlives any single Claude session. A fresh
         # `claude` invocation (source=startup) or `/clear` (source=clear) in a
         # pane that hosted a prior session would otherwise inherit that
-        # session's stale `signal.status=waiting` / `pending-attention` and
+        # session's stale `activity = waiting` / `pending-attention` and
         # render red. A resumed session (source=resume) continues prior state
         # by design.
         source = (payload.get("source") or "").lower()
@@ -5072,31 +5121,21 @@ def cmd_hook(args):
         # runs: the session is resuming work.
         if not SYNTHETIC_PROMPT_RE.match(prompt_text):
             _write_latest_turn("human", prompt_text)
-        if prompt_text and PAUSE_RE.match(prompt_text):
-            # NL pause-intent: the prompt itself becomes the description.
-            # Don't touch signal.status — _apply_status writes override.status=paused.
-            _apply_status("paused", prompt_text)
-        elif _skill_invocation(payload) in HANDOFF_SKILLS:
-            # HOOK-11's other half: a user-typed `/tack:end` never becomes a
-            # Skill tool call, so this prompt is the whole event. Enters handoff
-            # instead of auto-resuming out of it — STATE-04 belongs to the
-            # *next* prompt, and the working write below would be immediately
-            # superseded by the override anyway (OVR-02).
-            _apply_status("handoff", HANDOFF_DESCRIPTION)
-        else:
-            if prompt_text and FRESH_START_RE.match(prompt_text):
-                # In-session commands like /recipe re-bootstrap context;
-                # treat them like SessionStart non-resume and drop stale
-                # signals before the prompt lands.
-                _wipe_session_for_fresh_start()
-            elif read_state("override.status") in AUTO_RESUME_STATUSES:
-                # STATE-04 auto-resume: a returning prompt clears `paused` or
-                # `handoff` and its description. Other user-set statuses
-                # (waiting "bg refresh", or the mode states release/retro/done)
-                # are deliberate labels and survive prompt submission.
-                remove_state("override.status")
-                _clear_description()
-            write_state("signal.status", "working")
+        if prompt_text and FRESH_START_RE.match(prompt_text):
+            # In-session commands like /recipe re-bootstrap context; treat them
+            # like SessionStart non-resume and drop stale signals before the
+            # prompt lands.
+            _wipe_session_for_fresh_start()
+        elif read_mode()[0] in AUTO_RESUME_MODES:
+            # STATE-04 auto-resume: a returning prompt leaves `pause`,
+            # dropping the note with the mode. The other modes are deliberate
+            # declarations that persist until explicitly left.
+            write_mode(DEV_MODE)
+        # The activity write is unconditional now. It used to sit in the else
+        # branch, because a mode override would have discarded it anyway — under
+        # the split the two are disjoint, so a session that submits a prompt
+        # while in `release` correctly reads as working *and* releasing.
+        write_state("activity", "working")
         # The user just submitted, so any pending Notification is resolved.
         remove_state("pending-attention")
 
@@ -5106,7 +5145,7 @@ def cmd_hook(args):
             # for active Notification (permission/idle prompt) so glancing
             # across many panes distinguishes calm sessions from sessions
             # truly waiting on user input.
-            write_state("signal.status", "idle")
+            write_state("activity", "idle")
         # Turn ended: any pending permission/idle notification is no longer in flight.
         remove_state("pending-attention")
         # Refresh chips that may have drifted during the turn (branch the
@@ -5120,7 +5159,7 @@ def cmd_hook(args):
         _write_latest_turn("agent", _last_assistant_text())
 
     elif event == "Notification":
-        write_state("signal.status", "waiting")
+        write_state("activity", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
         # Only its presence matters — permission and idle both read as "needs the
@@ -5131,31 +5170,20 @@ def cmd_hook(args):
     elif event == "PreToolUse":
         # Tool activity means the agent is working, not waiting. This
         # transitions out of `waiting` after a permission_prompt Notification
-        # is granted — without this, the badge would stay red for the rest of
+        # is granted — without this, the tab would stay red for the rest of
         # the turn.
-        write_state("signal.status", "working")
+        write_state("activity", "working")
         # PreToolUse fires when a tool is starting — past any permission gate.
-        # Clear the sticky marker so the badge can flip back to working.
+        # Clear the sticky marker so the tab can flip back to working.
         remove_state("pending-attention")
 
     elif event == "PostToolUse":
-        # HOOK-11: react directly to tack's own session-close skill firing,
-        # rather than relying on tack's skill text to name beacon — tack is a
-        # separate, tool-agnostic project and carries no beacon-specific
-        # knowledge, so this coupling lives entirely on beacon's side. The
-        # check is against the skill name generically, not hardcoded to one
-        # caller, so a future caller can trigger `handoff` the same way. This
-        # is the agent-invoked half; UserPromptSubmit covers the typed form.
-        if _skill_invocation(payload) in HANDOFF_SKILLS:
-            _apply_status("handoff", HANDOFF_DESCRIPTION)
-        else:
-            # Re-assert working between tool calls — a tool just returned and
-            # the agent is back to thinking, even if no further matching
-            # PreToolUse fires before the next Notification or Stop.
-            # Deliberately does NOT clear pending-attention: a late
-            # PostToolUse arriving after a fresh Notification must not undo
-            # the sticky waiting marker.
-            write_state("signal.status", "working")
+        # Re-assert working between tool calls — a tool just returned and the
+        # agent is back to thinking, even if no further matching PreToolUse fires
+        # before the next Notification or Stop. Deliberately does NOT clear
+        # pending-attention: a late PostToolUse arriving after a fresh
+        # Notification must not undo the sticky waiting marker.
+        write_state("activity", "working")
 
     render()
 
@@ -5198,46 +5226,39 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser(
         "status",
-        help="set status override with optional description",
+        help=f"enter a mode ({'|'.join(MODES)}) with an optional note, "
+             f"or `{DEV_MODE}` to leave one",
     )
-    sp.add_argument("value", choices=sorted(VALID_STATUSES))
-    sp.add_argument("description", nargs="*")
+    sp.add_argument("mode", choices=[DEV_MODE, *MODES])
+    sp.add_argument("note", nargs="*")
 
     sp = sub.add_parser("project", help="set project override")
     sp.add_argument("value", nargs="+")
 
-    sp = sub.add_parser("icon",
-                        help="set the session's icon override (local path or http(s) URL); no value clears it")
-    sp.add_argument("value", nargs="*")
-
     sp = sub.add_parser("clear", help="clear overrides")
     sp.add_argument("field", nargs="?", choices=list(VALID_FIELDS))
 
-    sp = sub.add_parser("pause", help="set status=paused with optional description")
+    sp = sub.add_parser("pause", help="enter pause mode with an optional note")
     sp.add_argument("note", nargs="*")
     sp.add_argument("--clear-screen", action="store_true",
                     help="also clear the iTerm2 session's screen + scrollback for a clean stand-down")
 
     sub.add_parser("statusline",
-                   help="(internal) Claude Code status-line provider: prints the pause reason")
+                   help="(internal) Claude Code status-line provider: the mode note + deliverable links")
 
     sp = sub.add_parser("release",
-                        help="set status=release (ship-it flow in progress) with optional description")
+                        help="enter release mode (ship-it flow in progress) with an optional note")
     sp.add_argument("note", nargs="*")
 
     sp = sub.add_parser("retro",
-                        help="set status=retro (post-work follow-up/retro) with optional description")
+                        help="enter retro mode (post-work follow-up) with an optional note")
     sp.add_argument("note", nargs="*")
 
     sp = sub.add_parser("done",
-                        help="set status=done (session complete, ready to hand off) with optional description")
+                        help="enter done mode (session complete, ready to hand off) with an optional note")
     sp.add_argument("note", nargs="*")
 
-    sp = sub.add_parser("handoff",
-                        help="set status=handoff (mid-transition to another tool/skill/session) with optional description")
-    sp.add_argument("note", nargs="*")
-
-    sub.add_parser("resume", help="clear all overrides (full reset to provider chain)")
+    sub.add_parser("resume", help="drop the overrides and leave any mode")
     sub.add_parser("reset", help="clear all session state")
     sub.add_parser("render", help="re-render current state")
 
@@ -5349,10 +5370,9 @@ def main(argv=None):
 
     handlers = {
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
-        "status": cmd_status, "project": cmd_project, "icon": cmd_icon,
+        "status": cmd_status, "project": cmd_project,
         "clear": cmd_clear,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
-        "handoff": cmd_handoff,
         "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,

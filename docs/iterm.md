@@ -104,7 +104,7 @@ The tab carries the session's identity and its state, the status bar runs along 
     </div>
   </div>
   <ol class="pf-legend">
-    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
+    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the <em>activity</em> traffic-light and led by the <em>mode</em>'s glyph when one is declared. Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
@@ -114,13 +114,15 @@ The tab carries the session's identity and its state, the status bar runs along 
 
 ## The tab: a traffic light
 
-The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`, `handoff`). See [The beacon palette](/palette) for the whole set.
+The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set.
 
 <div class="panefig pf-states">
   <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
   <div class="pf-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
   <div class="pf-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
-  <div class="pf-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
+  <div class="pf-chip"><div class="b ready">⏸ checkout-api</div><div class="cap">paused — the glyph is the mode, the color is still the activity</div></div>
+  <div class="pf-chip"><div class="b busy">🚀 checkout-api<span class="task">v2.5.0</span></div><div class="cap">releasing, and working</div></div>
+  <div class="pf-chip"><div class="b blocked">🚀 checkout-api<span class="task">v2.5.0</span></div><div class="cap">releasing, and blocked on you</div></div>
 </div>
 
 That signal comes into its own with **tabs down the left side**. A left strip turns a fleet of sessions into a scannable column — one row per session, each carrying its state color — so you read the whole fleet at a glance without a single window focused. This is the layout beacon is tuned for, and why the [recommended layout](#recommended-layout) below sets the tabs wider and taller: the default strip is too cramped for the color to register.
@@ -136,7 +138,7 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
   <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
 </div>
 
-Line 1 is the project name; line 2 is the task, and it collapses when no task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done`, `beacon handoff` (or any `beacon status …`). A pause note isn't painted on the tab — it surfaces in the [fleet dashboard](/demo) as recall context and in the [status line](#the-status-line), and the next prompt clears it.
+Line 1 is the project name; line 2 is the task, and it collapses when no task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note isn't painted on the tab — it surfaces in the [fleet dashboard](/demo) as recall context and in the [status line](#the-status-line), and the next prompt clears it.
 
 ### Turning the badge on
 

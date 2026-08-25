@@ -1,5 +1,5 @@
 ---
-description: Park this session's beacon — set status to paused, with an optional note
+description: Park this session's beacon — enter pause mode, with an optional note
 argument-hint: "[note]"
 disable-model-invocation: true
 ---
@@ -22,6 +22,6 @@ model turn. -->
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" pause ${ARGUMENTS}
 ```
 
-The CLI repaints the pane as it runs — muted-purple tab over the pause profile, a `⏸` on the tab and window title, the note in the Claude Code status line — so the user sees the change immediately; your one-line reply just confirms it.
+The CLI repaints the pane as it runs — a `⏸` on the tab and window title, the pause profile's muted-purple background, the note in the Claude Code status line — so the user sees the change immediately; your one-line reply just confirms it. The tab *color* is unchanged: it reports what the hooks observe, not what the session declares, so parking a session doesn't hide whether it needs the user.
 
-Pause is the one mode that auto-clears: the next prompt resumes the session. The other modes, and `resume`, are CLI subcommands — `beacon release`, `beacon retro`, `beacon done`, `beacon resume`.
+Pause is the one mode that auto-clears on the next prompt. The rest, and `resume`, are CLI subcommands — `beacon release`, `beacon retro`, `beacon done`, `beacon resume`.

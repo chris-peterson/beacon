@@ -46,7 +46,7 @@ suite:
       hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
-      pause: Park this session's beacon — set status to paused, with an optional note
+      pause: Park this session's beacon — enter pause mode, with an optional note
   # <<< shipyard:describe <<<
 
 docs:

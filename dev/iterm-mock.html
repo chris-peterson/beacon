@@ -167,7 +167,7 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
     </div>
   </div>
   <ol class="pf-legend">
-    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the status traffic-light color. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
+    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the <em>activity</em> traffic-light and led by the <em>mode</em>'s glyph when one is declared. Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
     <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
     <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
@@ -175,12 +175,14 @@ h2 { font-weight: 600; margin: 2.5rem 0 1rem; }
   </ol>
 </div>
 
-<h2>Tab: the traffic light</h2>
+<h2>Tab: color is the activity, glyph is the mode</h2>
 <div class="panefig pf-states">
   <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
   <div class="pf-chip"><div class="b busy">checkout-api<span class="task">refunds</span></div><div class="cap">Claude is working</div></div>
   <div class="pf-chip"><div class="b blocked">checkout-api<span class="task">refunds</span></div><div class="cap">waiting for you</div></div>
-  <div class="pf-chip"><div class="b paused">checkout-api</div><div class="cap">paused</div></div>
+  <div class="pf-chip"><div class="b ready">⏸ checkout-api</div><div class="cap">paused — the glyph is the mode, the color is still the activity</div></div>
+  <div class="pf-chip"><div class="b busy">🚀 checkout-api<span class="task">v2.5.0</span></div><div class="cap">releasing, and working</div></div>
+  <div class="pf-chip"><div class="b blocked">🚀 checkout-api<span class="task">v2.5.0</span></div><div class="cap">releasing, and blocked on you</div></div>
 </div>
 
 <h2>Status bar: what the project chip tells you</h2>

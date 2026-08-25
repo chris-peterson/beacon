@@ -259,21 +259,21 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
     non-paused renders repaint color only when the logical state changes."""
 
     def test_first_render_switches_base_profile_and_sets_ready_color(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
 
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
                       "First render must switch into the base beacon-dev profile")
-        ready = self.beacon.BADGE_COLOR_PALETTE["ready"]
+        ready = self.beacon.COLOR_PALETTE["ready"]
         self.assertIn(("badge-color", ready), self.cli_calls)
         self.assertIn(("tab-color", ready), self.cli_calls)
 
     def test_status_transition_emits_color_not_profile(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
 
-        busy = self.beacon.BADGE_COLOR_PALETTE["busy"]
+        busy = self.beacon.COLOR_PALETTE["busy"]
         self.assertIn(("badge-color", busy), self.cli_calls)
         self.assertIn(("tab-color", busy), self.cli_calls)
         self.assertEqual(
@@ -282,10 +282,10 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
         )
 
     def test_unchanged_state_emits_no_color(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
 
         self.assertEqual(
             [c for c in self.cli_calls
@@ -312,7 +312,7 @@ class WindowTitleSetName(BeaconTest):
 
     def test_first_render_sets_name_to_badge_template(self):
         self._set_iterm_id("w0t0p0:ABC-123")
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.assertIn(
             ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
@@ -321,9 +321,9 @@ class WindowTitleSetName(BeaconTest):
 
     def test_mode_swap_resets_name(self):
         self._set_iterm_id("w0t0p0:ABC-123")
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.beacon.apply({**_base_state(), "mode": "pause"})
         self.assertIn(
             ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
@@ -332,9 +332,9 @@ class WindowTitleSetName(BeaconTest):
 
     def test_non_swap_render_leaves_name_alone(self):
         self._set_iterm_id("w0t0p0:ABC-123")
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "status": "working"})  # ready→busy, no swap
+        self.beacon.apply({**_base_state(), "activity": "working"})  # ready→busy, no swap
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-name"], [],
             "a non-swap state change must not re-set the name — it persists",
@@ -342,7 +342,7 @@ class WindowTitleSetName(BeaconTest):
 
     def test_non_iterm_session_gets_no_title(self):
         self._set_iterm_id("claude-session:xyz")
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-name"], [],
             "a synthesized claude-session id has no addressable surface — no set-name",
@@ -394,11 +394,20 @@ class WindowTitleSetName(BeaconTest):
         self.beacon._wipe_session_for_fresh_start()
         self.assertIsNone(self.beacon.read_state("title_reasserted"))
 
+    def test_post_tool_use_reasserts_working(self):
+        # HOOK-03a: a tool just returned and the agent is back to thinking, so
+        # the activity write stands on its own — nothing else in the event
+        # supplies it.
+        args = mock.Mock(event="PostToolUse")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"tool_name": "Bash"}))):
+            self.beacon.cmd_hook(args)
+        self.assertEqual(self.beacon.read_state("activity"), "working")
+
     def test_tool_hook_does_not_reassert_name(self):
         # PreToolUse/PostToolUse fire many times per turn; re-asserting there
         # would spawn an osascript each time (the NFR-perf reason TITLE-04 cites).
         self._set_iterm_id("w0t0p0:ABC-123")
-        self.beacon.apply({**_base_state(), "status": "working"})  # prime a snapshot
+        self.beacon.apply({**_base_state(), "activity": "working"})  # prime a snapshot
         self.cli_calls.clear()
         args = mock.Mock(event="PostToolUse")
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({}))):
@@ -416,18 +425,21 @@ class PausedSwapsProfile(BeaconTest):
     vars, and badge/tab color. No mode decorates the badge text (BADGE-11)."""
 
     def test_pause_swaps_to_paused_profile_and_reemits(self):
-        self.beacon.apply({**_base_state(), "status": "idle", "task": "wiring"})
+        self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "paused", "task": "wiring"})
+        self.beacon.apply({**_base_state(), "mode": "pause", "task": "wiring"})
 
         self.assertIn(("set-profile", "beacon-pause"), self.cli_calls,
                       "entering paused must swap into the beacon-pause profile")
         self.assertIn(("badge-format", self.beacon.BADGE_FORMAT), self.cli_calls,
                       "a swap must re-emit the badge format (SetProfile wipes it)")
-        paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
-        self.assertIn(("badge-color", paused_hex), self.cli_calls)
-        self.assertIn(("tab-color", paused_hex), self.cli_calls)
+        # The tab color answers to activity, not the mode: this session is idle, so
+        # it stays the calm gray. The mode reaches the tab as its glyph instead.
+        ready = self.beacon.COLOR_PALETTE["ready"]
+        self.assertIn(("tab-color", ready), self.cli_calls)
+        self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls,
+                      "pause must mark line 1 of the tab / OS window title")
         # The user vars are re-emitted because the swap wiped them; the badge text
         # is the raw project (no glyph, BADGE-11), the (unchanged) task restored.
         self.assertEqual(
@@ -440,22 +452,22 @@ class PausedSwapsProfile(BeaconTest):
         )
 
     def test_resume_swaps_back_to_base(self):
-        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.beacon.apply({**_base_state(), "mode": "pause"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
 
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
                       "leaving paused must swap back to the base beacon-dev profile")
-        ready = self.beacon.BADGE_COLOR_PALETTE["ready"]
+        ready = self.beacon.COLOR_PALETTE["ready"]
         self.assertIn(("badge-color", ready), self.cli_calls)
 
     def test_non_mode_transitions_never_swap(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "working"})
-        self.beacon.apply({**_base_state(), "status": "waiting"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
+        self.beacon.apply({**_base_state(), "activity": "waiting"})
 
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-profile"], [],
@@ -463,62 +475,64 @@ class PausedSwapsProfile(BeaconTest):
         )
 
     def test_snapshot_records_active_profile(self):
-        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.beacon.apply({**_base_state(), "mode": "pause"})
         snap = self.beacon.read_state_json("resolved", {})
         self.assertEqual(snap.get("profile"), "beacon-pause")
         self.assertEqual(snap.get("project"), "acme/widget",
                          "snapshot keeps the raw project")
 
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         snap = self.beacon.read_state_json("resolved", {})
         self.assertEqual(snap.get("profile"), "beacon-dev")
 
 
 class RetroMode(BeaconTest):
-    """RENDER-05 / STATE-08: retro is a mode state with its own profile
-    (beacon-retro, muted green + white badge), set via `retro`. Unlike paused it
-    freezes no identity and persists across a prompt; no mode carries a glyph."""
+    """RENDER-05 / STATE-08: retro is a mode with its own profile (beacon-retro,
+    muted green + ticked clipboard), set via `retro`. It persists across a prompt
+    and marks the tab with 📋; no mode decorates the badge text (BADGE-11)."""
 
-    def test_retro_swaps_to_retro_profile_and_color(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+    def test_retro_swaps_profile_and_marks_the_tab(self):
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "retro"})
+        self.beacon.apply({**_base_state(), "mode": "retro"})
 
         self.assertIn(("set-profile", "beacon-retro"), self.cli_calls,
                       "entering retro must swap into the beacon-retro profile")
-        retro_hex = self.beacon.BADGE_COLOR_PALETTE["retro"]
-        self.assertIn(("badge-color", retro_hex), self.cli_calls)
-        self.assertIn(("tab-color", retro_hex), self.cli_calls)
+        self.assertIn(("uservar", "beacon_title_prefix", "📋 "), self.cli_calls,
+                      "the mode's only cross-tab surface is its glyph")
+        self.assertIn(("tab-color", self.beacon.COLOR_PALETTE["ready"]), self.cli_calls,
+                      "the tab color reports activity, so an idle retro stays calm")
 
-    def test_retro_badge_has_no_glyph(self):
-        self.beacon.apply({**_base_state(), "status": "retro"})
+    def test_retro_badge_text_has_no_glyph(self):
+        self.beacon.apply({**_base_state(), "mode": "retro"})
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"),
             [("uservar", "beacon_project", "acme/widget")],
-            "retro carries its cue in the profile/color, not a badge glyph",
+            "the glyph rides the title prefix, never the badge text (BADGE-11)",
         )
 
-    def test_retro_command_sets_status_without_freezing_identity(self):
-        # Unlike pause (STATE-03), retro does not snapshot project/task overrides.
+    def test_retro_command_sets_mode_and_note_only(self):
+        # A mode writes the mode. It used to also freeze project/task into
+        # overrides, which auto-resume then kept forever.
         self.beacon.write_state("resolved", json.dumps({
             "project": "shown-proj", "project_provider": "git-remote",
             "task": "shown-task", "task_provider": "pr",
         }))
         self.beacon.cmd_retro(mock.Mock(note=["lessons", "learned"]))
-        self.assertEqual(self.beacon.read_state("override.status"), "retro")
-        self.assertEqual(self.beacon.read_state("description"), "lessons learned")
+        self.assertEqual(self.beacon.read_mode(), ("retro", "lessons learned"))
         self.assertIsNone(self.beacon.read_state("override.project"),
-                          "retro must not freeze the badge identity (paused-only)")
+                          "entering a mode must not pin the identity")
         self.assertIsNone(self.beacon.read_state("override.task"))
 
     def test_retro_persists_across_prompt(self):
-        # STATE-04 auto-resume is paused-only; a returning prompt must not clear retro.
-        self.beacon.write_state("override.status", "retro")
+        # Auto-resume covers pause only; a returning prompt must not clear
+        # retro.
+        self.beacon.write_mode("retro")
         args = mock.Mock(event="UserPromptSubmit")
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "next step"}))):
             self.beacon.cmd_hook(args)
-        self.assertEqual(self.beacon.read_state("override.status"), "retro",
+        self.assertEqual(self.beacon.read_mode()[0], "retro",
                          "retro is a deliberate mode — it persists until cleared")
 
 
@@ -530,19 +544,20 @@ class DoneMode(BeaconTest):
     additionally suppresses the task slot (STATE-12)."""
 
     def test_done_swaps_to_done_profile_and_color(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "done"})
+        self.beacon.apply({**_base_state(), "mode": "done"})
 
         self.assertIn(("set-profile", "beacon-done"), self.cli_calls,
                       "entering done must swap into the beacon-done profile")
-        done_hex = self.beacon.BADGE_COLOR_PALETTE["done"]
-        self.assertIn(("badge-color", done_hex), self.cli_calls)
-        self.assertIn(("tab-color", done_hex), self.cli_calls)
+        self.assertIn(("uservar", "beacon_title_prefix", "🏁 "), self.cli_calls,
+                      "the mode's only cross-tab surface is its glyph")
+        self.assertIn(("tab-color", self.beacon.COLOR_PALETTE["ready"]), self.cli_calls,
+                      "the tab color reports activity, so an idle done stays calm")
 
     def test_done_badge_has_no_glyph(self):
-        self.beacon.apply({**_base_state(), "status": "done"})
+        self.beacon.apply({**_base_state(), "mode": "done"})
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"),
             [("uservar", "beacon_project", "acme/widget")],
@@ -552,7 +567,7 @@ class DoneMode(BeaconTest):
     def test_done_suppresses_task_keeps_project(self):
         # STATE-12: a done session shows its project alone — the task slot is
         # blanked at resolve time (even with a task override set), project kept.
-        self.beacon.write_state("override.status", "done")
+        self.beacon.write_mode("done")
         self.beacon.write_state("override.project", "acme/widget")
         self.beacon.write_state("override.task", "shipping v2")
         r = self.beacon.resolve()
@@ -567,21 +582,141 @@ class DoneMode(BeaconTest):
             "task": "shown-task", "task_provider": "pr",
         }))
         self.beacon.cmd_done(mock.Mock(note=["handing", "off"]))
-        self.assertEqual(self.beacon.read_state("override.status"), "done")
-        self.assertEqual(self.beacon.read_state("description"), "handing off")
+        self.assertEqual(self.beacon.read_mode()[0], "done")
+        self.assertEqual(self.beacon.read_mode()[1], "handing off")
         self.assertIsNone(self.beacon.read_state("override.project"),
-                          "done must not freeze the badge identity (paused-only)")
+                          "entering a mode must not pin the identity")
         self.assertIsNone(self.beacon.read_state("override.task"))
 
     def test_done_persists_across_prompt(self):
         # STATE-04 auto-resume is paused-only; a returning prompt must not clear
         # done (a handed-off session stays complete until explicitly resumed).
-        self.beacon.write_state("override.status", "done")
+        self.beacon.write_mode("done")
         args = mock.Mock(event="UserPromptSubmit")
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "one more thing"}))):
             self.beacon.cmd_hook(args)
-        self.assertEqual(self.beacon.read_state("override.status"), "done",
+        self.assertEqual(self.beacon.read_mode()[0], "done",
                          "done is a deliberate terminal mode — it persists until cleared")
+
+
+class AxesAreIndependent(BeaconTest):
+    """The point of the split: a declared mode and observed activity coexist.
+
+    Under the merged field these states were unreachable — `resolve()` walked a
+    provider chain with the override above the hook signal, so a mode always won
+    and the activity was discarded. A session in `release`, `retro`, or `done`
+    therefore could not report that it was blocked on the user, which is the one
+    signal meant to interrupt."""
+
+    def test_release_and_waiting_coexist(self):
+        self.beacon.write_mode("release", "cutting v2.5")
+        self.beacon.write_state("activity", "waiting")
+        state = self.beacon.resolve()
+        self.assertEqual(state["mode"], "release")
+        self.assertEqual(state["activity"], "waiting")
+        self.assertEqual(state["note"], "cutting v2.5")
+
+    def test_interrupt_reaches_the_tab_through_a_mode(self):
+        # The tab color is the interrupt channel, so it has to report `blocked`
+        # even while the pane sits in a mode profile.
+        self.beacon.apply({
+            **_base_state(), "mode": "release", "activity": "waiting",
+        })
+        self.assertIn(("tab-color", self.beacon.COLOR_PALETTE["blocked"]), self.cli_calls,
+                      "a moded session blocked on the user must still read as blocked")
+        self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
+                      "and must keep the mode's pane background")
+        self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
+                      "and its glyph, so the tab says both things at once")
+
+    def test_activity_never_displaces_the_mode_surfaces(self):
+        # Whatever the activity, the pane stays in the mode's profile and the tab
+        # keeps its glyph — only the color moves. Asserted on the snapshot rather
+        # than the emitted calls, because a profile is only *swapped* when it
+        # changes (RENDER-05), so the second pass through here emits nothing.
+        for activity, hex_color in (("idle", "ready"), ("working", "busy"),
+                                    ("waiting", "blocked")):
+            with self.subTest(activity=activity):
+                self.beacon.apply({
+                    **_base_state(), "mode": "pause", "activity": activity,
+                })
+                snap = self.beacon.read_state_json("resolved", {})
+                self.assertEqual(snap["profile"], "beacon-pause")
+                self.assertEqual(snap["mode_glyph"], "⏸ ")
+                self.assertEqual(snap["color_state"], hex_color)
+
+    def test_activity_survives_entering_a_mode(self):
+        # The merged field overwrote it; separate files cannot.
+        self.beacon.write_state("activity", "waiting")
+        self.beacon.write_mode("release", "")
+        self.assertEqual(self.beacon.read_activity(), "waiting",
+                         "entering a mode must not discard what the hooks observed")
+
+    def test_hook_activity_writes_through_a_mode(self):
+        # The Stop hook reports a calm turn regardless of mode; the mode stays.
+        self.beacon.write_mode("retro", "writing it up")
+        args = mock.Mock(event="Stop")
+        with mock.patch.object(sys, "stdin", io.StringIO("{}")):
+            self.beacon.cmd_hook(args)
+        self.assertEqual(self.beacon.read_activity(), "idle")
+        self.assertEqual(self.beacon.read_mode(), ("retro", "writing it up"))
+
+
+class ModeIsATuple(BeaconTest):
+    """A mode and its note are one value with one writer, so they live in one
+    file: only entering a mode sets either, and leaving one drops both."""
+
+    def test_leaving_a_mode_drops_its_note(self):
+        self.beacon.write_mode("pause", "waiting for VPN")
+        self.beacon.write_mode(self.beacon.DEV_MODE)
+        self.assertEqual(self.beacon.read_mode(), ("dev", ""))
+
+    def test_dev_mode_stores_no_file(self):
+        # "No mode" has exactly one representation on disk — an absent file —
+        # rather than a sentinel a reader has to know about.
+        self.beacon.write_mode("done", "finished")
+        self.assertIsNotNone(self.beacon.read_state("mode"))
+        self.beacon.write_mode(self.beacon.DEV_MODE)
+        self.assertIsNone(self.beacon.read_state("mode"))
+
+    def test_unknown_mode_name_reads_as_dev(self):
+        # Live state still holds `wrapping`, retired in the pre-SDLC rename.
+        self.beacon.write_state("mode", json.dumps({"name": "wrapping", "note": "x"}))
+        self.assertEqual(self.beacon.read_mode(), ("dev", ""))
+
+    def test_corrupt_mode_file_reads_as_dev(self):
+        for raw in ("{not json", '"a string"', "[]", "null"):
+            with self.subTest(raw=raw):
+                self.beacon.write_state("mode", raw)
+                self.assertEqual(self.beacon.read_mode(), ("dev", ""))
+
+
+class ActivityHasNoOverrideTier(BeaconTest):
+    """`beacon status` sets modes only. An activity pinned above the hooks goes
+    stale the moment the session moves on, and every instance found in live state
+    was contradicting the hooks it outranked — tabs painted `working` for months
+    while the session was in fact blocked on the user."""
+
+    def test_status_rejects_an_activity_value(self):
+        parser = self.beacon._build_parser()
+        with mock.patch.object(sys, "stderr", io.StringIO()):
+            with self.assertRaises(SystemExit):
+                parser.parse_args(["status", "working"])
+
+    def test_status_accepts_every_mode_and_dev(self):
+        parser = self.beacon._build_parser()
+        for name in (self.beacon.DEV_MODE, *self.beacon.MODES):
+            with self.subTest(name=name):
+                self.assertEqual(parser.parse_args(["status", name]).mode, name)
+
+    def test_status_dev_leaves_the_mode(self):
+        self.beacon.write_mode("release", "v2.5")
+        self.beacon.cmd_status(mock.Mock(mode=self.beacon.DEV_MODE, note=[]))
+        self.assertEqual(self.beacon.read_mode(), ("dev", ""))
+
+    def test_set_takes_no_state_field(self):
+        self.assertEqual(self.beacon.VALID_FIELDS, ("project", "task"),
+                         "overrides remain only where a provider chain sits below them")
 
 
 class ReleaseMode(BeaconTest):
@@ -591,19 +726,20 @@ class ReleaseMode(BeaconTest):
     carries no badge glyph — its cue is the profile background and green badge."""
 
     def test_release_swaps_to_release_profile_and_color(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "status": "release"})
+        self.beacon.apply({**_base_state(), "mode": "release"})
 
         self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
                       "entering release must swap into the beacon-release profile")
-        release_hex = self.beacon.BADGE_COLOR_PALETTE["release"]
-        self.assertIn(("badge-color", release_hex), self.cli_calls)
-        self.assertIn(("tab-color", release_hex), self.cli_calls)
+        self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
+                      "the mode's only cross-tab surface is its glyph")
+        self.assertIn(("tab-color", self.beacon.COLOR_PALETTE["ready"]), self.cli_calls,
+                      "the tab color reports activity, so an idle release stays calm")
 
     def test_release_badge_has_no_glyph(self):
-        self.beacon.apply({**_base_state(), "status": "release"})
+        self.beacon.apply({**_base_state(), "mode": "release"})
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"),
             [("uservar", "beacon_project", "acme/widget")],
@@ -617,112 +753,21 @@ class ReleaseMode(BeaconTest):
             "task": "shown-task", "task_provider": "pr",
         }))
         self.beacon.cmd_release(mock.Mock(note=["v2", "ship"]))
-        self.assertEqual(self.beacon.read_state("override.status"), "release")
-        self.assertEqual(self.beacon.read_state("description"), "v2 ship")
+        self.assertEqual(self.beacon.read_mode()[0], "release")
+        self.assertEqual(self.beacon.read_mode()[1], "v2 ship")
         self.assertIsNone(self.beacon.read_state("override.project"),
-                          "release must not freeze the badge identity (paused-only)")
+                          "entering a mode must not pin the identity")
         self.assertIsNone(self.beacon.read_state("override.task"))
 
     def test_release_persists_across_prompt(self):
         # STATE-04 auto-resume is paused-only; a returning prompt must not clear
         # release (a shipping session stays in flight until explicitly resumed).
-        self.beacon.write_state("override.status", "release")
+        self.beacon.write_mode("release")
         args = mock.Mock(event="UserPromptSubmit")
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "one more thing"}))):
             self.beacon.cmd_hook(args)
-        self.assertEqual(self.beacon.read_state("override.status"), "release",
+        self.assertEqual(self.beacon.read_mode()[0], "release",
                          "release is a deliberate mode — it persists until cleared")
-
-
-class HandoffMode(BeaconTest):
-    """RENDER-05 / STATE-14: handoff is a mode state with its own profile
-    (beacon-handoff, deep violet, no watermark), set via `handoff`. It borrows
-    exactly one trait from paused — auto-resume on the next prompt (STATE-04,
-    AUTO_RESUME_STATUSES) — and none of its other semantics: like retro/release/
-    done it freezes no identity and carries no badge glyph."""
-
-    def test_handoff_swaps_to_handoff_profile_and_color(self):
-        self.beacon.apply({**_base_state(), "status": "idle"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "status": "handoff"})
-
-        self.assertIn(("set-profile", "beacon-handoff"), self.cli_calls,
-                      "entering handoff must swap into the beacon-handoff profile")
-        handoff_hex = self.beacon.BADGE_COLOR_PALETTE["handoff"]
-        self.assertIn(("badge-color", handoff_hex), self.cli_calls)
-        self.assertIn(("tab-color", handoff_hex), self.cli_calls)
-
-    def test_handoff_badge_has_no_glyph(self):
-        self.beacon.apply({**_base_state(), "status": "handoff"})
-        self.assertEqual(
-            _uservar_emits(self.cli_calls, "beacon_project"),
-            [("uservar", "beacon_project", "acme/widget")],
-            "handoff carries its cue in the profile/background, not a badge glyph",
-        )
-
-    def test_handoff_command_sets_status_without_freezing_identity(self):
-        # Like retro/release/done (and unlike pause/STATE-03), handoff does not
-        # snapshot overrides — it does not freeze the badge identity.
-        self.beacon.write_state("resolved", json.dumps({
-            "project": "shown-proj", "project_provider": "git-remote",
-            "task": "shown-task", "task_provider": "pr",
-        }))
-        self.beacon.cmd_handoff(mock.Mock(note=["closing", "out"]))
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-        self.assertEqual(self.beacon.read_state("description"), "closing out")
-        self.assertIsNone(self.beacon.read_state("override.project"),
-                          "handoff must not freeze the badge identity (paused-only)")
-        self.assertIsNone(self.beacon.read_state("override.task"))
-
-    def test_handoff_auto_resumes_on_next_prompt(self):
-        # Unlike retro/release/done, handoff borrows exactly paused's auto-resume
-        # trait (STATE-04, generalized via AUTO_RESUME_STATUSES).
-        self.beacon.write_state("override.status", "handoff")
-        self.beacon.write_state("description", "closing out via tack:end")
-        args = mock.Mock(event="UserPromptSubmit")
-        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "next step"}))):
-            self.beacon.cmd_hook(args)
-        self.assertIsNone(self.beacon.read_state("override.status"),
-                          "handoff auto-resumes on the next prompt, like paused")
-        self.assertIsNone(self.beacon.read_state("description"))
-
-
-class HandoffHookTrigger(BeaconTest):
-    """HOOK-11: PostToolUse enters handoff mode when it observes a Skill tool
-    call naming tack's session-close skill (tack:end or its bare end form), in
-    place of the generic working-status write for that event, and stays silent
-    (falls through to the ordinary re-assert) for any other tool or skill."""
-
-    def _post_tool_use(self, payload):
-        args = mock.Mock(event="PostToolUse")
-        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
-            self.beacon.cmd_hook(args)
-
-    def test_tack_end_triggers_handoff(self):
-        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "tack:end"}})
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-        self.assertEqual(self.beacon.read_state("description"), "closing out via tack:end")
-
-    def test_bare_end_skill_triggers_handoff(self):
-        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "end"}})
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-
-    def test_other_skill_does_not_trigger_handoff(self):
-        self._post_tool_use({"tool_name": "Skill", "tool_input": {"skill": "tack:start"}})
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
-
-    def test_non_skill_tool_does_not_trigger_handoff(self):
-        self._post_tool_use({"tool_name": "Bash", "tool_input": {"command": "ls"}})
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
-
-    def test_missing_tool_input_does_not_crash(self):
-        # A PostToolUse payload with no tool_input at all must not raise.
-        self._post_tool_use({"tool_name": "Skill"})
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
 
 
 class DataDirResolution(BeaconTest):
@@ -827,77 +872,11 @@ class DataDirResolution(BeaconTest):
             f"pointer escaped the test config dir: {self.beacon._data_dir_pointer()}")
 
 
-class SkillInvocationResolver(BeaconTest):
-    """HOOK-11: `_skill_invocation` is the one place a skill-triggered reaction
-    resolves which skill fired, so a reaction can't see one shape and miss the
-    other. It normalizes both to the plain skill name."""
-
-    def test_resolves_agent_invoked_skill_tool_call(self):
-        self.assertEqual(
-            self.beacon._skill_invocation({"tool_name": "Skill", "tool_input": {"skill": "tack:end"}}),
-            "tack:end")
-
-    def test_resolves_typed_slash_command_to_the_same_name(self):
-        self.assertEqual(self.beacon._skill_invocation({"prompt": "/tack:end"}), "tack:end")
-        self.assertEqual(self.beacon._skill_invocation({"prompt": "/Tack:End now"}), "tack:end")
-
-    def test_returns_none_for_a_payload_with_no_skill(self):
-        self.assertIsNone(self.beacon._skill_invocation({"prompt": "keep going"}))
-        self.assertIsNone(self.beacon._skill_invocation({"tool_name": "Bash", "tool_input": {"command": "ls"}}))
-        self.assertIsNone(self.beacon._skill_invocation({}))
-
-
-class HandoffSlashCommandTrigger(BeaconTest):
-    """HOOK-11: a user-typed `/tack:end` is expanded into the prompt itself and
-    fires no `Skill` tool call, so UserPromptSubmit's raw slash-command text is
-    the only signal beacon ever sees for that half of the trigger."""
-
-    def _user_prompt(self, prompt):
-        args = mock.Mock(event="UserPromptSubmit")
-        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt}))):
-            self.beacon.cmd_hook(args)
-
-    def test_tack_end_slash_command_triggers_handoff(self):
-        self._user_prompt("/tack:end")
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-        self.assertEqual(self.beacon.read_state("description"), "closing out via tack:end")
-
-    def test_bare_end_slash_command_triggers_handoff(self):
-        self._user_prompt("/end")
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-
-    def test_trailing_argument_still_triggers_handoff(self):
-        self._user_prompt("/tack:end wrap it up")
-        self.assertEqual(self.beacon.read_state("override.status"), "handoff")
-
-    def test_sibling_tack_command_does_not_trigger_handoff(self):
-        self._user_prompt("/tack:start #42")
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
-
-    def test_ordinary_prompt_does_not_trigger_handoff(self):
-        self._user_prompt("keep going")
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
-
-    def test_word_prefixed_command_does_not_trigger_handoff(self):
-        self._user_prompt("/endpoints please")
-        self.assertIsNone(self.beacon.read_state("override.status"))
-
-    def test_handoff_auto_resumes_on_the_prompt_after_the_close(self):
-        # The close itself enters handoff; STATE-04 auto-resume applies to the
-        # *next* prompt, not the one that triggered it.
-        self._user_prompt("/tack:end")
-        self._user_prompt("one more thing")
-        self.assertIsNone(self.beacon.read_state("override.status"))
-        self.assertIsNone(self.beacon.read_state("description"))
-
-
 class ModeProfileDerivation(unittest.TestCase):
-    """RENDER-05 / §6.6: install derives one mode profile per MODE_PROFILES entry
+    """RENDER-05 / §6.6: install derives one mode profile per MODE_SPECS entry
     from the rendered base — same layout, a de-emphasized Dracula background (and,
     for paused, a faint background image) — so they never drift. THEME-01: hexes
-    are single-sourced in MODE_PROFILES."""
+    are single-sourced in MODE_SPECS."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -929,13 +908,13 @@ class ModeProfileDerivation(unittest.TestCase):
                          "forcing it off points a stock profile at its white "
                          "light-mode background")
         # Whichever set that switch selects, the ready-gray default has to be there.
-        ready = self.beacon.BADGE_COLOR_PALETTE["ready"]
+        ready = self.beacon.COLOR_PALETTE["ready"]
         for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
             self.assertAlmostEqual(base[key]["Red Component"],
                                    int(ready[0:2], 16) / 255.0, msg=key)
 
         seen_guids = {base["Guid"]}
-        for mode, spec in self.beacon.MODE_PROFILES.items():
+        for mode, spec in self.beacon.MODE_SPECS.items():
             prof = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
             self.assertEqual(prof["Name"], spec["profile"])
             self.assertEqual(prof["Guid"], spec["guid"])
@@ -972,7 +951,7 @@ class ModeProfileDerivation(unittest.TestCase):
         # The two scopes beacon does not claim stay the parent's to answer.
         for unclaimed in ("AWDS Tab Option", "AWDS Window Option", "Working Directory"):
             self.assertNotIn(unclaimed, base)
-        for spec in self.beacon.MODE_PROFILES.values():
+        for spec in self.beacon.MODE_SPECS.values():
             mode = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
             self.assertEqual(mode["AWDS Pane Option"], "Recycle",
                              f"{spec['profile']} must not change where a split opens")
@@ -1004,31 +983,43 @@ class ModeProfileDerivation(unittest.TestCase):
                       + self.beacon.STATUSBAR_TITLE_PADDING)
             self.assertLessEqual(needed, 90, f"{name}: {label!r}")
 
-    def test_mode_images_match_their_cue(self):
-        # Every mode carries a slate watermark now (paused ||-button, release
-        # rocket, retro checklist clipboard, done checkered flag), all derived from
-        # their <phase>-src.png through iterm/make-bg.py; each with a blend.
-        for mode in ("paused", "release", "retro", "done"):
-            self.assertTrue(self.beacon.MODE_PROFILES[mode]["image"],
-                            f"{mode} should carry a watermark image")
-            self.assertIsNotNone(self.beacon.MODE_PROFILES[mode]["blend"])
+    def test_dev_is_never_a_mode(self):
+        # `dev` is the absence of a mode — the empty mode file — so it must not
+        # appear in the table that drives glyphs, profiles, and the CLI choices.
+        self.assertNotIn(self.beacon.DEV_MODE, self.beacon.MODE_SPECS)
+        self.assertEqual(set(self.beacon.MODES), set(self.beacon.MODE_SPECS))
 
-    def test_handoff_carries_no_watermark_image(self):
-        # RENDER-05 / STATE-14: handoff is meant to read as brief, so it has no
-        # dedicated watermark asset — background + badge color are its only cue.
-        spec = self.beacon.MODE_PROFILES["handoff"]
-        self.assertIsNone(spec["image"])
-        self.assertIsNone(spec["blend"])
+    def test_activity_tables_agree(self):
+        self.assertEqual(set(self.beacon.ACTIVITIES),
+                         set(self.beacon.ACTIVITY_TO_COLOR_STATE))
+        self.assertEqual(set(self.beacon.ACTIVITY_TO_COLOR_STATE.values()),
+                         set(self.beacon.COLOR_PALETTE),
+                         "every color state an activity maps to needs a hex")
+        self.assertIn(self.beacon.DEFAULT_ACTIVITY, self.beacon.ACTIVITIES)
+
+    def test_every_mode_carries_a_watermark(self):
+        # Every mode carries a slate watermark and a blend — pause's ||-button,
+        # release's rocket, retro's ticked clipboard, done's checkered flag — all
+        # through iterm/make-bg.py. No mode is exempt: the background is one of
+        # only two surfaces a mode has, so a mode without a mark is a mode that
+        # reads as a bare tint.
+        for mode in self.beacon.MODES:
+            spec = self.beacon.MODE_SPECS[mode]
+            self.assertTrue(spec["image"], f"{mode} should carry a watermark image")
+            self.assertIsNotNone(spec["blend"], f"{mode} should carry a blend")
+
+    def test_every_mode_carries_a_glyph(self):
+        # The glyph is the mode's *only* cross-tab surface, so a mode without one
+        # is invisible from any tab the user isn't looking at.
+        for mode, spec in self.beacon.MODE_SPECS.items():
+            self.assertTrue(spec["glyph"], f"{mode} should carry a tab glyph")
 
     def test_mode_image_files_exist(self):
         # The watermark assets each mode names must be present on disk: they back
         # both the profile background (install) and the /mode-bg/<state> serve
         # route the dashboard card renders (WIP-17). A rename that misses one
-        # would 404 the card and blank the pane background. A mode with no image
-        # (handoff) has nothing to check here.
-        for mode, spec in self.beacon.MODE_PROFILES.items():
-            if not spec["image"]:
-                continue
+        # would 404 the card and blank the pane background.
+        for mode, spec in self.beacon.MODE_SPECS.items():
             p = self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]
             self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
 
@@ -1112,7 +1103,7 @@ class CustomizableStatusBarButtons(unittest.TestCase):
         with self._buttons(web={"label": "↖ repo"}):
             ok, msg = self.beacon.install_dynamic_profile()
         self.assertTrue(ok, msg)
-        for spec in self.beacon.MODE_PROFILES.values():
+        for spec in self.beacon.MODE_SPECS.values():
             prof = json.loads(
                 (self._profiles_dir() / f"{spec['profile']}.json").read_text())["Profiles"][0]
             titles = [c["configuration"]["knobs"]["action"]["title"]
@@ -1409,9 +1400,9 @@ class PendingAttentionPaintsBlocked(BeaconTest):
 
     def test_pending_attention_emits_blocked_hex(self):
         self.beacon.apply({
-            **_base_state(), "status": "waiting", "pending_attention": True,
+            **_base_state(), "activity": "waiting", "pending_attention": True,
         })
-        red = self.beacon.BADGE_COLOR_PALETTE["blocked"]
+        red = self.beacon.COLOR_PALETTE["blocked"]
         self.assertIn(("badge-color", red), self.cli_calls)
         self.assertIn(("tab-color", red), self.cli_calls)
         self.assertEqual(
@@ -1421,91 +1412,86 @@ class PendingAttentionPaintsBlocked(BeaconTest):
         )
 
 
-class DescriptionIsFleetData(BeaconTest):
-    """STATE-02: a description is persisted and surfaced in the fleet view; the
-    pane paints no reason text of its own (the badge was a bad home for it, so the
-    reason now rides the Claude Code status line, STATUSLINE-01). While paused the
-    title/tab lead with the ⏸ glyph (TITLE-06); the pane still paints only the
-    paused color + profile, never a retired bg-image/note/clear-screen overlay."""
+class ModeNoteIsNotPainted(BeaconTest):
+    """A mode's note reaches the Claude Code status line (STATUSLINE-01), never the
+    pane: line 1 of the tab is shared with the OS window title and has room only
+    for the glyph (TITLE-06). The pane paints the mode's profile and the activity's
+    color, and no retired bg-image/note/clear-screen overlay."""
 
-    def test_paused_leads_title_glyph_and_paints_only_color(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
+    def test_paused_leads_title_glyph_and_paints_no_note(self):
+        self.beacon.apply({**_base_state(), "activity": "working"})
         self.cli_calls.clear()
         self.beacon.apply({
-            **_base_state(), "status": "paused", "description": "leaving for lunch",
+            **_base_state(), "mode": "pause", "note": "leaving for lunch",
         })
-        paused_hex = self.beacon.BADGE_COLOR_PALETTE["paused"]
-        self.assertIn(("tab-color", paused_hex), self.cli_calls)
-        # TITLE-06: the paused glyph leads line 1.
-        self.assertIn(("uservar", "beacon_title_prefix", self.beacon.PAUSED_TITLE_GLYPH), self.cli_calls)
-        # The description paints no reason text on the pane and no retired overlay.
+        # TITLE-06: the mode's glyph leads line 1, and the note does not follow it.
+        self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls)
         for verb in ("bg-image", "note", "clear-screen"):
             self.assertEqual(
                 [c for c in self.cli_calls if c[0] == verb], [],
-                f"a description must not emit {verb} (overlay retired)",
+                f"a note must not emit {verb} (overlay retired)",
             )
 
-    def test_resume_clears_title_glyph(self):
-        self.beacon.apply({**_base_state(), "status": "paused", "description": "brb"})
+    def test_leaving_the_mode_clears_the_title_glyph(self):
+        self.beacon.apply({**_base_state(), "mode": "pause", "note": "brb"})
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
         self.assertIn(("uservar", "beacon_title_prefix", ""), self.cli_calls)
 
-    def test_description_alone_does_not_repaint(self):
-        # Adding a description without a logical-state change is data-only.
-        self.beacon.apply({**_base_state(), "status": "waiting"})
+    def test_note_alone_does_not_repaint(self):
+        # Adding a note without moving either axis is data-only.
+        self.beacon.apply({**_base_state(), "mode": "pause", "note": ""})
         self.cli_calls.clear()
 
         self.beacon.apply({
-            **_base_state(), "status": "waiting",
-            "description": "bg refresh ~30 min",
+            **_base_state(), "mode": "pause", "note": "bg refresh ~30 min",
         })
 
         self.assertEqual(
             [c for c in self.cli_calls if c[0] in ("badge-color", "tab-color")], [],
-            "logical state unchanged → no color repaint; description is data",
+            "neither axis moved → no color repaint; the note is data",
         )
 
 
-class PauseSnapshotIsNetworkFree(BeaconTest):
-    """STATE-03: pause freezes the project/task the badge is currently showing.
-    It reads the last-rendered `resolved` snapshot rather than re-resolving, so
-    the hot pause path never runs the task chain's gh/glab PR-title provider —
-    and an active label override survives the pause instead of being discarded."""
+class PauseWritesOnlyTheMode(BeaconTest):
+    """Entering a mode writes the mode and nothing else.
 
-    def test_pause_freezes_displayed_identity_from_snapshot(self):
-        self.beacon.write_state("resolved", json.dumps({
-            "project": "frozen-proj", "project_provider": "git-remote",
-            "task": "frozen-task", "task_provider": "pr",
-        }))
-        # If pause re-resolved, this would blow up — there's no live PR to fetch
-        # and the providers are pinned to acme/widget, not the frozen values.
-        with mock.patch.object(self.beacon, "resolve",
-                               side_effect=AssertionError("pause must not re-resolve")):
-            self.beacon._apply_status("paused", "")
-        self.assertEqual(self.beacon.read_state("override.project"), "frozen-proj")
-        self.assertEqual(self.beacon.read_state("override.task"), "frozen-task")
-        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+    Pause used to also snapshot the resolved project and task into overrides so
+    the identity held still while parked, and auto-resume then *preserved* them —
+    so one pause pinned a session's identity permanently, above every provider.
+    Live state showed the result: tasks pinned to branches the session had long
+    left, and project labels a version and a half stale. The fleet view reads the
+    last-rendered snapshot for the same stability, and a snapshot cannot outrank a
+    live provider."""
 
-    def test_pause_preserves_active_label_override(self):
-        # The old re-resolve dropped overrides and snapshotted git-derived
-        # values, so a labeled pane silently relabeled on pause. Freezing what
-        # is shown keeps the label.
+    def test_pause_pins_no_identity(self):
         self.beacon.write_state("resolved", json.dumps({
-            "project": "mylabel", "project_provider": "override",
-            "task": "", "task_provider": "default",
+            "project": "shown-proj", "project_provider": "git-remote",
+            "task": "shown-task", "task_provider": "branch",
         }))
-        self.beacon._apply_status("paused", "")
-        self.assertEqual(self.beacon.read_state("override.project"), "mylabel")
-        # An empty/default task is not frozen as an override.
+        self.beacon.cmd_pause(mock.Mock(note=["waiting", "for", "VPN"], clear_screen=False))
+        self.assertEqual(self.beacon.read_mode(), ("pause", "waiting for VPN"))
+        self.assertIsNone(self.beacon.read_state("override.project"))
         self.assertIsNone(self.beacon.read_state("override.task"))
 
-    def test_pause_falls_back_to_resolve_when_never_rendered(self):
-        # No `resolved` snapshot yet (badge never painted this session) → fall
-        # back to a live resolve so the freeze still captures current identity.
-        with mock.patch.object(self.beacon, "p_pr_title", return_value=""):
-            self.beacon._apply_status("paused", "")
-        self.assertEqual(self.beacon.read_state("override.project"), "acme/widget")
+    def test_pause_never_reresolves(self):
+        # The freeze read the cached snapshot precisely to keep the task chain's
+        # gh/glab PR-title provider out of this hot, user-facing path. Writing
+        # nothing but the mode keeps that property for free.
+        with mock.patch.object(self.beacon, "resolve",
+                               side_effect=AssertionError("pause must not re-resolve")):
+            self.beacon.write_mode("pause", "")
+        self.assertEqual(self.beacon.read_mode()[0], "pause")
+
+    def test_leaving_the_mode_restores_the_resolved_task(self):
+        # The pin outranked every provider (OVR-02), so what it froze is what the
+        # session showed forever. With nothing pinned, the chain answers again.
+        self.beacon.write_state("override.task", "a real label")
+        self.beacon.cmd_pause(mock.Mock(note=[], clear_screen=False))
+        self.beacon.cmd_resume(mock.Mock())
+        self.assertEqual(self.beacon.read_mode()[0], "dev")
+        self.assertIsNone(self.beacon.read_state("override.task"),
+                          "resume drops the overrides it always did")
 
 
 class EngagementMarker(BeaconTest):
@@ -1517,13 +1503,13 @@ class EngagementMarker(BeaconTest):
         self.assertIsNotNone(marker)
         self.assertFalse(marker.exists(), "marker should be absent pre-engagement")
 
-        self.beacon.apply({**_base_state(), "status": "idle"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
 
         self.assertTrue(marker.exists(), "apply() must place the engagement marker")
 
     def test_clear_no_field_disengages(self):
         # Engage first
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
         marker = self.beacon._engagement_marker_path()
         self.assertTrue(marker.exists())
         self.cli_calls.clear()
@@ -1542,14 +1528,14 @@ class EngagementMarker(BeaconTest):
     def test_clear_mid_mode_reverts_profile(self):
         # Clearing while in a mode state must swap back to the base profile —
         # the color-only `clear` OSC can't undo the mode profile's background.
-        self.beacon.apply({**_base_state(), "status": "paused"})
+        self.beacon.apply({**_base_state(), "mode": "pause"})
         self.cli_calls.clear()
         self.beacon.cmd_clear(mock.Mock(field=None))
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
                       "clear (no field) mid-mode must swap back to the base beacon-dev profile")
 
     def test_clear_with_field_keeps_engagement(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
         marker = self.beacon._engagement_marker_path()
         self.assertTrue(marker.exists())
 
@@ -1788,14 +1774,14 @@ class BadgeToggle(BeaconTest):
 
     def test_default_off_paints_tab_not_badge(self):
         with mock.patch.object(self.beacon, "_badge_enabled", return_value=False):
-            self.beacon.apply({**_base_state(), "status": "working"})
+            self.beacon.apply({**_base_state(), "activity": "working"})
         kinds = [c[0] for c in self.cli_calls]
         self.assertIn("tab-color", kinds)
         self.assertNotIn("badge-color", kinds)
         self.assertNotIn("badge-format", kinds)
 
     def test_enabled_paints_badge(self):
-        self.beacon.apply({**_base_state(), "status": "working"})
+        self.beacon.apply({**_base_state(), "activity": "working"})
         kinds = [c[0] for c in self.cli_calls]
         self.assertIn("badge-color", kinds)
         self.assertIn("badge-format", kinds)
@@ -2022,11 +2008,11 @@ class TackRouteAcquisition(BeaconTest):
         "slug": "cart-rework",
         "tacks": [
             # Shipped in an earlier session: the row must not claim it.
-            {"status": "done", "done_at": "2026-07-01T09:00:00.000Z",
+            {"mode": "done", "done_at": "2026-07-01T09:00:00.000Z",
              "deliverable": {"url": "https://github.com/acme/widgets/pull/21"},
              "links": [{"url": "https://github.com/acme/widgets/issues/20"}]},
             # Shipped during this session.
-            {"status": "done", "done_at": "2026-08-03T17:30:00.000Z",
+            {"mode": "done", "done_at": "2026-08-03T17:30:00.000Z",
              "deliverable": {"url": "https://github.com/acme/widgets/pull/30"},
              "links": [{"url": "https://github.com/acme/widgets/issues/29"}]},
             {"status": "in_progress",
@@ -2143,7 +2129,7 @@ class TackRouteAcquisition(BeaconTest):
         self.beacon.write_state("session_started_at", self.SESSION_START)
         self._publish(url, bound={
             "slug": "beacon",
-            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+            "tacks": [{"mode": "done", "done_at": "2026-07-20T09:00:00.000Z",
                        "deliverable": {"url": url}}],
         })
         self.assertEqual(self._entries(), [])
@@ -2153,7 +2139,7 @@ class TackRouteAcquisition(BeaconTest):
         self.beacon.write_state("session_started_at", self.SESSION_START)
         self._publish(url, bound={
             "slug": "beacon",
-            "tacks": [{"status": "done", "done_at": "2026-08-03T17:00:00.000Z",
+            "tacks": [{"mode": "done", "done_at": "2026-08-03T17:00:00.000Z",
                        "deliverable": {"url": url}}],
         })
         self.assertEqual([e["ref"] for e in self._entries()], ["#33"])
@@ -2168,7 +2154,7 @@ class TackRouteAcquisition(BeaconTest):
         self.beacon.write_state("session_started_at", self.SESSION_START)
         self._publish(url, bound={
             "slug": "beacon",
-            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+            "tacks": [{"mode": "done", "done_at": "2026-07-20T09:00:00.000Z",
                        "deliverable": {"url": url}}],
         })
         self.assertEqual(self.beacon.read_state("resolved.url"), self.LOCATION[0])
@@ -2179,7 +2165,7 @@ class TackRouteAcquisition(BeaconTest):
         self.beacon.write_state("session_started_at", self.SESSION_START)
         self._publish(url, bound={
             "slug": "beacon",
-            "tacks": [{"status": "done", "done_at": "2026-08-03T17:00:00.000Z",
+            "tacks": [{"mode": "done", "done_at": "2026-08-03T17:00:00.000Z",
                        "deliverable": {"url": url}}],
         })
         self.assertEqual(self.beacon.read_state("resolved.url"), url)
@@ -2192,7 +2178,7 @@ class TackRouteAcquisition(BeaconTest):
         self._publish("https://github.com/acme/widgets/pull/33",
                       bound={
                           "slug": "beacon",
-                          "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+                          "tacks": [{"mode": "done", "done_at": "2026-07-20T09:00:00.000Z",
                                      "deliverable": {
                                          "url": "https://github.com/acme/widgets/pull/33"}}],
                       },
@@ -2206,7 +2192,7 @@ class TackRouteAcquisition(BeaconTest):
         self.beacon.write_state("session_started_at", self.SESSION_START)
         self._publish(url, bound={
             "slug": "beacon",
-            "tacks": [{"status": "done", "done_at": "2026-07-20T09:00:00.000Z",
+            "tacks": [{"mode": "done", "done_at": "2026-07-20T09:00:00.000Z",
                        "deliverable": {"url": "https://github.com/acme/widgets/pull/33"}}],
         })
         self.assertEqual([e["ref"] for e in self._entries()], ["#99"])
@@ -2802,7 +2788,7 @@ class LatestTurn(BeaconTest):
         # Skipping the turn write doesn't skip the status flip: the session is
         # resuming work, so the signal goes back to working.
         self._fire("UserPromptSubmit", {"prompt": "<task-notification>done</task-notification>"})
-        self.assertEqual(self.beacon.read_state("signal.status"), "working")
+        self.assertEqual(self.beacon.read_state("activity"), "working")
 
     def test_fresh_start_clears_latest_turn(self):
         self.beacon.write_state("latest_turn", json.dumps(
@@ -2920,7 +2906,7 @@ class SessionEndDisengages(BeaconTest):
         # sits on that mode's profile — the color-only `clear` can't undo its
         # background, so disengage must swap back to base or the pane keeps its
         # "powered off" look after exit.
-        self.beacon.apply({**_base_state(), "status": "done"})
+        self.beacon.apply({**_base_state(), "mode": "done"})
         self.assertTrue(self._engaged())
         self.cli_calls.clear()
         self._fire({"reason": "other"})
@@ -3028,7 +3014,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         # The @marker is live "where the subprocess is" context, applied only
         # while the session is actively working (busy). These tests exercise the
         # wander overlay, so put the session in the working state.
-        self.beacon.write_state("signal.status", "working")
+        self.beacon.write_state("activity", "working")
 
     def _chdir(self, path: Path):
         prev = os.getcwd()
@@ -3118,7 +3104,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         # anchor and the marker is dropped — even though the live cwd is still
         # away. This is what removes the marker once a session comes home: the
         # returning turn's Stop renders at rest and clears it.
-        self.beacon.write_state("signal.status", "idle")
+        self.beacon.write_state("activity", "idle")
         self._chdir(self.live_dir)
         state = self.beacon._resolve_for_display()
         self.assertNotEqual(
@@ -3139,7 +3125,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         # short-circuits above pending_attention), reachable only via
         # override.status — so it needs its own assertion that the busy-gate
         # drops the marker, not just the idle/blocked cases above.
-        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_mode("pause")
         self._chdir(self.live_dir)
         state = self.beacon._resolve_for_display()
         self.assertNotEqual(
@@ -3671,13 +3657,103 @@ class PauseClearScreen(BeaconTest):
         args = self.beacon.argparse.Namespace(note=[], clear_screen=True)
         self.beacon.cmd_pause(args)
         self.assertIn(("clear-screen",), self.cli_calls)
-        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+        self.assertEqual(self.beacon.read_mode()[0], "pause")
 
     def test_without_flag_does_not_clear(self):
         args = self.beacon.argparse.Namespace(note=[], clear_screen=False)
         self.beacon.cmd_pause(args)
         self.assertNotIn(("clear-screen",), self.cli_calls)
-        self.assertEqual(self.beacon.read_state("override.status"), "paused")
+        self.assertEqual(self.beacon.read_mode()[0], "pause")
+
+
+class JsonPayload(BeaconTest):
+    """CMD-15: `beacon json` is the handoff contract another tool reads.
+
+    It had no coverage before 2.5.0, which is how it came to ship three of the
+    seven keys `resolve()` returns while documenting "signals, providers,
+    description" — `jq -r .task` printed `null` unconditionally, and nothing
+    failed."""
+
+    def _payload(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon, "resolve_url", return_value=("", "")), \
+                contextlib.redirect_stdout(buf):
+            self.beacon.cmd_json(self.beacon.argparse.Namespace())
+        return json.loads(buf.getvalue())
+
+    def test_carries_every_signal_with_its_provider(self):
+        self.beacon.write_state("override.task", "ship it")
+        p = self._payload()
+        self.assertEqual(p["task"], "ship it")
+        self.assertEqual(p["task_provider"], "override")
+        self.assertTrue(p["project"])
+        self.assertTrue(p["project_provider"])
+
+    def test_absent_task_is_null_with_a_null_provider(self):
+        # RES-04: absent, not "". A consumer distinguishing "no task" from "a
+        # task that resolved empty" needs the difference.
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=""), \
+                mock.patch.object(self.beacon, "p_branch", return_value=""):
+            p = self._payload()
+        self.assertIsNone(p["task"])
+        self.assertIsNone(p["task_provider"])
+
+    def test_task_provider_distinguishes_a_branch_fallback(self):
+        # The branch name is the task chain's third tier (PROV-02), so `task` and
+        # `branch` are routinely byte-identical. Only the provider tells a chosen
+        # label from a fallback, which is what anchor#2 needs to drop the dupe.
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=""), \
+                mock.patch.object(self.beacon, "p_branch", return_value="my-branch"):
+            p = self._payload()
+        self.assertEqual(p["task"], p["branch"])
+        self.assertEqual(p["task_provider"], "branch")
+
+    def test_mode_is_the_nested_tuple(self):
+        self.beacon.write_mode("release", "cutting v2.5")
+        p = self._payload()
+        self.assertEqual(p["mode"], {"name": "release", "note": "cutting v2.5",
+                                     "glyph": self.beacon.MODE_SPECS["release"]["glyph"]})
+        self.assertNotIn("note", p, "the note rides the mode, never a sibling key")
+
+    def test_dev_cycle_reports_the_default_mode(self):
+        p = self._payload()
+        self.assertEqual(p["mode"], {"name": "dev", "note": "", "glyph": ""})
+
+    def test_axes_are_separate_keys(self):
+        self.beacon.write_mode("release", "")
+        self.beacon.write_state("activity", "waiting")
+        p = self._payload()
+        self.assertEqual(p["mode"]["name"], "release")
+        self.assertEqual(p["activity"], "waiting")
+
+    def test_no_provider_key_for_either_axis(self):
+        # One writer each, so naming a tier would invent a distinction (RES-06).
+        p = self._payload()
+        self.assertNotIn("mode_provider", p)
+        self.assertNotIn("activity_provider", p)
+
+    def test_merged_status_keys_are_gone(self):
+        p = self._payload()
+        for retired in ("status", "status_provider", "description"):
+            self.assertNotIn(retired, p,
+                             f"{retired} was removed in 2.5.0 with no alias — an "
+                             "alias would re-merge the axes")
+
+    def test_shape_matches_the_fleet_payload(self):
+        """The two published payloads must describe `mode` identically.
+
+        They diverged once: this one nested the tuple while `wip.json` emitted a
+        flat `mode` string beside a top-level `note`. Same tool, same concept,
+        two shapes — and a consumer reading both needed two accessors.
+        """
+        self.beacon.write_mode("retro", "writing it up")
+        self.beacon.write_state("anchor.project", "acme/widget")
+        self.beacon.write_state("anchor.cwd", str(self.data_dir))
+        single = self._payload()["mode"]
+        record = self.beacon._resolve_session(self.beacon.session_hash())
+        self.assertIsNotNone(record, "the session must resolve into the fleet payload")
+        self.assertEqual(single, record["mode"])
+        self.assertEqual(sorted(single), ["glyph", "name", "note"])
 
 
 class StatusLineProvider(BeaconTest):
@@ -3694,25 +3770,22 @@ class StatusLineProvider(BeaconTest):
         return buf.getvalue()
 
     def test_paused_with_reason_prints_glyph_and_reason(self):
-        self.beacon.write_state("override.status", "paused")
-        self.beacon.write_state("description", "waiting on CI")
+        self.beacon.write_mode("pause", "waiting on CI")
         out = self._run()
         self.assertIn("waiting on CI", out)
-        self.assertIn(self.beacon.PAUSED_TITLE_GLYPH.strip(), out)  # ⏸
+        self.assertIn(self.beacon.MODE_SPECS["pause"]["glyph"], out)  # ⏸
         self.assertIn("\033[", out)  # ANSI color
 
     def test_not_paused_prints_nothing(self):
-        self.beacon.write_state("override.status", "working")
-        self.beacon.write_state("description", "waiting on CI")
+        self.beacon.write_state("activity", "working")
         self.assertEqual(self._run(), "")
 
     def test_paused_without_reason_prints_nothing(self):
-        self.beacon.write_state("override.status", "paused")
+        self.beacon.write_mode("pause")
         self.assertEqual(self._run(), "")
 
     def test_multiline_reason_collapsed_to_one_line(self):
-        self.beacon.write_state("override.status", "paused")
-        self.beacon.write_state("description", "line one\nline two")
+        self.beacon.write_mode("pause", "line one\nline two")
         out = self._run()
         self.assertIn("line one line two", out)
         self.assertEqual(out.count("\n"), 1)  # only the trailing newline
@@ -3891,8 +3964,7 @@ class StatusLineProvider(BeaconTest):
         self.assertEqual(self._visible(self._run()), "#4")
 
     def test_pause_reason_and_link_share_one_row(self):
-        self.beacon.write_state("override.status", "paused")
-        self.beacon.write_state("description", "waiting on CI")
+        self.beacon.write_mode("pause", "waiting on CI")
         self.beacon.write_state("resolved.url", "https://example.test/1")
         self.beacon.write_state("resolved.url_label", "ex#1")
         out = self._run()
@@ -4390,14 +4462,18 @@ class AncestorTtyResolution(unittest.TestCase):
 
 
 def _base_state() -> dict:
-    """Default state dict acceptable to apply(). Tests override individual fields."""
+    """Default state dict acceptable to apply(). Tests override individual fields.
+
+    `mode` and `activity` are separate keys because they are separate axes: a test
+    wanting "releasing, and blocked on the user" sets both, which is the whole
+    point of the split.
+    """
     return {
         "project": "acme/widget", "project_provider": "git-remote",
-        "task": "", "task_provider": "default",
-        "status": "idle", "status_provider": "default",
-        "description": "",
+        "task": "", "task_provider": None,
+        "mode": "dev", "note": "",
+        "activity": "idle",
         "pending_attention": False,
-        "note_image": None,
     }
 
 

@@ -1,14 +1,20 @@
 # The beacon palette
 
-beacon organizes a session's life into **SDLC cycles**, and paints each one so a glance tells you where a session is — no reading required. Every cycle carries a **tab color**; the mode cycles additionally swap the whole pane into a background of their own. The same colors ride the [fleet dashboard](/demo) cards, so the pane and the browser view always agree. (They also color the [badge](/iterm?id=turning-the-badge-on) if you turn one on — it's off by default.)
+beacon paints two independent things about a session, so a glance tells you both — no reading required.
+
+**What's happening right now** (`activity`) is the tab **color**: gray at rest, orange working, red when Claude needs you. Three values, one meaning, on every tab.
+
+**What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background**. `⏸` `🚀` `📋` `🏁` `…`.
+
+They never compete, because they never share a surface. A releasing session that needs you is a red tab beside a `🚀`. The same split rides the [fleet dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm?id=turning-the-badge-on) if you turn one on — it's off by default.)
 
 Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute), each hue serving one meaning across every surface.
 
 <!--
-  Figures are drawn in HTML from the spec palette (BADGE_COLOR_PALETTE /
-  MODE_PROFILES, THEME-02) rather than screenshotted, since the pane surfaces
+  Figures are drawn in HTML from the spec palette (COLOR_PALETTE / MODE_SPECS /
+  MODE_SPECS, THEME-02 / THEME-02a) rather than screenshotted, since the pane surfaces
   don't exist off macOS. The mode watermarks are the real generated assets
-  (iterm/resources/<phase>-bg.png), thumbnailed to images/wm-<phase>.png by
+  (iterm/resources/<mode>-bg.png), thumbnailed to images/wm-<mode>.png by
   iterm/make-bg.py. Keep the hexes in sync with scripts/beacon.
 -->
 <style>
@@ -18,7 +24,6 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555;
   --paused: #6272a4; --release: #50fa7b; --retro: #f8f8f2; --done: #5f6072;
-  --handoff: #ff79c6;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.25rem 0;
 }
@@ -47,7 +52,7 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 .pal code { font: 0.85em var(--mono); background: rgba(128,128,128,0.18) !important; padding: 0.05em 0.35em; border-radius: 4px; color: inherit !important; }
 </style>
 
-## dev — the default cycle
+## activity — the tab color
 
 Everyday development. There's no mode background — the pane stays your own profile — and the tab color is a **dynamic stoplight** the hooks drive as Claude works. Green is deliberately **not** in it: at rest the tab is a calm neutral gray, so a fresh session has a known default before its first turn, and green is freed to mean one thing only — [`release`](#mode-cycles).
 
@@ -81,68 +86,57 @@ The branch chip in the status bar reads by a **hybrid of identity and sync state
 
 Green is absent here too — it stays reserved for [`release`](#mode-cycles). The color is a Dracula hue in every case; the four are published as separate user-var slots so the profile resolves the one that applies without any conditional logic.
 
-## Mode cycles
+## modes — the tab glyph and the pane
 
-The four mode cycles are ones you (or a skill) declare. Each swaps the pane into its own dynamic profile for a whole-pane background the tab color alone can't express — a distinct color plus a faint slate watermark — and each carries **no glyph on the label**: the pane background and tab color are the entire cue. They persist until you `resume` (only `pause` also lifts automatically, on your next prompt).
+A mode is something you (or a skill) declare. Each carries a **glyph on the tab** — its only cross-tab surface, since with many tabs open only one pane is on screen — and swaps that pane into its own dynamic profile for a background the glyph alone can't express: a distinct color plus a faint slate watermark matching the glyph. A mode never touches the tab color, so declaring one never hides whether the session needs you. They persist until you `resume` (`pause` also lifts automatically, on your next prompt).
 
 <div class="pal pal-grid">
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #3c3357">
       <img class="wm" src="images/wm-pause.png" alt="pause bars watermark">
-      <span class="tab" style="color: #6272a4">checkout-api</span>
+      <span class="tab" style="color: #8b8fa0">⏸ checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>pause <span class="cmd">/beacon:pause</span></h4>
       <p>You've parked the session. The one mode that can happen anytime — and the one that lifts on its own, the next prompt you send.</p>
-      <div class="hexrow"><span><span class="sw" style="background:#6272a4"></span>tab #6272a4</span><span><span class="sw" style="background:#3c3357"></span>pane #3c3357</span></div>
+      <div class="hexrow"><span>glyph ⏸</span><span><span class="sw" style="background:#3c3357"></span>pane #3c3357</span></div>
     </div>
   </div>
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #212c45">
       <img class="wm" src="images/wm-release.png" alt="rocket watermark">
-      <span class="tab" style="color: #50fa7b">checkout-api</span>
+      <span class="tab" style="color: #8b8fa0">🚀 checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>release <span class="cmd">beacon release</span></h4>
-      <p>A ship-it flow is in progress. The one active mode — a rocket climbing a deep launch-sky, under the green you never see during dev, so it reads unmistakably as "shipping."</p>
-      <div class="hexrow"><span><span class="sw" style="background:#50fa7b"></span>tab #50fa7b</span><span><span class="sw" style="background:#212c45"></span>pane #212c45</span></div>
+      <p>A ship-it flow is in progress. The one active mode — a rocket climbing a deep launch-sky.</p>
+      <div class="hexrow"><span>glyph 🚀</span><span><span class="sw" style="background:#212c45"></span>pane #212c45</span></div>
     </div>
   </div>
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #2c4636">
       <img class="wm" src="images/wm-retro.png" alt="checklist clipboard watermark">
-      <span class="tab" style="color: #f8f8f2">checkout-api</span>
+      <span class="tab" style="color: #8b8fa0">📋 checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>retro <span class="cmd">beacon retro</span></h4>
-      <p>A post-work follow-up or retro phase. A calm green pane under a white tab, with a faint checklist-clipboard watermark — looking back over the work.</p>
-      <div class="hexrow"><span><span class="sw" style="background:#f8f8f2"></span>tab #f8f8f2</span><span><span class="sw" style="background:#2c4636"></span>pane #2c4636</span></div>
+      <p>A post-work follow-up or retro phase. A calm green pane under a ticked clipboard — work looked back over.</p>
+      <div class="hexrow"><span>glyph 📋</span><span><span class="sw" style="background:#2c4636"></span>pane #2c4636</span></div>
     </div>
   </div>
 
   <div class="pal-card">
     <div class="pal-pane" style="background: #1a1622">
       <img class="wm" src="images/wm-done.png" alt="checkered finish-flag watermark">
-      <span class="tab" style="color: #5f6072">checkout-api</span>
+      <span class="tab" style="color: #8b8fa0">🏁 checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>done <span class="cmd">beacon done</span></h4>
-      <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a faint checkered finish-flag watermark. The tab shows the project alone — the task line is dropped.</p>
-      <div class="hexrow"><span><span class="sw" style="background:#5f6072"></span>tab #5f6072</span><span><span class="sw" style="background:#1a1622"></span>pane #1a1622</span></div>
-    </div>
-  </div>
-
-  <div class="pal-card">
-    <div class="pal-pane" style="background: #33264a">
-      <span class="tab" style="color: #ff79c6">checkout-api</span>
-    </div>
-    <div class="pal-meta">
-      <h4>handoff <span class="cmd">beacon handoff</span></h4>
-      <p>Control is passing to another tool, skill, or session. The only mode with no watermark — it is meant to read as brief, and like <code>pause</code> it lifts on the next prompt you send.</p>
-      <div class="hexrow"><span><span class="sw" style="background:#ff79c6"></span>tab #ff79c6</span><span><span class="sw" style="background:#33264a"></span>pane #33264a</span></div>
+      <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a checkered finish-flag. The tab shows the project alone — the task line is dropped.</p>
+      <div class="hexrow"><span>glyph 🏁</span><span><span class="sw" style="background:#1a1622"></span>pane #1a1622</span></div>
     </div>
   </div>
 
@@ -167,7 +161,7 @@ The [status line](/iterm?id=the-status-line) is the one surface that isn't iTerm
   </div>
   <div class="pal-chip">
     <div class="row" style="color: #6272a4">⏸ waiting on CI</div>
-    <div class="cap">pause reason — the paused slate <span class="hex">SGR 34</span></div>
+    <div class="cap">the mode's note, led by its glyph <span class="hex">SGR 38;5;61</span></div>
   </div>
 </div>
 
@@ -200,10 +194,10 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 
 ## Why these colors
 
-- **Green means one thing.** It's absent from the dev stoplight and reserved for `release`, so a green pane is always "shipping," never "idle."
+- **Color means one thing.** The tab color answers "does this need me" and nothing else, on every tab, whatever the session has declared about itself. Modes are told apart by shape instead, which is also what lets you read both at once.
 - **Gray is the calm default.** A session at rest — and a session that's `done` — sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
-- **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple, `handoff` a deep violet — recognizable whole-pane, not just by the tab. `handoff` is the one without a watermark: the mode is meant to be brief, so there is no asset to carry.
-- **No glyphs on the label.** A mode is read by its color and background — the same faint slate watermark on the pane, the [dashboard card](/demo), and the fleet list — never a symbol wedged into the tab text. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
+- **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black powered-off purple — recognizable whole-pane, not just by the tab.
+- **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the fleet list, matching the pane's watermark — so nothing has to add, and later strip, a marker inside the project name. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
 - **Painted surfaces use hex; the status line uses ANSI.** The pane is beacon's to color exactly. The footer belongs to your terminal, so beacon names a role (bold, dim, green) and lets your theme choose the shade.
 
-The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`BADGE_COLOR_PALETTE`, `MODE_PROFILES`), and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
+The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
