@@ -12,7 +12,7 @@ A Claude Code plugin + sourceable zsh snippet + standalone CLI that surfaces ses
 |:---|:---|:---|
 | **CLI** | `bin/beacon-iterm` | Translating subcommands to iTerm2 control operations — OSC sequences for painted surfaces, Apple Events (`focus` to raise a window, `set-name` to set the window title). **Stateless.** No Claude awareness. |
 | **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `skills/`, `rules/` | Hook handlers, COR resolver for signals, slash command. `rules/` holds ambient rules emitted at SessionStart by `hooks/emit-rules.sh` (e.g. `keep-session-labeled` — proactive task upkeep so the fleet view has signal standalone). Invokes the CLI for every iTerm2 write. |
-| **Shell** | `shell/beacon.zsh` | Project / branch / cwd / URL — refreshed every prompt. Calls the CLI directly; never goes through the plugin. |
+| **Shell** | `shell/beacon.zsh` | Project / branch / cwd / URL — refreshed every prompt. Emits its own `SetUserVar` OSC by raw `printf`; calls the CLI for `set-name`. Never goes through the plugin. |
 
 The plugin and shell write to **disjoint user-var slots** so they never overwrite each other. Don't blur this boundary.
 
@@ -21,8 +21,8 @@ The CLI must remain unaware of Claude — it's usable from CI, ad-hoc terminal s
 ## Hot paths — keep fast
 
 - `apply()` in `scripts/beacon` — runs on every Claude Code hook. Diff against the resolved-state snapshot before invoking the CLI.
-- `_beacon_precmd` in `shell/beacon.zsh` — runs on every prompt redraw. Last-value sentinels gate every CLI call.
-- Critical OSC sequences in `shell/beacon.zsh` (profile activation) are emitted via raw `printf` to `/dev/tty`, bypassing python startup. The opt-in badge format (BADGE-15) is gated behind a one-time `config-get` check at source — not the per-prompt hot path.
+- `_beacon_precmd` in `shell/beacon.zsh` — runs on every prompt redraw, and spawns no process of its own. Last-value sentinels gate every emit; one `git for-each-ref` yields every branch value; the origin URL is memoized per project root; the helpers answer through `_beacon_reply` / `_beacon_binfo` because each `$(...)` is a fork.
+- OSC sequences in `shell/beacon.zsh` (profile activation, and every `SetUserVar`) are emitted via raw `printf` **to `/dev/tty`**, bypassing python startup — `_beacon_b64` is a zsh-native base64 so encoding costs no fork either. Writing to stdout instead splices escape bytes into `x=$(cd somedir; …)`, because zsh fires `chpwd` and `precmd` inside command-substitution subshells; the source-time guard refuses to load when `/dev/tty` can't be opened, which only an open attempt detects (`-w` and `-c` both pass on the device node regardless). `_beacon_b64` encodes to UTF-8 first — the branch display carries `↑`/`↓` — and pins `multibyte` / `noksharrays` for its own scope, as `_beacon_branch_info` and `_beacon_precmd` pin the option set their array indexing assumes. The opt-in badge format (BADGE-15) is gated behind a one-time `config-get` check at source — not the per-prompt hot path.
 
 ## Surfaces beacon paints
 

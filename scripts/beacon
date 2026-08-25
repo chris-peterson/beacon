@@ -3402,7 +3402,8 @@ def _project_full_at(cwd: Path) -> str:
 
 
 def _local_path_at(cwd: Path) -> str:
-    """`~`-substituted display path. Mirrors shell's `_beacon_local_path`."""
+    """`~`-substituted display path. Mirrors the `${PWD/#$HOME/~}` the shell's
+    `_beacon_precmd` publishes."""
     home = str(Path.home())
     s = str(cwd)
     if s == home:

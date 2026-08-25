@@ -450,7 +450,7 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 
 **CLI-11.** When invoked as `beacon-iterm tab-color <hex|default>`, the CLI shall set the per-tab color via `OSC 1337 SetColors=tab=<hex>` (or `=default` to revert). The hex is 6 digits without a leading `#`. iTerm2 binds tab color to the tab containing the calling session; in multi-pane tabs the most-recent painter wins, which the user is expected to manage via a tabs-not-panes workflow (one Claude session per tab).
 
-**CLI-12.** When invoked as `beacon-iterm uservar-batch`, the CLI shall read newline-separated `<name>=<value>` pairs from stdin and publish each via the same OSC 1337 `SetUserVar` mechanism as CLI-03, in a single process invocation. This reduces flicker when SessionStart paints the full status-bar slot set (HOOK-08), where 10 sequential CLI invocations produced visible incremental redraws.
+**CLI-12.** When invoked as `beacon-iterm uservar-batch <name>=<value> …`, the CLI shall publish each argument via the same OSC 1337 `SetUserVar` mechanism as CLI-03, in a single process invocation. An argument with no `=`, or with an empty name, is skipped. This reduces flicker when SessionStart paints the full status-bar slot set (HOOK-08), where 10 sequential CLI invocations produced visible incremental redraws.
 
 **CLI-14.** When invoked as `beacon-iterm set-profile <name>`, the CLI shall switch the current session's profile via `OSC 1337 SetProfile=<name>`. The named profile must exist in iTerm2's DynamicProfiles directory; iTerm2 silently ignores unknown names, which the plugin treats as a fatal install-time misconfiguration rather than a runtime error. The plugin uses this to switch a session into the base `beacon-dev` profile (status bar layout + badge sizing) without making it iTerm2's default (§6.6).
 
@@ -556,8 +556,8 @@ Layout is fixed (no dynamic show/hide based on values). Chip text is rendered in
 flowchart TB
     PROMPT([shell prompt redraws])
     PROMPT --> PRECMD[shell precmd]
-    PRECMD --> S1[uservar beacon_project_name]
-    PRECMD --> S2[uservar beacon_branch]
+    PRECMD --> S1[printf SetUserVar beacon_project_name]
+    PRECMD --> S2[printf SetUserVar beacon_branch]
     PRECMD --> SF1[file url-SESSION.txt]
     PRECMD --> SF2[file cwd-SESSION.txt]
     INSTALL([beacon install])
@@ -944,7 +944,11 @@ The plugin's `SessionStart` handler (HOOK-08) publishes the full set of status-b
 
 ### 6.5 Shell integration: `shell/beacon.zsh`
 
-Sourceable file the user adds to `.zshrc`. Registers `precmd` and `chpwd` hooks. Each hook shells out to `beacon-iterm uservar …`.
+Sourceable file the user adds to `.zshrc`. Registers `precmd` and `chpwd` hooks, which emit `OSC 1337 SetUserVar` by raw `printf` to `/dev/tty` — the same sequence CLI-03 writes, encoded by a zsh-native base64 (`_beacon_b64`). The prompt path runs no subprocess of its own: one `git for-each-ref` supplies every branch value, and the project root's origin URL is memoized for the life of the shell. Publishing a slot through the CLI instead cost a python interpreter start per slot, which put a `cd` at ~570ms.
+
+The terminal device, not stdout, is the required destination: zsh fires `chpwd` and `precmd` inside command-substitution subshells, so publishing to stdout splices escape bytes into the value a caller captures from `x=$(cd somedir; …)`. The snippet refuses to load when `/dev/tty` cannot be opened for writing, since a shell with no controlling terminal has no surface to paint.
+
+This is the one place a beacon surface is painted outside `bin/beacon-iterm`. The CLI remains the sole writer everywhere else, and the shell still calls it for `set-name` (TITLE-04), which needs Apple Events rather than an escape sequence.
 
 The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consume a fixed user-var name set published by this snippet:
 
@@ -971,9 +975,16 @@ Tab-completion install (CMD-09) writes `~/.zsh/completions/_beacon` and inserts 
 
 ```zsh
 # Pseudocode
+_beacon_publish() {  # name, value, sentinel — emits only when the value moved
+  [[ "$2" == "${(P)3}" ]] && return
+  _beacon_b64 "$2"
+  printf '\e]1337;SetUserVar=%s=%s\a' "$1" "$_beacon_b64_out" > /dev/tty
+  : ${(P)3::=$2}
+}
 _beacon_precmd() {
   # NOT beacon_project — the plugin is that slot's sole writer (BADGE-02).
-  beacon-iterm uservar beacon_project_name "$(_beacon_project_name)"
+  _beacon_project_name
+  _beacon_publish beacon_project_name "$_beacon_reply" _BEACON_LAST_PROJECT_NAME
 }
 _beacon_chpwd() {
   _beacon_precmd  # re-publishes branch + branch_clean/branch_diverged via _beacon_branch_info

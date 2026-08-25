@@ -1359,12 +1359,16 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
         self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
 
     def test_the_shell_publishes_the_project_name_slot(self):
-        self.assertIn("uservar beacon_project_name", self.shell)
+        # Slots go out as raw OSC from zsh, so the publish call is what
+        # carries the contract now.
+        self.assertIn("_beacon_publish beacon_project_name", self.shell)
         self.assertNotIn("beacon_project_full", self.shell)
 
     def test_the_shell_never_publishes_the_plugin_owned_slot(self):
-        # BADGE-02: beacon_project is the plugin's alone.
+        # BADGE-02: beacon_project is the plugin's alone. The trailing space
+        # keeps beacon_project_name from matching.
         self.assertNotIn("uservar beacon_project ", self.shell)
+        self.assertNotIn("_beacon_publish beacon_project ", self.shell)
 
     def test_the_prompt_path_resolves_no_url(self):
         # The chip needs no URL, so the per-prompt python + tack subprocesses
@@ -4154,7 +4158,7 @@ class ConfigureLayoutAudit(unittest.TestCase):
                 return subprocess.CompletedProcess(cmd, 0, stdout=values[key] + "\n", stderr="")
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="does not exist")
         buf = io.StringIO()
-        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+        with mock.patch("subprocess.run", side_effect=fake_run), \
                 contextlib.redirect_stdout(buf), \
                 self.assertRaises(SystemExit) as cm:
             self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None))
@@ -4224,7 +4228,7 @@ class ConfigureLayoutWrite(unittest.TestCase):
             calls.append(cmd)
             code = 1 if cmd[:1] == ["pgrep"] else 0  # iTerm2 not running
             return subprocess.CompletedProcess(cmd, code, stdout="", stderr="")
-        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
+        with mock.patch("subprocess.run", side_effect=fake_run), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.iterm.cmd_configure(self._args(
                 keys="TabViewType,UseCustomTabBarFontSize,CustomTabBarFontSize"))
@@ -4241,8 +4245,8 @@ class ConfigureLayoutWrite(unittest.TestCase):
         def fake_run(cmd, *a, **k):
             calls.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")  # iTerm2 up
-        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
-                mock.patch.object(self.iterm.subprocess, "Popen",
+        with mock.patch("subprocess.run", side_effect=fake_run), \
+                mock.patch("subprocess.Popen",
                                   side_effect=lambda cmd, *a, **k: popen.append(cmd) or mock.Mock()), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
@@ -4260,8 +4264,8 @@ class ConfigureLayoutWrite(unittest.TestCase):
         def fake_run(cmd, *a, **k):
             calls.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-        with mock.patch.object(self.iterm.subprocess, "run", side_effect=fake_run), \
-                mock.patch.object(self.iterm.subprocess, "Popen",
+        with mock.patch("subprocess.run", side_effect=fake_run), \
+                mock.patch("subprocess.Popen",
                                   side_effect=lambda *a, **k: popen.append(a)), \
                 mock.patch.object(self.iterm, "_prompt_tty", return_value=False), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -4269,6 +4273,120 @@ class ConfigureLayoutWrite(unittest.TestCase):
         self.assertEqual(popen, [])
         self.assertFalse(any(c[:1] == ["osascript"] for c in calls))
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
+
+
+class AncestorTtyResolution(unittest.TestCase):
+    """`_ancestor_tty` finds the pty to write OSC to when the process has no
+    controlling terminal of its own — Claude Code spawns hook and Bash-tool
+    subprocesses detached from theirs, so `/dev/tty` is ENXIO and every painted
+    surface depends on this walk landing on an ancestor's pty."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def _ps(self, tree, calls=None):
+        """Stand-in for `ps`, answering either invocation shape so the same
+        assertions hold whether the walk asks per-pid or reads the tree once:
+          per-pid    `ps -o tt=,ppid= -p <pid>`  -> "<tt> <ppid>"
+          whole-tree `ps -eo pid=,ppid=,tt=`     -> "<pid> <ppid> <tt>" per row
+        `tree` maps pid -> (ppid, tt), where tt is "??" for no terminal.
+        """
+        def run(argv, *a, **k):
+            if calls is not None:
+                calls.append(list(argv))
+            flags = list(argv[1:])
+            if "-p" in flags:
+                pid = int(flags[flags.index("-p") + 1])
+                if pid not in tree:
+                    return subprocess.CompletedProcess(argv, 1, stdout="", stderr="")
+                ppid, tt = tree[pid]
+                return subprocess.CompletedProcess(
+                    argv, 0, stdout=f"{tt} {ppid}\n", stderr="")
+            rows = "".join(f"{p} {pp} {tt}\n" for p, (pp, tt) in sorted(tree.items()))
+            return subprocess.CompletedProcess(argv, 0, stdout=rows, stderr="")
+        return run
+
+    @contextlib.contextmanager
+    def _tree(self, tree, pid=100, devices=(), calls=None):
+        """Run with `tree` as the process table, `pid` as our own pid, and only
+        the ttys in `devices` present under /dev."""
+        real_exists = os.path.exists
+
+        def exists(path):
+            if str(path).startswith("/dev/tty"):
+                return str(path) in devices
+            return real_exists(path)
+
+        with mock.patch("subprocess.run", side_effect=self._ps(tree, calls)), \
+                mock.patch.object(self.iterm.os, "getpid", return_value=pid), \
+                mock.patch.object(self.iterm.os.path, "exists", side_effect=exists):
+            yield
+
+    def test_uses_the_processes_own_terminal_when_it_has_one(self):
+        tree = {100: (50, "s001"), 50: (1, "??")}
+        with self._tree(tree, devices=("/dev/ttys001",)):
+            self.assertEqual(self.iterm._ancestor_tty(), "/dev/ttys001")
+
+    def test_walks_up_to_the_first_ancestor_with_a_terminal(self):
+        tree = {100: (90, "??"), 90: (80, "??"), 80: (1, "s004")}
+        with self._tree(tree, devices=("/dev/ttys004",)):
+            self.assertEqual(self.iterm._ancestor_tty(), "/dev/ttys004")
+
+    def test_keeps_walking_past_an_ancestor_whose_device_is_gone(self):
+        # A tt column naming a device that no longer exists must not end the
+        # walk — the pty above it is still a live target.
+        tree = {100: (90, "??"), 90: (80, "s004"), 80: (1, "s007")}
+        with self._tree(tree, devices=("/dev/ttys007",)):
+            self.assertEqual(self.iterm._ancestor_tty(), "/dev/ttys007")
+
+    def test_gives_up_at_the_top_of_the_tree(self):
+        tree = {100: (90, "??"), 90: (1, "??")}
+        with self._tree(tree, devices=("/dev/ttys001",)):
+            self.assertIsNone(self.iterm._ancestor_tty())
+
+    def test_gives_up_when_no_ancestor_device_exists(self):
+        tree = {100: (90, "s001"), 90: (1, "s002")}
+        with self._tree(tree, devices=()):
+            self.assertIsNone(self.iterm._ancestor_tty())
+
+    def test_a_cycle_in_the_tree_terminates(self):
+        # Self-parenting and loops are possible in a racing process table; the
+        # walk must not spin.
+        tree = {100: (90, "??"), 90: (100, "??")}
+        with self._tree(tree, devices=()):
+            self.assertIsNone(self.iterm._ancestor_tty())
+
+    def test_returns_none_when_ps_cannot_be_run(self):
+        with mock.patch("subprocess.run", side_effect=OSError("no ps")):
+            self.assertIsNone(self.iterm._ancestor_tty())
+
+    def test_returns_none_when_ps_exits_nonzero(self):
+        def failing(argv, *a, **k):
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="boom")
+        with mock.patch("subprocess.run", side_effect=failing):
+            self.assertIsNone(self.iterm._ancestor_tty())
+
+    def test_asks_only_about_the_ancestors_it_walks(self):
+        # Targeted queries, never the whole process table: `ps -e` formats every
+        # process on the box and measures ~2.5x worse than the two extra spawns
+        # it would save, since the walk is only a few levels deep.
+        calls = []
+        tree = {100: (90, "??"), 90: (80, "??"), 80: (70, "s004"), 70: (1, "s009")}
+        with self._tree(tree, devices=("/dev/ttys004",), calls=calls):
+            self.assertEqual(self.iterm._ancestor_tty(), "/dev/ttys004")
+        self.assertTrue(all("-p" in c for c in calls),
+                        f"expected per-ancestor queries, got {calls}")
+        # Stops at the match: pid 70 is never asked about.
+        self.assertEqual([c[c.index("-p") + 1] for c in calls], ["100", "90", "80"])
+
+    def test_a_cycle_costs_one_query_per_distinct_process(self):
+        # Without a seen-set a loop burns the full 32-iteration cap, and each
+        # iteration is a spawn.
+        calls = []
+        tree = {100: (90, "??"), 90: (100, "??")}
+        with self._tree(tree, devices=(), calls=calls):
+            self.assertIsNone(self.iterm._ancestor_tty())
+        self.assertEqual(len(calls), 2, f"expected 2 ps spawns, got {len(calls)}")
 
 
 def _base_state() -> dict:

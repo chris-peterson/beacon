@@ -18,11 +18,14 @@ import argparse
 import base64
 import os
 import re
-import shlex
-import subprocess
 import sys
-import tempfile
-from pathlib import Path
+
+# `subprocess`, `tempfile`, `shlex` and `pathlib` are imported inside the
+# functions that need them, not here. Every paint verb (uservar, tab-color,
+# set-profile) runs on a hook or a shell prompt, and at module scope those four
+# add ~16ms of interpreter startup to each of those invocations — none of which
+# ever reaches the Apple Events, `defaults`, or `configure` code that wants
+# them. `argparse` and `re` stay at module scope: both measure free here.
 
 _TTY = None
 
@@ -39,8 +42,18 @@ def _ancestor_tty() -> str | None:
     and would unlock interactive surfaces (clickable status bar, menus,
     keyboard shortcuts). Larger refactor — tracked separately.
     """
+    import subprocess
+
+    # Queried one ancestor at a time on purpose. Reading the whole table in a
+    # single `ps -e` sounds cheaper and measures ~2.5x worse: the walk is only
+    # about three levels deep, and formatting ~1000 rows costs far more than the
+    # two extra spawns it saves.
     pid = os.getpid()
+    seen = set()
     for _ in range(32):
+        if pid <= 1 or pid in seen:
+            return None
+        seen.add(pid)
         try:
             r = subprocess.run(
                 ["ps", "-o", "tt=,ppid=", "-p", str(pid)],
@@ -56,13 +69,11 @@ def _ancestor_tty() -> str | None:
         tt, ppid = parts[0], parts[1]
         if tt and tt != "??":
             path = f"/dev/tty{tt}"
-            if Path(path).exists():
+            if os.path.exists(path):
                 return path
         try:
             pid = int(ppid)
         except ValueError:
-            return None
-        if pid <= 1:
             return None
     return None
 
@@ -212,6 +223,8 @@ _GUID_RE = re.compile(r"^[A-Za-z0-9-]+$")
 
 
 def cmd_focus(args):
+    import subprocess
+
     sid = args.session_id.strip()
     # Accept either the bare session GUID or a full ITERM_SESSION_ID
     # (`w2t0p0:GUID`) — the GUID after the last colon is iTerm2's session id.
@@ -259,6 +272,8 @@ def _applescript_str(s: str) -> str:
 
 
 def cmd_set_name(args):
+    import subprocess
+
     sid = args.session_id.strip()
     if ":" in sid:
         sid = sid.rsplit(":", 1)[-1]
@@ -320,6 +335,8 @@ def _read_default(key: str) -> str | None:
     """An app-wide iTerm2 preference value, or None when unset (its effective
     value is then iTerm2's built-in default, which for every recommended key
     differs from the wanted value — so unset always reads as drift)."""
+    import subprocess
+
     try:
         r = subprocess.run(["defaults", "read", "com.googlecode.iterm2", key],
                            capture_output=True, text=True, timeout=5)
@@ -333,6 +350,8 @@ def _layout_drift():
 
 
 def _is_iterm_running() -> bool:
+    import subprocess
+
     try:
         r = subprocess.run(["pgrep", "-x", "iTerm2"], capture_output=True, timeout=5)
     except Exception:
@@ -365,6 +384,8 @@ def _apply_layout(specs) -> None:
     with iTerm2 not running, so the writes survive — iTerm2 rewrites the plist
     from its in-memory copy on quit, which is exactly the clobber the whole
     quit-write-relaunch dance exists to avoid (CLI-18)."""
+    import subprocess
+
     for s in specs:
         r = subprocess.run(["defaults", "write", "com.googlecode.iterm2",
                             s["key"], *_defaults_write_args(s)],
@@ -446,12 +467,16 @@ def _configure_write(args):
             print("Aborted — no changes made.")
             return
 
+    import shlex
+    import subprocess
+    import tempfile
+
     keys_csv = ",".join(s["key"] for s in selected)
-    log_path = Path(tempfile.gettempdir()) / "beacon-configure.log"
-    self_path = Path(__file__).resolve()
+    log_path = os.path.join(tempfile.gettempdir(), "beacon-configure.log")
+    self_path = os.path.realpath(__file__)
     helper = (
         f"while pgrep -x iTerm2 >/dev/null; do sleep 0.5; done; "
-        f"python3 {shlex.quote(str(self_path))} configure --write --yes "
+        f"python3 {shlex.quote(self_path)} configure --write --yes "
         f"--keys {shlex.quote(keys_csv)}"
     )
     # start_new_session detaches the helper from this pane's session so iTerm2's

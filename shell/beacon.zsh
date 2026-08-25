@@ -27,6 +27,18 @@ fi
 # wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 
+# Every surface below is painted by writing an escape sequence to the terminal
+# device rather than to stdout, because `precmd` and `chpwd` also fire inside
+# command-substitution subshells — where stdout is the value being captured, so
+# publishing there splices escape bytes into `x=$(cd somedir; ...)`.
+#
+# Only an open attempt detects a missing controlling terminal; `-w` and `-c`
+# both report success on the /dev/tty device node when opening it would fail.
+if ! { : > /dev/tty } 2>/dev/null; then
+  echo "beacon.zsh: /dev/tty is not writable — no terminal to paint" >&2
+  return 1
+fi
+
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
 #
@@ -35,7 +47,7 @@ typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 # beacon-dev is not iTerm2's default profile, so interactive panes activate it
 # here; Claude panes do it at SessionStart. A non-iTerm terminal silently
 # ignores the sequence.
-printf '\e]1337;SetProfile=beacon-dev\a'
+printf '\e]1337;SetProfile=beacon-dev\a' > /dev/tty
 # Badge (BADGE-15): opt-in, off by default — the tab (color + two-line
 # identity) carries the identity now, so the badge is redundant in a tabs
 # workflow. Emit its format only when the user config turns it on
@@ -44,13 +56,19 @@ printf '\e]1337;SetProfile=beacon-dev\a'
 # OSC overrides including SetBadgeFormat (§6.10).
 if [[ "${(L)$(python3 "$_BEACON_SCRIPT" config-get badge 2>/dev/null)}" == (1|true|on|yes) ]]; then
   printf '\e]1337;SetBadgeFormat=%s\a' \
-    "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)"
+    "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)" > /dev/tty
 fi
 
 # Project markers (mirrors PROV-05 in docs/spec.md).
 typeset -gra _BEACON_MARKERS=(
   .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile
 )
+
+# These helpers answer through `_beacon_reply` / `_beacon_binfo` rather than by
+# printing. Every `$(...)` on the prompt path forks a subshell — four of them
+# cost more than the one `git` call left in here.
+typeset -g _beacon_reply=''
+typeset -ga _beacon_binfo=()
 
 _beacon_project_root() {
   local dir="$PWD"
@@ -59,14 +77,14 @@ _beacon_project_root() {
     # represent the user's "current project".
     [[ "$dir" == "$HOME" ]] && return 1
     for m in $_BEACON_MARKERS; do
-      [[ -e "$dir/$m" ]] && { print -r -- "$dir"; return 0 }
+      [[ -e "$dir/$m" ]] && { _beacon_reply="$dir"; return 0 }
     done
     dir="${dir:h}"
   done
   return 1
 }
 
-# Outputs three lines: display, state, indicator.
+# Outputs four lines: display, state, indicator, identity.
 #   display   — branch name, prefixed with an ahead/behind indicator only
 #               when diverged so the eye can scan a column of branches and
 #               spot divergent ones without re-parsing each name. Examples:
@@ -80,16 +98,49 @@ _beacon_project_root() {
 #   identity  — "default" (the repo's default branch) or "feature" (any other)
 # All four empty when not in a git repo.
 _beacon_branch_info() {
-  local name
-  name="$(git symbolic-ref --short HEAD 2>/dev/null)" || { printf '\n\n\n\n'; return }
-  local state="untracked" ind="" counts ahead behind
-  if git rev-parse --abbrev-ref --symbolic-full-name @{u} >/dev/null 2>&1 \
-     && counts="$(git rev-list --left-right --count "@{u}...HEAD" 2>/dev/null)"; then
-    behind="${counts%%	*}"
-    ahead="${counts##*	}"
-    if (( ahead == 0 && behind == 0 )); then
+  setopt localoptions extendedglob noshwordsplit noksharrays
+  # One `for-each-ref` supplies the branch name, its upstream, the ahead/behind
+  # counts and the repo's default branch — the four `git` invocations this
+  # replaced cost ~60ms of every prompt, against ~14ms here. Fields are
+  # tab-separated because a ref name may contain `|` but never a control
+  # character. Iterating all of refs/heads/ is what lets one call answer both
+  # questions; it scales flat enough to not matter (~4ms extra at 500 branches).
+  local -a rows row
+  local line name="" upstream="" track="" default_branch=""
+  rows=("${(@f)$(git for-each-ref \
+      --format=$'%(HEAD)\t%(refname)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(symref:short)' \
+      refs/heads/ refs/remotes/origin/HEAD 2>/dev/null)}")
+  for line in "$rows[@]"; do
+    row=("${(@ps:\t:)line}")
+    if [[ "${row[2]}" == "refs/remotes/origin/HEAD" ]]; then
+      default_branch="${row[5]#origin/}"
+    elif [[ "${row[1]}" == "*" ]]; then
+      name="${row[2]#refs/heads/}"
+      upstream="${row[3]}"
+      track="${row[4]}"
+    fi
+  done
+  # No `*` row means detached HEAD, no repo, or a branch with no commit yet —
+  # an unborn HEAD points at a ref that `for-each-ref` cannot see. Only the last
+  # of those has a name to show, and `symbolic-ref` is what distinguishes it,
+  # so pay the extra call only here. `_detect_branch_info` in scripts/beacon
+  # names an unborn branch too; without this the interactive prompt and a Claude
+  # pane in the same fresh repo would disagree.
+  if [[ -z "$name" ]]; then
+    name="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
+      _beacon_binfo=('' '' '' ''); return
+    }
+  fi
+
+  # An upstream that was deleted upstream reads as `gone`; it carries no counts,
+  # so it classifies with the local-only branches rather than as diverged.
+  local state="untracked" ind="" ahead=0 behind=0
+  if [[ -n "$upstream" && "$track" != "gone" ]]; then
+    if [[ -z "$track" ]]; then
       state="clean"
     else
+      [[ "$track" == (#b)*"ahead "([0-9]##)*  ]] && ahead=$match[1]
+      [[ "$track" == (#b)*"behind "([0-9]##)* ]] && behind=$match[1]
       state="diverged"
       (( ahead > 0 ))  && ind+="↑${ahead}"
       (( behind > 0 )) && ind+="↓${behind}"
@@ -99,24 +150,14 @@ _beacon_branch_info() {
   # a feature branch reads by state. origin/HEAD names the default when it's set
   # (git clone / `git remote set-head`); when it isn't, fall back to the
   # conventional names so a fresh local repo still classifies main/master/trunk.
-  local default_branch identity="feature"
-  default_branch="$(git symbolic-ref --short --quiet refs/remotes/origin/HEAD 2>/dev/null)"
-  default_branch="${default_branch#origin/}"
+  local identity="feature"
   if [[ -z "$default_branch" ]]; then
     case "$name" in main|master|trunk) default_branch="$name" ;; esac
   fi
   [[ -n "$default_branch" && "$name" == "$default_branch" ]] && identity="default"
   local display="$name"
   [[ "$state" == "diverged" ]] && display="${ind} ${name}"
-  print -r -- "$display"
-  print -r -- "$state"
-  print -r -- "$ind"
-  print -r -- "$identity"
-}
-
-# Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
-_beacon_local_path() {
-  print -r -- "${PWD/#$HOME/~}"
+  _beacon_binfo=("$display" "$state" "$ind" "$identity")
 }
 
 # The project's name (e.g. `beacon`) — the remote's repo basename, else the
@@ -124,20 +165,31 @@ _beacon_local_path() {
 # the caller can tell "no project" from "a project called X"; the status-bar
 # chip floors that to the directory name, the window title to the abbreviated
 # cwd. Mirrors python's `_project_name_at`.
+#
+# The origin URL is memoized for the life of the shell: reading it costs a
+# `git config` fork on a path that runs every prompt, and a repo's origin
+# changes about once in its life — a `git remote set-url` shows up after the
+# next `exec zsh`.
+typeset -gA _BEACON_ORIGIN_URL
+
 _beacon_project_name() {
-  local root
-  root="$(_beacon_project_root)" || { print -r -- ""; return }
-  local url=""
-  if [[ -d "$root/.git" || -f "$root/.git" ]]; then
-    url="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
+  _beacon_project_root || { _beacon_reply=""; return }
+  local root="$_beacon_reply"
+  if (( ! ${+_BEACON_ORIGIN_URL[$root]} )); then
+    local fresh=""
+    if [[ -d "$root/.git" || -f "$root/.git" ]]; then
+      fresh="$(git -C "$root" config --get remote.origin.url 2>/dev/null)"
+    fi
+    _BEACON_ORIGIN_URL[$root]="$fresh"
   fi
+  local url="${_BEACON_ORIGIN_URL[$root]}"
   if [[ -n "$url" ]]; then
     local path="${url%/}"
     path="${path%.git}"
-    print -r -- "${path:t}"
+    _beacon_reply="${path:t}"
     return
   fi
-  print -r -- "${root:t}"
+  _beacon_reply="${root:t}"
 }
 
 # Track last-published values so we only emit on change. The sentinel ensures
@@ -211,7 +263,69 @@ _beacon_write_session_file() {
   print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID##*:}.txt"
 }
 
+# Indexed 1-based, matching zsh's string subscripting.
+typeset -gr _BEACON_B64_ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+typeset -g _beacon_b64_out=''
+
+# Base64-encode $1 into `_beacon_b64_out`, UTF-8 first. iTerm2 wants SetUserVar
+# values base64'd, and `| base64` would put a fork back on the path — the whole
+# point here is that publishing a slot costs no process at all. The UTF-8 step
+# is load-bearing rather than pedantic: the branch display carries ↑/↓ glyphs,
+# and zsh's `#ch` yields a codepoint where base64 needs the bytes.
+_beacon_b64() {
+  # `multibyte` is the default but a user can turn it off, and with it off the
+  # loop below reads bytes as codepoints and re-encodes each one — mojibake in
+  # the branch chip. Force it for the length of this function.
+  setopt localoptions multibyte noksharrays
+  local s=$1 i n=${#1} ch cp out=''
+  local -a b
+  for (( i = 1; i <= n; i++ )); do
+    ch=${s[i]}
+    cp=$(( #ch ))
+    if (( cp < 0x80 )); then
+      b+=($cp)
+    elif (( cp < 0x800 )); then
+      b+=($(( 0xC0 | cp >> 6 )) $(( 0x80 | cp & 63 )))
+    elif (( cp < 0x10000 )); then
+      b+=($(( 0xE0 | cp >> 12 )) $(( 0x80 | cp >> 6 & 63 )) $(( 0x80 | cp & 63 )))
+    else
+      b+=($(( 0xF0 | cp >> 18 )) $(( 0x80 | cp >> 12 & 63 )) \
+          $(( 0x80 | cp >> 6 & 63 )) $(( 0x80 | cp & 63 )))
+    fi
+  done
+  local c1 c2 c3
+  n=${#b}
+  for (( i = 1; i <= n; i += 3 )); do
+    c1=$b[i]
+    (( i + 1 <= n )) && c2=$b[i+1] || c2=0
+    (( i + 2 <= n )) && c3=$b[i+2] || c3=0
+    out+="${_BEACON_B64_ALPHABET[$(( (c1 >> 2) + 1 ))]}"
+    out+="${_BEACON_B64_ALPHABET[$(( ((c1 & 3) << 4 | c2 >> 4) + 1 ))]}"
+    if (( i + 1 > n )); then
+      out+='=='
+    elif (( i + 2 > n )); then
+      out+="${_BEACON_B64_ALPHABET[$(( ((c2 & 15) << 2) + 1 ))]}="
+    else
+      out+="${_BEACON_B64_ALPHABET[$(( ((c2 & 15) << 2 | c3 >> 6) + 1 ))]}"
+      out+="${_BEACON_B64_ALPHABET[$(( (c3 & 63) + 1 ))]}"
+    fi
+  done
+  _beacon_b64_out=$out
+}
+
+# Publish `user.<name>` when it differs from what was last sent, and move the
+# sentinel forward. The OSC goes out by raw printf for the same reason the
+# profile activation above does: a prompt redraw can't afford a python start.
+_beacon_publish() {
+  local name=$1 value=$2 sentinel=$3
+  [[ "$value" == "${(P)sentinel}" ]] && return
+  _beacon_b64 "$value"
+  printf '\e]1337;SetUserVar=%s=%s\a' "$name" "$_beacon_b64_out" > /dev/tty
+  : ${(P)sentinel::=$value}
+}
+
 _beacon_precmd() {
+  setopt localoptions noksharrays
   # BADGE-02: the plugin is the sole writer of `beacon_project`. The shell
   # snippet deliberately does NOT publish it from precmd — the badge text
   # follows intentional signals (overrides, SessionStart anchor) rather
@@ -219,9 +333,8 @@ _beacon_precmd() {
   # below are still published because the status bar IS meant to track
   # cwd — different surface, different contract.
 
-  local -a binfo
-  binfo=("${(@f)$(_beacon_branch_info)}")
-  local b="${binfo[1]}" bstate="${binfo[2]}" bidentity="${binfo[4]}"
+  _beacon_branch_info
+  local b="${_beacon_binfo[1]}" bstate="${_beacon_binfo[2]}" bidentity="${_beacon_binfo[4]}"
   # Hybrid branch color (#20): the default branch publishes one de-emphasized
   # slot whatever its state; a feature branch routes to its state slot. Exactly
   # one of the four is non-empty, so the profile's four branch components (each
@@ -235,32 +348,17 @@ _beacon_precmd() {
     [[ "$bstate" == "untracked" ]] && b_untracked="$b"
   fi
 
-  if [[ "$b" != "$_BEACON_LAST_BRANCH" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch "$b"
-    _BEACON_LAST_BRANCH="$b"
-  fi
-  if [[ "$bstate" != "$_BEACON_LAST_BRANCH_STATE" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_state "$bstate"
-    _BEACON_LAST_BRANCH_STATE="$bstate"
-  fi
-  if [[ "$b_default" != "$_BEACON_LAST_BRANCH_DEFAULT" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_default "$b_default"
-    _BEACON_LAST_BRANCH_DEFAULT="$b_default"
-  fi
-  if [[ "$b_clean" != "$_BEACON_LAST_BRANCH_CLEAN" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_clean "$b_clean"
-    _BEACON_LAST_BRANCH_CLEAN="$b_clean"
-  fi
-  if [[ "$b_diverged" != "$_BEACON_LAST_BRANCH_DIVERGED" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_diverged "$b_diverged"
-    _BEACON_LAST_BRANCH_DIVERGED="$b_diverged"
-  fi
-  if [[ "$b_untracked" != "$_BEACON_LAST_BRANCH_UNTRACKED" ]]; then
-    "$_BEACON_ITERM" uservar beacon_branch_untracked "$b_untracked"
-    _BEACON_LAST_BRANCH_UNTRACKED="$b_untracked"
-  fi
+  # Publishing a slot costs no process: a `cd` used to spend ~570ms here, almost
+  # all of it python interpreter startup paid once per slot.
+  _beacon_publish beacon_branch           "$b"           _BEACON_LAST_BRANCH
+  _beacon_publish beacon_branch_state     "$bstate"      _BEACON_LAST_BRANCH_STATE
+  _beacon_publish beacon_branch_default   "$b_default"   _BEACON_LAST_BRANCH_DEFAULT
+  _beacon_publish beacon_branch_clean     "$b_clean"     _BEACON_LAST_BRANCH_CLEAN
+  _beacon_publish beacon_branch_diverged  "$b_diverged"  _BEACON_LAST_BRANCH_DIVERGED
+  _beacon_publish beacon_branch_untracked "$b_untracked" _BEACON_LAST_BRANCH_UNTRACKED
 
-  local lp="$(_beacon_local_path)"
+  # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
+  local lp="${PWD/#$HOME/~}"
   if [[ "$lp" != "$_BEACON_LAST_LOCAL_PATH" ]]; then
     _beacon_write_session_file cwd "$PWD"
     _BEACON_LAST_LOCAL_PATH="$lp"
@@ -271,12 +369,10 @@ _beacon_precmd() {
   # repo it floors on the directory rather than collapsing. That is what took
   # the per-prompt `resolve-url` (python startup plus a possible tack
   # subprocess) off this hot path entirely.
-  local pname="$(_beacon_project_name)"
+  _beacon_project_name
+  local pname="$_beacon_reply"
   local chip="${pname:-${PWD:t}}"
-  if [[ "$chip" != "$_BEACON_LAST_PROJECT_NAME" ]]; then
-    "$_BEACON_ITERM" uservar beacon_project_name "$chip"
-    _BEACON_LAST_PROJECT_NAME="$chip"
-  fi
+  _beacon_publish beacon_project_name "$chip" _BEACON_LAST_PROJECT_NAME
 
   # Window title value (TITLE-01): the project identity when in one, else the
   # abbreviated cwd — a plain shell outside any project shows where it is
@@ -284,11 +380,9 @@ _beacon_precmd() {
   # a title has room for a path, a chip beside the branch does not. Local path
   # is never empty (PWD always set), so the title never goes blank.
   local title="${pname:-$lp}"
-  if [[ "$title" != "$_BEACON_LAST_TITLE" ]]; then
-    "$_BEACON_ITERM" uservar beacon_title "$title"
-    _BEACON_LAST_TITLE="$title"
-  fi
+  _beacon_publish beacon_title "$title" _BEACON_LAST_TITLE
 
+  return 0
 }
 
 _beacon_chpwd() {
@@ -298,6 +392,7 @@ _beacon_chpwd() {
   _BEACON_LAST_TITLE='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
   _BEACON_LAST_BRANCH_STATE='__unset__'
+  _BEACON_LAST_BRANCH_DEFAULT='__unset__'
   _BEACON_LAST_BRANCH_CLEAN='__unset__'
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'
   _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
