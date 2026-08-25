@@ -74,6 +74,10 @@ The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a s
 
 Where several sessions share a project, the dashboard stacks their cards. Hovering a tucked-behind card now brings that whole card forward, above the front one — you read the real card. It replaces a floating tooltip that showed the tucked card's task and latest turn, a second and partial rendering of something you could just be shown. Clicking still pins the raise, and keyboard focus gets the same reveal.
 
+### Opening a terminal spawns no python
+
+Sourcing beacon's shell integration asked the plugin two questions — where its data dir is, and whether the badge is on — and each answer cost a python interpreter startup, in every terminal you open. They now come from one cached block, rebuilt only when beacon itself, its data-dir record, or `~/.config/beacon/config.json` is newer than the cache. In the steady state, sourcing spawns nothing.
+
 ### Also
 
 - The `url` and `icon` overrides are removed. Neither was carried by any session in three months of local state, and the icon reaches only the dashboard, never a terminal surface. Icon auto-discovery is unchanged.

@@ -19,13 +19,52 @@ if [[ ! -x "$_BEACON_ITERM" ]]; then
   return 1
 fi
 
-# Path to the plugin script — used by helpers below (config-get, data-dir).
+# Path to the plugin script — used by the source-time `shell-init` read below.
 # The user-facing `beacon` command on PATH comes from a wrapper installed by
 # `beacon install` to ~/.local/bin/beacon, NOT from a shell alias. The
 # wrapper is what the SessionStart freshness hook (hooks/cli-freshness.sh)
 # can see via `command -v beacon` from non-interactive shells; an alias
 # wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
+
+# Source-time answers that need the plugin's own resolution: the data dir and
+# the opt-in badge gate. Asking python for them costs an interpreter startup
+# each, on every new terminal — the largest single item in this file's budget,
+# spent on values that change only when the user edits a config. So cache the
+# block and regenerate it only when an input changed. Every test below is a
+# shell builtin, so the steady state forks nothing.
+#
+# The cache is keyed by plugin root: two installs (the marketplace copy and a
+# working tree) resolve different data dirs, and one shared file would hand an
+# install the other's answer.
+_beacon_cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/beacon"
+_beacon_cfg="$_beacon_cfg_dir/config.json"
+typeset -g _BEACON_INIT_CACHE="$_beacon_cfg_dir/shell-init${${0:A:h:h}//[^A-Za-z0-9]/_}.zsh"
+
+_beacon_stale=1
+if [[ -r "$_BEACON_INIT_CACHE" ]]; then
+  source "$_BEACON_INIT_CACHE"
+  _beacon_stale=''
+  [[ "$_beacon_cfg"              -nt "$_BEACON_INIT_CACHE"
+     || "$_beacon_cfg_dir/data-dir" -nt "$_BEACON_INIT_CACHE"
+     || "$_BEACON_SCRIPT"           -nt "$_BEACON_INIT_CACHE" ]] && _beacon_stale=1
+  # An mtime test can't see a *deleted* config: nothing is newer than the cache
+  # afterwards, so the shell would keep the settings that file used to carry.
+  # Compare its presence against what it was when the block was built.
+  [[ -e "$_beacon_cfg" ]] && _beacon_present=1 || _beacon_present=''
+  [[ "$_beacon_present" == "$_BEACON_INIT_HAD_CONFIG" ]] || _beacon_stale=1
+fi
+
+if [[ -n "$_beacon_stale" ]]; then
+  mkdir -p "$_beacon_cfg_dir"
+  if ! python3 "$_BEACON_SCRIPT" shell-init > "$_BEACON_INIT_CACHE"; then
+    echo "beacon.zsh: failed to resolve source-time config via $_BEACON_SCRIPT" >&2
+    rm -f "$_BEACON_INIT_CACHE"
+    return 1
+  fi
+  source "$_BEACON_INIT_CACHE"
+fi
+unset _beacon_cfg_dir _beacon_cfg _beacon_stale _beacon_present
 
 # Every surface below is painted by writing an escape sequence to the terminal
 # device rather than to stdout, because `precmd` and `chpwd` also fire inside
@@ -54,7 +93,7 @@ printf '\e]1337;SetProfile=beacon-dev\a' > /dev/tty
 # (`"badge": "on"` in ~/.config/beacon/config.json). Read once here at source,
 # never in the per-prompt hot path. Set after SetProfile, which wipes session
 # OSC overrides including SetBadgeFormat (§6.10).
-if [[ "${(L)$(python3 "$_BEACON_SCRIPT" config-get badge 2>/dev/null)}" == (1|true|on|yes) ]]; then
+if [[ -n "$_BEACON_BADGE_ON" ]]; then
   printf '\e]1337;SetBadgeFormat=%s\a' \
     "$(printf '%s' '\(user.beacon_project)\(user.beacon_task)' | base64)" > /dev/tty
 fi
@@ -211,13 +250,11 @@ typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
 # read these files instead. Derive the cache dir from the script so the
 # shell, hooks, and slash commands converge on the same path regardless
 # of whether the install lives in the marketplace cache or a working tree.
-_beacon_data_dir="$(python3 "$_BEACON_SCRIPT" data-dir)"
-if [[ -z "$_beacon_data_dir" ]]; then
+if [[ -z "$_BEACON_DATA_DIR" ]]; then
   echo "beacon.zsh: failed to resolve data dir via $_BEACON_SCRIPT" >&2
   return 1
 fi
-typeset -gr _BEACON_CACHE_DIR="$_beacon_data_dir/cache"
-unset _beacon_data_dir
+typeset -gr _BEACON_CACHE_DIR="$_BEACON_DATA_DIR/cache"
 mkdir -p "$_BEACON_CACHE_DIR"
 
 # Window title (TITLE-01): give an interactive pane its identity as the OS

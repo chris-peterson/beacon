@@ -1396,6 +1396,25 @@ def cmd_data_dir(_args):
     sys.stdout.write(f"{DATA_DIR}\n")
 
 
+def cmd_shell_init(_args):
+    """Print the source-time answers shell/beacon.zsh needs, as a zsh-sourceable
+    block. Both were separate subcommands, which cost two interpreter startups in
+    every new terminal — the largest single item in that file's budget. The shell
+    caches this block and regenerates it only when an input file is newer, so the
+    steady state spawns nothing at all."""
+    badge = str(_load_config().get("badge", "")).strip().lower()
+    on = "1" if badge in ("1", "true", "on", "yes") else ""
+    # Whether a config existed when this block was built. An mtime test alone
+    # can't see a config that was deleted — nothing is newer than the cache
+    # afterwards — which would strand the shell on the settings it used to have.
+    had_config = "1" if _config_file().exists() else ""
+    sys.stdout.write(
+        f"_BEACON_DATA_DIR={shlex.quote(str(DATA_DIR))}\n"
+        f"_BEACON_BADGE_ON={shlex.quote(on)}\n"
+        f"_BEACON_INIT_HAD_CONFIG={shlex.quote(had_config)}\n"
+    )
+
+
 def cmd_config_get(args):
     """Print a single user-config value (empty when unset) — consumed by
     shell/beacon.zsh on source to gate the opt-in badge (BADGE-15). A list
@@ -5343,6 +5362,9 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
 
+    sub.add_parser("shell-init",
+                   help="(internal) print shell/beacon.zsh's source-time values as zsh")
+
     sp = sub.add_parser("config-get", help="(internal) print a user-config value by key")
     sp.add_argument("key")
 
@@ -5353,7 +5375,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "config-get", "statusline"}
+_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "config-get", "shell-init", "statusline"}
 
 
 def main(argv=None):
@@ -5383,6 +5405,7 @@ def main(argv=None):
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir, "config-get": cmd_config_get,
+        "shell-init": cmd_shell_init,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)
