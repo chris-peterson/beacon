@@ -1116,17 +1116,12 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     """Implements PROV-07. Returns (url, label)."""
     cwd = cwd or Path.cwd()
 
-    # 1. user override (short-circuits before any git work)
-    o = p_override("url")
-    if o:
-        return o, o[:30]
-
     # Resolve branch and remote once; reused by every subsequent provider.
     # Either may be empty (default branch / no `origin`); helpers handle that.
     branch = p_branch(cwd)
     remote = _git_remote_url_normalized(cwd)
 
-    # 2. tack-derived
+    # 1. tack-derived
     url, label = _tack_url_for(cwd, branch, _project_name_at(cwd))
     if url:
         return url, label
@@ -3369,7 +3364,7 @@ def _project_id_from_url(url: str) -> str:
 def _deliverable_suffix(url: str) -> str:
     """`#42` for issues/PRs, `!17` for GitLab MRs. Empty when the URL doesn't
     point at a forge issue/PR/MR. Used to contextualize the project_full chip
-    when PROV-07 returns a deliverable URL (tack, user override) — bare repo
+    when PROV-07 returns a deliverable URL (a tack deliverable, or an open CR) — bare repo
     or branch-tree URLs leave the chip showing only the project identity."""
     if not url:
         return ""

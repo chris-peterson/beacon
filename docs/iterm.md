@@ -138,7 +138,7 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
   <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
 </div>
 
-Line 1 is the project name; line 2 is the task, and it collapses when no task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note isn't painted on the tab — it surfaces in the [fleet dashboard](/demo) as recall context and in the [status line](#the-status-line), and the next prompt clears it.
+Line 1 is the project name; line 2 is the task, and it collapses when no task is set. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note isn't painted on the tab — it surfaces in the [fleet dashboard](/demo) and in the [status line](#the-status-line), and the next prompt clears it.
 
 ### Turning the badge on
 

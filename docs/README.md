@@ -149,7 +149,7 @@ That's the full fleet view: the bundled dashboard, plus `beacon wip` and `beacon
 
   The bundled dashboard (`dashboard/index.html`) is a self-contained starting point — no build, no dependencies. Clone and restyle it, or point your own dashboard at the same `/wip.json` + `/focus` + `/forget` contract; both work from any browser regardless of the session's terminal.
 
-Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …); to point it elsewhere, set one with `beacon icon <path-or-url>`. A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
+Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …). A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
 
 ## Always-on serve service (optional)
 
@@ -312,12 +312,11 @@ Inside Claude Code there is one, for the one thing you park by hand:
 Everything else is the CLI, which you can run from a Claude prompt with `!`. It costs no model turn, so it lands the instant you hit return:
 
 ```bash
-beacon show                                  # resolved project / task / status
+beacon show                                  # resolved project / task, mode + note, activity
 beacon set task perms                        # label the unit of work
-beacon status waiting "bg refresh"           # set status with a description
-beacon release                               # any mode: release/retro/done/pause
-beacon resume                                # clear all overrides + description
-beacon clear status                          # clear just the status override
+beacon release "v2.5.0"                      # any mode: release/retro/done/pause, with a note
+beacon resume                                # drop the overrides and leave the mode
+beacon clear task                            # clear just the task override
 ```
 
 The modes are mostly entered *for* you — a release flow sets `beacon release`, and a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
@@ -330,7 +329,7 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 - **`/color <name>`** is surfaced in the fleet view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab — that color stays the ready/busy/blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
-`pause` / `wrap` sit above the task label; between `beacon task` and `/rename`, the most recent one wins.
+Between `beacon task` and `/rename`, the most recent one wins.
 
 ## Tack integration (optional)
 

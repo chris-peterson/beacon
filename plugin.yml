@@ -35,7 +35,7 @@ suite:
   cmds:
     - ["/beacon:pause", "Park this session, with an optional note"]
     - ["/beacon:install-beacon", "Bootstrap or refresh the wrapper, completions, and profiles"]
-    - ["beacon", "Read the resolved project / task / status anywhere"]
+    - ["beacon", "Read the resolved project / task / mode / activity anywhere"]
   # >>> shipyard:describe — generated from source by `shipyard gen-describe`; do not edit >>>
   describe:
     rules:
