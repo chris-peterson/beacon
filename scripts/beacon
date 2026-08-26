@@ -343,6 +343,12 @@ _beacon() {
     install)
       (( CURRENT == 3 )) && compadd -- --dir
       ;;
+    ssh-install)
+      compadd -- --rc --print --yes
+      ;;
+    ssh-uninstall)
+      compadd -- --rc
+      ;;
     layout)
       compadd -- --write --yes --keys
       ;;
