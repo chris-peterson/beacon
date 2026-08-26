@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 2.6.0
+
+### A parked session's tab stops reading as blocked
+
+A paused or done session sits at an idle prompt by definition, so the idle timer always fired and red — the color that means Claude needs you — was the resting state of every parked tab. A halted mode now records nothing from an idle prompt. A permission prompt still paints red in every mode.
+
+### A pause note reaches the tab strip
+
+While a session is paused or done, its note takes line 2 of the tab label in place of the task, which a halted session has no live work to fill. The note's other home is the Claude Code status line, which exists only in the focused pane — so a note saying why a session is parked reached only the pane you were already looking at.
 
 ### `beacon layout` applies the recommended iTerm2 layout
 
@@ -22,6 +30,13 @@ Working in a linked worktree captioned the tab with that directory's name — an
 ### Where a session is now reads on line 1
 
 The tab shows `beacon @ ai-sdlc` over the task, rather than opening line 2 with a separator whose antecedent sat on the line above. The marker went only to the badge, which is opt-in, so by default it had no surface.
+
+### Also
+
+- A `url` override written before 2.5.0 no longer outranks the URL chain. `beacon set url` went away with 2.5.0, so nothing was left that could clear one.
+- Tab completion offers `--clear-screen` on `pause`, `--timing` on `wip`, and `--print` on `completions`.
+- The CLI cheat sheet in `docs/README.md` documented `beacon status waiting`, `beacon clear status`, and `beacon icon`, all of which 2.5.0 removed and all of which exit non-zero.
+- `README.md` gains sequence diagrams for what beacon computes on each hook and prompt, and where the answers are cached.
 
 ## 2.5.0
 
