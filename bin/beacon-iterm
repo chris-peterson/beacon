@@ -264,6 +264,52 @@ end tell
 '''
 
 
+# The read counterpart of set-name, and the only way a *local* process can see a
+# user var a *remote* host published: the value lives in iTerm2, and a status-bar
+# action component cannot interpolate `\(user.*)` into its command (§6.10). Same
+# Apple Events transport as focus and set-name — deliberately not the iTerm2
+# Python API, which beacon does not use.
+_GET_VAR_APPLESCRIPT = '''
+tell application "iTerm2"
+  set theID to "__SID__"
+  repeat with w in windows
+    repeat with t in tabs of w
+      repeat with s in sessions of t
+        if id of s is theID then
+          return variable s named "__NAME__"
+        end if
+      end repeat
+    end repeat
+  end repeat
+  error "no session" number 3
+end tell
+'''
+
+# iTerm2 answers an unset variable with `missing value` at exit 0, so the exit
+# code says nothing about whether the var exists.
+_APPLESCRIPT_MISSING = "missing value"
+
+
+def cmd_getvar(args):
+    import subprocess
+
+    sid = args.session_id.strip()
+    if ":" in sid:
+        sid = sid.rsplit(":", 1)[-1]
+    if not _GUID_RE.match(sid):
+        sys.exit(f"getvar: invalid session id: {args.session_id}")
+    script = (_GET_VAR_APPLESCRIPT
+              .replace("__SID__", sid)
+              .replace("__NAME__", _applescript_str(args.name)))
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"getvar: {r.stderr.strip() or ('no iTerm2 session with id ' + sid)}")
+    value = r.stdout.rstrip("\n")
+    # An unset var prints nothing rather than the literal, so a caller can test
+    # for empty without knowing AppleScript's vocabulary.
+    print("" if value == _APPLESCRIPT_MISSING else value)
+
+
 def _applescript_str(s: str) -> str:
     """Escape a Python string for an AppleScript double-quoted literal. The name
     template carries backslashes (`\\(user.foo)`), so backslash must double
@@ -579,6 +625,11 @@ def main(argv=None):
     sp.add_argument("session_id")
     sp.add_argument("name")
     sp.set_defaults(func=cmd_set_name)
+
+    sp = sub.add_parser("getvar", help="read a session's user var by its session id")
+    sp.add_argument("session_id")
+    sp.add_argument("name")
+    sp.set_defaults(func=cmd_getvar)
 
     sp = sub.add_parser("focus", help="bring an iTerm2 session to the foreground by its session id")
     sp.add_argument("session_id")

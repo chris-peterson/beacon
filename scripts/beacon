@@ -264,6 +264,8 @@ _beacon() {
     'import:restore per-session state from a beacon export file'
     'completions:install or print shell completions'
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
+    'ssh-install:install the remote snippet on a host so its cwd reaches this tab'
+    'ssh-uninstall:remove the remote snippet and its rc block from a host'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
     'copy-url:copy the resolved URL to the clipboard'
@@ -341,6 +343,12 @@ _beacon() {
     install)
       (( CURRENT == 3 )) && compadd -- --dir
       ;;
+    ssh-install)
+      compadd -- --rc --print --yes
+      ;;
+    ssh-uninstall)
+      compadd -- --rc
+      ;;
     layout)
       compadd -- --write --yes --keys
       ;;
@@ -397,11 +405,16 @@ TITLE_FORMAT = (r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>"
                 r"\(user.beacon_location)\(user.beacon_task_nl)")
 
 # The name an *unmanaged* pane carries (TITLE-04): `beacon_title`, the shell's
-# "project else abbreviated cwd", republished every precmd and so never empty.
-# The shell sets this same template once on source, and skips it when the pane is
-# already Claude-owned — so disengagement is what hands the name back. Must stay
-# in step with the set-name call in shell/beacon.zsh.
-INTERACTIVE_TITLE_FORMAT = r"\(user.beacon_title)"
+# "project else abbreviated cwd" — or `🔗 <host>` while ssh holds the prompt
+# (SSH-01) — republished every precmd and so never empty. `beacon_ssh_path_nl`
+# adds the remote cwd as line 2, and is the one slot a remote host writes
+# (SSH-05); it is "" on a local pane, so line 2 self-collapses the way
+# beacon_task_nl does. The shell sets this same template once on source, and
+# skips it when the pane is already Claude-owned — so disengagement is what hands
+# the name back. Must stay in step with the set-name call in shell/beacon.zsh;
+# `test_interactive_title_format_matches_the_shell` holds the two together.
+INTERACTIVE_TITLE_FORMAT = (r"\(user.beacon_title)"
+                            r"\(user.beacon_ssh_path_nl)")
 
 # The prefix beacon claims in iTerm2's shared DynamicProfiles directory. Install
 # writes only names in it, and sweeps only names in it (_make_profiles).
@@ -1284,6 +1297,47 @@ def _substitute_cmd_tokens(argv: list[str], cwd: Path) -> tuple[list[str], bool]
     return out, saw_dir
 
 
+# Editors whose CLI can open a path on a remote host. `code --folder-uri
+# vscode-remote://ssh-remote+<host><abs-path>` is VS Code's Remote-SSH entry
+# point, and the forks share it. Everything else — vim, emacs, subl, zed,
+# JetBrains — has no equivalent, so `↗ code` refuses there rather than opening
+# something else (STATUS-BAR-07's objection to `open -a`, applied to hosts).
+_REMOTE_URI_EDITORS = ("code", "code-insiders", "codium", "cursor", "windsurf")
+
+
+def _ssh_host_for_pane() -> str | None:
+    """The host this pane is ssh'd into, or None. Written by the shell's preexec
+    and removed by the precmd that follows it (SSH-01), so its presence is the
+    question "is the prompt somewhere else right now?"."""
+    key = _iterm_cache_key()
+    if not key:
+        return None
+    marker = CACHE_DIR / f"ssh-{key}.txt"
+    try:
+        return marker.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def _remote_cwd_for_pane() -> str:
+    """The absolute cwd on the remote host, read back out of iTerm2 (SSH-09).
+
+    The remote snippet publishes it as a user var, which is the only channel
+    that crosses ssh — and a status-bar action component cannot interpolate a
+    user var into its command, so the value has to be fetched rather than
+    substituted. One Apple Event, on a click, never on a render."""
+    sid = os.environ.get("ITERM_SESSION_ID") or ""
+    if ":" not in sid or sid.startswith("claude-session:"):
+        return ""
+    try:
+        r = subprocess.run(["python3", str(BEACON_ITERM), "getvar", sid,
+                            "user.beacon_ssh_dir"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
 def _resolve_editor(app: str) -> str | None:
     """Absolute path to `app`, or None when it cannot be found.
 
@@ -1317,6 +1371,35 @@ def _resolve_editor(app: str) -> str | None:
     return path if path and os.access(path, os.X_OK) else None
 
 
+def _open_code_remote(host: str) -> None:
+    """SSH-08: open the *remote* directory, or refuse. Never the local one — the
+    pane's local cwd is whatever it was before ssh started, and acting on it is
+    the bug this branch exists to fix."""
+    argv = _code_launch_argv()
+    app = Path(argv[0]).name
+    if app not in _REMOTE_URI_EDITORS:
+        sys.exit(f"this pane is on {host}, and {app} cannot open a remote path — "
+                 f'set an editor that can in "statusbar.buttons.code.cmd" in '
+                 f"{_config_file()}, or open it there yourself")
+    remote_dir = _remote_cwd_for_pane()
+    if not remote_dir:
+        sys.exit(f"this pane is on {host}, but its working directory isn't "
+                 f"published — run `beacon ssh-install {host}` so the remote "
+                 f"shell reports it")
+    exe = _resolve_editor(argv[0])
+    if not exe:
+        sys.exit(f"editor not found: {argv[0]!r}")
+    uri = f"vscode-remote://ssh-remote+{host}{remote_dir}"
+    try:
+        r = subprocess.run([exe, "--folder-uri", uri], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError) as e:
+        sys.exit(f"failed to launch {app}: {e}")
+    if r.returncode != 0:
+        detail = r.stderr.decode(errors="replace").strip()
+        sys.exit(f"{app} exited {r.returncode}{': ' + detail if detail else ''}")
+    print(f"opened: {uri}")
+
+
 def cmd_open_code(args):
     """STATUS-BAR-07: open a directory in the configured editor. Backs the
     `↗ code` status-bar button, which invokes this rather than launching the
@@ -1324,6 +1407,10 @@ def cmd_open_code(args):
     (§6.10 caveat 3), and resolving the binary is exactly what that costs. It
     also puts the config read at click time, so changing editors needs no
     reinstall."""
+    host = _ssh_host_for_pane()
+    if host:
+        _open_code_remote(host)
+        return
     target = args.dir or str(Path.cwd())
     argv, positioned = _substitute_cmd_tokens(_code_launch_argv(), Path(target))
     exe = _resolve_editor(argv[0])
@@ -1358,6 +1445,14 @@ def cmd_open_url(args):
     what makes this correct in a pane beacon isn't tracking — a shell you are
     just poking around in — and it is why there is no URL handoff file: nothing
     is cached, so nothing can go stale (the #5 failure)."""
+    # SSH-08: the local cwd is where the pane was before ssh started, so its
+    # repo is not the one on screen. Resolving it would open a plausible-looking
+    # wrong answer, which is worse than declining.
+    host = _ssh_host_for_pane()
+    if host:
+        sys.exit(f"this pane is on {host} — beacon won't open the local "
+                 f"repository's web view from a remote session")
+
     target = Path(args.dir) if getattr(args, "dir", None) else Path.cwd()
 
     cmd = _statusbar_button("web")["cmd"]
@@ -2383,7 +2478,8 @@ def _prune_cache(cutoff: float) -> int:
     state sweep. Without this the cache grew without bound: files accumulated for
     every pane ever opened, long after the matching state was pruned."""
     key = _iterm_cache_key()
-    keep = {f"cwd-{key}.txt", f"engaged-{key}"} if key else set()
+    keep = ({f"cwd-{key}.txt", f"engaged-{key}", f"ssh-{key}.txt"}
+            if key else set())
     removed = 0
     # `url-*.txt` is the URL handoff file 2.0 retired (STATUS-BAR-08 resolves at
     # click time now). No writer creates one, but every pane that ran an earlier
@@ -2391,7 +2487,7 @@ def _prune_cache(cutoff: float) -> int:
     # names it explicitly rather than leaving thousands of files no code reads.
     # Patterns are enumerated, not inferred, because the cache dir also holds
     # non-per-pane files the sweep must not touch.
-    for pattern in ("cwd-*.txt", "engaged-*", "url-*.txt"):
+    for pattern in ("cwd-*.txt", "engaged-*", "ssh-*.txt", "url-*.txt"):
         for p in CACHE_DIR.glob(pattern):
             if p.name in keep:
                 continue
@@ -4946,6 +5042,219 @@ def _install_shell_source() -> None:
     print(f"  ✓ appended source line to {zshrc}")
 
 
+_SSH_BLOCK_OPEN = "# >>> beacon ssh (managed — do not edit) >>>"
+_SSH_BLOCK_CLOSE = "# <<< beacon ssh (managed) <<<"
+# Where the snippet itself lands on the remote host. The rc only ever gains a
+# source line, so an upgrade rewrites this file and leaves the rc diff alone.
+_SSH_REMOTE_PATH = ".beacon/beacon-remote.sh"
+
+
+def _confirm_tty(question: str) -> bool | None:
+    """A y/n answer read from the controlling terminal, or None when there is no
+    tty to ask on — so a caller writing to someone else's machine fails loudly
+    rather than assuming consent. Mirrors `_prompt_tty` in bin/beacon-iterm,
+    which cannot be imported from here (the CLI stays Claude-unaware)."""
+    try:
+        with open("/dev/tty") as tty:
+            sys.stdout.write(f"{question} [y/N] ")
+            sys.stdout.flush()
+            return tty.readline().strip().lower() in ("y", "yes")
+    except OSError:
+        return None
+
+
+def _ssh_snippet() -> Path:
+    p = PLUGIN_ROOT / "shell" / "beacon-remote.sh"
+    if not p.is_file():
+        sys.exit(f"remote snippet not found at {p}")
+    return p
+
+
+def _ssh_block(digest: str) -> str:
+    """The managed region for the remote rc. Sourcing an installed file rather
+    than inlining the snippet keeps the rc diff three lines forever, and carries
+    the digest so a re-run can report `already current` without diffing."""
+    return (f"{_SSH_BLOCK_OPEN}\n"
+            f"# beacon {_plugin_version()} · {digest}\n"
+            f'[ -f "$HOME/{_SSH_REMOTE_PATH}" ] && . "$HOME/{_SSH_REMOTE_PATH}"\n'
+            f"{_SSH_BLOCK_CLOSE}")
+
+
+def _splice_ssh_block(rc_text: str, block: str) -> str:
+    """Insert or replace the managed region in an rc file's text.
+
+    Pure text in, text out — no ssh — because this is the part that can damage
+    someone's shell config, and it is the part worth testing directly."""
+    if _SSH_BLOCK_OPEN in rc_text:
+        head, rest = rc_text.split(_SSH_BLOCK_OPEN, 1)
+        if _SSH_BLOCK_CLOSE not in rest:
+            sys.exit("the beacon block in the remote rc has no closing marker — "
+                     "fix it by hand rather than letting beacon guess where it ends")
+        tail = rest.split(_SSH_BLOCK_CLOSE, 1)[1]
+        return f"{head}{block}{tail}"
+    sep = "" if rc_text.endswith("\n") or not rc_text else "\n"
+    return f"{rc_text}{sep}\n{block}\n"
+
+
+def _ssh_run(host: str, script: str, stdin: str = ""):
+    """Run a POSIX script on `host`, with `stdin` available to it for reading.
+
+    The script travels as an *argument*, quoted once for the remote login shell
+    that ssh hands it to — not on stdin, because `sh -s` would then read the
+    piped data as more script. Keeping the two channels separate is what lets
+    the installer `cat` a file it is also being told how to place.
+
+    No BatchMode: the user may need to answer a password or a 2FA prompt, so ssh
+    keeps the terminal."""
+    return subprocess.run(["ssh", host, "sh", "-c", shlex.quote(script)],
+                          input=stdin, capture_output=True, text=True, timeout=120)
+
+
+# Asks the remote which login shell it runs and which rc that shell reads.
+# Bash is the case worth care: an ssh session is a *login* shell, so bash reads
+# .bash_profile / .profile, which usually sources .bashrc but is not required to.
+_SSH_PROBE = r'''
+sh=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7)
+[ -n "$sh" ] || sh=$SHELL
+case ${sh##*/} in
+  zsh)  printf 'shell=zsh\nrc=%s\n' "${ZDOTDIR:-$HOME}/.zshrc" ;;
+  bash) printf 'shell=bash\nrc=%s\n' "$HOME/.bashrc"
+        if [ -f "$HOME/.bash_profile" ]; then
+          if grep -q bashrc "$HOME/.bash_profile" 2>/dev/null; then
+            printf 'profile=sources-bashrc\n'
+          else
+            printf 'profile=orphaned\n'
+          fi
+        fi ;;
+  *)    printf 'shell=%s\nrc=\n' "${sh##*/}" ;;
+esac
+'''
+
+
+def _ssh_probe(host: str) -> dict:
+    r = _ssh_run(host, _SSH_PROBE)
+    if r.returncode != 0:
+        sys.exit(f"ssh {host}: {r.stderr.strip() or 'probe failed'}")
+    return dict(line.split("=", 1) for line in r.stdout.splitlines() if "=" in line)
+
+
+def cmd_ssh_install(args):
+    """Install the remote snippet on `host` so its cwd and branch reach this
+    machine's tab (SSH-07).
+
+    Never reachable from a hook, a render, or `install`: this writes to a machine
+    that is not the user's to assume consent for, so every path it will touch is
+    printed and confirmed first."""
+    snippet = _ssh_snippet()
+    body = snippet.read_text(encoding="utf-8")
+    digest = hashlib.sha256(body.encode()).hexdigest()[:12]
+
+    if args.print_only:
+        sys.stdout.write(body)
+        return
+    if not args.host:
+        sys.exit("ssh-install needs a <host>, or --print to emit the snippet")
+
+    host = args.host
+    probe = _ssh_probe(host)
+    # Resolved before the checks below, both of which tell the user to pass
+    # --rc: consulted after them, the flag could never answer either.
+    rc = args.rc or probe.get("rc") or ""
+    if not rc:
+        sys.exit(f"{host} runs {probe.get('shell', 'an unknown shell')}, which "
+                 f"beacon has no rc path for — pass --rc <path> to choose one")
+    # This asks whether an ssh login would actually read the rc *beacon picked*.
+    # An explicit --rc is the user overriding that pick, so it no longer applies.
+    if not args.rc and probe.get("profile") == "orphaned":
+        sys.exit(f"{host} has a ~/.bash_profile that does not source ~/.bashrc, "
+                 f"so an ssh login would never read {rc}. Make .bash_profile "
+                 f"source it, or pass --rc ~/.bash_profile to install there.")
+
+    print(f"beacon ssh-install {host}")
+    print(f"  shell    {probe.get('shell', '?')}")
+    print(f"  snippet  ~/{_SSH_REMOTE_PATH}   ({len(body)} bytes, {digest})")
+    print(f"  rc       {rc}   (+4 lines, marker-delimited)")
+    print()
+    for line in _ssh_block(digest).splitlines():
+        print(f"    {line}")
+    print()
+    if not args.yes:
+        ans = _confirm_tty(f"write these to {host}?")
+        if ans is None:
+            sys.exit("ssh-install needs a terminal to confirm on; "
+                     "re-run with --yes to accept.")
+        if not ans:
+            sys.exit("nothing written")
+
+    # The snippet arrives on stdin while the placement script arrives as an
+    # argument, so `cat` reads exactly the file and nothing else.
+    installer = (f'set -e; mkdir -p "$HOME/{Path(_SSH_REMOTE_PATH).parent}"; '
+                 f'cat > "$HOME/{_SSH_REMOTE_PATH}"; '
+                 f'printf %s "$HOME/{_SSH_REMOTE_PATH}"')
+    r = _ssh_run(host, installer, stdin=body)
+    if r.returncode != 0:
+        sys.exit(f"ssh {host}: {r.stderr.strip() or 'install failed'}")
+
+    fetch = f'[ -f "{rc}" ] && cat "{rc}" || true'
+    got = _ssh_run(host, fetch)
+    if got.returncode != 0:
+        sys.exit(f"ssh {host}: could not read {rc}: {got.stderr.strip()}")
+    updated = _splice_ssh_block(got.stdout, _ssh_block(digest))
+    if updated == got.stdout:
+        print(f"  ✓ {rc} already current")
+    else:
+        # `cat >` the whole file rather than appending: the block may be a
+        # replacement, and a partial write is worse than a rewrite here.
+        w = _ssh_run(host, f'cat > "{rc}.beacon-new" && mv "{rc}.beacon-new" "{rc}"',
+                     stdin=updated)
+        if w.returncode != 0:
+            sys.exit(f"ssh {host}: could not write {rc}: {w.stderr.strip()}")
+        print(f"  ✓ {rc} updated")
+    print(f"  ✓ installed {r.stdout.strip()}")
+    print()
+    print(f"open a new shell on {host} — its cwd and branch now reach this tab.")
+
+
+def _unsplice_ssh_block(rc_text: str) -> str:
+    """Remove the managed region from an rc file's text, leaving everything else
+    byte-for-byte. The mirror of `_splice_ssh_block`, and a pure function for the
+    same reason: this rewrites someone's shell config.
+
+    It refuses a region with no closing marker rather than treating the rest of
+    the file as part of the block — which would delete every line after it."""
+    if _SSH_BLOCK_OPEN not in rc_text:
+        return rc_text
+    head, rest = rc_text.split(_SSH_BLOCK_OPEN, 1)
+    if _SSH_BLOCK_CLOSE not in rest:
+        sys.exit("the beacon block in the remote rc has no closing marker — "
+                 "remove it by hand rather than letting beacon guess where it ends")
+    tail = rest.split(_SSH_BLOCK_CLOSE, 1)[1]
+    return head.rstrip("\n") + ("\n" if head.strip() else "") + tail.lstrip("\n")
+
+
+def cmd_ssh_uninstall(args):
+    """Remove the managed block and the installed snippet from `host`."""
+    host = args.host
+    probe = _ssh_probe(host)
+    rc = args.rc or probe.get("rc") or ""
+    if not rc:
+        sys.exit(f"no rc path known for {host} — pass --rc <path>")
+    got = _ssh_run(host, f'[ -f "{rc}" ] && cat "{rc}" || true')
+    if got.returncode != 0:
+        sys.exit(f"ssh {host}: could not read {rc}: {got.stderr.strip()}")
+    stripped = _unsplice_ssh_block(got.stdout)
+    if stripped == got.stdout:
+        print(f"  ✓ {rc} has no beacon block")
+    else:
+        w = _ssh_run(host, f'cat > "{rc}.beacon-new" && mv "{rc}.beacon-new" "{rc}"',
+                     stdin=stripped)
+        if w.returncode != 0:
+            sys.exit(f"ssh {host}: could not write {rc}: {w.stderr.strip()}")
+        print(f"  ✓ removed the beacon block from {rc}")
+    if _ssh_run(host, f'rm -f "$HOME/{_SSH_REMOTE_PATH}"').returncode == 0:
+        print(f"  ✓ removed ~/{_SSH_REMOTE_PATH}")
+
+
 def cmd_completions(args):
     if args.shell != "zsh":
         sys.exit(f"only zsh is supported (got: {args.shell})")
@@ -5459,6 +5768,21 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--dir", default=None,
                     help="directory to install the wrapper into (default: ~/.local/bin)")
 
+    sp = sub.add_parser("ssh-install",
+                        help="install the remote snippet on a host so its cwd reaches this tab")
+    sp.add_argument("host", nargs="?")
+    sp.add_argument("--rc", default=None,
+                    help="rc file to install into (default: the remote login shell's)")
+    sp.add_argument("--print", dest="print_only", action="store_true",
+                    help="print the snippet to stdout and touch nothing")
+    sp.add_argument("--yes", action="store_true",
+                    help="skip the confirmation prompt")
+
+    sp = sub.add_parser("ssh-uninstall",
+                        help="remove the remote snippet and its rc block from a host")
+    sp.add_argument("host")
+    sp.add_argument("--rc", default=None)
+
     sub.add_parser("refresh-iterm-profiles",
                    help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
 
@@ -5573,6 +5897,7 @@ def main(argv=None):
         "layout": cmd_layout,
         "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "open-code": cmd_open_code,
+        "ssh-install": cmd_ssh_install, "ssh-uninstall": cmd_ssh_uninstall,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,

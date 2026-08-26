@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1390,6 +1391,7 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
 
     def setUp(self):
         self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        self.plugin = BEACON_PATH.read_text(encoding="utf-8")
 
     def test_the_shell_publishes_the_project_name_slot(self):
         # Slots go out as raw OSC from zsh, so the publish call is what
@@ -1410,6 +1412,42 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
                      "_BEACON_RESOLVED_URL", '"$_BEACON_SCRIPT" resolve-url', "zstat"):
             with self.subTest(symbol=gone):
                 self.assertNotIn(gone, self.shell)
+
+    def test_interactive_title_format_matches_the_shell(self):
+        # TITLE-04: the interactive name template lives in two files, and the
+        # comment beside each has always said they must stay in step — but
+        # nothing held them there, so a slot added to one and not the other
+        # would leave a pane interpolating a var no writer sets (a blank tab
+        # label and window title, the HOOK-09 failure). Compared as source text
+        # rather than by importing, like the rest of this class: the shell half
+        # can't be imported and run here.
+        decl = self.plugin.split("INTERACTIVE_TITLE_FORMAT = ", 1)[1]
+        decl = decl.split("\n\n", 1)[0]
+        plugin_slots = re.findall(r"\\\(user\.(\w+)\)", decl)
+        shell_decl = self.shell.split("set-name \"$ITERM_SESSION_ID\"", 1)[1]
+        shell_slots = re.findall(r"\\\(user\.(\w+)\)", shell_decl.split("\n\n", 1)[0])
+        self.assertEqual(plugin_slots, shell_slots)
+        self.assertEqual(plugin_slots, ["beacon_title", "beacon_ssh_path_nl"])
+
+    def test_the_shell_owns_line_one_and_the_remote_owns_line_two(self):
+        # SSH-01: `🔗 <host>` is composed into beacon_title by the local shell,
+        # which keeps that slot's single writer and its never-empty guarantee.
+        # beacon_ssh_path_nl is the only slot a remote host writes, so the shell
+        # must publish it empty and never non-empty — otherwise the two writers
+        # race over line 2.
+        self.assertIn("_beacon_publish beacon_title \"🔗 $_beacon_reply\"", self.shell)
+        self.assertIn("_beacon_publish beacon_ssh_path_nl ''", self.shell)
+        self.assertNotIn('_beacon_publish beacon_ssh_path_nl "', self.shell)
+
+    def test_the_ssh_sentinel_is_invalidated_on_return(self):
+        # SSH-02: the local `''` publish above matches its own sentinel, so
+        # without the reset the clear short-circuits and line 2 stays stranded
+        # on the remote path forever. The sentinel must be in the shared
+        # invalidate list, not just declared.
+        invalidate = self.shell.split("_beacon_invalidate_sentinels() {", 1)[1]
+        invalidate = invalidate.split("\n}", 1)[0]
+        self.assertIn("_BEACON_LAST_SSH_PATH_NL='__unset__'", invalidate)
+        self.assertIn("_BEACON_LAST_TITLE='__unset__'", invalidate)
 
 
 class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
@@ -4386,9 +4424,11 @@ class PruneCollectsCacheFiles(BeaconTest):
         cd = self.beacon.CACHE_DIR
         cd.mkdir(parents=True, exist_ok=True)
         for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt",
-                     "cwd-FRESH-GUID.txt", "engaged-FRESH-GUID"):
+                     "ssh-STALE-GUID.txt",
+                     "cwd-FRESH-GUID.txt", "engaged-FRESH-GUID", "ssh-FRESH-GUID.txt"):
             (cd / name).write_text("/some/path\n")
-        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt"):
+        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt",
+                     "ssh-STALE-GUID.txt"):
             os.utime(cd / name, (self.OLD, self.OLD))
         return cd
 
@@ -4402,6 +4442,16 @@ class PruneCollectsCacheFiles(BeaconTest):
         self.assertFalse((cd / "engaged-STALE-GUID").exists())
         self.assertTrue((cd / "cwd-FRESH-GUID.txt").exists())
         self.assertTrue((cd / "engaged-FRESH-GUID").exists())
+
+    def test_ssh_markers_are_swept_like_the_other_handoff_files(self):
+        # SSH-01's marker is written by the shell's preexec and normally removed
+        # by the precmd that follows. A pane killed mid-session leaves one, and
+        # the sweep enumerates its patterns explicitly, so a new file shape that
+        # isn't added here accumulates forever.
+        cd = self._seed()
+        self._prune()
+        self.assertFalse((cd / "ssh-STALE-GUID.txt").exists())
+        self.assertTrue((cd / "ssh-FRESH-GUID.txt").exists())
 
     def test_retired_url_handoff_files_are_collected(self):
         # No writer creates these since 2.0 moved `↖ web` to click-time
@@ -4997,3 +5047,271 @@ def _base_state() -> dict:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SshInstallEditsTheRemoteRc(BeaconTest):
+    """SSH-07: the rc splice is the part that can damage someone's shell config,
+    so it is a pure text function and tested as one — no ssh involved."""
+
+    def _block(self, digest="abc123"):
+        return self.beacon._ssh_block(digest)
+
+    def test_appends_a_marker_delimited_block_to_an_existing_rc(self):
+        out = self.beacon._splice_ssh_block("export PATH=/x\n", self._block())
+        self.assertIn("export PATH=/x", out)
+        self.assertIn(self.beacon._SSH_BLOCK_OPEN, out)
+        self.assertIn(self.beacon._SSH_BLOCK_CLOSE, out)
+
+    def test_reinstalling_the_same_version_changes_nothing(self):
+        once = self.beacon._splice_ssh_block("export PATH=/x\n", self._block())
+        self.assertEqual(self.beacon._splice_ssh_block(once, self._block()), once)
+
+    def test_an_upgrade_replaces_the_block_rather_than_stacking_one(self):
+        once = self.beacon._splice_ssh_block("export PATH=/x\n", self._block("aaa"))
+        twice = self.beacon._splice_ssh_block(once, self._block("bbb"))
+        self.assertEqual(twice.count(self.beacon._SSH_BLOCK_OPEN), 1)
+        self.assertIn("bbb", twice)
+        self.assertNotIn("aaa", twice)
+        # The user's own lines are never the thing that moves.
+        self.assertIn("export PATH=/x", twice)
+
+    def test_a_block_missing_its_close_marker_refuses(self):
+        # Guessing where a half-written block ends is how an rc file loses lines.
+        mangled = self.beacon._SSH_BLOCK_OPEN + "\nsomething\n"
+        with self.assertRaises(SystemExit):
+            self.beacon._splice_ssh_block(mangled, self._block())
+
+    def test_uninstall_removes_only_the_block(self):
+        rc = "export PATH=/x\n"
+        once = self.beacon._splice_ssh_block(rc, self._block())
+        self.assertEqual(self.beacon._unsplice_ssh_block(once), rc)
+
+    def test_uninstall_on_a_clean_rc_is_a_no_op(self):
+        rc = "export PATH=/x\n\nalias g=git\n"
+        self.assertEqual(self.beacon._unsplice_ssh_block(rc), rc)
+
+    def test_uninstall_refuses_a_block_missing_its_close_marker(self):
+        # Treating the rest of the file as part of the block would delete every
+        # line after the open marker.
+        mangled = "export PATH=/x\n" + self.beacon._SSH_BLOCK_OPEN + "\nkeep me\n"
+        with self.assertRaises(SystemExit):
+            self.beacon._unsplice_ssh_block(mangled)
+
+    def test_print_only_touches_nothing_and_runs_no_ssh(self):
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            with mock.patch("sys.stdout", io.StringIO()) as out:
+                self.beacon.cmd_ssh_install(
+                    self.beacon.argparse.Namespace(host=None, rc=None, print_only=True, yes=False))
+        run.assert_not_called()
+        self.assertIn("remote half of the shell integration", out.getvalue())
+
+    def test_the_script_travels_as_an_argument_not_on_stdin(self):
+        # `sh -s` would read piped data as more script, so the installer's own
+        # body must not share the channel with the file it is placing.
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+            self.beacon._ssh_run("h", 'cat > "$HOME/x"', stdin="FILE BODY")
+        argv, kwargs = run.call_args[0][0], run.call_args[1]
+        self.assertEqual(argv[:4], ["ssh", "h", "sh", "-c"])
+        self.assertEqual(kwargs["input"], "FILE BODY")
+        self.assertNotIn("-s", argv)
+
+    def _probe(self, **fields):
+        return mock.patch.object(self.beacon, "_ssh_probe", return_value=fields)
+
+    def test_rc_override_reaches_a_shell_with_no_known_rc(self):
+        # The error this replaces tells the user to pass --rc; consulted after
+        # the check, the flag could never answer it.
+        with self._probe(shell="fish", rc=""):
+            with mock.patch.object(self.beacon, "_confirm_tty", return_value=False):
+                with self.assertRaises(SystemExit) as e:
+                    self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                        host="h", rc="~/.config/fish/config.fish",
+                        print_only=False, yes=False))
+        # Reached the confirmation and declined, rather than dying on the probe.
+        self.assertIn("nothing written", str(e.exception))
+
+    def test_rc_override_reaches_an_orphaned_bash_profile(self):
+        # Same shape: the check asks whether a login would read the rc *beacon*
+        # picked, so an explicit --rc is the user overriding that question.
+        with self._probe(shell="bash", rc="/home/u/.bashrc", profile="orphaned"):
+            with mock.patch.object(self.beacon, "_confirm_tty", return_value=False):
+                with self.assertRaises(SystemExit) as e:
+                    self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                        host="h", rc="~/.bash_profile", print_only=False, yes=False))
+        self.assertIn("nothing written", str(e.exception))
+
+    def test_an_orphaned_bash_profile_still_refuses_without_an_override(self):
+        with self._probe(shell="bash", rc="/home/u/.bashrc", profile="orphaned"):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                    host="h", rc=None, print_only=False, yes=False))
+        self.assertIn("bash_profile", str(e.exception))
+
+    def test_a_host_is_required_when_not_printing(self):
+        with self.assertRaises(SystemExit):
+            self.beacon.cmd_ssh_install(
+                self.beacon.argparse.Namespace(host=None, rc=None, print_only=False, yes=False))
+
+
+class ButtonsDuringAnSshSession(BeaconTest):
+    """SSH-08: neither button may act on the local working directory while the
+    prompt is on another host. The local cwd is whatever it was before ssh
+    started, so acting on it produces a plausible wrong answer."""
+
+    def _mark_ssh(self, host="build-01"):
+        os.environ["ITERM_SESSION_ID"] = "w0t0p0:GUID-1"
+        self.beacon.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (self.beacon.CACHE_DIR / "ssh-GUID-1.txt").write_text(f"{host}\n")
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "sshcfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_web_refuses_and_names_the_host(self):
+        self._mark_ssh()
+        with self.assertRaises(SystemExit) as e:
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("build-01", str(e.exception))
+
+    def test_web_resolves_normally_with_no_ssh_marker(self):
+        # The marker's absence is the common case and must cost nothing.
+        os.environ["ITERM_SESSION_ID"] = "w0t0p0:GUID-1"
+        with mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://x.test/r", "r")):
+            with mock.patch.object(self.beacon.subprocess, "run") as run:
+                run.return_value = mock.Mock(returncode=0, stderr=b"")
+                self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("https://x.test/r", run.call_args[0][0])
+
+    def test_code_opens_the_remote_directory_over_remote_ssh(self):
+        self._mark_ssh()
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane",
+                               return_value="/home/me/src/deploy"):
+            with mock.patch.object(self.beacon, "_resolve_editor",
+                                   return_value="/usr/local/bin/code"):
+                with mock.patch.object(self.beacon.subprocess, "run") as run:
+                    run.return_value = mock.Mock(returncode=0, stderr=b"")
+                    self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[1], "--folder-uri")
+        self.assertEqual(argv[2],
+                         "vscode-remote://ssh-remote+build-01/home/me/src/deploy")
+
+    def test_code_never_receives_a_local_path_while_ssh_is_active(self):
+        # The whole point of the branch: a local directory reaching the editor
+        # here is the original bug.
+        self._mark_ssh()
+        local = str(Path(self._tmp.name))
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane",
+                               return_value="/srv/app"):
+            with mock.patch.object(self.beacon, "_resolve_editor",
+                                   return_value="/usr/local/bin/code"):
+                with mock.patch.object(self.beacon.subprocess, "run") as run:
+                    run.return_value = mock.Mock(returncode=0, stderr=b"")
+                    self.beacon.cmd_open_code(
+                        self.beacon.argparse.Namespace(dir=local))
+        self.assertNotIn(local, " ".join(run.call_args[0][0]))
+
+    def test_code_refuses_when_the_remote_path_is_unpublished(self):
+        # The host is known from the local preexec, but without the remote
+        # snippet there is no path — opening the host's default folder instead
+        # would be a different action wearing this button's label.
+        self._mark_ssh()
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane", return_value=""):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("ssh-install", str(e.exception))
+
+    def test_code_refuses_for_an_editor_with_no_remote_uri_scheme(self):
+        self._mark_ssh()
+        with self._config(statusbar={"buttons": {"code": {"cmd": "vim"}}}):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("vim", str(e.exception))
+        self.assertIn("build-01", str(e.exception))
+
+
+@unittest.skipUnless(shutil.which("zsh"), "needs zsh to drive the parser")
+class SshTargetParser(unittest.TestCase):
+    """SSH-03: the host is parsed out of `ssh` argv with no fork, so the parser
+    is zsh and cannot be imported. It is sliced out by name and driven directly
+    — the alternative is trusting the most intricate new logic to inspection."""
+
+    CASES = [
+        # (command line, expected display host or None for "paint nothing")
+        ("ssh build-01", "build-01"),
+        ("ssh user@build-01", "build-01"),
+        ("ssh -p 2222 build-01", "build-01"),
+        ("ssh -p2222 build-01", "build-01"),          # attached value
+        ("ssh -i ~/.ssh/k build-01", "build-01"),
+        ("ssh -o SendEnv=FOO build-01", "build-01"),
+        ("ssh -L 8080:localhost:80 build-01", "build-01"),
+        ("ssh -J bastion build-01", "build-01"),
+        ("ssh -W host:22 jump", "jump"),
+        ("ssh -tt build-01", "build-01"),             # clustered booleans
+        ("ssh -6 -4 -C -tt me@h.d.io", "h"),
+        ("ssh build-01.prod.example.com", "build-01"),
+        ("ssh HOST.example.com", "HOST"),
+        ("ssh 10.0.1.5", "10.0.1.5"),                 # literals stay whole
+        ("ssh 192.168.0.10:22", "192.168.0.10"),
+        ("ssh 2001:db8::1", "2001:db8::1"),
+        ("ssh [2001:db8::1]:2222", "2001:db8::1"),
+        ("ssh me@[fe80::1]", "fe80::1"),
+        ("ssh ssh://me@build-01:22/", "build-01"),
+        ("env A=b ssh build-01", "build-01"),
+        ("A=b ssh build-01", "build-01"),
+        ("ssh -N -L 5432:db:5432 build-01", "build-01"),
+        ('ssh -oProxyCommand="ssh j nc %h %p" host', "host"),
+        ("ssh build-01 && ssh other", "build-01"),    # first command wins
+        # A trailing remote command returns immediately, so painting would
+        # flicker the tab for one command's lifetime (SSH-04).
+        ("ssh build-01 uptime", None),
+        ("ssh -f build-01", None),                    # backgrounds itself
+        ("ssh -", None),
+        ("ssh", None),
+        ("ssh -p", None),                             # flag ate the host
+        # Not this pane going anywhere.
+        ("git push", None),
+        ("echo hi | ssh build-01", None),
+        ("sshfs foo bar", None),
+        ("cat ssh_notes.md", None),
+        # The line arrives unexpanded, so these would caption the tab with
+        # literal shell source; and glob metacharacters must never be read as
+        # patterns by the flag scan.
+        ("ssh $(echo h)", None),
+        ('ssh "ho*st"', None),
+        ('ssh "my host"', None),
+        ("ssh -* host", "host"),
+        ("ssh -[abc] host", "host"),
+        ("ssh -? host", "host"),
+        ("ssh -# host", "host"),
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        src = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        flags = re.search(r"^typeset -gr _BEACON_SSH_VALUE_FLAGS=.*$", src, re.M)
+        fn = re.search(r"^_beacon_ssh_target\(\) \{\n.*?^\}$", src, re.S | re.M)
+        cls.prelude = f"{flags.group(0)}\n{fn.group(0)}\ntypeset -g _beacon_reply=''\n"
+
+    def _parse(self, line):
+        # `globsubst` on purpose: it is the option that makes an unquoted
+        # expansion in pattern position glob, which would let `ssh -*` be read
+        # as a value-taking flag and eat the host. The parser pins it off, and
+        # driving the harness with it on is what proves the pin.
+        script = (self.prelude +
+                  'setopt globsubst\n'
+                  'if _beacon_ssh_target "$1"; then print -rn -- "$_beacon_reply"; '
+                  'else print -rn -- "(none)"; fi\n')
+        r = subprocess.run(["zsh", "-f", "-s", line], input=script,
+                           capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return None if r.stdout == "(none)" else r.stdout
+
+    def test_every_case(self):
+        for line, want in self.CASES:
+            with self.subTest(line=line):
+                self.assertEqual(self._parse(line), want)

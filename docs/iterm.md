@@ -181,6 +181,29 @@ The project chip names the project, and the branch beside it is colored by its g
 
 The chip needs no git repo, no remote, and no Claude session to have an answer, so it reads the same in every pane. Which **deliverable** you are on is the status line's job (a clickable `#42`), and the `↖ web` button opens it.
 
+## Over ssh
+
+An ssh'd pane used to show the directory you were in before you typed `ssh`. It now shows where you actually are:
+
+```text
+🔗 build-01
+  ~/src/deploy
+```
+
+Line 1 is also the OS window title, so the host is legible in Mission Control and ⌘` as well as the tab strip. The host name needs nothing installed on the server — beacon reads it out of the `ssh` command as you type it, which means it also works on hosts you can't modify, and it shows the alias you typed rather than whatever the machine calls itself.
+
+The **working directory** has to come from the server, since your local shell stops printing prompts for the whole session. One command installs the remote half:
+
+```bash
+beacon ssh-install build-01     # --print first, if you'd rather read it
+```
+
+That drops a small POSIX snippet — zsh and bash, no python, no beacon checkout — into the remote rc. From then on the tab tracks every `cd` on that host, and the status-bar chips describe the *remote* repo: project name, branch, and the same branch colours you get locally. Escape sequences are just bytes on a tty, so the remote host writes them and they flow up the ssh connection into iTerm2.
+
+`beacon ssh-uninstall build-01` removes both the snippet and the block it added.
+
+**The two buttons decline during ssh** rather than acting on the local directory. `↖ web` says which host you're on; `↗ code` opens the remote directory in VS Code over Remote-SSH, or tells you why it can't — an editor with no remote-URI scheme, or no remote snippet reporting the path.
+
 ## The status line
 
 Claude Code renders footer rows from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.

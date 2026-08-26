@@ -37,6 +37,7 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `bin/beacon-iterm` | Stateless CLI that translates subcommands to iTerm2 OSC sequences (D2) |
 | `scripts/beacon` | Plugin script — hook handlers, COR resolver, slash command, install (D3) |
 | `shell/beacon.zsh` | Sourceable zsh snippet — refreshes project name / branch / cwd on every prompt |
+| `shell/beacon-remote.sh` | The same integration for the far side of an ssh connection — POSIX sh (zsh + bash), no python, installed by `beacon ssh-install <host>` |
 | `hooks/`, `commands/` | Claude Code plugin glue |
 | `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
 | `dashboard/index.html` | Self-contained reference fleet dashboard `serve` hosts at `/` |
