@@ -1357,7 +1357,6 @@ class ProjectChipIsTheProjectName(BeaconTest):
                                return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
              mock.patch.object(self.beacon, "_cli",
                                side_effect=lambda *a: published.update({"args": a})):
-            self.beacon._LAST_CHIP_SIGNATURE = None
             self.beacon._publish_chips(Path("/work/widgets"))
         pairs = published["args"][1:]
         self.assertIn("beacon_project_name=widgets", pairs)
@@ -1378,7 +1377,6 @@ class ProjectChipIsTheProjectName(BeaconTest):
              mock.patch.object(self.beacon, "_record_deliverable",
                                side_effect=lambda *a: recorded.update({"args": a})), \
              mock.patch.object(self.beacon, "_cli"):
-            self.beacon._LAST_CHIP_SIGNATURE = None
             self.beacon._publish_chips(Path("/work/widgets"))
         self.assertEqual(recorded["args"][0], "#42")
         self.assertEqual(recorded["args"][2], "gh:acme/widgets")
@@ -1456,13 +1454,15 @@ class PendingAttentionPaintsBlocked(BeaconTest):
         )
 
 
-class ModeNoteIsNotPainted(BeaconTest):
-    """A mode's note reaches the Claude Code status line (STATUSLINE-01), never the
-    pane: line 1 of the tab is shared with the OS window title and has room only
-    for the glyph (TITLE-06). The pane paints the mode's profile and the activity's
-    color, and no retired bg-image/note/clear-screen overlay."""
+class ModeNoteStaysOffLineOne(BeaconTest):
+    """Line 1 of the tab carries the mode's glyph and nothing more: it is shared
+    with the OS window title and cannot differ between them, so a note has no
+    room there (TITLE-06). The note's surfaces are the status line (STATUSLINE-01)
+    and, while the session is stood down, line 2 (TITLE-05a — see
+    StoodDownModeNoteOnLineTwo). The pane paints the mode's profile and the
+    activity's color, and no retired bg-image/note/clear-screen overlay."""
 
-    def test_paused_leads_title_glyph_and_paints_no_note(self):
+    def test_paused_leads_title_glyph_and_keeps_the_note_off_line_one(self):
         self.beacon.apply({**_base_state(), "activity": "working"})
         self.cli_calls.clear()
         self.beacon.apply({
@@ -1470,6 +1470,18 @@ class ModeNoteIsNotPainted(BeaconTest):
         })
         # TITLE-06: the mode's glyph leads line 1, and the note does not follow it.
         self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls)
+        self.assertEqual(
+            [c for c in self.cli_calls
+             if c[:2] == ("uservar", "beacon_project") and "lunch" in c[2]],
+            [],
+            "the note must not reach line 1, which the window title shares",
+        )
+        self.assertEqual(
+            [c for c in self.cli_calls
+             if c[:2] == ("uservar", "beacon_task") and "lunch" in c[2]],
+            [],
+            "BADGE-11: the badge overlays output — never a home for free text",
+        )
         for verb in ("bg-image", "note", "clear-screen"):
             self.assertEqual(
                 [c for c in self.cli_calls if c[0] == verb], [],
@@ -1495,6 +1507,142 @@ class ModeNoteIsNotPainted(BeaconTest):
             [c for c in self.cli_calls if c[0] in ("badge-color", "tab-color")], [],
             "neither axis moved → no color repaint; the note is data",
         )
+
+
+class StoodDownModeNoteOnLineTwo(BeaconTest):
+    """TITLE-05a: while the session is stood down (`pause`, `done` — STATE-15),
+    line 2 of the tab carries the mode's note in place of the task.
+
+    The note's other home, the status line, exists only in the focused pane —
+    the same weakness that makes the glyph rather than the pane background the
+    mode's cross-tab surface. A halted session has no live task to displace, so
+    the slot is empty in exactly the sessions that carry a note."""
+
+    def _line_two(self):
+        return [c[2] for c in self.cli_calls if c[:2] == ("uservar", "beacon_task_nl")]
+
+    def test_pause_note_fills_line_two(self):
+        self.beacon.write_mode("pause", "out for lunch")
+        self.beacon.render()
+        self.assertEqual(self._line_two(), ["\n  out for lunch"])
+
+    def test_done_note_fills_line_two_that_state_12_blanked(self):
+        self.beacon.write_state("override.task", "perms")
+        self.beacon.write_mode("done", "handed off, CI green")
+        self.beacon.render()
+        # STATE-12 still suppresses the task on the badge's single line; the note
+        # is what now occupies the second line it left empty.
+        self.assertEqual(self._line_two(), ["\n  handed off, CI green"])
+        self.assertEqual(
+            [c[2] for c in self.cli_calls if c[:2] == ("uservar", "beacon_task")], [""],
+        )
+
+    def test_an_active_phase_keeps_its_task_on_line_two(self):
+        self.beacon.write_state("override.task", "perms")
+        for mode in ("release", "retro"):
+            with self.subTest(mode=mode):
+                self.cli_calls.clear()
+                self.beacon.remove_state("resolved")
+                self.beacon.write_mode(mode, "v2.5.0")
+                self.beacon.render()
+                self.assertEqual(
+                    self._line_two(), ["\n  perms"],
+                    "release / retro are working phases — the task is live "
+                    "information and the note keeps its status-line home",
+                )
+
+    def test_a_stood_down_mode_without_a_note_leaves_the_slot_alone(self):
+        self.beacon.write_state("override.task", "perms")
+        self.beacon.write_mode("pause", "")
+        self.beacon.render()
+        self.assertEqual(self._line_two(), ["\n  perms"])
+
+    def test_leaving_the_mode_restores_the_task(self):
+        self.beacon.write_state("override.task", "perms")
+        self.beacon.write_mode("pause", "out for lunch")
+        self.beacon.render()
+        self.cli_calls.clear()
+        self.beacon.write_mode(self.beacon.DEV_MODE)
+        self.beacon.render()
+        self.assertEqual(
+            self._line_two(), ["\n  perms"],
+            "presentation-only, like STATE-12: nothing deleted the override",
+        )
+        self.assertEqual(self.beacon.read_state("override.task"), "perms")
+
+
+class IdlePromptOnAStoodDownSession(BeaconTest):
+    """HOOK-03d: an `idle_prompt` on a session stood down on purpose reports
+    nothing its user doesn't know — it is idle *because* they parked or finished
+    it, and since a halted session sits at an idle prompt by definition the timer
+    is guaranteed to fire, making red the resting state of every parked tab.
+
+    Not a precedence rule between the axes (RES-06): a `permission_prompt` still
+    paints red in every mode, and what is dropped is one uninformative
+    observation, not the activity axis losing an argument to the mode."""
+
+    def _notify(self, kind):
+        args = mock.Mock(event="Notification", kind=kind)
+        with mock.patch.object(sys, "stdin", io.StringIO("{}")):
+            self.beacon.cmd_hook(args)
+
+    def test_idle_prompt_is_dropped_while_stood_down(self):
+        for mode in ("pause", "done"):
+            with self.subTest(mode=mode):
+                self.beacon.remove_state("activity")
+                self.beacon.remove_state("pending-attention")
+                self.beacon.write_mode(mode, "")
+                self._notify("idle_prompt")
+                self.assertIsNone(self.beacon.read_state("activity"))
+                self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_idle_prompt_still_lands_in_an_active_phase(self):
+        for mode in ("dev", "release", "retro"):
+            with self.subTest(mode=mode):
+                self.beacon.remove_state("activity")
+                self.beacon.write_mode(mode, "")
+                self._notify("idle_prompt")
+                self.assertEqual(self.beacon.read_activity(), "waiting")
+                self.assertEqual(self.beacon.read_state("pending-attention"), "1")
+
+    def test_permission_prompt_lands_in_every_mode(self):
+        for mode in ("pause", "done", "release", "dev"):
+            with self.subTest(mode=mode):
+                self.beacon.remove_state("activity")
+                self.beacon.write_mode(mode, "")
+                self._notify("permission_prompt")
+                self.assertEqual(
+                    self.beacon.read_activity(), "waiting",
+                    "Claude is blocked on a decision the user does not know about",
+                )
+
+
+class StoodDownIsDeclaredByTheMode(unittest.TestCase):
+    """STATE-15: the halted/active split is an attribute on MODE_SPECS, not a
+    tuple of names at a call site — a mode added later answers for itself. This
+    also pins the partition itself, which two behaviors depend on."""
+
+    def setUp(self):
+        self.beacon = _load_beacon(REPO_ROOT / "tests")
+
+    def test_the_partition(self):
+        halted = {m for m, s in self.beacon.MODE_SPECS.items() if s.get("stood_down")}
+        self.assertEqual(halted, {"pause", "done"})
+
+    def test_every_mode_declares_a_boolean_or_omits_it(self):
+        for mode, spec in self.beacon.MODE_SPECS.items():
+            with self.subTest(mode=mode):
+                self.assertIsInstance(spec.get("stood_down", False), bool)
+
+    def test_the_notification_hooks_pass_their_matcher(self):
+        # The payload carries no prompt kind, so hooks.json is the only place the
+        # matcher survives to the CLI — the whole mechanism rests on this flag.
+        wiring = json.loads(
+            (REPO_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        for entry in wiring["hooks"]["Notification"]:
+            with self.subTest(matcher=entry["matcher"]):
+                for h in entry["hooks"]:
+                    self.assertIn(f"--kind {entry['matcher']}", h["command"])
 
 
 class PauseWritesOnlyTheMode(BeaconTest):
@@ -1882,7 +2030,6 @@ class HybridBranchSlots(BeaconTest):
     components resolve to a single visible chip."""
 
     def _publish(self, detected):
-        self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info", return_value=detected), \
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
              mock.patch.object(self.beacon, "resolve_url", return_value=("", "")):
@@ -1911,7 +2058,6 @@ class ResolvedUrlPersistence(BeaconTest):
     is retired with the button — the persisted state is the single source."""
 
     def _publish(self, url, label, cwd="/x"):
-        self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
@@ -1959,7 +2105,6 @@ class DeliverableAccumulation(BeaconTest):
     forge issue/PR/MR URLs count — a branch or repo page is not a deliverable."""
 
     def _publish(self, url, project_full="gh:acme/widgets", route=()):
-        self.beacon._LAST_CHIP_SIGNATURE = None
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
@@ -2116,10 +2261,8 @@ class TackRouteAcquisition(BeaconTest):
 
     LOCATION = ("https://github.com/acme/widgets", "widgets")
 
-    def _publish(self, url, route=(), project_full="gh:acme/widgets", reset=True,
+    def _publish(self, url, route=(), project_full="gh:acme/widgets",
                  bound=None, location=LOCATION):
-        if reset:
-            self.beacon._LAST_CHIP_SIGNATURE = None
         # _bound_tack_route is patched even when a test doesn't care: the
         # resolved-URL guard consults it, and unpatched it would shell out to the
         # developer's real `tack list`. _location_url_at likewise shells to git.
@@ -2241,13 +2384,13 @@ class TackRouteAcquisition(BeaconTest):
         })
         self.assertEqual([e["ref"] for e in self._entries()], ["#99"])
 
-    def test_a_link_added_to_the_route_is_not_gated_out(self):
-        # The chip signature covers branch + resolved URL; a link added to the
-        # route changes neither, so gating on those alone would leave the new
-        # deliverable unrecorded until the branch moved.
+    def test_a_link_added_to_the_route_is_recorded(self):
+        # A link added to the route moves neither the branch nor the resolved
+        # URL, so a publish that looked only at those two would have nothing to
+        # tell it the deliverable set grew.
         url = "https://github.com/acme/widgets/pull/42"
         self._publish(url, route=[])
-        self._publish(url, route=["https://github.com/acme/widgets/issues/9"], reset=False)
+        self._publish(url, route=["https://github.com/acme/widgets/issues/9"])
         self.assertEqual([e["ref"] for e in self._entries()], ["#9", "#42"])
 
 
@@ -2511,14 +2654,6 @@ class ConfigurableCodeButton(BeaconTest):
             with self.assertRaises(SystemExit) as cm:
                 self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
         self.assertIn("boom", str(cm.exception))
-
-    def test_config_get_space_joins_a_list(self):
-        with self._config(focus_origins=["https://a.test", "https://b.test"]):
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf):
-                self.beacon.cmd_config_get(self.beacon.argparse.Namespace(key="focus_origins"))
-        self.assertEqual(buf.getvalue().strip(), "https://a.test https://b.test")
-
 
 class CodeButtonInProfile(unittest.TestCase):
     """STATUS-BAR-07: the button delegates to `beacon open-code` rather than
@@ -4413,6 +4548,109 @@ class CompletionsMatchSubcommands(BeaconTest):
         sub = next(a for a in b._build_parser()._actions
                    if isinstance(a, b.argparse._SubParsersAction))
         self.assertLessEqual(b._UNCOMPLETED_COMMANDS, set(sub.choices))
+
+    def test_no_flag_drift(self):
+        """The subcommand list was guarded and the flags were not, so `--timing`,
+        `--clear-screen`, and `--print` all shipped uncompletable while the
+        edit-time hook was already nudging about "any subcommand or flag"."""
+        b = self.beacon
+        sub = next(a for a in b._build_parser()._actions
+                   if isinstance(a, b.argparse._SubParsersAction))
+        # Walked line by line rather than matched: arms nest their own `case`
+        # (so a non-greedy `esac` stops inside one), and a short arm closes with
+        # `;;` on its own line rather than below it.
+        completed: dict[str, set] = {}
+        current: list[str] = []
+        for line in b.ZSH_COMPLETION.splitlines():
+            header = b.re.match(r"^ {4}([a-z][a-z|-]*)\)", line)
+            if header:
+                current = header.group(1).split("|")
+                for name in current:
+                    completed.setdefault(name, set())
+            elif b.re.match(r"^ {0,2}\S", line):
+                current = []          # left the outer case body
+            for flag in b.re.findall(r"(--[a-z][a-z-]*)", line):
+                for name in current:
+                    completed[name].add(flag)
+
+        for name, parser in sub.choices.items():
+            if name in b._UNCOMPLETED_COMMANDS:
+                continue
+            real = {o for a in parser._actions for o in a.option_strings
+                    if o.startswith("--") and o != "--help"}
+            with self.subTest(cmd=name):
+                self.assertEqual(
+                    completed.get(name, set()), real,
+                    f"`{name}` completion flags drifted — missing: "
+                    f"{sorted(real - completed.get(name, set()))}; "
+                    f"stale: {sorted(completed.get(name, set()) - real)}",
+                )
+
+
+class DocsCiteRealPaths(unittest.TestCase):
+    """Every repo-relative path a doc names in backticks must exist.
+
+    Three tables went on citing `skills/` for releases after the directory was
+    deleted and SPEC.md had recorded the plugin ships no skill — the kind of
+    claim a reader trusts and no test was watching."""
+
+    DOCS = ("README.md", "AGENTS.md", "docs/README.md", "docs/iterm.md",
+            "docs/statusbar.md", "docs/palette.md", "docs/why.md", "docs/demo.md")
+
+    # A backticked repo-relative path: it must carry a slash, which is what
+    # separates `hooks/` and `iterm/make-bg.py` from a bare `config.json` that
+    # names a file in the user's home.
+    PATH_RE = re.compile(r"`([A-Za-z0-9_.][A-Za-z0-9_.-]*/[A-Za-z0-9_./-]*)`")
+
+    # Directories belonging to iTerm2, Claude Code, or other projects' layouts.
+    EXTERNAL_ROOTS = {"DynamicProfiles", "public", "static", "Application Support"}
+
+    # Generated from SPEC.md / the rules by `shipyard build-docs`, and gitignored.
+    GENERATED = {"docs/spec.md", "docs/rules/", "docs/skills/", "docs/guides/"}
+
+    def test_every_cited_path_exists(self):
+        missing = []
+        for rel in self.DOCS:
+            doc = REPO_ROOT / rel
+            if not doc.exists():
+                missing.append(f"{rel} (the doc itself)")
+                continue
+            body = doc.read_text(encoding="utf-8")
+            for m in self.PATH_RE.finditer(body):
+                cited = m.group(1)
+                root = cited.split("/")[0]
+                # A slash alone doesn't make a path: `origin/HEAD` is a git ref,
+                # `chris-peterson/gitconfig` a repo slug, `StandardOut/ErrorPath`
+                # a pair of plist keys. What marks a citation of *this* repo is a
+                # trailing slash (a directory, which is the form that went stale)
+                # or a first segment that is really a top-level entry.
+                claims_repo = cited.endswith("/") or (REPO_ROOT / root).exists()
+                if (not claims_repo
+                        or cited.startswith(("~", "/", "http", "."))
+                        or root in self.EXTERNAL_ROOTS
+                        or any(cited.startswith(g) for g in self.GENERATED)):
+                    continue
+                if not (REPO_ROOT / cited).exists():
+                    line = body[:m.start()].count("\n") + 1
+                    missing.append(f"{rel}:{line} cites `{cited}`")
+        self.assertEqual(missing, [], "docs cite paths that don't exist: " + "; ".join(missing))
+
+
+class CrossWriterConstants(unittest.TestCase):
+    """The plugin and the shell both emit the badge format and both activate the
+    base profile, and the shell hardcodes each as a literal because a python
+    call on the source path is what the raw-printf fast path exists to avoid.
+    `scripts/beacon` says the two "must stay in sync" — this is what checks it."""
+
+    def setUp(self):
+        self.beacon = _load_beacon(REPO_ROOT / "tests")
+        self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+
+    def test_badge_format_matches(self):
+        self.assertIn(self.beacon.BADGE_FORMAT, self.shell)
+
+    def test_base_profile_name_matches(self):
+        self.assertIn(f"SetProfile={self.beacon.BASE_PROFILE_NAME}", self.shell)
 
 
 def _load_beacon_iterm():

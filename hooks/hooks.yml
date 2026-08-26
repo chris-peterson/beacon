@@ -22,11 +22,11 @@ hooks:
     description: Reports the SessionEnd event to the beacon CLI for fleet-view tracking.
   - event: Notification
     matcher: permission_prompt
-    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification'
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind permission_prompt'
     description: Reports a permission-prompt notification to the beacon CLI for fleet-view tracking.
   - event: Notification
     matcher: idle_prompt
-    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification'
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind idle_prompt'
     description: Reports an idle-prompt notification to the beacon CLI for fleet-view tracking.
   - event: PreToolUse
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PreToolUse'

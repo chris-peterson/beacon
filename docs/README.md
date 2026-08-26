@@ -216,7 +216,7 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the tab color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
-- `/beacon:pause "checking lunch options"` parks the session and records your note in the dashboard; sending the next prompt clears both
+- `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and the status line; sending the next prompt clears both
 - `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still goes red
 
 ## Usage
@@ -384,7 +384,7 @@ beacon ships as three deliverables with a hard boundary between them:
 |:---|:---|:---|
 | D1 | This specification | [SPEC.md](/spec) |
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
-| D3 | `beacon` Claude Code plugin | Hooks, slash command, skill, COR resolver, shell integration |
+| D3 | `beacon` Claude Code plugin | Hooks, slash commands, ambient rule, COR resolver, shell integration |
 
 D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, etc.) or driver plugins.
 

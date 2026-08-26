@@ -267,7 +267,7 @@ _beacon() {
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
     'copy-url:copy the resolved URL to the clipboard'
-    'open-url:open the resolved URL in the default browser'
+    'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
   )
@@ -295,11 +295,15 @@ _beacon() {
     clear)
       (( CURRENT == 3 )) && _beacon_fields
       ;;
-    pause|release|retro|done)
+    pause)
+      (( CURRENT == 3 )) && _message 'note (optional)'
+      compadd -- --clear-screen
+      ;;
+    release|retro|done)
       (( CURRENT == 3 )) && _message 'note (optional)'
       ;;
     wip)
-      compadd -- --json --since --all
+      compadd -- --json --since --all --timing
       ;;
     watch)
       compadd -- --interval --since --all
@@ -327,8 +331,12 @@ _beacon() {
         compadd -- --force
       fi
       ;;
+    open-url|open-code)
+      (( CURRENT == 3 )) && _files -/
+      ;;
     completions)
       (( CURRENT == 3 )) && compadd zsh
+      compadd -- --print
       ;;
     install)
       (( CURRENT == 3 )) && compadd -- --dir
@@ -415,6 +423,15 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 # leaving a mode swaps the session's profile; the dev cycle has no profile of its
 # own and stays an OSC overlay on the base.
 #
+#   stood_down — the mode declares the session at a halt rather than in an
+#                active phase (STATE-15). Two behaviors read it, and they landed
+#                on `pause` and `done` independently: an `idle_prompt` is
+#                tautological on a session halted on purpose (HOOK-03d), and
+#                line 2 of the tab has no live task to carry, so the note goes
+#                there (TITLE-05a). `release` and `retro` are active phases: a
+#                stalled release waiting on the user is exactly what red is for,
+#                and their task keeps changing every turn.
+#
 # The glyph is the mode's *stronger* surface: the background is visible only in
 # the focused pane, and a session running many tabs shows one pane at a time,
 # so the glyph is what carries a mode across tabs. Each glyph matches its mode's
@@ -429,6 +446,7 @@ MODE_SPECS = {
         "background": "3c3357",
         "image": "pause-bg.png",
         "blend": 0.35,
+        "stood_down": True,
     },
     # `release` is the one active mode: a ship-it flow is in progress. A deep
     # "launch-sky" navy (darkened Dracula `comment` #6272a4, so it stays on-palette
@@ -467,6 +485,7 @@ MODE_SPECS = {
         "background": "1a1622",
         "image": "done-bg.png",
         "blend": 0.15,
+        "stood_down": True,
     },
 }
 
@@ -479,6 +498,14 @@ def _mode_glyph(mode: str | None) -> str:
     """A mode's tab glyph, "" in the dev cycle (which carries no mark)."""
     spec = MODE_SPECS.get(mode)
     return spec["glyph"] if spec else ""
+
+
+def _mode_stood_down(mode: str | None) -> bool:
+    """Whether the mode declares the session halted — parked or finished — as
+    opposed to an active phase (STATE-15). Reads the `stood_down` attribute so a
+    new mode answers for itself instead of a call site naming the two by hand."""
+    spec = MODE_SPECS.get(mode or "")
+    return bool(spec and spec.get("stood_down"))
 
 
 def _wip_display_name(record: dict, mode: str) -> str:
@@ -1413,20 +1440,6 @@ def cmd_shell_init(_args):
         f"_BEACON_BADGE_ON={shlex.quote(on)}\n"
         f"_BEACON_INIT_HAD_CONFIG={shlex.quote(had_config)}\n"
     )
-
-
-def cmd_config_get(args):
-    """Print a single user-config value (empty when unset) — consumed by
-    shell/beacon.zsh on source to gate the opt-in badge (BADGE-15). A list
-    value prints shell-quoted and space-joined, so a caller can word-split it
-    without re-parsing JSON."""
-    val = _load_config().get(args.key)
-    if val is None:
-        sys.stdout.write("")
-        return
-    if isinstance(val, (list, tuple)):
-        val = " ".join(shlex.quote(str(v)) for v in val)
-    sys.stdout.write(f"{val}\n")
 
 
 def cmd_json(_args):
@@ -3175,6 +3188,18 @@ def resolve(cwd: Path | None = None) -> dict:
     if mode == "done":
         task, p_task = "", "done"
 
+    # TITLE-05a: line 2 of the tab carries the mode's note while the session is
+    # stood down. The note's only other home is the status line, which exists
+    # solely in the focused pane — the same weakness that makes the glyph, not
+    # the pane background, the mode's cross-tab surface (TITLE-06). A halted
+    # session has no live task to displace: `pause` is not working, and `done`
+    # blanks the slot outright (STATE-12), so the slot is empty in exactly the
+    # sessions that carry a note. Presentation-only and reversible, like
+    # STATE-12: resolved here from `mode`, so leaving restores the task.
+    task_nl = task
+    if _mode_stood_down(mode) and note.strip():
+        task_nl = note.strip()
+
     return {
         "project": project, "project_provider": p_proj,
         "task": task, "task_provider": p_task,
@@ -3183,6 +3208,7 @@ def resolve(cwd: Path | None = None) -> dict:
         # lines of the tab — a location qualifies the project, not the work.
         "location": "",
         "task_display": task,
+        "task_nl": task_nl,
         "mode": mode, "note": note.strip(),
         "activity": activity,
         "pending_attention": _state_path("pending-attention").exists(),
@@ -3562,9 +3588,6 @@ def _local_path_at(cwd: Path) -> str:
     return s
 
 
-_LAST_CHIP_SIGNATURE: tuple[str, ...] | None = None
-
-
 def _project_chip_at(cwd: Path) -> str:
     """The project chip's value (STATUS-BAR-02): the project's name, and the
     directory's own name when that isn't a project.
@@ -3585,7 +3608,6 @@ def _publish_chips(cwd: Path) -> None:
     Called whenever the shell's precmd can't (mid-session, between turns) so
     chips reflect branch creation / tack-context changes that happened while
     the shell was blocked on Claude."""
-    global _LAST_CHIP_SIGNATURE
     display, state, indicator, identity = _detect_branch_info(cwd)
     # `display` leads with the ahead/behind indicator when diverged; route
     # lookup correlates on the branch name itself.
@@ -3622,19 +3644,16 @@ def _publish_chips(cwd: Path) -> None:
         f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
         f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
     )
-    # Last-value gate (mirrors shell's precmd sentinels per AGENTS.md hot
-    # path policy): Stop fires once per turn, but most turns don't change
-    # branch/url. Skip the CLI spawn + file writes when nothing differs.
-    # The URL rides the signature but not the uservar payload: two URLs can
-    # differ while every chip stays identical (a branch-tree URL narrowing to
-    # a sibling), and the status line reads the persisted value below.
-    # The route's URL set rides the signature too: a link added to the route
-    # changes nothing about the branch or the resolved URL, and gating on those
-    # alone would leave the new deliverable unrecorded until the branch moved.
-    signature = pairs + (f"url={url}", f"label={label}") + tuple(route_urls)
-    if signature == _LAST_CHIP_SIGNATURE:
-        return
-    _LAST_CHIP_SIGNATURE = signature
+    # Published unconditionally, and deliberately not gated on the last value the
+    # way the shell's precmd sentinels are. The shell can gate because it is one
+    # process for the pane's life; each hook is a fresh interpreter, so the only
+    # gate available here is a persisted one — and a persisted gate would be
+    # wrong, not merely useless: `SetProfile` wipes the session's OSC user vars
+    # (§6.10), which is why apply() forces a republish on a profile swap. These
+    # chips are user vars too, so a signature that survived the swap would
+    # suppress the republish and leave the status bar blank until the branch
+    # happened to change. The expensive half of this function is above anyway —
+    # the git and forge probes run before any signature could be compared.
     _cli("uservar-batch", *pairs)
 
     # STATUSLINE-02: the status line renders this per prompt, so it must never
@@ -4110,7 +4129,7 @@ def apply(state: dict):
     # TITLE-05: the tab/window-title Name puts the task on a second line,
     # indented two spaces under the project. Same collapse-when-empty contract
     # as beacon_task.
-    nl_text = state["task"]
+    nl_text = state.get("task_nl", state["task"])
     if nl_text != prev.get("task_nl") or (switched and nl_text):
         _cli("uservar", "beacon_task_nl", f"\n  {nl_text}" if nl_text else "")
 
@@ -4216,6 +4235,7 @@ def _resolve_for_display() -> dict:
             # line, recombines them as "<home> @ <where> · <what>".
             state["location"] = live_root.name
             state["task"] = wandered_task or ""
+            state["task_nl"] = state["task"]
             state["task_display"] = _task_display(live_root.name, state["task"])
             state["task_provider"] = "wander"
 
@@ -5304,12 +5324,25 @@ def cmd_hook(args):
         _write_latest_turn("agent", _last_assistant_text())
 
     elif event == "Notification":
+        # HOOK-03d: an `idle_prompt` on a session that was stood down on purpose
+        # (`pause`, `done` — STATE-15) reports nothing its user doesn't already
+        # know: it is idle *because* they parked or finished it. Since a halted
+        # session sits at an idle prompt by definition, the timer is guaranteed
+        # to fire on it, so red would be the resting state of every parked tab
+        # rather than a signal. A `permission_prompt` still goes red in every
+        # mode — Claude is blocked on a decision, which the user does not know.
+        # This is not a mode-beats-activity precedence rule (RES-06): the two
+        # axes stay independent, and what is dropped is one uninformative
+        # observation, not the activity axis losing an argument to the mode.
+        if args.kind == "idle_prompt" and _mode_stood_down(read_mode()[0]):
+            return
         write_state("activity", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
         # Only its presence matters — permission and idle both read as "needs the
-        # user" and beacon does not distinguish them on any surface (HOOK-03), so
-        # the marker carries a constant, not the prompt type.
+        # user" and beacon does not distinguish them on any *surface* (HOOK-03),
+        # so the marker carries a constant, not the prompt type. The kind is read
+        # above only to decide whether the observation is worth recording at all.
         write_state("pending-attention", "1")
 
     elif event == "PreToolUse":
@@ -5409,6 +5442,12 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
     sp.add_argument("event")
+    # Claude Code fires one Notification event for both prompt kinds and tells
+    # them apart only by the matcher that selected the hook, which the payload
+    # does not carry — so hooks.yml passes the matcher it matched on.
+    sp.add_argument("--kind", default="",
+                    help="the matcher that selected this hook (Notification: "
+                         "permission_prompt | idle_prompt)")
 
     sp = sub.add_parser("completions", help="install or print shell completions")
     sp.add_argument("shell", choices=["zsh"], nargs="?", default="zsh")
@@ -5495,13 +5534,10 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--force", action="store_true",
                     help="overwrite sessions already present on disk (default: skip them)")
 
-    sub.add_parser("data-dir", help="print the resolved data dir (consumed by shell/beacon.zsh on source)")
+    sub.add_parser("data-dir", help="print the resolved data dir")
 
     sub.add_parser("shell-init",
                    help="(internal) print shell/beacon.zsh's source-time values as zsh")
-
-    sp = sub.add_parser("config-get", help="(internal) print a user-config value by key")
-    sp.add_argument("key")
 
     return parser
 
@@ -5510,7 +5546,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "config-get", "shell-init", "statusline"}
+_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init", "statusline"}
 
 
 def main(argv=None):
@@ -5540,7 +5576,7 @@ def main(argv=None):
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,
-        "data-dir": cmd_data_dir, "config-get": cmd_config_get,
+        "data-dir": cmd_data_dir,
         "shell-init": cmd_shell_init,
     }
     if not args.cmd:
