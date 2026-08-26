@@ -5206,6 +5206,23 @@ def cmd_ssh_install(args):
     print(f"open a new shell on {host} — its cwd and branch now reach this tab.")
 
 
+def _unsplice_ssh_block(rc_text: str) -> str:
+    """Remove the managed region from an rc file's text, leaving everything else
+    byte-for-byte. The mirror of `_splice_ssh_block`, and a pure function for the
+    same reason: this rewrites someone's shell config.
+
+    It refuses a region with no closing marker rather than treating the rest of
+    the file as part of the block — which would delete every line after it."""
+    if _SSH_BLOCK_OPEN not in rc_text:
+        return rc_text
+    head, rest = rc_text.split(_SSH_BLOCK_OPEN, 1)
+    if _SSH_BLOCK_CLOSE not in rest:
+        sys.exit("the beacon block in the remote rc has no closing marker — "
+                 "remove it by hand rather than letting beacon guess where it ends")
+    tail = rest.split(_SSH_BLOCK_CLOSE, 1)[1]
+    return head.rstrip("\n") + ("\n" if head.strip() else "") + tail.lstrip("\n")
+
+
 def cmd_ssh_uninstall(args):
     """Remove the managed block and the installed snippet from `host`."""
     host = args.host
@@ -5216,18 +5233,16 @@ def cmd_ssh_uninstall(args):
     got = _ssh_run(host, f'[ -f "{rc}" ] && cat "{rc}" || true')
     if got.returncode != 0:
         sys.exit(f"ssh {host}: could not read {rc}: {got.stderr.strip()}")
-    if _SSH_BLOCK_OPEN not in got.stdout:
+    stripped = _unsplice_ssh_block(got.stdout)
+    if stripped == got.stdout:
         print(f"  ✓ {rc} has no beacon block")
     else:
-        head, rest = got.stdout.split(_SSH_BLOCK_OPEN, 1)
-        tail = rest.split(_SSH_BLOCK_CLOSE, 1)[1] if _SSH_BLOCK_CLOSE in rest else ""
         w = _ssh_run(host, f'cat > "{rc}.beacon-new" && mv "{rc}.beacon-new" "{rc}"',
-                     stdin=head.rstrip("\n") + ("\n" if head.strip() else "") + tail.lstrip("\n"))
+                     stdin=stripped)
         if w.returncode != 0:
             sys.exit(f"ssh {host}: could not write {rc}: {w.stderr.strip()}")
         print(f"  ✓ removed the beacon block from {rc}")
-    rm = _ssh_run(host, f'rm -f "$HOME/{_SSH_REMOTE_PATH}"; printf removed\\\\n')
-    if rm.returncode == 0:
+    if _ssh_run(host, f'rm -f "$HOME/{_SSH_REMOTE_PATH}"').returncode == 0:
         print(f"  ✓ removed ~/{_SSH_REMOTE_PATH}")
 
 

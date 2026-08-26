@@ -5081,6 +5081,22 @@ class SshInstallEditsTheRemoteRc(BeaconTest):
         with self.assertRaises(SystemExit):
             self.beacon._splice_ssh_block(mangled, self._block())
 
+    def test_uninstall_removes_only_the_block(self):
+        rc = "export PATH=/x\n"
+        once = self.beacon._splice_ssh_block(rc, self._block())
+        self.assertEqual(self.beacon._unsplice_ssh_block(once), rc)
+
+    def test_uninstall_on_a_clean_rc_is_a_no_op(self):
+        rc = "export PATH=/x\n\nalias g=git\n"
+        self.assertEqual(self.beacon._unsplice_ssh_block(rc), rc)
+
+    def test_uninstall_refuses_a_block_missing_its_close_marker(self):
+        # Treating the rest of the file as part of the block would delete every
+        # line after the open marker.
+        mangled = "export PATH=/x\n" + self.beacon._SSH_BLOCK_OPEN + "\nkeep me\n"
+        with self.assertRaises(SystemExit):
+            self.beacon._unsplice_ssh_block(mangled)
+
     def test_print_only_touches_nothing_and_runs_no_ssh(self):
         with mock.patch.object(self.beacon.subprocess, "run") as run:
             with mock.patch("sys.stdout", io.StringIO()) as out:
