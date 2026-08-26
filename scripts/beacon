@@ -397,11 +397,16 @@ TITLE_FORMAT = (r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>"
                 r"\(user.beacon_location)\(user.beacon_task_nl)")
 
 # The name an *unmanaged* pane carries (TITLE-04): `beacon_title`, the shell's
-# "project else abbreviated cwd", republished every precmd and so never empty.
-# The shell sets this same template once on source, and skips it when the pane is
-# already Claude-owned — so disengagement is what hands the name back. Must stay
-# in step with the set-name call in shell/beacon.zsh.
-INTERACTIVE_TITLE_FORMAT = r"\(user.beacon_title)"
+# "project else abbreviated cwd" — or `🔗 <host>` while ssh holds the prompt
+# (SSH-01) — republished every precmd and so never empty. `beacon_ssh_path_nl`
+# adds the remote cwd as line 2, and is the one slot a remote host writes
+# (SSH-05); it is "" on a local pane, so line 2 self-collapses the way
+# beacon_task_nl does. The shell sets this same template once on source, and
+# skips it when the pane is already Claude-owned — so disengagement is what hands
+# the name back. Must stay in step with the set-name call in shell/beacon.zsh;
+# `test_interactive_title_format_matches_the_shell` holds the two together.
+INTERACTIVE_TITLE_FORMAT = (r"\(user.beacon_title)"
+                            r"\(user.beacon_ssh_path_nl)")
 
 # The prefix beacon claims in iTerm2's shared DynamicProfiles directory. Install
 # writes only names in it, and sweeps only names in it (_make_profiles).
@@ -2383,7 +2388,8 @@ def _prune_cache(cutoff: float) -> int:
     state sweep. Without this the cache grew without bound: files accumulated for
     every pane ever opened, long after the matching state was pruned."""
     key = _iterm_cache_key()
-    keep = {f"cwd-{key}.txt", f"engaged-{key}"} if key else set()
+    keep = ({f"cwd-{key}.txt", f"engaged-{key}", f"ssh-{key}.txt"}
+            if key else set())
     removed = 0
     # `url-*.txt` is the URL handoff file 2.0 retired (STATUS-BAR-08 resolves at
     # click time now). No writer creates one, but every pane that ran an earlier
@@ -2391,7 +2397,7 @@ def _prune_cache(cutoff: float) -> int:
     # names it explicitly rather than leaving thousands of files no code reads.
     # Patterns are enumerated, not inferred, because the cache dir also holds
     # non-per-pane files the sweep must not touch.
-    for pattern in ("cwd-*.txt", "engaged-*", "url-*.txt"):
+    for pattern in ("cwd-*.txt", "engaged-*", "ssh-*.txt", "url-*.txt"):
         for p in CACHE_DIR.glob(pattern):
             if p.name in keep:
                 continue

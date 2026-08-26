@@ -244,6 +244,11 @@ typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
 typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
 typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
 typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
+typeset -g _BEACON_LAST_SSH_PATH_NL='__unset__'
+
+# Set between an `ssh` preexec and the precmd that follows it — the window in
+# which this pane's identity is a remote host rather than the local cwd.
+typeset -g _BEACON_SSH_ACTIVE=0
 
 # Per-session file handoff for status-bar action buttons. Action enum 35
 # doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
@@ -256,6 +261,12 @@ if [[ -z "$_BEACON_DATA_DIR" ]]; then
 fi
 typeset -gr _BEACON_CACHE_DIR="$_BEACON_DATA_DIR/cache"
 mkdir -p "$_BEACON_CACHE_DIR"
+
+# A fresh shell is definitionally local, so any ssh marker here outlived the shell
+# that wrote it — a pane killed mid-session, or an `exec zsh` from inside one.
+# Without this the status-bar buttons would go on refusing forever.
+[[ -n "$ITERM_SESSION_ID" ]] &&
+  rm -f "${_BEACON_CACHE_DIR}/ssh-${ITERM_SESSION_ID##*:}.txt"
 
 # Window title (TITLE-01): give an interactive pane its identity as the OS
 # window title, so a beacon-dev pane isn't left showing the profile name (the
@@ -275,6 +286,11 @@ mkdir -p "$_BEACON_CACHE_DIR"
 # fast-path OSC) because the marker lives under _BEACON_CACHE_DIR; backgrounded
 # (`&!`) so neither the poll nor the osascript delays startup. The name is an
 # interpolated string, rendered once the first precmd publishes beacon_title.
+#
+# beacon_ssh_path_nl is the remote cwd on line 2 during an ssh session (SSH-05),
+# "" otherwise — the only slot a *remote* host writes, which is why line 1 stays
+# a single locally-composed value. Both slots are set once here: iTerm2
+# re-evaluates the name as either changes, so ssh needs no set-name of its own.
 if [[ -n "$ITERM_SESSION_ID" ]]; then
   {
     _beacon_marker="${_BEACON_CACHE_DIR}/engaged-${ITERM_SESSION_ID##*:}"
@@ -284,7 +300,8 @@ if [[ -n "$ITERM_SESSION_ID" ]]; then
       sleep 0.4
     done
     (( _beacon_engaged )) || \
-      "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" '\(user.beacon_title)'
+      "$_BEACON_ITERM" set-name "$ITERM_SESSION_ID" \
+        '\(user.beacon_title)\(user.beacon_ssh_path_nl)'
   } &>/dev/null &!
 fi
 
@@ -298,6 +315,13 @@ _beacon_write_session_file() {
   # keying on it would leave the buttons reading a stale file after a move.
   # Mirrors _iterm_cache_key() in scripts/beacon and the CLI's GUID targeting.
   print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID##*:}.txt"
+}
+
+# Costs a fork, so it is only ever called on the ssh-exit path — once per
+# session, never on the per-prompt path.
+_beacon_rm_session_file() {
+  [[ -n "$ITERM_SESSION_ID" ]] || return 0
+  rm -f "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID##*:}.txt"
 }
 
 # Indexed 1-based, matching zsh's string subscripting.
@@ -353,6 +377,92 @@ _beacon_b64() {
 # Publish `user.<name>` when it differs from what was last sent, and move the
 # sentinel forward. The OSC goes out by raw printf for the same reason the
 # profile activation above does: a prompt redraw can't afford a python start.
+# OpenSSH flags that consume the following word. Anything else is a boolean, so
+# the first word that is neither a flag nor a flag's value is the destination.
+typeset -gr _BEACON_SSH_VALUE_FLAGS='BbcDEeFIiJLlmOoPpQRSWw'
+
+# Extract the display host from a command line into `_beacon_reply`, or fail.
+# Non-zero means "paint nothing", which is the answer for most command lines.
+#
+# Parsing argv rather than asking `ssh -G` keeps this fork-free — it runs in
+# preexec, on every command — and shows the alias the user typed, which is what
+# they think in. The cost of that: an alias and a real hostname are
+# indistinguishable here, so `build-01` may be either.
+_beacon_ssh_target() {
+  setopt localoptions noksharrays
+  _beacon_reply=''
+  # `(z)` splits into shell words, which is what surfaces control operators as
+  # tokens of their own; `(Q)` strips one level of quoting so `ssh "my host"`
+  # yields one word.
+  local -a w
+  w=( ${(Q)${(z)1}} )
+  local n=${#w} i=1 tok
+
+  # Prefixes that precede the real command: `FOO=bar ssh h`, `env ssh h`.
+  while (( i <= n )); do
+    tok=$w[i]
+    case $tok in
+      ([A-Za-z_]*=*)          (( i++ )) ;;
+      (env|command|nohup|time) (( i++ )) ;;
+      (*) break ;;
+    esac
+  done
+  # The ssh must be the first command of the line. Anything else — `git push`,
+  # `foo | ssh h`, a loop — is not this pane going somewhere.
+  (( i <= n )) && [[ ${w[i]:t} == ssh ]] || return 1
+  (( i++ ))
+
+  local dest='' backgrounded='' chars j c
+  while (( i <= n )); do
+    case $w[i] in
+      (';'|'|'|'||'|'&&'|'&') break ;;
+      (-*)
+        # Clustered booleans (`-tt`, `-4v`) and attached values (`-p2222`).
+        chars=${w[i]#-}
+        for (( j = 1; j <= ${#chars}; j++ )); do
+          c=${chars[j]}
+          # Quoted so a flag character is never itself read as a pattern.
+          if [[ $_BEACON_SSH_VALUE_FLAGS == *"$c"* ]]; then
+            # The value is the rest of this word when there is one, else the next.
+            (( j < ${#chars} )) || (( i++ ))
+            break
+          fi
+          [[ $c == f ]] && backgrounded=1
+        done
+        (( i++ ))
+        ;;
+      (*) dest=$w[i]; (( i++ )); break ;;
+    esac
+  done
+  [[ -n $dest && -z $backgrounded ]] || return 1
+
+  # A trailing remote command means ssh runs and returns — the pane is not
+  # spending time elsewhere, and painting it would flicker the tab for the
+  # length of one command.
+  while (( i <= n )); do
+    case $w[i] in
+      (';'|'|'|'||'|'&&'|'&') break ;;
+      (*) return 1 ;;
+    esac
+  done
+
+  local h=$dest
+  h=${h#ssh://}
+  h=${h%%/*}
+  h=${h##*@}
+  if [[ $h == \[* ]]; then
+    h=${${h#\[}%%\]*}
+  elif [[ $h != *:*:* ]]; then
+    h=${h%%:*}
+  fi
+  # Reduce a dotted name to its first label, but never an address literal:
+  # build-01.prod.example.com is build-01, while 10.0.1.5 must stay whole.
+  # The trade is that two hosts differing only by domain collapse to one label.
+  [[ -n ${h//[0-9.]/} && $h != *:* ]] && h=${h%%.*}
+  [[ -n $h ]] || return 1
+  _beacon_reply=$h
+}
+
 _beacon_publish() {
   local name=$1 value=$2 sentinel=$3
   [[ "$value" == "${(P)sentinel}" ]] && return
@@ -361,8 +471,45 @@ _beacon_publish() {
   : ${(P)sentinel::=$value}
 }
 
+# SSH-01: while ssh holds the prompt, this pane's identity is the host it is on,
+# not the local directory it was launched from. The local shell prints no prompt
+# for the whole session (it is blocked in waitpid), so preexec is the only moment
+# it can say so.
+_beacon_preexec() {
+  # zsh supplies the three arguments only while the history mechanism is active.
+  # $3 is the text actually being executed with *aliases expanded*, which is the
+  # only form that sees `alias ssh='ssh -o …'` or `alias s=ssh`.
+  (( $# >= 3 )) || return 0
+  # One glob against the whole line keeps the word splitter off the hot path:
+  # nearly every command is not an ssh.
+  [[ $3 == *ssh* ]] || return 0
+  _beacon_ssh_target "$3" || return 0
+  _BEACON_SSH_ACTIVE=1
+  # Line 1 is replaced, not decorated: the local project says nothing about what
+  # a remote pane is doing. Composed here rather than in a slot of its own so
+  # beacon_title keeps its one writer and its never-empty guarantee (TITLE-01).
+  _beacon_publish beacon_title "🔗 $_beacon_reply" _BEACON_LAST_TITLE
+  _beacon_write_session_file ssh "$_beacon_reply"
+}
+
 _beacon_precmd() {
   setopt localoptions noksharrays
+
+  # SSH-02: precmd fires once after the foreground job returns however it ended
+  # — clean exit, Ctrl-C, a dropped connection, `~.` — so this is the one place
+  # the ssh identity can be retired, and no signal trap is needed.
+  #
+  # Invalidation is unconditional because the local sentinels describe only what
+  # the *local* shell last sent. A remote snippet may have published any slot
+  # since, so there is nothing here to diff against — and without the reset the
+  # publishes below would all short-circuit and strand the tab on the host.
+  if (( _BEACON_SSH_ACTIVE )); then
+    _BEACON_SSH_ACTIVE=0
+    _beacon_invalidate_sentinels
+    _beacon_publish beacon_ssh_path_nl '' _BEACON_LAST_SSH_PATH_NL
+    _beacon_rm_session_file ssh
+  fi
+
   # BADGE-02: the plugin is the sole writer of `beacon_project`. The shell
   # snippet deliberately does NOT publish it from precmd — the badge text
   # follows intentional signals (overrides, SessionStart anchor) rather
@@ -422,9 +569,7 @@ _beacon_precmd() {
   return 0
 }
 
-_beacon_chpwd() {
-  # Force re-publish on directory change — branch may have changed even if
-  # project is the same, and project may have changed entirely.
+_beacon_invalidate_sentinels() {
   _BEACON_LAST_PROJECT_NAME='__unset__'
   _BEACON_LAST_TITLE='__unset__'
   _BEACON_LAST_BRANCH='__unset__'
@@ -434,12 +579,20 @@ _beacon_chpwd() {
   _BEACON_LAST_BRANCH_DIVERGED='__unset__'
   _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
   _BEACON_LAST_LOCAL_PATH='__unset__'
+  _BEACON_LAST_SSH_PATH_NL='__unset__'
+}
+
+_beacon_chpwd() {
+  # Force re-publish on directory change — branch may have changed even if
+  # project is the same, and project may have changed entirely.
+  _beacon_invalidate_sentinels
   _beacon_precmd
 }
 
 autoload -Uz add-zsh-hook
-add-zsh-hook precmd _beacon_precmd
-add-zsh-hook chpwd  _beacon_chpwd
+add-zsh-hook precmd  _beacon_precmd
+add-zsh-hook preexec _beacon_preexec
+add-zsh-hook chpwd   _beacon_chpwd
 
 # Publish immediately on source so a fresh shell shows the right values
 # without waiting for the first prompt.

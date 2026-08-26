@@ -1390,6 +1390,7 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
 
     def setUp(self):
         self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        self.plugin = BEACON_PATH.read_text(encoding="utf-8")
 
     def test_the_shell_publishes_the_project_name_slot(self):
         # Slots go out as raw OSC from zsh, so the publish call is what
@@ -1410,6 +1411,42 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
                      "_BEACON_RESOLVED_URL", '"$_BEACON_SCRIPT" resolve-url', "zstat"):
             with self.subTest(symbol=gone):
                 self.assertNotIn(gone, self.shell)
+
+    def test_interactive_title_format_matches_the_shell(self):
+        # TITLE-04: the interactive name template lives in two files, and the
+        # comment beside each has always said they must stay in step — but
+        # nothing held them there, so a slot added to one and not the other
+        # would leave a pane interpolating a var no writer sets (a blank tab
+        # label and window title, the HOOK-09 failure). Compared as source text
+        # rather than by importing, like the rest of this class: the shell half
+        # can't be imported and run here.
+        decl = self.plugin.split("INTERACTIVE_TITLE_FORMAT = ", 1)[1]
+        decl = decl.split("\n\n", 1)[0]
+        plugin_slots = re.findall(r"\\\(user\.(\w+)\)", decl)
+        shell_decl = self.shell.split("set-name \"$ITERM_SESSION_ID\"", 1)[1]
+        shell_slots = re.findall(r"\\\(user\.(\w+)\)", shell_decl.split("\n\n", 1)[0])
+        self.assertEqual(plugin_slots, shell_slots)
+        self.assertEqual(plugin_slots, ["beacon_title", "beacon_ssh_path_nl"])
+
+    def test_the_shell_owns_line_one_and_the_remote_owns_line_two(self):
+        # SSH-01: `🔗 <host>` is composed into beacon_title by the local shell,
+        # which keeps that slot's single writer and its never-empty guarantee.
+        # beacon_ssh_path_nl is the only slot a remote host writes, so the shell
+        # must publish it empty and never non-empty — otherwise the two writers
+        # race over line 2.
+        self.assertIn("_beacon_publish beacon_title \"🔗 $_beacon_reply\"", self.shell)
+        self.assertIn("_beacon_publish beacon_ssh_path_nl ''", self.shell)
+        self.assertNotIn('_beacon_publish beacon_ssh_path_nl "', self.shell)
+
+    def test_the_ssh_sentinel_is_invalidated_on_return(self):
+        # SSH-02: the local `''` publish above matches its own sentinel, so
+        # without the reset the clear short-circuits and line 2 stays stranded
+        # on the remote path forever. The sentinel must be in the shared
+        # invalidate list, not just declared.
+        invalidate = self.shell.split("_beacon_invalidate_sentinels() {", 1)[1]
+        invalidate = invalidate.split("\n}", 1)[0]
+        self.assertIn("_BEACON_LAST_SSH_PATH_NL='__unset__'", invalidate)
+        self.assertIn("_BEACON_LAST_TITLE='__unset__'", invalidate)
 
 
 class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
@@ -4386,9 +4423,11 @@ class PruneCollectsCacheFiles(BeaconTest):
         cd = self.beacon.CACHE_DIR
         cd.mkdir(parents=True, exist_ok=True)
         for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt",
-                     "cwd-FRESH-GUID.txt", "engaged-FRESH-GUID"):
+                     "ssh-STALE-GUID.txt",
+                     "cwd-FRESH-GUID.txt", "engaged-FRESH-GUID", "ssh-FRESH-GUID.txt"):
             (cd / name).write_text("/some/path\n")
-        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt"):
+        for name in ("cwd-STALE-GUID.txt", "engaged-STALE-GUID", "url-STALE-GUID.txt",
+                     "ssh-STALE-GUID.txt"):
             os.utime(cd / name, (self.OLD, self.OLD))
         return cd
 
@@ -4402,6 +4441,16 @@ class PruneCollectsCacheFiles(BeaconTest):
         self.assertFalse((cd / "engaged-STALE-GUID").exists())
         self.assertTrue((cd / "cwd-FRESH-GUID.txt").exists())
         self.assertTrue((cd / "engaged-FRESH-GUID").exists())
+
+    def test_ssh_markers_are_swept_like_the_other_handoff_files(self):
+        # SSH-01's marker is written by the shell's preexec and normally removed
+        # by the precmd that follows. A pane killed mid-session leaves one, and
+        # the sweep enumerates its patterns explicitly, so a new file shape that
+        # isn't added here accumulates forever.
+        cd = self._seed()
+        self._prune()
+        self.assertFalse((cd / "ssh-STALE-GUID.txt").exists())
+        self.assertTrue((cd / "ssh-FRESH-GUID.txt").exists())
 
     def test_retired_url_handoff_files_are_collected(self):
         # No writer creates these since 2.0 moved `↖ web` to click-time
