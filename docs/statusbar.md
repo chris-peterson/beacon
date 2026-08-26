@@ -100,3 +100,11 @@ The pane's working directory, in `code`. Add flags, or name a different editor e
 ```
 
 The default passes no flags of its own, just the directory. Check any flag you add against your editor's own `--help`: VS Code hands an option it doesn't recognize to Electron/Chromium, and on a cold start that makes it drop the directory and open a Welcome window instead. There is no CLI flag for a maximized window — that's the `window.newWindowDimensions` setting in VS Code itself.
+
+## On a pane that's ssh'd elsewhere
+
+Both buttons act on the pane's working directory — which, during an ssh session, is the one you were in *before* you typed `ssh`. Acting on it gives a confident wrong answer, so neither does:
+
+- **`↖ web`** tells you which host the pane is on, and stops there.
+- **`↗ code`** opens the *remote* directory in VS Code over Remote-SSH (`vscode-remote://ssh-remote+<host><path>`). It needs two things: an editor with a remote-URI scheme — `code`, `codium`, `cursor`, `windsurf` — and `beacon ssh-install <host>` on the server, which is what reports the path. Missing either, it says so rather than opening something else.
+

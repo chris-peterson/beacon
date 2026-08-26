@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -5183,3 +5184,86 @@ class ButtonsDuringAnSshSession(BeaconTest):
                 self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
         self.assertIn("vim", str(e.exception))
         self.assertIn("build-01", str(e.exception))
+
+
+@unittest.skipUnless(shutil.which("zsh"), "needs zsh to drive the parser")
+class SshTargetParser(unittest.TestCase):
+    """SSH-03: the host is parsed out of `ssh` argv with no fork, so the parser
+    is zsh and cannot be imported. It is sliced out by name and driven directly
+    — the alternative is trusting the most intricate new logic to inspection."""
+
+    CASES = [
+        # (command line, expected display host or None for "paint nothing")
+        ("ssh build-01", "build-01"),
+        ("ssh user@build-01", "build-01"),
+        ("ssh -p 2222 build-01", "build-01"),
+        ("ssh -p2222 build-01", "build-01"),          # attached value
+        ("ssh -i ~/.ssh/k build-01", "build-01"),
+        ("ssh -o SendEnv=FOO build-01", "build-01"),
+        ("ssh -L 8080:localhost:80 build-01", "build-01"),
+        ("ssh -J bastion build-01", "build-01"),
+        ("ssh -W host:22 jump", "jump"),
+        ("ssh -tt build-01", "build-01"),             # clustered booleans
+        ("ssh -6 -4 -C -tt me@h.d.io", "h"),
+        ("ssh build-01.prod.example.com", "build-01"),
+        ("ssh HOST.example.com", "HOST"),
+        ("ssh 10.0.1.5", "10.0.1.5"),                 # literals stay whole
+        ("ssh 192.168.0.10:22", "192.168.0.10"),
+        ("ssh 2001:db8::1", "2001:db8::1"),
+        ("ssh [2001:db8::1]:2222", "2001:db8::1"),
+        ("ssh me@[fe80::1]", "fe80::1"),
+        ("ssh ssh://me@build-01:22/", "build-01"),
+        ("env A=b ssh build-01", "build-01"),
+        ("A=b ssh build-01", "build-01"),
+        ("ssh -N -L 5432:db:5432 build-01", "build-01"),
+        ('ssh -oProxyCommand="ssh j nc %h %p" host', "host"),
+        ("ssh build-01 && ssh other", "build-01"),    # first command wins
+        # A trailing remote command returns immediately, so painting would
+        # flicker the tab for one command's lifetime (SSH-04).
+        ("ssh build-01 uptime", None),
+        ("ssh -f build-01", None),                    # backgrounds itself
+        ("ssh -", None),
+        ("ssh", None),
+        ("ssh -p", None),                             # flag ate the host
+        # Not this pane going anywhere.
+        ("git push", None),
+        ("echo hi | ssh build-01", None),
+        ("sshfs foo bar", None),
+        ("cat ssh_notes.md", None),
+        # The line arrives unexpanded, so these would caption the tab with
+        # literal shell source; and glob metacharacters must never be read as
+        # patterns by the flag scan.
+        ("ssh $(echo h)", None),
+        ('ssh "ho*st"', None),
+        ('ssh "my host"', None),
+        ("ssh -* host", "host"),
+        ("ssh -[abc] host", "host"),
+        ("ssh -? host", "host"),
+        ("ssh -# host", "host"),
+    ]
+
+    @classmethod
+    def setUpClass(cls):
+        src = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        flags = re.search(r"^typeset -gr _BEACON_SSH_VALUE_FLAGS=.*$", src, re.M)
+        fn = re.search(r"^_beacon_ssh_target\(\) \{\n.*?^\}$", src, re.S | re.M)
+        cls.prelude = f"{flags.group(0)}\n{fn.group(0)}\ntypeset -g _beacon_reply=''\n"
+
+    def _parse(self, line):
+        # `globsubst` on purpose: it is the option that makes an unquoted
+        # expansion in pattern position glob, which would let `ssh -*` be read
+        # as a value-taking flag and eat the host. The parser pins it off, and
+        # driving the harness with it on is what proves the pin.
+        script = (self.prelude +
+                  'setopt globsubst\n'
+                  'if _beacon_ssh_target "$1"; then print -rn -- "$_beacon_reply"; '
+                  'else print -rn -- "(none)"; fi\n')
+        r = subprocess.run(["zsh", "-f", "-s", line], input=script,
+                           capture_output=True, text=True, timeout=20)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return None if r.stdout == "(none)" else r.stdout
+
+    def test_every_case(self):
+        for line, want in self.CASES:
+            with self.subTest(line=line):
+                self.assertEqual(self._parse(line), want)

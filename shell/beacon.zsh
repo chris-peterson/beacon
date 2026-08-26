@@ -389,7 +389,12 @@ typeset -gr _BEACON_SSH_VALUE_FLAGS='BbcDEeFIiJLlmOoPpQRSWw'
 # they think in. The cost of that: an alias and a real hostname are
 # indistinguishable here, so `build-01` may be either.
 _beacon_ssh_target() {
-  setopt localoptions noksharrays
+  # `noglobsubst` is pinned for the same reason _beacon_branch_info pins its own
+  # option set: the flag scan below tests one character of *user input* against
+  # the value-flag string as a pattern. zsh does not glob an unquoted expansion
+  # in pattern position by default — but `globsubst` makes it, and then `ssh -*`
+  # matches every flag, is read as one that takes a value, and eats the host.
+  setopt localoptions noksharrays noglobsubst
   _beacon_reply=''
   # `(z)` splits into shell words, which is what surfaces control operators as
   # tokens of their own; `(Q)` strips one level of quoting so `ssh "my host"`
@@ -421,7 +426,6 @@ _beacon_ssh_target() {
         chars=${w[i]#-}
         for (( j = 1; j <= ${#chars}; j++ )); do
           c=${chars[j]}
-          # Quoted so a flag character is never itself read as a pattern.
           if [[ $_BEACON_SSH_VALUE_FLAGS == *"$c"* ]]; then
             # The value is the rest of this word when there is one, else the next.
             (( j < ${#chars} )) || (( i++ ))
@@ -459,7 +463,10 @@ _beacon_ssh_target() {
   # build-01.prod.example.com is build-01, while 10.0.1.5 must stay whole.
   # The trade is that two hosts differing only by domain collapse to one label.
   [[ -n ${h//[0-9.]/} && $h != *:* ]] && h=${h%%.*}
-  [[ -n $h ]] || return 1
+  # Nothing but the characters a hostname or an ssh_config alias can hold. The
+  # line arrives unexpanded, so `ssh $(pick-host)` would otherwise caption the
+  # tab with the literal `$(pick-host)` — painting nothing beats painting that.
+  [[ -n $h && -z ${h//[A-Za-z0-9.:_-]/} ]] || return 1
   _beacon_reply=$h
 }
 
