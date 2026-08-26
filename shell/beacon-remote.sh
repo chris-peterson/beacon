@@ -32,7 +32,9 @@ case $- in
   *) return 0 2>/dev/null || exit 0 ;;
 esac
 [ -t 1 ] || return 0
-[ -n "$TERM" ] && [ "$TERM" != dumb ] || return 0
+# Braced defaults throughout: a remote rc may well have `set -u`, and an
+# unset TERM or PROMPT_COMMAND would then abort the rc rather than skip us.
+[ -n "${TERM:-}" ] && [ "${TERM:-}" != dumb ] || return 0
 
 # Writing to the tty rather than stdout, for the reason the local snippet
 # documents: zsh runs chpwd/precmd inside command-substitution subshells, so
@@ -135,6 +137,7 @@ _bcn_project_name() {
     _bcn_project=${_bcn_project%.git}
   fi
   [ -n "$_bcn_project" ] || _bcn_project=${_bcn_root##*/}
+  return 0
 }
 
 # ---------------------------------------------------------------- branch
@@ -207,6 +210,11 @@ BCN_REFS
 
   _bcn_branch=$_bcn_name
   [ "$_bcn_state" = diverged ] && _bcn_branch="$_bcn_ind $_bcn_name"
+  # Explicit, because the line above is a `&&` list that returns non-zero on
+  # every branch that is *not* diverged. An rc with `set -e` would then see this
+  # function fail and abort the rest of the user's startup — the same reason
+  # _beacon_precmd ends with one.
+  return 0
 }
 
 # ---------------------------------------------------------------- prompt hook
@@ -250,6 +258,7 @@ _bcn_precmd() {
   _bcn_publish beacon_branch_clean     "$_bcn_c"      _bcn_last_clean
   _bcn_publish beacon_branch_diverged  "$_bcn_v"      _bcn_last_diverged
   _bcn_publish beacon_branch_untracked "$_bcn_u"      _bcn_last_untracked
+  return 0
 }
 
 # Both branches are ordinary command words, so this file still *parses* under
@@ -258,11 +267,11 @@ _bcn_precmd() {
 # snippet uses. A string assignment to precmd_functions would be worse than a
 # syntax error: it is an array in zsh, so it would become one element named
 # "existing _bcn_precmd" and never be called.
-if [ -n "$ZSH_VERSION" ]; then
+if [ -n "${ZSH_VERSION:-}" ]; then
   autoload -Uz add-zsh-hook
   add-zsh-hook precmd _bcn_precmd
-elif [ -n "$BASH_VERSION" ]; then
-  case ";$PROMPT_COMMAND;" in
+elif [ -n "${BASH_VERSION:-}" ]; then
+  case ";${PROMPT_COMMAND:-};" in
     *";_bcn_precmd;"*) ;;
     *) PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}_bcn_precmd" ;;
   esac
