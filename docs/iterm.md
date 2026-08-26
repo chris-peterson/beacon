@@ -233,16 +233,24 @@ The tab signal + two-line `project` / `task` label are tuned for a **tall left t
 Audit your current setup at any time — it reports only what differs and writes nothing:
 
 ```
-beacon-iterm configure
+beacon layout
 ```
 
 Rather than hunt through the Preferences window, let beacon apply them for you:
 
 ```
-beacon-iterm configure --write
+beacon layout --write
 ```
 
 It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a fleet of work open.** (Prefer the GUI? Every setting is under Appearance → Tabs, except the status bar under Appearance → General.)
+
+That same in-memory copy is why the audit adds a caveat while iTerm2 is running: it reads the plist on disk, which is the effective value only once iTerm2 is down. When the audit reports every setting aligned but the tab strip disagrees, a write landed behind the running app and will be discarded on quit. Name the setting to write it regardless of what the plist says:
+
+```
+beacon layout --write --keys CustomTabBarFontSize
+```
+
+`beacon layout` is app-wide iTerm2 preferences. Its neighbour `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profiles — the status bar, badge sizing, and mode backgrounds — which iTerm2 reloads live, so that one needs no restart. Reach for it after changing a status-bar button `label` in your config.
 
 One related knob is left entirely to taste — beacon renders identically whichever way you set it and never touches it: **pane/window dimming** (Appearance → Dimming). Dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning.
 

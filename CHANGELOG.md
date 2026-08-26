@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### `beacon layout` applies the recommended iTerm2 layout
+
+The app-wide settings beacon recommends — tab position and size, status-bar position — were reachable only as `beacon-iterm configure`, a second executable nothing pointed at. They are `beacon layout` now, and `install` applies them instead of only listing them.
+
+```
+beacon layout            # audit; writes nothing
+beacon layout --write    # apply (quits + relaunches iTerm2)
+```
+
+Applying used to revert silently: a running iTerm2 was detected with `pgrep -x iTerm2`, which never matches it, so the write landed in a live iTerm2 that restored the old values on quit. The audit now says when iTerm2 is running, since it reads a plist the running app overwrites.
+
+The recommended tab-label font size is 22.
+
+### A git worktree is the same project
+
+Working in a linked worktree captioned the tab with that directory's name — an opaque id, where a tool cuts the tree. Sibling checkouts share a git dir, which is what now tells a second checkout from leaving the repository.
+
+### Where a session is now reads on line 1
+
+The tab shows `beacon @ ai-sdlc` over the task, rather than opening line 2 with a separator whose antecedent sat on the line above. The marker went only to the badge, which is opt-in, so by default it had no surface.
+
 ## 2.5.0
 
 ### `status` splits into `mode` and `activity`

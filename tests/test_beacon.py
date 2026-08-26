@@ -1287,6 +1287,50 @@ class CustomizableStatusBarButtons(unittest.TestCase):
                 self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
         self.assertIn("failed to write", str(cm.exception))
 
+    def _layout(self, write=False, yes=False, keys=None, rc=0):
+        """Run `beacon layout`, returning the argv and env handed to the CLI."""
+        seen = {}
+
+        def fake_run(cmd, **kw):
+            seen["cmd"], seen["env"] = cmd, kw.get("env") or {}
+            return types.SimpleNamespace(returncode=rc)
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+             mock.patch.object(self.beacon.subprocess, "run", side_effect=fake_run), \
+             self.assertRaises(SystemExit) as cm:
+            self.beacon.cmd_layout(self.beacon.argparse.Namespace(
+                write=write, yes=yes, keys=keys))
+        seen["code"] = cm.exception.code
+        return seen
+
+    def test_layout_requires_iterm(self):
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_layout(self.beacon.argparse.Namespace(
+                    write=False, yes=False, keys=None))
+        self.assertIn("iTerm2", str(cm.exception))
+
+    def test_layout_audits_by_default(self):
+        seen = self._layout()
+        self.assertEqual(seen["cmd"][-1], "configure")
+        self.assertNotIn("--write", seen["cmd"])
+
+    def test_layout_passes_its_flags_through(self):
+        seen = self._layout(write=True, yes=True, keys="HideTab,TabViewType")
+        self.assertEqual(seen["cmd"][-5:],
+                         ["configure", "--write", "--yes", "--keys", "HideTab,TabViewType"])
+
+    def test_layout_tells_the_cli_which_command_to_advertise(self):
+        # Otherwise the advice names beacon-iterm, which is the whole reason a
+        # user never finds the layout settings from the command they type.
+        seen = self._layout()
+        self.assertEqual(seen["env"].get("BEACON_LAYOUT_COMMAND"), "beacon layout")
+
+    def test_layout_exits_with_the_audits_status(self):
+        # The audit signals drift by exiting non-zero; swallowing that would
+        # make `beacon layout` useless as a check.
+        self.assertEqual(self._layout(rc=1)["code"], 1)
+        self.assertEqual(self._layout(rc=0)["code"], 0)
+
 
 class ProjectChipIsTheProjectName(BeaconTest):
     """STATUS-BAR-02: the chip carries the project's name, not a forge identity
@@ -3058,6 +3102,47 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
             "An override must survive a wander as the task behind the ' · ' after the location",
         )
 
+    def test_the_location_joins_the_project_on_line_one(self):
+        # The badge is opt-in (BADGE-15), so on a default install the two-line
+        # tab label is the only surface a wander has. The location belongs on
+        # line 1 with the project it qualifies: on line 2 a bare " @ other" has
+        # no antecedent, since the project it attaches to is on the line above.
+        self._chdir(self.live_dir)
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_location"),
+            [("uservar", "beacon_location", f" @ {self.live_dir.name}")],
+            "Line 1 must carry the wandered location",
+        )
+
+    def test_line_one_keeps_the_project_pinned_beside_it(self):
+        # BADGE-02: the location is added to the identity, never substituted for
+        # it — the tab reads "<home> @ <where>", so the session still says which
+        # project it belongs to.
+        self._chdir(self.live_dir)
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_project"),
+            [("uservar", "beacon_project", "acme/widget")],
+            "The project slot must stay the anchor's, unqualified",
+        )
+
+    def test_the_task_line_never_carries_the_location(self):
+        self.beacon.write_state("override.task", "my-task")
+        self._chdir(self.live_dir)
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task_nl"),
+            [("uservar", "beacon_task_nl", "\n  my-task")],
+            "Line 2 is the unit of work; the location is line 1's",
+        )
+
+    def test_the_title_format_interpolates_the_location(self):
+        # A var the template never reads would paint nothing at all.
+        self.assertIn("beacon_location", self.beacon.TITLE_FORMAT)
+        self.assertNotIn("beacon_location", self.beacon.BADGE_FORMAT,
+                         "The badge is one line and recombines via beacon_task")
+
     def test_scratch_tmp_dir_is_not_a_wander(self):
         # PROV-02a: agents routinely cd into a uniquified scratch dir (a mktemp
         # path under /tmp or $TMPDIR) for ad-hoc work. It has no project marker
@@ -3090,13 +3175,17 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
     def test_show_and_badge_share_wander_resolution(self):
         # CMD-01 / BADGE-12: `show` must report what the badge paints. Both go
         # through _resolve_for_display, so a wander reflects identically in both
-        # — the badge project stays pinned, the task carries the bare location
-        # (the " @ " separator is applied at render, apply()).
+        # — the badge project stays pinned, and the single-line form carries the
+        # location (the " @ " separator is applied at render, apply()).
         self._chdir(self.live_dir)
         state = self.beacon._resolve_for_display()
         self.assertEqual(state["project"], "acme/widget")
         self.assertEqual(state["task_provider"], "wander")
-        self.assertEqual(state["task"], self.live_dir.name)
+        self.assertEqual(state["task_display"], self.live_dir.name)
+        # The location rides apart from the task because the tab gives them
+        # different lines; with nothing pinned there is no task at all.
+        self.assertEqual(state["location"], self.live_dir.name)
+        self.assertEqual(state["task"], "")
 
     def test_wander_clears_at_rest(self):
         # PROV-02a: the marker is live working-state context. At rest (idle here,
@@ -3132,6 +3221,92 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
             state["task_provider"], "wander",
             "A paused session must not carry the @marker, even while away",
         )
+
+
+class LinkedWorktreeIsNotAWander(BeaconTest):
+    """PROV-02a: a linked worktree is the same project on another branch. It
+    has its own project root, so a root comparison alone reads a sibling
+    checkout as somewhere else entirely and paints the tab with the worktree's
+    directory name — which for a tool-generated tree is an opaque id sitting
+    where the unit of work belongs."""
+
+    def setUp(self):
+        super().setUp()
+        self._home = tempfile.TemporaryDirectory()
+        home = Path(self._home.name).resolve()
+        self.addCleanup(self._home.cleanup)
+        patcher = mock.patch.dict(os.environ, {"HOME": str(home)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.repo = home / "widgets"
+        self.worktree = home / "widgets-9f2c1ab"
+        self.unrelated = home / "unrelated"
+        self._make_repo(self.repo, "git@github.com:acme/widgets.git")
+        self._git("worktree", "add", "-q", "-b", "feature-x",
+                  str(self.worktree), cwd=self.repo)
+        self._make_repo(self.unrelated, "git@github.com:acme/unrelated.git")
+
+        self.beacon.write_state("anchor.cwd", str(self.repo))
+        self.beacon.write_state("activity", "working")
+
+    @staticmethod
+    def _git(*args, cwd):
+        subprocess.run(["git", *args], cwd=cwd, check=True,
+                       capture_output=True, text=True)
+
+    def _make_repo(self, path: Path, origin: str):
+        path.mkdir(parents=True)
+        self._git("init", "-q", "-b", "main", cwd=path)
+        self._git("config", "user.email", "t@t.test", cwd=path)
+        self._git("config", "user.name", "Test", cwd=path)
+        self._git("config", "commit.gpgsign", "false", cwd=path)
+        self._git("remote", "add", "origin", origin, cwd=path)
+        (path / "f.txt").write_text("hi\n")
+        self._git("add", "-A", cwd=path)
+        self._git("commit", "-qm", "init", cwd=path)
+
+    def _chdir(self, path: Path):
+        prev = os.getcwd()
+        os.chdir(path)
+        self.addCleanup(os.chdir, prev)
+
+    def test_a_worktree_of_the_anchor_repo_paints_no_marker(self):
+        self._chdir(self.worktree)
+        self.beacon.render()
+        emitted = _uservar_emits(self.cli_calls, "beacon_task")
+        self.assertFalse(
+            any("@" in call[2] for call in emitted),
+            f"A sibling worktree must not read as a wander: {emitted}",
+        )
+
+    def test_the_worktree_directory_name_never_reaches_the_tab(self):
+        self._chdir(self.worktree)
+        self.beacon.render()
+        for call in _uservar_emits(self.cli_calls, "beacon_task_nl"):
+            self.assertNotIn(self.worktree.name, call[2],
+                             "The generated worktree name must not caption the tab")
+
+    def test_a_genuinely_different_repo_still_wanders(self):
+        self._chdir(self.unrelated)
+        self.beacon.render()
+        self.assertEqual(
+            _uservar_emits(self.cli_calls, "beacon_task"),
+            [("uservar", "beacon_task", f" @ {self.unrelated.name}")],
+            "Leaving the repository entirely is still a wander",
+        )
+
+    def test_same_repository_sees_through_the_worktree(self):
+        self.assertTrue(self.beacon._same_repository(self.repo, self.worktree))
+        self.assertFalse(self.beacon._same_repository(self.repo, self.unrelated))
+
+    def test_same_repository_is_false_outside_a_repo(self):
+        # A non-git directory has no shared git dir to match on, so it can never
+        # be mistaken for the anchor's repository.
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.assertFalse(
+            self.beacon._same_repository(self.repo, Path(scratch.name).resolve()))
 
 
 class EmptyItermIdIsolatesSessions(BeaconTest):
@@ -3301,13 +3476,49 @@ class InstallGating(unittest.TestCase):
             self._run_install()
         self.assertEqual(self.mocks["_install_cli_wrapper"].call_args, mock.call(None))
 
+    def _run_install_with_layout(self, audit_rc: int, write_rc: int = 0):
+        """Install with the layout audit and write stubbed, returning the output
+        and the CLI argv install used. The real audit shells out to `defaults
+        read`, so without this the closing line — and these tests — turn on
+        whatever iTerm2 prefs the machine running the suite happens to have."""
+        real_run = self.beacon.subprocess.run
+        layout_calls = []
+
+        def fake_run(cmd, *a, **k):
+            if "configure" in cmd:
+                layout_calls.append(cmd[cmd.index("configure"):])
+                rc = write_rc if "--write" in cmd else audit_rc
+                return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="")
+            return real_run(cmd, *a, **k)
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon.subprocess, "run", side_effect=fake_run):
+            return self._run_install(), layout_calls
+
     def test_install_completes_in_place(self):
-        # 1.0 pivot: no pref needs iTerm2 quit, so install emits no
-        # deferred-action notice.
-        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
-            out = self._run_install()
+        out, calls = self._run_install_with_layout(audit_rc=0)
         self.assertIn("no iTerm2 restart required", out)
         self.assertNotIn("DEFERRED", out)
+        self.assertEqual(calls, [["configure"]],
+                         "An aligned layout must not be written again")
+
+    def test_a_drifted_layout_is_applied_not_just_reported(self):
+        # CMD-08: these are app-wide prefs no dynamic profile can carry, so left
+        # as advice they stayed drifted — the closing line read as "nothing left
+        # to do" beneath a report saying otherwise.
+        out, calls = self._run_install_with_layout(audit_rc=1, write_rc=0)
+        self.assertEqual(calls, [["configure"], ["configure", "--write"]],
+                         "Drift must be offered for writing, after the audit table")
+        self.assertIn("no iTerm2 restart required", out)
+
+    def test_a_declined_write_does_not_fail_the_install(self):
+        # No tty to confirm on, or the user said no. The beacon-owned steps have
+        # already landed, so declining is a complete answer — install reports the
+        # layout as outstanding and names the command, rather than erroring.
+        out, calls = self._run_install_with_layout(audit_rc=1, write_rc=1)
+        self.assertIn(["configure", "--write"], calls)
+        self.assertNotIn("no iTerm2 restart required", out)
+        self.assertIn("need an iTerm2 restart", out)
+        self.assertIn("beacon layout --write", out)
 
 
 class StatuslineWiring(unittest.TestCase):
@@ -4273,12 +4484,18 @@ class ConfigureLayoutAudit(unittest.TestCase):
         self.fail(f"{key} is not in RECOMMENDED_LAYOUT")
 
     def test_never_writes_a_pref(self):
+        # The bare form reads: the prefs themselves, and iTerm2's running state
+        # to say whether those reads are the effective values. Nothing else, and
+        # nothing that mutates — that boundary is what keeps it clear of the
+        # plist-cache trap (§6.6).
         record = []
         self._run(self._aligned(), record=record)
         self.assertTrue(record)
+        allowed = (["defaults", "read"], ["osascript", "-e"])
         for cmd in record:
-            self.assertEqual(cmd[:2], ["defaults", "read"],
-                             f"configure must only read, never write: {cmd}")
+            self.assertIn(list(cmd[:2]), [list(a) for a in allowed],
+                          f"configure must only read, never write: {cmd}")
+            self.assertNotIn("quit", cmd[-1], f"the audit must not act on iTerm2: {cmd}")
 
 
 class ConfigureLayoutWrite(unittest.TestCase):
@@ -4293,31 +4510,51 @@ class ConfigureLayoutWrite(unittest.TestCase):
     def _args(self, **kw):
         return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, **kw})
 
+    @staticmethod
+    def _fake_run(calls, running: bool):
+        """Stand-in for `subprocess.run` answering the osascript running-check
+        with `running`, and everything else successfully."""
+        def run(cmd, *a, **k):
+            calls.append(cmd)
+            out = ""
+            if cmd[:1] == ["osascript"] and "is running" in cmd[-1]:
+                out = "true" if running else "false"
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+        return run
+
+    @staticmethod
+    def _quit_requested(calls) -> bool:
+        return any(c[:1] == ["osascript"] and "quit" in c[-1] for c in calls)
+
+    def test_running_check_reads_iterm_not_the_process_table(self):
+        """`pgrep -x iTerm2` never matches the running app — macOS matches `-x`
+        against the full executable path — and the false negative sends the
+        write into a live iTerm2, which restores the old value on quit."""
+        calls = []
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)):
+            self.assertTrue(self.iterm._is_iterm_running())
+        self.assertFalse(any(c[:1] == ["pgrep"] for c in calls),
+                         "pgrep reports iTerm2 down while it is up")
+        calls.clear()
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, False)):
+            self.assertFalse(self.iterm._is_iterm_running())
+
     def test_apply_phase_writes_typed_defaults_then_relaunches(self):
         calls = []
-
-        def fake_run(cmd, *a, **k):
-            calls.append(cmd)
-            code = 1 if cmd[:1] == ["pgrep"] else 0  # iTerm2 not running
-            return subprocess.CompletedProcess(cmd, code, stdout="", stderr="")
-        with mock.patch("subprocess.run", side_effect=fake_run), \
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, False)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.iterm.cmd_configure(self._args(
                 keys="TabViewType,UseCustomTabBarFontSize,CustomTabBarFontSize"))
         writes = {c[3]: c[4:] for c in calls if c[:2] == ["defaults", "write"]}
         self.assertEqual(writes["TabViewType"], ["-int", "2"])
         self.assertEqual(writes["UseCustomTabBarFontSize"], ["-bool", "true"])
-        self.assertEqual(writes["CustomTabBarFontSize"], ["-float", "18"])
+        self.assertEqual(writes["CustomTabBarFontSize"], ["-float", "22"])
         self.assertTrue(any(c[:2] == ["open", "-a"] for c in calls))
-        self.assertFalse(any(c[:1] == ["osascript"] for c in calls))
+        self.assertFalse(self._quit_requested(calls))
 
     def test_running_hands_off_to_helper_and_quits(self):
         calls, popen = [], []
-
-        def fake_run(cmd, *a, **k):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")  # iTerm2 up
-        with mock.patch("subprocess.run", side_effect=fake_run), \
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)), \
                 mock.patch("subprocess.Popen",
                                   side_effect=lambda cmd, *a, **k: popen.append(cmd) or mock.Mock()), \
                 contextlib.redirect_stdout(io.StringIO()):
@@ -4326,25 +4563,68 @@ class ConfigureLayoutWrite(unittest.TestCase):
         helper = popen[0][-1]
         self.assertIn("configure --write --yes --keys", helper)
         self.assertIn("StatusBarPosition", helper)
-        self.assertTrue(any(c[:1] == ["osascript"] for c in calls))
+        self.assertNotIn("pgrep", helper,
+                         "the helper would fall through before iTerm2 finished quitting")
+        self.assertIn("is running", helper)
+        self.assertTrue(self._quit_requested(calls))
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls),
                          "must defer the write to the helper, not write while iTerm2 runs")
 
     def test_running_declined_makes_no_changes(self):
         calls, popen = [], []
-
-        def fake_run(cmd, *a, **k):
-            calls.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-        with mock.patch("subprocess.run", side_effect=fake_run), \
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)), \
                 mock.patch("subprocess.Popen",
                                   side_effect=lambda *a, **k: popen.append(a)), \
                 mock.patch.object(self.iterm, "_prompt_tty", return_value=False), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.iterm.cmd_configure(self._args(yes=False, keys="StatusBarPosition"))
         self.assertEqual(popen, [])
-        self.assertFalse(any(c[:1] == ["osascript"] for c in calls))
+        self.assertFalse(self._quit_requested(calls))
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
+
+    def test_no_drift_while_running_names_the_way_past_the_refusal(self):
+        """The drift check reads the plist, which a live iTerm2 overwrites from
+        memory — so "nothing to write" is not proof the tab strip agrees, and
+        refusing without a way forward is the dead end that strands a setting."""
+        calls = []
+        buf = io.StringIO()
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)), \
+                mock.patch.object(self.iterm, "_layout_drift", return_value=[]), \
+                contextlib.redirect_stdout(buf):
+            self.iterm.cmd_configure(self._args())
+        out = buf.getvalue()
+        self.assertIn("nothing to write", out)
+        self.assertIn("iTerm2 is running", out)
+        self.assertIn("--keys", out)
+        self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
+
+
+class LayoutAdviceNamesTheFrontDoor(unittest.TestCase):
+    """CLI-18/CMD-28: `beacon` is the only interface a user types, so the advice
+    the CLI prints names `beacon layout` whenever the plugin fronts it."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def test_defaults_to_its_own_invocation(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.iterm._advertised_command(), "beacon-iterm configure")
+
+    def test_plugin_supplied_name_wins(self):
+        with mock.patch.dict(os.environ, {"BEACON_LAYOUT_COMMAND": "beacon layout"}):
+            self.assertEqual(self.iterm._advertised_command(), "beacon layout")
+
+    def test_drift_advice_carries_it(self):
+        def fake_run(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        buf = io.StringIO()
+        with mock.patch("subprocess.run", side_effect=fake_run), \
+                mock.patch.dict(os.environ, {"BEACON_LAYOUT_COMMAND": "beacon layout"}), \
+                contextlib.redirect_stdout(buf), \
+                self.assertRaises(SystemExit):
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None))
+        self.assertIn("beacon layout --write", buf.getvalue())
+        self.assertNotIn("beacon-iterm", buf.getvalue())
 
 
 class AncestorTtyResolution(unittest.TestCase):

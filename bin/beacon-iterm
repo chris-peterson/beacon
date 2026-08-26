@@ -312,7 +312,7 @@ RECOMMENDED_LAYOUT = (
      "label": "Custom tab font size (on)",
      "why": "the switch that lets the size below take effect",
      "where": "Appearance → Tabs"},
-    {"key": "CustomTabBarFontSize", "want": "18", "type": "float",
+    {"key": "CustomTabBarFontSize", "want": "22", "type": "float",
      "label": "Tab-label font size",
      "why": "default labels are unreadably small in a left strip",
      "where": "Appearance → Tabs"},
@@ -350,13 +350,21 @@ def _layout_drift():
 
 
 def _is_iterm_running() -> bool:
+    # osascript is the reliable way to ask. `pgrep -x iTerm2` misses the running
+    # app — macOS matches `-x` against the full executable path
+    # (`/Applications/iTerm.app/Contents/MacOS/iTerm2`) — and a false negative
+    # here routes the write straight into a live iTerm2, which then restores the
+    # old value from its in-memory copy on quit.
     import subprocess
 
     try:
-        r = subprocess.run(["pgrep", "-x", "iTerm2"], capture_output=True, timeout=5)
+        r = subprocess.run(
+            ["osascript", "-e", 'application "iTerm" is running'],
+            capture_output=True, text=True, timeout=5,
+        )
     except Exception:
         return False
-    return r.returncode == 0
+    return r.returncode == 0 and r.stdout.strip().lower() == "true"
 
 
 def _prompt_tty(question: str, default_yes: bool):
@@ -395,6 +403,24 @@ def _apply_layout(specs) -> None:
     subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
 
 
+def _advertised_command() -> str:
+    """The command the reader should type to apply the layout. The plugin sets
+    this when it shells out, so its output names `beacon layout` — the front
+    door — rather than this CLI, which a user is not expected to invoke."""
+    return os.environ.get("BEACON_LAYOUT_COMMAND", "beacon-iterm configure")
+
+
+def _running_caveat() -> str:
+    """`defaults read` answers from the plist, which is only the effective value
+    while iTerm2 is down: it holds its own copy and rewrites the file from
+    memory on quit. So an aligned reading here can disagree with the tab strip
+    in front of the user, and a write that landed behind a live iTerm2 reads as
+    applied right up until it is discarded."""
+    return ("! iTerm2 is running; these are the on-disk values. It keeps its own\n"
+            "  copy and rewrites the plist on quit, so what you see in the tab\n"
+            "  strip may differ until then.")
+
+
 def _configure_audit():
     aligned = "\x1b[32m✓\x1b[0m"
     differs = "\x1b[33m✗\x1b[0m"
@@ -413,9 +439,13 @@ def _configure_audit():
     print()
     if not drift:
         print("All aligned — the tab-color signal has the room it needs.")
+        if _is_iterm_running():
+            print()
+            print(_running_caveat())
         sys.exit(0)
     print(f"{len(drift)} of {len(RECOMMENDED_LAYOUT)} settings differ. "
-          "Apply them without opening Preferences:\n  beacon-iterm configure --write\n"
+          "Apply them without opening Preferences:\n"
+          f"  {_advertised_command()} --write\n"
           "(quits + relaunches iTerm2 — run it when idle).")
     sys.exit(1)
 
@@ -430,6 +460,14 @@ def _configure_write(args):
         drift = _layout_drift()
         if not drift:
             print("Layout already matches the recommendation — nothing to write.")
+            if running:
+                # The drift check just read the plist, which a live iTerm2 will
+                # overwrite from memory — so "matches" here is not proof the tab
+                # strip agrees, and the user needs a way past this refusal.
+                print()
+                print(_running_caveat())
+                print("  To apply a setting anyway, name it:\n"
+                      f"    {_advertised_command()} --write --keys <Key>")
             return
         if args.yes:
             selected = drift
@@ -474,8 +512,11 @@ def _configure_write(args):
     keys_csv = ",".join(s["key"] for s in selected)
     log_path = os.path.join(tempfile.gettempdir(), "beacon-configure.log")
     self_path = os.path.realpath(__file__)
+    # Same running-check as _is_iterm_running, in shell: pgrep would fall
+    # through immediately and write before iTerm2 had finished quitting.
+    still_up = "osascript -e " + shlex.quote('application "iTerm" is running')
     helper = (
-        f"while pgrep -x iTerm2 >/dev/null; do sleep 0.5; done; "
+        f'while [ "$({still_up})" = true ]; do sleep 0.5; done; '
         f"python3 {shlex.quote(self_path)} configure --write --yes "
         f"--keys {shlex.quote(keys_csv)}"
     )
@@ -550,7 +591,9 @@ def main(argv=None):
                     help="apply the recommended settings (quits + relaunches iTerm2)")
     sp.add_argument("--yes", action="store_true",
                     help="skip confirmation prompts (accept every recommendation)")
-    sp.add_argument("--keys", help=argparse.SUPPRESS)  # internal: restart helper handoff
+    sp.add_argument("--keys",
+                    help="comma-separated setting keys to write, skipping the "
+                         "drift check (also the restart helper's handoff)")
     sp.set_defaults(func=cmd_configure)
 
     argv = sys.argv[1:] if argv is None else argv
