@@ -5046,3 +5046,140 @@ def _base_state() -> dict:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SshInstallEditsTheRemoteRc(BeaconTest):
+    """SSH-07: the rc splice is the part that can damage someone's shell config,
+    so it is a pure text function and tested as one — no ssh involved."""
+
+    def _block(self, digest="abc123"):
+        return self.beacon._ssh_block(digest)
+
+    def test_appends_a_marker_delimited_block_to_an_existing_rc(self):
+        out = self.beacon._splice_ssh_block("export PATH=/x\n", self._block())
+        self.assertIn("export PATH=/x", out)
+        self.assertIn(self.beacon._SSH_BLOCK_OPEN, out)
+        self.assertIn(self.beacon._SSH_BLOCK_CLOSE, out)
+
+    def test_reinstalling_the_same_version_changes_nothing(self):
+        once = self.beacon._splice_ssh_block("export PATH=/x\n", self._block())
+        self.assertEqual(self.beacon._splice_ssh_block(once, self._block()), once)
+
+    def test_an_upgrade_replaces_the_block_rather_than_stacking_one(self):
+        once = self.beacon._splice_ssh_block("export PATH=/x\n", self._block("aaa"))
+        twice = self.beacon._splice_ssh_block(once, self._block("bbb"))
+        self.assertEqual(twice.count(self.beacon._SSH_BLOCK_OPEN), 1)
+        self.assertIn("bbb", twice)
+        self.assertNotIn("aaa", twice)
+        # The user's own lines are never the thing that moves.
+        self.assertIn("export PATH=/x", twice)
+
+    def test_a_block_missing_its_close_marker_refuses(self):
+        # Guessing where a half-written block ends is how an rc file loses lines.
+        mangled = self.beacon._SSH_BLOCK_OPEN + "\nsomething\n"
+        with self.assertRaises(SystemExit):
+            self.beacon._splice_ssh_block(mangled, self._block())
+
+    def test_print_only_touches_nothing_and_runs_no_ssh(self):
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            with mock.patch("sys.stdout", io.StringIO()) as out:
+                self.beacon.cmd_ssh_install(
+                    self.beacon.argparse.Namespace(host=None, rc=None, print_only=True, yes=False))
+        run.assert_not_called()
+        self.assertIn("remote half of the shell integration", out.getvalue())
+
+    def test_the_script_travels_as_an_argument_not_on_stdin(self):
+        # `sh -s` would read piped data as more script, so the installer's own
+        # body must not share the channel with the file it is placing.
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+            self.beacon._ssh_run("h", 'cat > "$HOME/x"', stdin="FILE BODY")
+        argv, kwargs = run.call_args[0][0], run.call_args[1]
+        self.assertEqual(argv[:4], ["ssh", "h", "sh", "-c"])
+        self.assertEqual(kwargs["input"], "FILE BODY")
+        self.assertNotIn("-s", argv)
+
+    def test_a_host_is_required_when_not_printing(self):
+        with self.assertRaises(SystemExit):
+            self.beacon.cmd_ssh_install(
+                self.beacon.argparse.Namespace(host=None, rc=None, print_only=False, yes=False))
+
+
+class ButtonsDuringAnSshSession(BeaconTest):
+    """SSH-08: neither button may act on the local working directory while the
+    prompt is on another host. The local cwd is whatever it was before ssh
+    started, so acting on it produces a plausible wrong answer."""
+
+    def _mark_ssh(self, host="build-01"):
+        os.environ["ITERM_SESSION_ID"] = "w0t0p0:GUID-1"
+        self.beacon.CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (self.beacon.CACHE_DIR / "ssh-GUID-1.txt").write_text(f"{host}\n")
+
+    def _config(self, **keys):
+        d = Path(self._tmp.name) / "sshcfg"
+        (d / "beacon").mkdir(parents=True, exist_ok=True)
+        (d / "beacon" / "config.json").write_text(json.dumps(keys))
+        return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
+
+    def test_web_refuses_and_names_the_host(self):
+        self._mark_ssh()
+        with self.assertRaises(SystemExit) as e:
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("build-01", str(e.exception))
+
+    def test_web_resolves_normally_with_no_ssh_marker(self):
+        # The marker's absence is the common case and must cost nothing.
+        os.environ["ITERM_SESSION_ID"] = "w0t0p0:GUID-1"
+        with mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://x.test/r", "r")):
+            with mock.patch.object(self.beacon.subprocess, "run") as run:
+                run.return_value = mock.Mock(returncode=0, stderr=b"")
+                self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("https://x.test/r", run.call_args[0][0])
+
+    def test_code_opens_the_remote_directory_over_remote_ssh(self):
+        self._mark_ssh()
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane",
+                               return_value="/home/me/src/deploy"):
+            with mock.patch.object(self.beacon, "_resolve_editor",
+                                   return_value="/usr/local/bin/code"):
+                with mock.patch.object(self.beacon.subprocess, "run") as run:
+                    run.return_value = mock.Mock(returncode=0, stderr=b"")
+                    self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        argv = run.call_args[0][0]
+        self.assertEqual(argv[1], "--folder-uri")
+        self.assertEqual(argv[2],
+                         "vscode-remote://ssh-remote+build-01/home/me/src/deploy")
+
+    def test_code_never_receives_a_local_path_while_ssh_is_active(self):
+        # The whole point of the branch: a local directory reaching the editor
+        # here is the original bug.
+        self._mark_ssh()
+        local = str(Path(self._tmp.name))
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane",
+                               return_value="/srv/app"):
+            with mock.patch.object(self.beacon, "_resolve_editor",
+                                   return_value="/usr/local/bin/code"):
+                with mock.patch.object(self.beacon.subprocess, "run") as run:
+                    run.return_value = mock.Mock(returncode=0, stderr=b"")
+                    self.beacon.cmd_open_code(
+                        self.beacon.argparse.Namespace(dir=local))
+        self.assertNotIn(local, " ".join(run.call_args[0][0]))
+
+    def test_code_refuses_when_the_remote_path_is_unpublished(self):
+        # The host is known from the local preexec, but without the remote
+        # snippet there is no path — opening the host's default folder instead
+        # would be a different action wearing this button's label.
+        self._mark_ssh()
+        with mock.patch.object(self.beacon, "_remote_cwd_for_pane", return_value=""):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("ssh-install", str(e.exception))
+
+    def test_code_refuses_for_an_editor_with_no_remote_uri_scheme(self):
+        self._mark_ssh()
+        with self._config(statusbar={"buttons": {"code": {"cmd": "vim"}}}):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir=None))
+        self.assertIn("vim", str(e.exception))
+        self.assertIn("build-01", str(e.exception))
