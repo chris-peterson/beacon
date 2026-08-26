@@ -10,6 +10,40 @@ A paused or done session sits at an idle prompt by definition, so the idle timer
 
 While a session is paused or done, its note takes line 2 of the tab label in place of the task, which a halted session has no live work to fill. The note's other home is the Claude Code status line, which exists only in the focused pane — so a note saying why a session is parked reached only the pane you were already looking at.
 
+### The tab says which server you're on
+
+An ssh'd pane used to caption itself with the local directory you were in *before* you typed `ssh`, for as long as the session lasted. The tab now reads the host, over that host's working directory:
+
+```
+🔗 build-01
+  ~/src/deploy
+```
+
+Line 1 doubles as the OS window title, so the host shows up in Mission Control and ⌘` too. It replaces the project name rather than sitting beside it — in an ssh session the local project says nothing about what the pane is doing.
+
+The host name works on every host, with nothing installed on the far side. For the working directory, install the remote half:
+
+```
+beacon ssh-install build-01     # or --print, to read it before you install it
+beacon ssh-uninstall build-01
+```
+
+That puts a small POSIX snippet (zsh and bash, no python, no beacon checkout) in the remote rc, which then reports its cwd, project, and git branch as you move around — so the status-bar chips describe the *remote* repo, branch colour and all. It works because iTerm2 user vars are set by an escape sequence, and escape sequences are just bytes on the tty: written on the far side of an ssh connection they flow up into your local iTerm2. `ssh-install` prints every path it will touch and asks before writing, since the machine on the other end isn't beacon's to assume consent for.
+
+### The status-bar buttons stop acting on the wrong machine
+
+Both buttons read the pane's local working directory, which during an ssh session is stale. `↗ code` opened it and `↖ web` resolved its repository — a plausible wrong answer, which is worse than declining. Now `↖ web` declines and names the host, and `↗ code` opens the remote directory over VS Code's Remote-SSH:
+
+```
+vscode-remote://ssh-remote+build-01/home/you/src/deploy
+```
+
+With an editor that has no remote-URI scheme, or without the remote snippet to report the path, it says so instead of opening something else.
+
+The path reaches the button through a new `beacon-iterm getvar`. A status-bar action can't interpolate `\(user.*)` into its command — that's why beacon keeps handoff files — but iTerm2's scripting dictionary exposes a `variable` command on a session, so a local process can *read* a var a remote host published, over the same transport `focus` already uses.
+
+Existing panes keep the old tab-label template until their shell re-sources — `exec zsh`, or a new tab.
+
 ### `beacon layout` applies the recommended iTerm2 layout
 
 The app-wide settings beacon recommends — tab position and size, status-bar position — were reachable only as `beacon-iterm configure`, a second executable nothing pointed at. They are `beacon layout` now, and `install` applies them instead of only listing them.
