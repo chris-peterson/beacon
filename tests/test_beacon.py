@@ -5116,6 +5116,38 @@ class SshInstallEditsTheRemoteRc(BeaconTest):
         self.assertEqual(kwargs["input"], "FILE BODY")
         self.assertNotIn("-s", argv)
 
+    def _probe(self, **fields):
+        return mock.patch.object(self.beacon, "_ssh_probe", return_value=fields)
+
+    def test_rc_override_reaches_a_shell_with_no_known_rc(self):
+        # The error this replaces tells the user to pass --rc; consulted after
+        # the check, the flag could never answer it.
+        with self._probe(shell="fish", rc=""):
+            with mock.patch.object(self.beacon, "_confirm_tty", return_value=False):
+                with self.assertRaises(SystemExit) as e:
+                    self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                        host="h", rc="~/.config/fish/config.fish",
+                        print_only=False, yes=False))
+        # Reached the confirmation and declined, rather than dying on the probe.
+        self.assertIn("nothing written", str(e.exception))
+
+    def test_rc_override_reaches_an_orphaned_bash_profile(self):
+        # Same shape: the check asks whether a login would read the rc *beacon*
+        # picked, so an explicit --rc is the user overriding that question.
+        with self._probe(shell="bash", rc="/home/u/.bashrc", profile="orphaned"):
+            with mock.patch.object(self.beacon, "_confirm_tty", return_value=False):
+                with self.assertRaises(SystemExit) as e:
+                    self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                        host="h", rc="~/.bash_profile", print_only=False, yes=False))
+        self.assertIn("nothing written", str(e.exception))
+
+    def test_an_orphaned_bash_profile_still_refuses_without_an_override(self):
+        with self._probe(shell="bash", rc="/home/u/.bashrc", profile="orphaned"):
+            with self.assertRaises(SystemExit) as e:
+                self.beacon.cmd_ssh_install(self.beacon.argparse.Namespace(
+                    host="h", rc=None, print_only=False, yes=False))
+        self.assertIn("bash_profile", str(e.exception))
+
     def test_a_host_is_required_when_not_printing(self):
         with self.assertRaises(SystemExit):
             self.beacon.cmd_ssh_install(

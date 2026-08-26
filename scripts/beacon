@@ -5151,12 +5151,15 @@ def cmd_ssh_install(args):
 
     host = args.host
     probe = _ssh_probe(host)
-    rc = probe.get("rc") or ""
+    # Resolved before the checks below, both of which tell the user to pass
+    # --rc: consulted after them, the flag could never answer either.
+    rc = args.rc or probe.get("rc") or ""
     if not rc:
         sys.exit(f"{host} runs {probe.get('shell', 'an unknown shell')}, which "
                  f"beacon has no rc path for — pass --rc <path> to choose one")
-    rc = args.rc or rc
-    if probe.get("profile") == "orphaned":
+    # This asks whether an ssh login would actually read the rc *beacon picked*.
+    # An explicit --rc is the user overriding that pick, so it no longer applies.
+    if not args.rc and probe.get("profile") == "orphaned":
         sys.exit(f"{host} has a ~/.bash_profile that does not source ~/.bashrc, "
                  f"so an ssh login would never read {rc}. Make .bash_profile "
                  f"source it, or pass --rc ~/.bash_profile to install there.")

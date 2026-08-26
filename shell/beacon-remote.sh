@@ -129,7 +129,16 @@ _bcn_project_name() {
   _bcn_project_root || return 0
   if [ "$_bcn_origin_root" != "$_bcn_root" ]; then
     _bcn_origin_root=$_bcn_root
-    _bcn_origin_url=$(git -C "$_bcn_root" remote get-url origin 2>/dev/null || printf '')
+    _bcn_origin_url=
+    # The `.git` test is what keeps this agreeing with the local half. A root
+    # found by a non-git marker — `services/foo/Cargo.toml` inside a monorepo —
+    # has no repository of its own, and `git -C` would walk *up* and answer with
+    # the enclosing repo's remote, naming the pane after the monorepo where the
+    # local shell names it after the directory.
+    if [ -d "$_bcn_root/.git" ] || [ -f "$_bcn_root/.git" ]; then
+      _bcn_origin_url=$(git -C "$_bcn_root" config --get remote.origin.url \
+        2>/dev/null || printf '')
+    fi
   fi
   if [ -n "$_bcn_origin_url" ]; then
     _bcn_project=${_bcn_origin_url%/}
