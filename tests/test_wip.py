@@ -363,7 +363,7 @@ class WipTest(_WipBase):
 
     def test_branch_probe_memoized_per_cwd(self):
         # The git branch probe is a property of the directory, not the session.
-        # A fleet with many sessions per repo must probe once per cwd, not once
+        # Many sessions per repo must probe once per cwd, not once
         # per session (the dominant `wip` cost before memoization).
         for h, cwd in (("a", "/repo/x"), ("b", "/repo/x"), ("c", "/repo/y")):
             self._write(h, "anchor.project", "p")
@@ -419,7 +419,7 @@ class WipTest(_WipBase):
 
     def test_bound_tack_refs_classified_cr_issue_other(self):
         # WIP-09: a tack's deliverable + links surface as classified refs so the
-        # fleet view can emphasize change requests, then issues, then other.
+        # sessions view can emphasize change requests, then issues, then other.
         self._route_file(
             "feat",
             tacks=[{
@@ -511,7 +511,7 @@ class WipTest(_WipBase):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=3) as resp:
             self.assertTrue(resp.headers["Content-Type"].startswith("text/html"))
             body = resp.read().decode()
-        self.assertIn("beacon · fleet", body)
+        self.assertIn("beacon · sessions", body)
         self.assertIn("/wip.json", body)
 
     def test_serve_turn_returns_full_text(self):
@@ -735,7 +735,7 @@ class WatchViewTest(unittest.TestCase):
         self.assertNotIn("line two", row)
 
     def test_moded_row_shows_both_axes(self):
-        # The fleet has to show a moded session's activity too: a session blocked
+        # The sessions view has to show a moded session's activity too: a session blocked
         # on the user is blocked whatever mode it declared, and the merged field
         # could only ever surface the mode.
         row = self._body(self._rows([

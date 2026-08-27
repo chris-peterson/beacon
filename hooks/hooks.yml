@@ -1,10 +1,10 @@
 # Source of record for beacon's hooks — shipyard generates hooks.json.
-# The beacon CLI dispatches each session-lifecycle event to the fleet-view
+# The beacon CLI dispatches each session-lifecycle event to the sessions-view
 # tracker; two SessionStart bash hooks handle CLI-freshness and ambient rules.
 hooks:
   - event: SessionStart
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook SessionStart'
-    description: Reports the SessionStart event to the beacon CLI for fleet-view tracking.
+    description: Reports the SessionStart event to the beacon CLI for sessions-view tracking.
   - event: SessionStart
     command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/cli-freshness.sh"'
     description: Detects CLI wrapper drift after a plugin update.
@@ -13,24 +13,24 @@ hooks:
     description: Emits this plugin's ambient rules into context.
   - event: UserPromptSubmit
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook UserPromptSubmit'
-    description: Reports the UserPromptSubmit event to the beacon CLI for fleet-view tracking.
+    description: Reports the UserPromptSubmit event to the beacon CLI for sessions-view tracking.
   - event: Stop
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Stop'
-    description: Reports the Stop event to the beacon CLI for fleet-view tracking.
+    description: Reports the Stop event to the beacon CLI for sessions-view tracking.
   - event: SessionEnd
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook SessionEnd'
-    description: Reports the SessionEnd event to the beacon CLI for fleet-view tracking.
+    description: Reports the SessionEnd event to the beacon CLI for sessions-view tracking.
   - event: Notification
     matcher: permission_prompt
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind permission_prompt'
-    description: Reports a permission-prompt notification to the beacon CLI for fleet-view tracking.
+    description: Reports a permission-prompt notification to the beacon CLI for sessions-view tracking.
   - event: Notification
     matcher: idle_prompt
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind idle_prompt'
-    description: Reports an idle-prompt notification to the beacon CLI for fleet-view tracking.
+    description: Reports an idle-prompt notification to the beacon CLI for sessions-view tracking.
   - event: PreToolUse
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PreToolUse'
-    description: Reports the PreToolUse event to the beacon CLI for fleet-view tracking.
+    description: Reports the PreToolUse event to the beacon CLI for sessions-view tracking.
   - event: PostToolUse
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PostToolUse'
-    description: Reports the PostToolUse event to the beacon CLI for fleet-view tracking.
+    description: Reports the PostToolUse event to the beacon CLI for sessions-view tracking.

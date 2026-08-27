@@ -5,12 +5,12 @@
 
 name: beacon
 version: 2.6.0
-description: At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.
+description: At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic sessions view plus iTerm2 per-pane painting.
 author: chris-peterson
 repository: https://github.com/chris-peterson/beacon
 icon: docs/favicon.svg
 license: MIT
-keywords: [dashboard, session-management, fleet, cross-platform, workflow, iterm2, macos]
+keywords: [dashboard, session-management, sessions, cross-platform, workflow, iterm2, macos]
 
 # → marketplace.json entry
 marketplace:
@@ -24,14 +24,14 @@ suite:
   dependencies:
     - name: tack
       required: false
-      reason: supplies the deliverables the Claude Code status line lists
+      reason: supplies the routes the sessions view joins a session to, and the deliverables its status line lists
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]
   gloss: A lighthouse you can read from across the harbor.
   pitch: "Running several Claude windows? Each tab shows whether it's working or waiting for you."
   with: tack
-  what: "Colors each session's tab so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The tab is labeled with the project and the task under it. That's iTerm2 on macOS; on any OS or terminal the same state shows in a fleet dashboard you open in a browser. Look away and still know which window needs you."
+  what: "Colors each session's tab so you can tell what every Claude session is doing at a glance: a neutral gray at rest, amber working, red waiting for you. The tab is labeled with the project and the task under it. That's iTerm2 on macOS; on any OS or terminal the same state shows in a dashboard you open in a browser. Look away and still know which window needs you."
   cmds:
     - ["/beacon:pause", "Park this session, with an optional note"]
     - ["/beacon:install-beacon", "Bootstrap or refresh the wrapper, completions, and profiles"]

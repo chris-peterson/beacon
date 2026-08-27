@@ -1,6 +1,6 @@
 # beacon
 
-At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.
+At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic sessions view plus iTerm2 per-pane painting.
 
 **[Read the docs](https://chris-peterson.github.io/beacon/)** for install, usage, and the full behavioral spec.
 
@@ -19,7 +19,7 @@ This wires up the shell side just like an installed `beacon install`, but pointe
 
 ## Dependencies
 
-The fleet dashboard (`wip` / `watch` / `serve`) needs only:
+The sessions view (`wip` / `watch` / `serve`) needs only:
 
 - Python 3 — the plugin script and CLI run via the system `python3`.
 
@@ -39,7 +39,7 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `shell/beacon.zsh` | Sourceable zsh snippet — refreshes project name / branch / cwd on every prompt |
 | `hooks/`, `commands/` | Claude Code plugin glue |
 | `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
-| `dashboard/index.html` | Self-contained reference fleet dashboard `serve` hosts at `/` |
+| `dashboard/index.html` | Self-contained reference dashboard `serve` hosts at `/` |
 | `iterm/profile.json.template` | Beacon dynamic profile, including the status-bar layout |
 | `docs/` | Docsify site sources; `spec.md` is the EARS-style behavioral spec (D1) |
 
@@ -66,7 +66,7 @@ D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it
 
 The behavioral contract for hooks vs shell is documented in [`AGENTS.md`](AGENTS.md): the plugin owns `mode` (with its note) and `activity`, and writes to its user-var slots; the shell owns `project`/`branch`/`cwd` and writes to disjoint slots; the CLI is unaware of either.
 
-`beacon wip` / `watch` / `serve` (spec §3.8) are the terminal-agnostic fleet surface on D3 — they enumerate every session's state and render a snapshot (TTY, JSON, or localhost HTTP) for external dashboards rather than painting iTerm2, so they don't route through D2 and work in any terminal. `beacon serve install` keeps `serve` running under launchd/systemd. The per-session state-file directory is the single source of record: the iTerm2 paint and the fleet view both read it, and `serve` re-reads it per request, so they can't disagree.
+`beacon wip` / `watch` / `serve` (spec §3.8) are the terminal-agnostic sessions surface on D3 — they enumerate every session's state and render a snapshot (TTY, JSON, or localhost HTTP) for external dashboards rather than painting iTerm2, so they don't route through D2 and work in any terminal. `beacon serve install` keeps `serve` running under launchd/systemd. The per-session state-file directory is the single source of record: the iTerm2 paint and the sessions view both read it, and `serve` re-reads it per request, so they can't disagree.
 
 ## What runs when
 

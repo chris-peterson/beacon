@@ -1,7 +1,7 @@
 {
   "name": "beacon",
   "version": "2.6.0",
-  "description": "At-a-glance awareness across concurrent Claude Code sessions \u2014 a terminal-agnostic fleet dashboard plus iTerm2 per-pane painting.",
+  "description": "At-a-glance awareness across concurrent Claude Code sessions \u2014 a terminal-agnostic sessions view plus iTerm2 per-pane painting.",
   "author": {
     "name": "chris-peterson"
   },
@@ -11,7 +11,7 @@
   "keywords": [
     "dashboard",
     "session-management",
-    "fleet",
+    "sessions",
     "cross-platform",
     "workflow",
     "iterm2",

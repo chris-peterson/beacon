@@ -13,7 +13,7 @@ Below is who else is in this space and what each one asks for in return.
 
 | | Wants | Gives you | Costs you |
 |:---|:---|:---|:---|
-| **Agent-native terminals** | Your terminal emulator | A fleet UI built for agents | Your current terminal |
+| **Agent-native terminals** | Your terminal emulator | A multi-session UI built for agents | Your current terminal |
 | **Multiplexer plugins** | tmux or Zellij | Agent state on its chrome | Running under that multiplexer |
 | **Worktree orchestrators** | To start your sessions | Isolation, diffs, lifecycle | Sessions you no longer launch yourself |
 | **Claude Code's `claude agents`** | Nothing — it's built in | A view of what *it* dispatched | Only covers background sessions |
@@ -26,7 +26,7 @@ Below is who else is in this space and what each one asks for in return.
 
 It reads Claude Code hooks the way beacon does, and it drives status through `agtermctl`, a CLI over a local socket. Its hook support is *wider* than beacon's: Claude Code, Codex, Pi, and OpenCode, against beacon's Claude Code only.
 
-What it asks for is the terminal. Its fleet view is its own window, so you get it by switching emulators. beacon exists because that trade wasn't worth making with years of iTerm2 muscle memory behind it. Without that attachment, agterm is a serious option, and its own README says plainly that it makes "no attempt to invent a new way of working with agents."
+What it asks for is the terminal. Its sessions view is its own window, so you get it by switching emulators. beacon exists because that trade wasn't worth making with years of iTerm2 muscle memory behind it. Without that attachment, agterm is a serious option, and its own README says plainly that it makes "no attempt to invent a new way of working with agents."
 
 ## Multiplexer plugins
 
@@ -34,9 +34,9 @@ What it asks for is the terminal. Its fleet view is its own window, so you get i
 
 So the *mechanism* beacon uses is not unusual. What differs is where the state lives and how far it reaches:
 
-- Both require you to run under that multiplexer. beacon's iTerm2 painting works in a plain pane, and its fleet view needs no multiplexer at all.
+- Both require you to run under that multiplexer. beacon's iTerm2 painting works in a plain pane, and its sessions view needs no multiplexer at all.
 - tmux-agent-indicator's cross-session view is a row of status-bar dots — no listing command, no dashboard, no click-to-focus. Its scripts carry no notion of a project, a branch, a task, or an issue; they answer "does something need me?" and stop there.
-- zellaude holds every session in the plugin's own memory, so nothing outside that Zellij process can read the fleet. Its open cross-session PR proposes adding state files, which is the design beacon starts from.
+- zellaude holds every session in the plugin's own memory, so nothing outside that Zellij process can read the sessions. Its open cross-session PR proposes adding state files, which is the design beacon starts from.
 
 If you already live in tmux or Zellij, these are less work than beacon and cover the attention question well.
 
@@ -52,11 +52,11 @@ Reach for an orchestrator when you want agents running unattended in parallel on
 
 ## The built-in view: `claude agents`
 
-Worth knowing before you install anything: Claude Code ships a fleet view. `claude agents` lists the sessions it dispatched into the background, with per-row status — Working, Needs input, Done, Needs attention — plus `--json`, attach, and worktree-backed jobs.
+Worth knowing before you install anything: Claude Code ships a sessions view. `claude agents` lists the sessions it dispatched into the background, with per-row status — Working, Needs input, Done, Needs attention — plus `--json`, attach, and worktree-backed jobs.
 
 An interactive session you started by typing `claude` in a pane doesn't get a row. Those are the sessions beacon is about, so the two don't overlap much — but if all your parallel work is backgrounded, the built-in view may be all you need.
 
-The gap is easy to see for yourself. Opening it while driving seven interactive sessions reported `2 awaiting input · 0 working · 2 completed` — and both rows awaiting input were 33 days old. None of the live work was in it, because none of it was dispatched; what remained was what had been dispatched and never cleaned up. That's the scope difference and [the graveyard problem](#everything-in-this-category-becomes-a-graveyard) in one screen.
+The gap is easy to see for yourself. Opening it in August 2026 while driving seven interactive sessions reported `2 awaiting input · 0 working · 2 completed`, both rows 33 days old. None of the live work was in it, because none of it was dispatched. That's the scope difference in one screen, and the rows left standing are [the graveyard problem](#everything-in-this-category-becomes-a-graveyard).
 
 ## iTerm2 tab-status tools
 
@@ -66,13 +66,13 @@ Both are smaller than beacon, and if attention state is all you want, that's the
 
 - **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus a status bar, the window title, and a [status line](/iterm?id=the-status-line) listing the session's open PRs and issues.
 - **What has to be running.** They need an iTerm2 Python AutoLaunch script (and an iTerm2 restart) or a resident LaunchAgent holding a websocket. beacon paints with escape sequences and a hot-reloaded profile, so neither is required. beacon's own `serve` is a daemon, but it's opt-in and only powers the dashboard.
-- **Where it stops working.** They're macOS and iTerm2, entirely. beacon's fleet view is the primary product and runs anywhere Python does.
+- **Where it stops working.** They're macOS and iTerm2, entirely. beacon's sessions view is the primary product and runs anywhere Python does.
 
 ## What beacon claims
 
 Two things.
 
-**One: the state is on disk, so the fleet outlives any one UI.** Every session writes to `<DATA_DIR>/state/<hash>.<field>`. That's why `beacon wip`, `beacon watch`, the browser dashboard, and anything you write against `/wip.json` read the same records, from outside any running process, in any terminal, on any OS. Every alternative here keeps its fleet inside something: a plugin's memory, a window, an Electron app's database, a status-bar format string.
+**One: the state is on disk, so the sessions outlive any one UI.** Every session writes to `<DATA_DIR>/state/<hash>.<field>`. That's why `beacon wip`, `beacon watch`, the browser dashboard, and anything you write against `/wip.json` read the same records, from outside any running process, in any terminal, on any OS. Every alternative here keeps its sessions inside something: a plugin's memory, a window, an Electron app's database, a status-bar format string.
 
 **Two: it paints a terminal it doesn't own.** The iTerm2 adapter drives that terminal's real chrome — tab color, two-line tab label, status bar, window title — from agent hooks, without being the terminal or requiring a multiplexer. It's an adapter behind a stateless CLI, so a second terminal is a new adapter rather than a rewrite. Windows Terminal is next, then WezTerm.
 
@@ -86,9 +86,9 @@ WezTerm reaches further into the rest. `$WEZTERM_PANE` gives a pane the stable i
 
 Session managers demo well and age badly, and beacon is not exempt. The demo has five sessions and every one of them means something. Six weeks later you have sixty, because sessions rarely get *terminated* — you finish the work, close the laptop, and the record stays. Whatever view you built to scan live work turns into a list of things that ended, with the signal you installed it for buried in it.
 
-Nothing here has solved that, including the built-in view — [`claude agents`](#the-built-in-view-claude-agents) opened mid-flight listed four rows, two of them 33 days old, while seven live sessions went unmentioned. It's structural: an agent session has a clear beginning and no clear end, so there's no event to hang cleanup on. What beacon does about it is partial, and worth knowing precisely:
+Nothing here has solved that, [the built-in view](#the-built-in-view-claude-agents) included. It's the lifecycle: an agent session has a clear beginning and no clear end, so the record outlives the work whatever writes it. What beacon does about it is partial, and worth knowing precisely:
 
-- The fleet view is **time-windowed by default** — `wip`, `watch`, and the dashboard show the last 24 hours, so an ordinary stale session falls out of sight without being deleted (`--since` widens the window, `--all` drops it).
+- The sessions view is **time-windowed by default** — `wip`, `watch`, and the dashboard show the last 24 hours, so an ordinary stale session falls out of sight without being deleted (`--since` widens the window, `--all` drops it).
 - `beacon prune [--since 30d]` deletes state for long-idle panes, and `beacon forget <hash>` deletes one. The dashboard's `×` does the same for a card.
 - A session in a **mode** — `pause`, `release`, `retro`, `done` — is exempt from that window, because a parked session is one you meant to come back to. The cost is that it never ages out on its own: the `done` you send to mark work finished is what keeps the card on the board until you prune it.
 
@@ -99,7 +99,7 @@ So the default is *hiding* rather than *ending*, the sessions you explicitly mar
 Being supplemental means inheriting the limits of what you plug into:
 
 - **Claude Code only.** agterm, tmux-agent-indicator, claude-squad, and iterm2-ai-tab-color all handle Codex and others.
-- **The rich painting is macOS + iTerm2.** Everywhere else you get the fleet view and nothing on the pane, which is why the dashboard is the primary surface rather than a bonus.
+- **The rich painting is macOS + iTerm2.** Everywhere else you get the sessions view and nothing on the pane, which is why the dashboard is the primary surface rather than a bonus.
 - **Hooks can be missed.** beacon reports what it was told. An orchestrator that owns the process never has to guess — tmux-agent-indicator ships process-detection as a fallback for exactly this reason.
 - **No isolation, no lifecycle.** beacon will not give an agent its own worktree, and it will not start or stop anything.
 

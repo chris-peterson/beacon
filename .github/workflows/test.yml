@@ -1,6 +1,6 @@
 name: Tests
 
-# Cross-platform check. The fleet view (wip / serve) and the plugin hooks are
+# Cross-platform check. The sessions view (wip / serve) and the plugin hooks are
 # pure-stdlib Python meant to run on any OS; the iTerm2 pane-painting paths are
 # mocked in the suite (sys.platform, _cli), so the same tests exercise the
 # Windows and Linux fallbacks (session-id seeding, watch polling) without a Mac.

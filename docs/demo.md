@@ -1,6 +1,6 @@
 # Try the demo
 
-The fleet view is hard to picture until you've seen a board full of concurrent work drift between states. The demo gives you that without wiring up real Claude Code sessions: it seeds a fictional commerce org's fleet, serves the real dashboard against it, and runs a calm simulation you can click through.
+The sessions view is hard to picture until you've seen a board full of concurrent work drift between states. The demo gives you that without wiring up real Claude Code sessions: it seeds a fictional commerce org's sessions, serves the real dashboard against it, and runs a calm simulation you can click through.
 
 It's the fastest way to answer "what would beacon look like with my sessions in it?" — and on Windows or any non-iTerm terminal, the dashboard it serves *is* the whole product, so the demo doubles as a full tour.
 
@@ -23,14 +23,14 @@ A few flags worth knowing:
 ```bash
 python3 dev/demo.py --port 9000      # serve on a different port
 python3 dev/demo.py --interval 8     # seconds between simulation ticks (default 5)
-python3 dev/demo.py --seed-only      # write a static fleet and exit (no serve)
+python3 dev/demo.py --seed-only      # write static sessions and exit (no serve)
 ```
 
 ## What you'll see
 
-A card per session, colored by what each is doing right now — the same colors beacon paints on an iTerm2 pane. Sessions that need you (waiting, or flagged) rise into a loud **Needs you** band at the top; the rest of the fleet sits quietly below:
+A card per session, colored by what each is doing right now — the same colors beacon paints on an iTerm2 pane. Sessions that need you (waiting, or flagged) rise into a loud **Needs you** band at the top; the rest of the sessions sit quietly below:
 
-![The beacon fleet dashboard: a Needs-you band of red waiting cards above a grid of the rest — gray idle, amber working, and mode cards (a green release with a rocket, a dim done with a power-off mark, a purple paused).](images/demo-fleet.png)
+![The beacon dashboard: a Needs-you band of red waiting cards above a grid of the rest — gray idle, amber working, and mode cards (a green release with a rocket, a dim done with a power-off mark, a purple paused).](images/demo-sessions.png)
 
 - **Gray** — idle, at rest, waiting for its next prompt
 - **Amber** — Claude is working
@@ -43,15 +43,15 @@ Each card carries the recall context a glance needs: the project, the current ta
 
 ## Click a red card to clear it
 
-The simulation mirrors how a real fleet behaves: sessions churn quietly between working and idle, but every so often one **stalls** — it blocks on you and turns red. Stalled sessions stay stalled and pile up; only you clear them.
+The simulation mirrors how real sessions behave: sessions churn quietly between working and idle, but every so often one **stalls** — it blocks on you and turns red. Stalled sessions stay stalled and pile up; only you clear them.
 
 A red card is the only kind you can click. In the demo, clicking it **returns that session to its agent** — the stand-in for what a live `beacon serve` does, which is raise the session's iTerm2 window so you can answer the prompt. The card flips back to working and the red ring clears. Hover a card and the `×` forgets that session outright.
 
-Let the board run for a minute and you'll watch it drift redder as work stalls, then clear it card by card — the loop the fleet view is built to support.
+Let the board run for a minute and you'll watch it drift redder as work stalls, then clear it card by card — the loop the sessions view is built to support.
 
 ## On Windows or a non-iTerm terminal
 
-The demo is the real thing here. The fleet dashboard reads session state and paints no pane, so it runs anywhere Python 3 does — the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab and status-bar painting is an iTerm2 adapter and is skipped automatically off iTerm2.
+The demo is the real thing here. The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does — the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab and status-bar painting is an iTerm2 adapter and is skipped automatically off iTerm2.
 
 See [On Windows or a non-iTerm terminal](/?id=on-windows-or-a-non-iterm-terminal) for the install steps.
 

@@ -3,21 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>beacon · fleet</title>
+  <title>beacon · sessions</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='5' fill='%23bd93f9'/%3E%3C/svg%3E">
 
   <!--
-    Reference fleet dashboard. Self-contained (no build, no dependencies, no
+    Reference dashboard. Self-contained (no build, no dependencies, no
     network fonts) so any coworker can run `beacon serve` and open it — beacon
     serves this file at / and the data at /wip.json. It is a *reference*: clone
     and restyle it, or point your own dashboard at the same /wip.json + /focus +
     /forget contract (docs/spec.md, WIP-04 / FOCUS / FORGET). Cross-platform —
-    the fleet view needs no iTerm2 or macOS; only click-to-focus is iTerm2-only,
+    the sessions view needs no iTerm2 or macOS; only click-to-focus is iTerm2-only,
     and cards that can't be focused say so.
 
     Design POV — a signal-tower console. Visual noise is proportional to how
     much a session needs you: sessions blocked on you (or flagged for attention)
-    are pulled into a loud, glowing top band; the idle fleet recedes into quiet
+    are pulled into a loud, glowing top band; idle sessions recede into quiet
     flat tiles below. A session's /color (agent_color) is honored as a first-
     class identity pill, mirroring Claude Code's own session frame.
   -->
@@ -141,9 +141,9 @@
     .freshness .stale { color: var(--busy); }
     @keyframes blink { 50% { opacity: 0.3; } }
 
-    /* ── Needs-you band: waiting / flagged sessions are hoisted out of the fleet
+    /* ── Needs-you band: waiting / flagged sessions are hoisted out of the sessions
        into a pinned top band (WIP-10 — "a prominent band above the calmer
-       fleet"), so a blocked session is never buried in a group or a z-stack. */
+       sessions"), so a blocked session is never buried in a group or a z-stack. */
     #attn { margin-bottom: 1.6rem; }
     #attn[hidden] { display: none; }
     .attn-head {
@@ -260,7 +260,7 @@
        The two axes stay on disjoint surfaces here exactly as they do on a pane:
        this bar and the dot answer to `color_state` (activity), while the card's
        tint and watermark answer to `mode`. A moded session that goes `blocked`
-       therefore keeps its mode treatment and turns its dot red — the fleet can
+       therefore keeps its mode treatment and turns its dot red — the sessions view can
        show both at once, where the merged field could only ever show the mode. */
     .card::after {
       content: "";
@@ -279,7 +279,7 @@
        *same generated asset the pane paints* (iterm/resources/<mode>-bg.png),
        streamed by serve at /mode-bg/<mode> — so the card and pane can never
        drift. It rides a ::before below the card content (z-index -1; the card
-       isolates a stacking context) at a low opacity, the fleet analog of the
+       isolates a stacking context) at a low opacity, the sessions analog of the
        pane's Blend. */
     .card.mode-pause   { background-color: color-mix(in srgb, #3c3357 26%, var(--panel)); }
     .card.mode-release { background-color: color-mix(in srgb, #212c45 34%, var(--panel)); }
@@ -705,7 +705,7 @@
   <header>
     <div class="brand">
       <span class="beacon-glyph" aria-hidden="true"></span>
-      <h1>beacon <span class="dim">/ fleet</span></h1>
+      <h1>beacon <span class="dim">/ sessions</span></h1>
     </div>
     <span class="spacer"></span>
     <button id="popout" class="popout-btn" type="button" hidden>
@@ -736,7 +736,7 @@
     const cards = new Map(); // hash -> card element (reused across polls)
     const groupSections = new Map(); // group key -> {section, grid, head} (reused)
 
-    // Grouping has no toggle: the fleet always groups by the route group signal
+    // Grouping has no toggle: the sessions always group by the route group signal
     // when a session carries one, and sessions with none degrade silently into an
     // unlabeled section at the bottom (computeGroups). Same-project sessions
     // within a group collapse into a z-stack (placeStack).
@@ -789,7 +789,7 @@
     // A session lands in the attention band when Claude is blocked on the user
     // (color_state === "blocked", i.e. activity "waiting") or a sticky attention
     // marker is set (HOOK-03b). The band is the loud one — everything else is
-    // fleet.
+    // the calm rest.
     //
     // A session in a mode is never hoisted, even when its activity is `waiting`.
     // That isn't the mode outranking the signal — the card still turns its dot
@@ -1345,7 +1345,7 @@
     // headerless and always last (silent degrade, no "ungrouped" label).
     const NO_GROUP = "\x00nogroup";
 
-    // Partition the fleet into ordered groups by the route-group signal. A group
+    // Partition the sessions into ordered groups by the route-group signal. A group
     // with a signal gets a labeled header; sessions without one fall into the
     // NO_GROUP bucket, which renders headerless and sorts to the bottom. Within a
     // group, byRank orders; groups float by their freshest member.
@@ -1410,7 +1410,7 @@
 
     // Place sessions flat (no z-stack — the action queue must never hide one
     // waiting session behind another). Reuses the same card elements as the
-    // fleet; a session that stops waiting is reparented out by placeGroups, one
+    // rest; a session that stops waiting is reparented out by placeGroups, one
     // that starts waiting is reparented in here (insertBefore moves the node).
     function placeFlat(container, list) {
       let prev = null;
@@ -1438,8 +1438,8 @@
       const sessions = payload.sessions || [];
       const seen = new Set(sessions.map((s) => s.hash));
 
-      // Waiting/flagged sessions are hoisted OUT of the fleet into the pinned top
-      // band; the grouped fleet below shows only the calm rest (WIP-10).
+      // Waiting/flagged sessions are hoisted OUT into the pinned top
+      // band; the grouped sessions below show only the calm rest (WIP-10).
       placeAttention(sessions.filter(needsYou));
       placeGroups(sessions.filter((s) => !needsYou(s)));
 
@@ -1448,7 +1448,7 @@
       }
 
       document.getElementById("empty").hidden = sessions.length > 0;
-      renderPip(); // keep the floating pop-out (if open) in step with the fleet
+      renderPip(); // keep the floating pop-out (if open) in step with the sessions
     }
 
     // Enrich an expanded card with the full turn text (WIP-14). Cached by turn

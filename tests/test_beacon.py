@@ -805,7 +805,7 @@ class DataDirResolution(BeaconTest):
     def test_local_plugin_root_derives_the_inline_bucket(self):
         # A plugin root outside the cache was loaded from a local directory,
         # which Claude Code buckets as `<plugin>-inline`. Deriving anything else
-        # (e.g. from the checkout's git remote) points the wrapper and the fleet
+        # (e.g. from the checkout's git remote) points the wrapper and the sessions view
         # view at a directory the running session's hooks never write.
         home = Path(self._home.name)
         self._with_plugin_root(Path("/Users/dev/src/beacon"))
@@ -1652,7 +1652,7 @@ class PauseWritesOnlyTheMode(BeaconTest):
     the identity held still while parked, and auto-resume then *preserved* them —
     so one pause pinned a session's identity permanently, above every provider.
     Live state showed the result: tasks pinned to branches the session had long
-    left, and project labels a version and a half stale. The fleet view reads the
+    left, and project labels a version and a half stale. The sessions view reads the
     last-rendered snapshot for the same stability, and a snapshot cannot outrank a
     live provider."""
 
@@ -1820,7 +1820,7 @@ class ResolveUrlForgeFallback(BeaconTest):
 
 class TackUrlHonorsSessionPin(BeaconTest):
     """_tack_url_for resolves the route via the session→route pin, not the
-    branch slug alone, so the status-line link and the fleet-view chip read the
+    branch slug alone, so the status-line link and the sessions-view chip read the
     same route. A route pinned to the session whose slug differs from the
     branch (a pin, not a branch-slug match) must still surface its deliverable
     URL; location correlation (via _tack_route_for) is the fallback."""
@@ -3338,7 +3338,7 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
 
     def test_blocked_wander_does_not_freeze_marker(self):
         # The frozen-phantom case: a session that blocks on a prompt while away
-        # must not persist an @marker into its snapshot (the fleet view reads it).
+        # must not persist an @marker into its snapshot (the sessions view reads it).
         self.beacon.write_state("pending-attention", "permission")
         self._chdir(self.live_dir)
         state = self.beacon._resolve_for_display()
@@ -3974,8 +3974,8 @@ class ReadCcSignals(BeaconTest):
             self.assertIsNone(self.beacon.read_state(f))
 
 
-class FleetPayloadColor(BeaconTest):
-    """The /color signal is fleet-view metadata exposed in the wip payload."""
+class SessionsPayloadColor(BeaconTest):
+    """The /color signal is sessions-view metadata exposed in the wip payload."""
 
     def _seed_session(self):
         sh = self.beacon.session_hash()
@@ -4085,7 +4085,7 @@ class JsonPayload(BeaconTest):
                              f"{retired} was removed in 2.5.0 with no alias — an "
                              "alias would re-merge the axes")
 
-    def test_shape_matches_the_fleet_payload(self):
+    def test_shape_matches_the_sessions_payload(self):
         """The two published payloads must describe `mode` identically.
 
         They diverged once: this one nested the tuple while `wip.json` emitted a
@@ -4097,7 +4097,7 @@ class JsonPayload(BeaconTest):
         self.beacon.write_state("anchor.cwd", str(self.data_dir))
         single = self._payload()["mode"]
         record = self.beacon._resolve_session(self.beacon.session_hash())
-        self.assertIsNotNone(record, "the session must resolve into the fleet payload")
+        self.assertIsNotNone(record, "the session must resolve into the sessions payload")
         self.assertEqual(single, record["mode"])
         self.assertEqual(sorted(single), ["glyph", "name", "note"])
 

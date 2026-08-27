@@ -2,15 +2,15 @@
 
 At-a-glance awareness across concurrent Claude Code sessions.
 
-beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan a whole fleet without focusing each one. It does this two ways:
+beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan every session without focusing each one. It does this two ways:
 
-- a **fleet dashboard** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
+- a **sessions view** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
 - **per-pane painting in iTerm2** — a labeled tab, colored by what Claude is doing and marked by the phase you declared, plus a status bar on each pane
 
 A glance across the windows tells you which session needs you:
 
 <!--
-  Bespoke fleet figure drawn in HTML from the spec palette (COLOR_PALETTE,
+  Bespoke sessions figure drawn in HTML from the spec palette (COLOR_PALETTE,
   THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
   no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm and the
   .pal- ones on /palette
@@ -19,7 +19,7 @@ A glance across the windows tells you which session needs you:
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-.fleet {
+.sessions {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #9599a8; --sep: #7e8290;
   --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --cyan: #8be9fd; --green: #50fa7b;
@@ -34,11 +34,11 @@ A glance across the windows tells you which session needs you:
     linear-gradient(180deg, #262735, var(--ground));
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.035), 0 26px 64px -22px rgba(0,0,0,0.65);
 }
-.fleet-head { display: flex; align-items: baseline; gap: 0.65rem; flex-wrap: wrap; margin: 0 0.15rem 1.05rem; }
-.fleet-head .k { font: 600 0.68rem/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
-.fleet-head .h { font: 400 0.9rem/1.4 var(--mono); color: var(--muted); }
-.fleet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
-@media (max-width: 620px) { .fleet-grid { grid-template-columns: 1fr; } }
+.sessions-head { display: flex; align-items: baseline; gap: 0.65rem; flex-wrap: wrap; margin: 0 0.15rem 1.05rem; }
+.sessions-head .k { font: 600 0.68rem/1 var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--faint); }
+.sessions-head .h { font: 400 0.9rem/1.4 var(--mono); color: var(--muted); }
+.sessions-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+@media (max-width: 620px) { .sessions-grid { grid-template-columns: 1fr; } }
 .fl-card {
   position: relative;
   border: 1px solid var(--line);
@@ -91,12 +91,12 @@ A glance across the windows tells you which session needs you:
 }
 </style>
 
-<div class="fleet">
-  <div class="fleet-head">
-    <span class="k">Your fleet</span>
+<div class="sessions">
+  <div class="sessions-head">
+    <span class="k">Your sessions</span>
     <span class="h">three windows · one wants you</span>
   </div>
-  <div class="fleet-grid">
+  <div class="sessions-grid">
     <div class="fl-card busy">
       <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">widgets-web</span><span class="fl-here">you're here</span></div>
       <div class="fl-task">refactor the cart drawer</div>
@@ -117,17 +117,17 @@ A glance across the windows tells you which session needs you:
 </div>
 
 > [!TIP]
-> Want to see it first? [Try the demo](/demo) — one command seeds a fictional fleet and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
+> Want to see it first? [Try the demo](/demo) — one command seeds fictional sessions and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
 
 Weighing this against tmux, Zellij, a worktree orchestrator, or a terminal built for agents? [Why beacon?](/why) lays out who else is in the space and what each one asks you to give up.
 
 ## Platform support
 
-The fleet view reads session state and paints no pane, so it runs anywhere Python 3 does. The per-pane painting is an iTerm2 render adapter, so it's macOS + iTerm2 only. A coworker on Windows or a non-iTerm terminal gets the whole fleet view and skips only the decorations.
+The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does. The per-pane painting is an iTerm2 render adapter, so it's macOS + iTerm2 only. A coworker on Windows or a non-iTerm terminal gets the whole sessions view and skips only the decorations.
 
 | Capability | Where it works |
 |:---|:---|
-| Fleet dashboard — `wip`, `watch`, `serve`, and the browser dashboard | Any OS, any terminal (needs Python 3) |
+| Sessions view — `wip`, `watch`, `serve`, and the browser dashboard | Any OS, any terminal (needs Python 3) |
 | Per-pane painting — tab label and color, status bar | macOS + iTerm2 |
 | Click a dashboard card to raise its window | macOS + iTerm2 |
 | Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
@@ -137,15 +137,15 @@ The fleet view reads session state and paints no pane, so it runs anywhere Pytho
 1. Install the plugin (see [Install](#install)) — the hooks populate session state on any platform.
 2. Run `beacon serve` and open `http://127.0.0.1:8787/` in a browser.
 
-That's the full fleet view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The tab and status-bar painting needs iTerm2 and is skipped automatically.
+That's the full sessions view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The tab and status-bar painting needs iTerm2 and is skipped automatically.
 
-## Fleet dashboard (any terminal)
+## Sessions view (any terminal)
 
 `wip` / `watch` / `serve` read every beacon session's state and paint no pane, so they need no iTerm2 — anywhere Python 3 runs.
 
 - **`beacon wip`** — a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
-- **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own fleet.
-- **`beacon serve`** — serves a bundled reference dashboard at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your fleet — the page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+- **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own sessions.
+- **`beacon serve`** — serves a bundled reference dashboard at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your sessions — the page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
   The bundled dashboard (`dashboard/index.html`) is a self-contained starting point — no build, no dependencies. Clone and restyle it, or point your own dashboard at the same `/wip.json` + `/focus` + `/forget` contract; both work from any browser regardless of the session's terminal.
 
@@ -177,7 +177,7 @@ The mutating routes `POST /focus` and `POST /forget` accept requests from loopba
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [fleet dashboard](#fleet-dashboard-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, and what the status-bar chips mean.
 
@@ -198,9 +198,9 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 /beacon:install-beacon
 ```
 
-The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts) — these populate session state on any platform, so the fleet dashboard works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
+The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts) — these populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
 
-On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the fleet dashboard.
+On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
 
 To keep `serve` running for an external dashboard, install the always-on service separately — see [Always-on serve service](#always-on-serve-service-optional).
 
@@ -225,7 +225,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
 
 <!--
   Bespoke command→tab figure in the spec palette (COLOR_PALETTE), same
-  idioms as the .fleet figure above and the .pf- / .pal- ones on /iterm and /palette.
+  idioms as the .sessions figure above and the .pf- / .pal- ones on /iterm and /palette.
   Replaces the generic animated session player; the play-by-play it showed still
   lives in plugin.yml's suite.examples (read by the marketplace hub).
 -->
@@ -325,8 +325,8 @@ The modes are mostly entered *for* you — a release flow sets `beacon release`,
 
 If reaching for beacon's own commands feels heavier than the built-ins, beacon also picks up Claude Code's native slash commands:
 
-- **`/rename <label>`** becomes the session's `task` — it's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the fleet view.
-- **`/color <name>`** is surfaced in the fleet view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab — that color stays the ready/busy/blocked status light.
+- **`/rename <label>`** becomes the session's `task` — it's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the sessions view. beacon reads the name from the session transcript, which Claude Code writes ahead of the session registry, so the label lands even where Claude Code reports that the registry update didn't — the case where it warns that *other* sessions may keep showing the old name. Where the label you typed is already held by another live session, Claude Code settles on a different one and beacon folds the settled name.
+- **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab — that color stays the ready/busy/blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
 Between `beacon task` and `/rename`, the most recent one wins.
@@ -344,9 +344,9 @@ Prefer Linear, Jira, GitHub Issues, or a custom provider? There's no hook for th
 
 ## Standalone (no tack, no recipes)
 
-beacon works on its own. The hooks set the fields they can observe — project, branch, and the ready / busy / blocked status color — without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the fleet view worth a glance.
+beacon works on its own. The hooks set the fields they can observe — project, branch, and the ready / busy / blocked status color — without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
 
-To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the fleet view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it — tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
+To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the sessions view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it — tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
 
 ## Upgrade
 

@@ -1,8 +1,8 @@
 # In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon paints each session's state onto its own pane — the tab's label and color, a status bar, and a background for the mode cycles. Where the [fleet dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
+On macOS with iTerm2, beacon paints each session's state onto its own pane — the tab's label and color, a status bar, and a background for the mode cycles. Where the [dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
 
-These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On any other terminal beacon skips them and you use the [fleet dashboard](/demo) instead — same state, different view.
+These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On any other terminal beacon skips them and you use the [dashboard](/demo) instead — same state, different view.
 
 <!--
   These figures are drawn in HTML from the spec palette (THEME-02 / THEME-03)
@@ -125,7 +125,7 @@ The tab's color is the highest-leverage signal beacon paints, and its label is t
   <div class="pf-chip"><div class="b blocked">🚀 checkout-api<span class="task">v2.5.0</span></div><div class="cap">releasing, and blocked on you</div></div>
 </div>
 
-That signal comes into its own with **tabs down the left side**. A left strip turns a fleet of sessions into a scannable column — one row per session, each carrying its state color — so you read the whole fleet at a glance without a single window focused. This is the layout beacon is tuned for, and why the [recommended layout](#recommended-layout) below sets the tabs wider and taller: the default strip is too cramped for the color to register.
+That signal comes into its own with **tabs down the left side**. A left strip turns many sessions into a scannable column — one row per session, each carrying its state color — so you read every session at a glance without a single window focused. This is the layout beacon is tuned for, and why the [recommended layout](#recommended-layout) below sets the tabs wider and taller: the default strip is too cramped for the color to register.
 
 <div class="panefig pf-tabcol">
   <div class="pf-tabstrip">
@@ -138,7 +138,7 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
   <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
 </div>
 
-Line 1 is the project name; line 2 is the task (or, on a parked or finished session, its note), and it collapses when there is neither. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note rides line 2 of the tab in place of the task, and also shows in the [fleet dashboard](/demo) and the [status line](#the-status-line); the next prompt clears it.
+Line 1 is the project name; line 2 is the task (or, on a parked or finished session, its note), and it collapses when there is neither. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note rides line 2 of the tab in place of the task, and also shows in the [dashboard](/demo) and the [status line](#the-status-line); the next prompt clears it.
 
 ### Turning the badge on
 
@@ -242,7 +242,7 @@ Rather than hunt through the Preferences window, let beacon apply them for you:
 beacon layout --write
 ```
 
-It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a fleet of work open.** (Prefer the GUI? Every setting is under Appearance → Tabs, except the status bar under Appearance → General.)
+It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a lot of work open.** (Prefer the GUI? Every setting is under Appearance → Tabs, except the status bar under Appearance → General.)
 
 That same in-memory copy is why the audit adds a caveat while iTerm2 is running: it reads the plist on disk, which is the effective value only once iTerm2 is down. When the audit reports every setting aligned but the tab strip disagrees, a write landed behind the running app and will be discarded on quit. Name the setting to write it regardless of what the plist says:
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Seed an isolated beacon state dir with a hypothetical concurrent-work fleet,
+"""Seed an isolated beacon state dir with hypothetical concurrent-work sessions,
 serve the real dashboard against it, and run a calm simulation — a zero-setup,
 interactive demo that needs no real Claude Code sessions.
 
 Everything lives under a throwaway data dir (default /tmp/beacon-demo) and an
 isolated TACK_HOME, so your real beacon state and tack routes are untouched.
 
-The simulation mirrors how a real fleet behaves: sessions churn quietly between
+The simulation mirrors how real sessions behave: they churn quietly between
 working and idle, but every so often one *stalls* — it blocks on you and turns
 red (`waiting`). Stalled sessions stay stalled and pile up; only you clear them.
 On the dashboard, a waiting card is the only kind that's clickable — clicking it
@@ -17,7 +17,7 @@ clears. The `×` on hover forgets a session outright.
     python3 dev/demo.py                 # seed + serve + simulate on :8788
     python3 dev/demo.py --port 9000     # pick a port
     python3 dev/demo.py --interval 8    # seconds between simulation ticks (default 5)
-    python3 dev/demo.py --seed-only     # write a static fleet and exit (no serve)
+    python3 dev/demo.py --seed-only     # write static sessions and exit (no serve)
     python3 dev/demo.py --data-dir DIR  # use a specific isolated data dir
 
 Re-running reseeds from scratch (the data dir and routes are wiped first).
@@ -44,7 +44,7 @@ DASHBOARD = REPO / "dashboard" / "index.html"
 HOME = Path.home()
 
 # A fictional commerce org's concurrent work. Each entry is one dashboard card.
-# Most start working/idle; the fleet drifts toward `waiting` as it runs.
+# Most start working/idle; the set drifts toward `waiting` as it runs.
 #   activity: idle|working|waiting — what the hooks would observe
 #   mode + note: a declared phase and its annotation (omit for the dev cycle)
 #   route: (slug, group) → a [slug] chip; None means unrouted.
@@ -129,7 +129,7 @@ def _set_activity(state: Path, sh: str, activity: str) -> None:
 
 
 def seed(data_dir: Path, tack_home: Path) -> list[dict]:
-    """Wipe and write the initial fleet at staggered ages. Returns the live model
+    """Wipe and write the initial sessions at staggered ages. Returns the live model
     (hash + current activity per session) the simulator mutates."""
     state, routes = data_dir / "state", tack_home / "routes"
     for d in (state, routes):
@@ -138,7 +138,7 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
         d.mkdir(parents=True)
 
     now = time.time()
-    fleet = []
+    sessions = []
     for i, s in enumerate(SESSIONS):
         sh = _hash(f"demo-{i}-{s['project']}")
         mt = now - s["age"]
@@ -161,21 +161,21 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
         if s["activity"] == "waiting":  # waiting-only markers: ring + clickable handle
             _write(state / f"{sh}.pending-attention", "permission", mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
-        fleet.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
+        sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
 
     for s in SESSIONS:  # routes are matched by project name; in-file slug is the chip
         if s.get("route"):
             slug, group = s["route"]
             (routes / f"{s['project']}.yaml").write_text(f"slug: {slug}\ngroup: {group}\n")
-    return fleet
+    return sessions
 
 
-def simulate(state: Path, fleet: list[dict], interval: float) -> None:
+def simulate(state: Path, sessions: list[dict], interval: float) -> None:
     """Every `interval` seconds, nudge one non-waiting session toward its next
     state. Waiting sessions are left alone so they accumulate until cleared."""
     while True:
         time.sleep(interval)
-        active = [s for s in fleet if s["activity"] != "waiting"]
+        active = [s for s in sessions if s["activity"] != "waiting"]
         if not active:
             continue
         s = random.choice(active)
@@ -200,14 +200,14 @@ def _load_beacon(data_dir: Path, tack_home: Path):
     return module
 
 
-def make_server(port: int, state: Path, beacon, fleet: list[dict]):
+def make_server(port: int, state: Path, beacon, sessions: list[dict]):
     """A thin demo server: serves the real dashboard + payload, but treats the
     card-click (POST /focus) as 'return this session to its agent'."""
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
     from urllib.parse import urlparse
 
     dash = DASHBOARD.read_bytes()
-    by_hash = {s["sh"]: s for s in fleet}
+    by_hash = {s["sh"]: s for s in sessions}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -273,20 +273,20 @@ def make_server(port: int, state: Path, beacon, fleet: list[dict]):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Seed, serve, and simulate a beacon demo fleet.")
+    ap = argparse.ArgumentParser(description="Seed, serve, and simulate beacon demo sessions.")
     ap.add_argument("--port", type=int, default=8788, help="serve port (default 8788)")
     ap.add_argument("--interval", type=float, default=5.0,
                     help="seconds between simulation ticks (default 5)")
     ap.add_argument("--data-dir", type=Path, default=Path("/tmp/beacon-demo"),
                     help="isolated data dir (default /tmp/beacon-demo)")
     ap.add_argument("--seed-only", action="store_true",
-                    help="write a static fleet and exit without serving or simulating")
+                    help="write static sessions and exit without serving or simulating")
     args = ap.parse_args()
 
     data_dir = args.data_dir.expanduser().resolve()
     tack_home = data_dir / "tack"
-    fleet = seed(data_dir, tack_home)
-    print(f"seeded {len(fleet)} demo sessions → {data_dir}")
+    sessions = seed(data_dir, tack_home)
+    print(f"seeded {len(sessions)} demo sessions → {data_dir}")
 
     if args.seed_only:
         print("inspect: CLAUDE_PLUGIN_DATA={d} TACK_HOME={t} python3 {b} wip".format(
@@ -294,8 +294,8 @@ def main() -> None:
         return
 
     beacon = _load_beacon(data_dir, tack_home)
-    server = make_server(args.port, data_dir / "state", beacon, fleet)
-    threading.Thread(target=simulate, args=(data_dir / "state", fleet, args.interval),
+    server = make_server(args.port, data_dir / "state", beacon, sessions)
+    threading.Thread(target=simulate, args=(data_dir / "state", sessions, args.interval),
                      daemon=True).start()
     print(f"dashboard → http://127.0.0.1:{args.port}/   "
           f"(click a red card to return it · Ctrl-C to stop)")

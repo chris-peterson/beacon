@@ -3,7 +3,7 @@
 # added to context on every SessionStart (startup, resume, compaction — no
 # matcher in hooks.json), so the labeling guidance survives a compaction. This
 # is what makes beacon useful standalone: without tack or a recipe nudging it,
-# the rule keeps each session's work label current so the fleet view has signal.
+# the rule keeps each session's work label current so the sessions view has signal.
 
 set -euo pipefail
 
