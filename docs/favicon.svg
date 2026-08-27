@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="beacon">
   <rect width="64" height="64" rx="14" fill="#282a36"/>
   <g transform="translate(32 32)">
-    <!-- Outer signal arcs, fading outward -->
-    <circle cx="0" cy="0" r="24" fill="none" stroke="#ff79c6" stroke-width="2" opacity="0.32"/>
-    <circle cx="0" cy="0" r="18" fill="none" stroke="#bd93f9" stroke-width="2.2" opacity="0.5"/>
-    <circle cx="0" cy="0" r="12" fill="none" stroke="#8be9fd" stroke-width="2.4" opacity="0.78"/>
+    <!-- Signal arcs in the bearings group's purple, fading outward -->
+    <circle cx="0" cy="0" r="24" fill="none" stroke="#bd93f9" stroke-width="2" opacity="0.3"/>
+    <circle cx="0" cy="0" r="18" fill="none" stroke="#bd93f9" stroke-width="2.4" opacity="0.55"/>
+    <circle cx="0" cy="0" r="12" fill="none" stroke="#bd93f9" stroke-width="3" opacity="0.85"/>
     <!-- Beacon source: solid + pulsing halo -->
     <circle cx="0" cy="0" r="5" fill="#50fa7b"/>
     <circle cx="0" cy="0" r="5" fill="#50fa7b" opacity="0.45">
