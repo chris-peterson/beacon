@@ -3,7 +3,7 @@
 Tracking status of the requirements declared in [`SPEC.md`](SPEC.md).
 Maintained by `/sextant:spec-status`.
 
-**Last audit:** 2026-08-26
+**Last audit:** 2026-08-27
 **Spec version:** v2 (root-level, `SPEC.md`)
 **Coverage:** 168 spec requirement IDs, all implemented (0 Missing, 0 Contradicts).
 2.0 moves per-session values into the Claude Code status line: STATUSLINE-02
@@ -84,7 +84,7 @@ overlays on whatever profile is active.
 | FOCUS-01..04 | 4 | All Covered | Dashboard focus: `POST /focus` route + `_focus_session`, `iterm_session_id` handle (FOCUS-02), `focusable` in payload (FOCUS-03), loopback + Host/Origin guard (FOCUS-04) |
 | FORGET-01..03 | 3 | All Covered | Dashboard forget: `forget <hash>` CLI + `POST /forget` route → `_forget_session` (FORGET-01), hex-hash guard (FORGET-02), shared FOCUS-04 access model (FORGET-03); tests in `ForgetTest` |
 | PERF-01..04 | 4 | All Covered | Fleet-scan cost scales with emitted, not total sessions: `_session_mtimes` single dir scan, `_branch_for` per-cwd memoization, two-phase `collect_sessions` (cheap resolve → dedup → window → branch-fill), `wip --timing` (PERF-03); `test_branch_probe_memoized_per_cwd` |
-| CLI-01..12, 14, 16..18 (gap 13; CLI-04/05/15 retired) | 15 | All Covered | CLI-16 is the `--help` usage table; CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`); CLI-18 is `configure`, the one path that writes an iTerm2 preference — explicit, user-invoked, quit-write-relaunch (`cmd_configure`), never reachable from a hook or render; its seven audited settings are a spec table (`RECOMMENDED_LAYOUT` in `bin/beacon-iterm`), adding `HideTab=0` (iTerm2 hides the tab bar at one tab per window, taking the whole per-pane signal with it) and moving `StatusBarPosition` to `0` (the bottom of the pane is where Claude Code renders STATUSLINE-01); CLI-18's running check asks iTerm2 through Apple Events rather than `pgrep -x iTerm2`, which never matches it (macOS matches `-x` against the full executable path) — the false negative inverted the one branch the orchestration turns on, writing into a live iTerm2 that then restored the old values on quit, and the detached helper polled the same way; the audit now also qualifies an aligned reading while iTerm2 is running, since `defaults read` answers from a plist the running app will overwrite from memory |
+| CLI-01..03, 06..12, 14..18 (gap 13; CLI-04/05 retired) | 15 | All Covered | CLI-15 is `set-name`, the Apple Events title path (`cmd_set_name` in `bin/beacon-iterm`) — the id was reused for it when the spec moved to the root, the third of the three live reuses below; CLI-16 is the `--help` usage table; CLI-17 `focus` via osascript (`cmd_focus` in `bin/beacon-iterm`); CLI-18 is `configure`, the one path that writes an iTerm2 preference — explicit, user-invoked, quit-write-relaunch (`cmd_configure`), never reachable from a hook or render; its seven audited settings are a spec table (`RECOMMENDED_LAYOUT` in `bin/beacon-iterm`), adding `HideTab=0` (iTerm2 hides the tab bar at one tab per window, taking the whole per-pane signal with it) and moving `StatusBarPosition` to `0` (the bottom of the pane is where Claude Code renders STATUSLINE-01); CLI-18's running check asks iTerm2 through Apple Events rather than `pgrep -x iTerm2`, which never matches it (macOS matches `-x` against the full executable path) — the false negative inverted the one branch the orchestration turns on, writing into a live iTerm2 that then restored the old values on quit, and the detached helper polled the same way; the audit now also qualifies an aligned reading while iTerm2 is running, since `defaults read` answers from a plist the running app will overwrite from memory |
 | BADGE-01..07, 09, 09a, 11..15 (BADGE-08, BADGE-10 retired) | 14 | All Covered | Badge text + color + engagement; BADGE-09 maps `activity` to the three-value stoplight and no mode reaches it (`ACTIVITY_TO_COLOR_STATE`, `COLOR_PALETTE`); BADGE-09a keeps only the `pending-attention` clause — the mode clause above it is exactly what suppressed the interrupt signal; BADGE-10 retired with the per-mode color (a paused session now reads by its `⏸` glyph and pane background instead); BADGE-11 leaves the badge *text* undecorated — the mode's marks live on their own surfaces; BADGE-15 is **not** the retired watermark — the id was reused for the opt-in badge gate (off by default, `"badge": "on"` in the user config, read via `config-get` at all three paint sites) |
 | TITLE-01..06 (incl. 05a) | 7 | All Covered | OS window title via the iTerm2 session *name* (Apple Events `set-name`; profile `Allow Title Setting: false`); TITLE-01 interactive panes fall back to the cwd (`beacon_title` = project else cwd); TITLE-02 records that iTerm2 implements the session name as a session-scoped override of the session's copy of the profile `Name` key (§6.10 caveat 7), so an engaged pane reads its profile name back as the raw template while `set-profile` still matches; TITLE-04 one-shot re-assert on the first turn boundary reclaims the title from the shell's backgrounded launch write, and disengagement returns the name to `beacon_title` ahead of blanking the badge user vars, since the shell's own write never re-runs (`test_name_handback_precedes_blanking_the_title_vars`); TITLE-05 is the two-line tab label (`TITLE_FORMAT`, `<b>project</b>` over the indented `beacon_task_nl`), whose line 1 doubles as the single-line OS window title; TITLE-06 leads line 1 with the declared mode's glyph via `beacon_title_prefix` (`MODE_SPECS` — `⏸` `🚀` `📋` `🏁`), which is the mode's *only* cross-tab surface now the tab color reports activity; until 2.5.0 only `paused` marked the title, leaving four of five modes legible from another tab by color alone; TITLE-05a gives a stood-down mode's note line 2 in place of the task, the note's only cross-tab surface — the status line it otherwise relies on exists solely in the focused pane, and a halted session has no live task to displace (`resolve`, `StoodDownModeNoteOnLineTwo`) |
 | STATUS-BAR-01..03, 05..09 (gap 04) | 8 | All Covered | STATUS-BAR-01: runtime `set-profile` activation (plugin first render + install writes the base + mode profiles); STATUS-BAR-02 dropped the `⇄ review` chip in 2.0, leaving `↖ web` and `↗ code` to bookend the strip; STATUS-BAR-07 is the configurable `↗ code` editor, defaulting to a bare `code` (VS Code's CLI has no `--maximized`, and passing it through to Electron drops the directory on a cold start), and STATUS-BAR-08 the `↖ web` chip resolving at click time via `cmd_open_url <cwd>`, both reached through an absolute interpreter path and the login-shell binary lookup, since an action shell has no interactive `PATH` (issue #25, §6.10 caveat 3); STATUS-BAR-09 is the `statusbar.buttons.<name>` block behind both — `cmd` read on the click (with `{dir}` / `{project}` / `{branch}` expanded per argument by `_substitute_cmd_tokens`, `{dir}` suppressing the editor append), `label` baked into the profile by `install_dynamic_profile` and applied by CMD-23 (issue #29), its `maxwidth` knob grown to fit the baked title by `_fit_action_button_widths` since iTerm2 blanks an action component whose title overflows the cap; STATUS-BAR-01 additionally pins the base profile's colour behaviour to the parent (no `Use Separate Colors for Light and Dark Mode` override, no colour keys of its own) and carries the pane-scoped `AWDS Pane Option: Recycle` + its paired `AWDS Pane Directory`, which iTerm2 ignores unless both are present |
@@ -96,8 +96,8 @@ overlays on whatever profile is active.
 
 Numbering gaps (no PROV-04, no CMD-10/CMD-11, no CLI-13, no
 STATUS-BAR-04) are intentional. IDs retired in the 1.0 pivot — CMD-12
-(`exclusive-configuration`), CLI-04/05/15 (`bg-image` / `note` /
-`clear-screen`), BADGE-08 and BADGE-15 (watermark), NFR-02 (overlay caching),
+(`exclusive-configuration`), CLI-04/05 (`bg-image` / `note`), CLI-15
+(`clear-screen`), BADGE-08 and BADGE-15 (watermark), NFR-02 (overlay caching),
 and the entire OVERLAY namespace — are removed, not missing coverage. The whole
 SKILL namespace joins them: beacon ships no skill, so §3.6 holds only the
 retirement note. The 2.5.0 mode/activity split retires seven more, each with its
@@ -108,10 +108,11 @@ pause-time identity freeze and its preservation through auto-resume), STATE-04a
 and OVR-05 (the `icon` override).
 
 Two of those ids were later reused rather than left fallow, and both reuses are
-live contract: the `clear-screen` CLI *capability* returned under STATE-10
-(`pause --clear-screen`) — not as a re-issued CLI-15, which stays retired — and
-**BADGE-15** now numbers the opt-in badge gate. `exclusive-configuration` also
-returned, as CLI-18's quit-write-relaunch orchestration, under a new id.
+live contract: **CLI-15** now numbers `set-name`, the Apple Events title path,
+and **BADGE-15** the opt-in badge gate. Two retired *capabilities* also
+returned, each under a different id than it left on: `clear-screen` as
+STATE-10's `pause --clear-screen`, and `exclusive-configuration` as CLI-18's
+quit-write-relaunch orchestration.
 
 ## Open items
 
@@ -173,6 +174,13 @@ above the calmer fleet") — recent code realigned to it, not drift.
   contract gain). Revisit if the spec ever moves to strict EARS.
 
 ## Audit history
+
+### 2026-08-27 — Coverage refresh (spec-status)
+
+168 IDs, all Covered, 0 needs-decision — coverage unchanged. CLI-15 corrected
+from retired to live: the id was reused for `set-name` when the spec moved to
+the root SPEC.md, and the CLI row's count had counted it all along while its
+label and the numbering-gaps note still retired it as `clear-screen`.
 
 ### 2026-08-26 — Coverage refresh (spec-status)
 
