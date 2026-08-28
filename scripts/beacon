@@ -41,6 +41,36 @@ def _plugin_version() -> str:
     return json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
 
 
+def _is_dev_install() -> bool:
+    """Whether this copy is a working tree rather than an installed plugin.
+    Claude Code extracts a marketplace install as plain files, so the git
+    directory is present in exactly one of the two."""
+    return (PLUGIN_ROOT / ".git").exists()
+
+
+def _version_display() -> str:
+    """The version with a dev marker when this copy is a working tree. Both
+    copies otherwise report the same manifest version, which is what makes a
+    released `beacon` indistinguishable from an unreleased one — and the whole
+    reason to look."""
+    version = _plugin_version()
+    if not _is_dev_install():
+        return version
+    try:
+        r = subprocess.run(["git", "-C", str(PLUGIN_ROOT), "describe",
+                            "--always", "--dirty", "--abbrev=7"],
+                           capture_output=True, text=True, timeout=2, check=False)
+    except Exception as exc:
+        log_error("git.describe", f"{type(exc).__name__}: {exc}")
+        return f"{version}-dev"
+    if r.returncode != 0:
+        log_error("git.describe", r.stderr.strip() or "no stderr",
+                  exit_code=r.returncode)
+        return f"{version}-dev"
+    ref = r.stdout.strip()
+    return f"{version}-dev+{ref}" if ref else f"{version}-dev"
+
+
 def _data_dir_pointer() -> Path:
     """Where a hook records the data dir Claude Code handed it, so the contexts
     that get no `CLAUDE_PLUGIN_DATA` can read the answer instead of guessing at
@@ -3852,8 +3882,13 @@ def ensure_initialized():
     global _initialized
     if _initialized:
         return
-    for d in (STATE_DIR, CACHE_DIR):
+    for d in (STATE_DIR, CACHE_DIR, LOGS_DIR):
         d.mkdir(parents=True, exist_ok=True)
+    # The error log is created empty rather than on first failure, so the path
+    # `doctor` prints is one the user can actually open and tail. A log that
+    # springs into existence only once something has already gone wrong is the
+    # least useful moment for it to appear.
+    ERRORS_LOG.touch(exist_ok=True)
     _initialized = True
 
 
@@ -5213,6 +5248,11 @@ def _doctor_checks() -> list[dict]:
 
     # Data — every invocation context has to land on the same dir, or hooks
     # write state that `wip`, the dashboard, and the status line never read.
+    add("Data", "version", _DOCTOR_OK,
+        f"{_version_display()}"
+        + (f" — working tree at {PLUGIN_ROOT}" if _is_dev_install()
+           else f" — installed at {PLUGIN_ROOT}"))
+
     env_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
     pointer = _read_data_dir_pointer()
     source = ("CLAUDE_PLUGIN_DATA" if env_dir
@@ -5315,7 +5355,10 @@ def cmd_doctor(args):
         print(f"  {_color(code, mark)} {c['name']:<12} {c['detail']}")
 
     print(f"\n{_color('1', 'Errors')}")
-    print(f"  log  {ERRORS_LOG}")
+    # Named as absent rather than printed bare: a path the reader cannot open
+    # reads as a broken install, which is the opposite of what it means here.
+    seen = "" if ERRORS_LOG.exists() else "  (not created yet)"
+    print(f"  log  {ERRORS_LOG}{seen}")
     if not entries:
         window = f" in the last {args.since}" if args.since else ""
         print(f"  {_color('32', '✓')} none recorded{window}")
@@ -5401,6 +5444,7 @@ def cmd_install(_args):
     print("beacon install")
     print("==============")
     print()
+    ensure_initialized()
     iterm = _is_iterm_installed()
     total = 6 if iterm else 3
     n = 0
@@ -5683,7 +5727,7 @@ def cmd_hook(args):
 def _build_parser() -> "argparse.ArgumentParser":
     parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
     parser.add_argument("--version", "-v", action="version",
-                        version=f"beacon {_plugin_version()}")
+                        version=f"beacon {_version_display()}")
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto",
                         help="colorize output: auto (TTY-detect, the default), always, or never. "
                              "Use --color=always to keep color through a pipe (e.g. `watch --color`).")

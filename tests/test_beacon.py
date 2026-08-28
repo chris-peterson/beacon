@@ -5173,5 +5173,100 @@ class Doctor(unittest.TestCase):
         self.assertEqual(adapter["status"], self.beacon._DOCTOR_OK)
 
 
+class ErrorLogCreatedEagerly(unittest.TestCase):
+    """`doctor` prints the log's path, so the path has to be one the reader can
+    open. A log that appears only once something has already failed is absent at
+    exactly the moment someone goes looking for it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data_dir = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.data_dir)
+
+    def test_initialization_creates_an_empty_log(self):
+        self.beacon.ensure_initialized()
+        self.assertTrue(self.beacon.ERRORS_LOG.exists())
+        self.assertEqual(self.beacon.read_error_log(), [])
+
+    def test_initialization_does_not_truncate_an_existing_log(self):
+        self.beacon.log_error("cli.render", "earlier failure")
+        self.beacon._initialized = False
+        self.beacon.ensure_initialized()
+        self.assertEqual([r["detail"] for r in self.beacon.read_error_log()],
+                         ["earlier failure"])
+
+    def test_doctor_names_an_absent_log_as_absent(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), \
+                mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            try:
+                self.beacon.cmd_doctor(types.SimpleNamespace(since="7d", json=False))
+            except SystemExit:
+                pass
+        self.assertIn("not created yet", buf.getvalue())
+
+    def test_doctor_does_not_create_the_state_dir_it_checks(self):
+        """Its own state check would be tautological if it initialized first."""
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            checks = self.beacon._doctor_checks()
+        state = [c for c in checks if c["name"] == "state"][0]
+        self.assertEqual(state["status"], self.beacon._DOCTOR_WARN)
+        self.assertFalse(self.beacon.STATE_DIR.exists())
+
+
+class DevInstallMarker(unittest.TestCase):
+    """A working tree and a marketplace install report the same manifest
+    version, so nothing distinguishes an unreleased beacon from a released one
+    until the version string says so."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data_dir = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.data_dir)
+
+    def test_a_working_tree_is_a_dev_install(self):
+        """The suite runs from the repo, which has a git dir."""
+        self.assertTrue(self.beacon._is_dev_install())
+
+    def test_an_extracted_install_is_not(self):
+        installed = self.data_dir / "installed"
+        (installed / ".claude-plugin").mkdir(parents=True)
+        (installed / ".claude-plugin" / "plugin.json").write_text('{"version": "9.9.9"}')
+        with mock.patch.object(self.beacon, "PLUGIN_ROOT", installed):
+            self.assertFalse(self.beacon._is_dev_install())
+            self.assertEqual(self.beacon._version_display(), "9.9.9")
+
+    def test_a_dev_version_carries_the_marker_and_the_ref(self):
+        def fake_run(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 0, stdout="da64585-dirty\n", stderr="")
+        with mock.patch.object(self.beacon, "_is_dev_install", return_value=True), \
+                mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
+                mock.patch("subprocess.run", side_effect=fake_run):
+            self.assertEqual(self.beacon._version_display(), "2.6.1-dev+da64585-dirty")
+
+    def test_the_status_line_carries_no_marker(self):
+        """The row is per-session work that varies; an install's version is
+        static, so it would cost attention every prompt and say the same thing."""
+        with mock.patch.object(self.beacon, "_is_dev_install", return_value=True):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), \
+                    mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")):
+                self.beacon.cmd_statusline(types.SimpleNamespace())
+        self.assertNotIn("dev", buf.getvalue())
+
+    def test_an_unreadable_ref_still_says_dev(self):
+        """The marker is the point; the ref is the detail. Losing git must not
+        make a dev copy look released."""
+        def fake_run(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 128, stdout="", stderr="not a git repo")
+        with mock.patch.object(self.beacon, "_is_dev_install", return_value=True), \
+                mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
+                mock.patch("subprocess.run", side_effect=fake_run):
+            self.assertEqual(self.beacon._version_display(), "2.6.1-dev")
+        self.assertEqual(self.beacon.read_error_log()[0]["op"], "git.describe")
+
+
 if __name__ == "__main__":
     unittest.main()

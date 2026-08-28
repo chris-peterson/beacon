@@ -365,6 +365,8 @@ It is a separate verb from `refresh-iterm-profiles` (CMD-23) because the two wri
 
 **CMD-29.** When the user invokes `doctor [--since <when>] [--json]`, the plugin shall apply DIAG-05, DIAG-06, and DIAG-07. `--since` accepts the same duration-or-timestamp form as `wip` (WIP-03) and defaults to 7d.
 
+**CMD-30.** When the user invokes `--version`, the plugin shall print its manifest version, suffixed `-dev+<ref>` where this copy is a working tree rather than an installed plugin. Both copies otherwise report the same manifest version, so nothing distinguishes an unreleased beacon from the released one of the same number — which is the question `--version` is asked to settle. Where the ref cannot be read the suffix shall remain `-dev`: the marker is the answer, the ref is the detail.
+
 ---
 
 ### 3.8 Cross-session introspection / export (WIP)
