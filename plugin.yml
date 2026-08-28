@@ -4,7 +4,7 @@
 # skills/rules/hooks sources — run `just build`, don't hand-edit it.
 
 name: beacon
-version: 2.6.0
+version: 2.6.1
 description: At-a-glance awareness across concurrent Claude Code sessions — a terminal-agnostic sessions view plus iTerm2 per-pane painting.
 author: chris-peterson
 repository: https://github.com/chris-peterson/beacon

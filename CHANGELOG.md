@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.6.1
+
+### The fleet view is the sessions view
+
+"Fleet" was a metaphor you had to translate. The cross-session read behind `wip` / `watch` / `serve` is the **sessions view** now, and `dashboard` keeps the narrower meaning: the browser page `serve` hosts at `/`. Both words were doing both jobs before.
+
+The dashboard masthead and page title read `beacon · sessions`, and the docs section is "Sessions view (any terminal)" — a bookmark to the old anchor needs updating. Nothing you type changes; no command, flag, or state field moved.
+
+### Also
+
+- The icon's three signal arcs are one purple at three opacities, the color of the group beacon and tack belong to. The green core and its pulse are unchanged.
+- `STATUS.md` lists CLI-15 as live (`set-name`), not retired. Coverage is unchanged at 168 IDs, all covered.
+
 ## 2.6.0
 
 ### A parked session's tab stops reading as blocked
