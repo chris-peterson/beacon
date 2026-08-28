@@ -2,8 +2,6 @@
 
 ## 2.7.0
 
-## 2.7.0
-
 ### Tab labels come back on a machine with two iTerm2 builds
 
 An Xcode build of iTerm2 installs as `iTerm2.app` where the release installs as `iTerm.app`, and beacon addressed iTerm2 by name — so on a machine carrying both, every Apple Events call went to the dev build and found no session there. Tab labels, window titles, and clicking a session in the dashboard to raise its window all stopped, with nothing on screen to say why. beacon now addresses iTerm2 by its bundle id, which resolves to the installed app.
