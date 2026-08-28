@@ -1,5 +1,32 @@
 # Changelog
 
+## 2.7.0
+
+## 2.7.0
+
+### Tab labels come back on a machine with two iTerm2 builds
+
+An Xcode build of iTerm2 installs as `iTerm2.app` where the release installs as `iTerm.app`, and beacon addressed iTerm2 by name — so on a machine carrying both, every Apple Events call went to the dev build and found no session there. Tab labels, window titles, and clicking a session in the dashboard to raise its window all stopped, with nothing on screen to say why. beacon now addresses iTerm2 by its bundle id, which resolves to the installed app.
+
+### A new tab gets its name in a third of a second
+
+Naming a new tab waited up to two seconds for a marker that a plain shell never receives, so a fresh tab read `Default` for two and a half seconds before its project appeared. It now names itself immediately — measured at 0.35s. A pane that Claude takes over later still gets the managed label; the wait was what made the two writers race in the first place.
+
+### `beacon doctor` checks the install and reports what has been failing
+
+A display failure must never crash a Claude Code hook, so beacon swallows every external command it runs. That is what let a broken tab label go a whole session unnoticed. Failures are now recorded to `<data-dir>/logs/errors.log`, and `beacon doctor` reads them back grouped by operation with advice for each, alongside live checks: whether every context resolves the same data directory, whether the state directory is writable, whether the `PATH` wrapper and Claude Code status line are wired, and — on iTerm2 — whether the dynamic profiles are present and this session's pane is still reachable. It exits non-zero when something is wrong, so it can gate a health check.
+
+`beacon doctor --since 30d` widens the error window; `--json` emits the checks and entries for a script.
+
+### `beacon --version` says when it is a working tree
+
+A checkout and an installed plugin report the same version, so there was no way to tell which copy was about to run. A working tree now reports `2.7.0-dev+<ref>`, an installed one reports `2.7.0`.
+
+### Also
+
+- The error log is created empty at startup, so the path `doctor` prints is one you can open and tail before anything has gone wrong.
+- New spec requirements: `DIAG-01..08` (the error log and `doctor`), `CMD-29` (`doctor`), `CMD-30` (`--version`), `NFR-12` (a swallowed failure is recorded rather than silent).
+
 ## 2.6.1
 
 ### The fleet view is the sessions view
