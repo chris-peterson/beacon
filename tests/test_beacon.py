@@ -4995,5 +4995,183 @@ def _base_state() -> dict:
     }
 
 
+class ErrorLog(unittest.TestCase):
+    """The error log exists because every external call beacon makes is
+    swallowed (NFR-06), so a persistent failure is otherwise invisible."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data_dir = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.data_dir)
+
+    def test_log_error_writes_one_parseable_line(self):
+        self.beacon.log_error("cli.set-name", "boom", exit_code=3)
+        rows = self.beacon.read_error_log()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["op"], "cli.set-name")
+        self.assertEqual(rows[0]["detail"], "boom")
+        self.assertEqual(rows[0]["exit"], 3)
+        self.assertTrue(rows[0]["at"].endswith("Z"))
+
+    def test_detail_is_flattened_to_one_line(self):
+        """Concurrent sessions append to one file, so a record must never span
+        lines — a multi-line stderr would corrupt every later parse."""
+        self.beacon.log_error("cli.focus", "line one\nline two\n\tindented")
+        raw = (self.data_dir / "logs" / "errors.log").read_text()
+        self.assertEqual(len(raw.strip().splitlines()), 1)
+        self.assertEqual(self.beacon.read_error_log()[0]["detail"],
+                         "line one line two indented")
+
+    def test_detail_is_capped(self):
+        self.beacon.log_error("cli.render", "x" * 5000)
+        self.assertLessEqual(len(self.beacon.read_error_log()[0]["detail"]),
+                             self.beacon._ERRORS_LOG_MAX_DETAIL)
+
+    def test_log_is_trimmed_to_the_tail_when_it_grows(self):
+        for i in range(4000):
+            self.beacon.log_error("cli.render", f"failure {i}")
+        size = (self.data_dir / "logs" / "errors.log").stat().st_size
+        self.assertLessEqual(size, self.beacon._ERRORS_LOG_MAX_BYTES)
+        rows = self.beacon.read_error_log()
+        self.assertIn("failure 3999", rows[-1]["detail"])
+
+    def test_unparseable_lines_are_skipped(self):
+        self.beacon.log_error("cli.render", "real")
+        log = self.data_dir / "logs" / "errors.log"
+        with open(log, "a") as fh:
+            fh.write("{torn half-written line\n")
+        rows = self.beacon.read_error_log()
+        self.assertEqual([r["detail"] for r in rows], ["real"])
+
+    def test_missing_log_reads_as_empty(self):
+        self.assertEqual(self.beacon.read_error_log(), [])
+
+    def test_cli_logs_a_nonzero_exit_with_its_stderr(self):
+        """The failure that motivated the log was a nonzero exit, not a thrown
+        exception — `_cli` passes check=False, so only returncode catches it."""
+        def fake_run(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 1, stdout=b"",
+                                               stderr=b"set-name: no session (3)")
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._cli("set-name", "guid", "name")
+        rows = self.beacon.read_error_log()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["op"], "cli.set-name")
+        self.assertEqual(rows[0]["exit"], 1)
+        self.assertIn("no session (3)", rows[0]["detail"])
+
+    def test_cli_logs_an_exception(self):
+        with mock.patch("subprocess.run", side_effect=OSError("no python3")):
+            self.beacon._cli("render")
+        rows = self.beacon.read_error_log()
+        self.assertEqual(rows[0]["op"], "cli.render")
+        self.assertIn("no python3", rows[0]["detail"])
+
+    def test_cli_logs_nothing_on_success(self):
+        def fake_run(cmd, *a, **k):
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._cli("render")
+        self.assertEqual(self.beacon.read_error_log(), [])
+
+    def test_a_throwing_provider_is_recorded(self):
+        """NFR-05 keeps a throwing provider from blocking the chain; without a
+        record the chain silently resolves to a lower tier forever."""
+        def boom():
+            raise RuntimeError("gh exploded")
+        val, name = self.beacon.chain([("gh-pr", boom), ("fallback", lambda: "x")])
+        self.assertEqual((val, name), ("x", "fallback"))
+        rows = self.beacon.read_error_log()
+        self.assertEqual(rows[0]["op"], "provider.gh-pr")
+        self.assertIn("gh exploded", rows[0]["detail"])
+
+
+class Doctor(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data_dir = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.data_dir)
+        # The iTerm2 section shells out to osascript; these tests are about the
+        # report, not the adapter, so stand the adapter down.
+        for name in ("_is_iterm_installed", "_is_iterm_running"):
+            pt = mock.patch.object(self.beacon, name, return_value=False)
+            pt.start()
+            self.addCleanup(pt.stop)
+
+    def _run(self, **kw):
+        args = types.SimpleNamespace(**{"since": "7d", "json": False, **kw})
+        buf = io.StringIO()
+        code = 0
+        try:
+            with contextlib.redirect_stdout(buf):
+                self.beacon.cmd_doctor(args)
+        except SystemExit as e:
+            code = e.code
+        return code, buf.getvalue()
+
+    def test_clean_install_reports_no_errors_and_exits_zero(self):
+        code, out = self._run()
+        self.assertEqual(code, 0)
+        self.assertIn("none recorded", out)
+
+    def test_recorded_errors_are_grouped_with_a_count(self):
+        for _ in range(3):
+            self.beacon.log_error("cli.set-name", "no session (3)", exit_code=1)
+        self.beacon.log_error("provider.gh-pr", "timeout")
+        code, out = self._run()
+        self.assertEqual(code, 1)
+        self.assertIn("cli.set-name", out)
+        self.assertIn("×3", out)
+        self.assertIn("provider.gh-pr", out)
+
+    def test_a_known_signature_carries_advice(self):
+        self.beacon.log_error("cli.set-name", "no session (3)", exit_code=1)
+        _, out = self._run()
+        self.assertIn("tab label", out)
+
+    def test_advice_falls_back_to_the_op_prefix(self):
+        self.beacon.log_error("osascript.app-path", "timed out")
+        _, out = self._run()
+        self.assertIn("Automation", out)
+
+    def test_since_window_filters_old_entries(self):
+        self.beacon.log_error("cli.render", "ancient")
+        log = self.data_dir / "logs" / "errors.log"
+        log.write_text(log.read_text().replace(
+            json.loads(log.read_text())["at"], "2001-01-01T00:00:00Z"))
+        code, out = self._run(since="1d")
+        self.assertEqual(code, 0)
+        self.assertIn("none recorded", out)
+
+    def test_json_carries_checks_and_errors(self):
+        self.beacon.log_error("cli.render", "boom")
+        args = types.SimpleNamespace(since="7d", json=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon.cmd_doctor(args)
+        payload = json.loads(buf.getvalue())
+        self.assertTrue(payload["checks"])
+        self.assertEqual(payload["errors"][0]["detail"], "boom")
+        self.assertTrue(payload["log"].endswith("errors.log"))
+
+    def test_a_disagreeing_data_dir_pointer_is_a_failure(self):
+        """The trap the pointer exists to prevent: hooks writing state that the
+        wrapper, dashboard, and status line never read."""
+        with mock.patch.object(self.beacon, "_read_data_dir_pointer",
+                               return_value=Path("/somewhere/else")):
+            checks = self.beacon._doctor_checks()
+        pointer = [c for c in checks if c["name"] == "pointer"][0]
+        self.assertEqual(pointer["status"], self.beacon._DOCTOR_BAD)
+
+    def test_adapterless_box_is_not_a_failure(self):
+        """iTerm2 is optional by design (NFR-06) — the sessions view is the
+        terminal-agnostic half."""
+        checks = self.beacon._doctor_checks()
+        adapter = [c for c in checks if c["name"] == "adapter"][0]
+        self.assertEqual(adapter["status"], self.beacon._DOCTOR_OK)
+
+
 if __name__ == "__main__":
     unittest.main()

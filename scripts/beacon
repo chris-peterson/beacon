@@ -109,6 +109,8 @@ def _default_data_dir() -> Path:
 DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or str(_default_data_dir()))
 STATE_DIR = DATA_DIR / "state"
 CACHE_DIR = DATA_DIR / "cache"
+LOGS_DIR = DATA_DIR / "logs"
+ERRORS_LOG = LOGS_DIR / "errors.log"
 
 BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
 DASHBOARD_HTML = PLUGIN_ROOT / "dashboard" / "index.html"
@@ -270,6 +272,7 @@ _beacon() {
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
+    'doctor:check the install and report recorded errors'
   )
 
   if (( CURRENT == 2 )); then
@@ -343,6 +346,9 @@ _beacon() {
       ;;
     layout)
       compadd -- --write --yes --keys
+      ;;
+    doctor)
+      compadd -- --since --json
       ;;
   esac
 }
@@ -601,6 +607,85 @@ def _project_root(cwd: Path) -> Path | None:
 
 def find_project_root(cwd: Path) -> Path:
     return _project_root(cwd) or cwd.resolve()
+
+
+# --- error log ---
+#
+# Every external command beacon runs is swallowed on failure so a display
+# problem can never crash a Claude Code hook (NFR-06). That guarantee is why a
+# broken `set-name` went unnoticed for a whole session: the swallow is correct,
+# the silence is not. Each swallow site records here instead, and `doctor`
+# reads it back.
+
+# Bounded so a hook that fails every turn can't fill the disk. A trim keeps the
+# tail — `doctor` reports the newest entries, and the oldest are the ones a
+# repeating failure has already made redundant.
+_ERRORS_LOG_MAX_BYTES = 256 * 1024
+_ERRORS_LOG_KEEP_BYTES = 128 * 1024
+# Concurrent sessions all append to this one file. POSIX guarantees an atomic
+# append only below PIPE_BUF (4096), so a line has to stay well short of it or
+# two sessions failing at once interleave into unparseable garbage.
+_ERRORS_LOG_MAX_DETAIL = 400
+
+
+def log_error(op: str, detail: str, *, exit_code: int | None = None) -> None:
+    """Record a swallowed failure as one JSON line. Never raises — a logger
+    that can throw would defeat the very swallow it instruments."""
+    try:
+        rec = {
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "op": op,
+            "detail": " ".join(str(detail).split())[:_ERRORS_LOG_MAX_DETAIL],
+        }
+        if exit_code is not None:
+            rec["exit"] = exit_code
+        try:
+            rec["session"] = session_hash()
+        except Exception:
+            pass
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        line = json.dumps(rec, ensure_ascii=False) + "\n"
+        with open(ERRORS_LOG, "a", encoding="utf-8") as fh:
+            fh.write(line)
+        _trim_errors_log()
+    except Exception:
+        pass
+
+
+def _trim_errors_log() -> None:
+    try:
+        if ERRORS_LOG.stat().st_size <= _ERRORS_LOG_MAX_BYTES:
+            return
+        with open(ERRORS_LOG, "rb") as fh:
+            fh.seek(-_ERRORS_LOG_KEEP_BYTES, os.SEEK_END)
+            fh.readline()  # drop the partial line the seek landed inside
+            tail = fh.read()
+        tmp = ERRORS_LOG.with_suffix(".log.trim")
+        tmp.write_bytes(tail)
+        tmp.replace(ERRORS_LOG)
+    except Exception:
+        pass
+
+
+def read_error_log(limit: int | None = None) -> list[dict]:
+    """Parsed entries, oldest first. Unparseable lines are skipped rather than
+    raised on — a torn concurrent append must not break `doctor`."""
+    try:
+        raw = ERRORS_LOG.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    out = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(rec, dict):
+            out.append(rec)
+    return out[-limit:] if limit else out
 
 
 # --- state files ---
@@ -3144,7 +3229,8 @@ def chain(providers):
             v = fn()
             if v:
                 return v, name
-        except Exception:
+        except Exception as exc:
+            log_error(f"provider.{name}", f"{type(exc).__name__}: {exc}")
             continue
     return None, None
 
@@ -3229,10 +3315,15 @@ def _cli(*args, timeout: float = 5.0) -> None:
     """Invoke beacon-iterm. Failures are swallowed so the plugin never crashes
     a hook on display issues."""
     cmd = ["python3", str(BEACON_ITERM), *map(str, args)]
+    op = f"cli.{args[0]}" if args else "cli"
     try:
-        subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
-    except Exception:
-        pass
+        r = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+    except Exception as exc:
+        log_error(op, f"{type(exc).__name__}: {exc}")
+        return
+    if r.returncode != 0:
+        log_error(op, (r.stderr or b"").decode("utf-8", "replace") or "no stderr",
+                  exit_code=r.returncode)
 
 
 # --- session anchor (mirrors shell/beacon.zsh _beacon_precmd) ---
@@ -3257,7 +3348,8 @@ def _detect_branch_info(cwd: Path) -> tuple[str, str, str, str]:
             ["git", "symbolic-ref", "--short", "HEAD"],
             cwd=str(cwd), capture_output=True, text=True, timeout=2, check=False,
         )
-    except Exception:
+    except Exception as exc:
+        log_error("git.symbolic-ref", f"{type(exc).__name__}: {exc}")
         return ("", "", "", "")
     name = r.stdout.strip()
     if r.returncode != 0 or not name:
@@ -3287,8 +3379,8 @@ def _detect_branch_info(cwd: Path) -> tuple[str, str, str, str]:
                             indicator += f"↑{ahead}"
                         if behind > 0:
                             indicator += f"↓{behind}"
-    except Exception:
-        pass
+    except Exception as exc:
+        log_error("git.branch-sync", f"{type(exc).__name__}: {exc}")
 
     default_ref = _default_branch_ref(cwd)
     if default_ref:
@@ -3770,11 +3862,12 @@ def _is_iterm_running() -> bool:
     # false negatives under sandboxing.
     try:
         r = subprocess.run(
-            ["osascript", "-e", 'application "iTerm" is running'],
+            ["osascript", "-e", 'application id "com.googlecode.iterm2" is running'],
             capture_output=True, text=True, timeout=2,
         )
         return r.returncode == 0 and r.stdout.strip().lower() == "true"
-    except Exception:
+    except Exception as exc:
+        log_error("osascript.is-running", f"{type(exc).__name__}: {exc}")
         return False
 
 
@@ -3794,11 +3887,12 @@ def _is_iterm_installed() -> bool:
     # Launch Services lookup catches non-standard install locations.
     try:
         r = subprocess.run(
-            ["osascript", "-e", 'POSIX path of (path to application "iTerm")'],
+            ["osascript", "-e", 'POSIX path of (path to application id "com.googlecode.iterm2")'],
             capture_output=True, text=True, timeout=3,
         )
         return r.returncode == 0 and r.stdout.strip().endswith(".app/")
-    except Exception:
+    except Exception as exc:
+        log_error("osascript.app-path", f"{type(exc).__name__}: {exc}")
         return False
 
 
@@ -5045,6 +5139,207 @@ def cmd_layout(args):
     sys.exit(r.returncode)
 
 
+# --- doctor ---
+
+# What a failing check should tell the user to do about it, keyed by the `op`
+# prefix the error log records. A check that can fail without an actionable
+# next step is a check that wastes the reader's time.
+_DOCTOR_ADVICE = {
+    "cli.set-name": "iTerm2 accepted no session for this pane, so the tab label and "
+                    "window title stopped updating. See the iTerm2 section above.",
+    "cli.focus": "Raising a session from the dashboard failed. See the iTerm2 section above.",
+    "cli": "A beacon-iterm call failed. Run it by hand to see the full error.",
+    "osascript": "An Apple Events call failed. macOS revokes Automation permission "
+                 "silently — check System Settings → Privacy & Security → Automation "
+                 "and confirm your terminal may control iTerm2.",
+    "provider": "A resolver provider threw, so the chain fell through to a lower "
+                "tier — the project, task, or URL it feeds may be stale or blank.",
+    "git": "A git probe failed, so the branch chip and its sync state may be blank.",
+    "layout.audit": "The layout audit could not run — see docs/iterm.md.",
+}
+
+
+def _advice_for(op: str) -> str | None:
+    for key in (op, op.split(".", 1)[0]):
+        if key in _DOCTOR_ADVICE:
+            return _DOCTOR_ADVICE[key]
+    return None
+
+
+def _iterm_session_reachable(guid: str) -> tuple[bool, str]:
+    """Whether Apple Events can still find the pane beacon recorded for this
+    session — the end-to-end check, and the one that actually failed. `installed`
+    and `running` were both true throughout the incident that motivated it."""
+    script = (
+        'tell application id "com.googlecode.iterm2"\n'
+        f'  set theID to "{guid}"\n'
+        '  repeat with w in windows\n'
+        '    repeat with t in tabs of w\n'
+        '      repeat with s in sessions of t\n'
+        '        if id of s is theID then return "found"\n'
+        '      end repeat\n'
+        '    end repeat\n'
+        '  end repeat\n'
+        '  return "missing"\n'
+        'end tell'
+    )
+    try:
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=5)
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    if r.returncode != 0:
+        return False, r.stderr.strip() or f"osascript exited {r.returncode}"
+    return r.stdout.strip() == "found", r.stdout.strip() or "no answer"
+
+
+_DOCTOR_OK, _DOCTOR_WARN, _DOCTOR_BAD = "ok", "warn", "bad"
+
+_DOCTOR_MARKS = {
+    _DOCTOR_OK: ("32", "✓"),
+    _DOCTOR_WARN: ("33", "!"),
+    _DOCTOR_BAD: ("31", "✗"),
+}
+
+
+def _doctor_checks() -> list[dict]:
+    """Every probe, as {section, name, status, detail}. Split from the printing
+    so `--json` and the human view can't drift."""
+    checks: list[dict] = []
+
+    def add(section, name, status, detail):
+        checks.append({"section": section, "name": name,
+                       "status": status, "detail": detail})
+
+    # Data — every invocation context has to land on the same dir, or hooks
+    # write state that `wip`, the dashboard, and the status line never read.
+    env_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
+    pointer = _read_data_dir_pointer()
+    source = ("CLAUDE_PLUGIN_DATA" if env_dir
+              else "recorded pointer" if pointer else "derived from CLAUDE_PLUGIN_ROOT")
+    add("Data", "data dir", _DOCTOR_OK, f"{DATA_DIR} (from {source})")
+    if pointer is None:
+        add("Data", "pointer", _DOCTOR_WARN,
+            f"{_data_dir_pointer()} records nothing yet — run a hook, or `beacon install`")
+    elif pointer.resolve() != DATA_DIR.resolve():
+        add("Data", "pointer", _DOCTOR_BAD,
+            f"{_data_dir_pointer()} says {pointer}, but this context resolved "
+            f"{DATA_DIR} — hooks and commands are writing to different dirs")
+    else:
+        add("Data", "pointer", _DOCTOR_OK, f"{_data_dir_pointer()} agrees")
+
+    if not STATE_DIR.exists():
+        add("Data", "state", _DOCTOR_WARN,
+            f"{STATE_DIR} not created yet — the first hook makes it")
+    elif STATE_DIR.is_dir() and os.access(STATE_DIR, os.W_OK):
+        n = len({p.name.split(".", 1)[0] for p in STATE_DIR.glob("*.*")})
+        add("Data", "state", _DOCTOR_OK, f"{n} session(s), writable")
+    else:
+        add("Data", "state", _DOCTOR_BAD, f"{STATE_DIR} is not a writable directory")
+
+    wrapper = _wrapper_path()
+    add("Data", "wrapper", _DOCTOR_OK if wrapper.exists() else _DOCTOR_WARN,
+        str(wrapper) if wrapper.exists() else f"{wrapper} absent — run `beacon install`")
+
+    # iTerm2 adapter — optional by design (NFR-06), so absence is not a fault.
+    if not _is_iterm_installed():
+        add("iTerm2", "adapter", _DOCTOR_OK,
+            "not installed — sessions view only, which is a supported setup")
+    else:
+        add("iTerm2", "installed", _DOCTOR_OK, "yes")
+        running = _is_iterm_running()
+        add("iTerm2", "running", _DOCTOR_OK if running else _DOCTOR_WARN,
+            "yes" if running else "no — the adapter has nothing to paint")
+        profiles = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
+        want = {BASE_PROFILE_NAME} | {s["profile"] for s in MODE_SPECS.values()}
+        have = {p.stem for p in profiles.glob(f"{PROFILE_NAMESPACE}-*.json")}
+        missing = sorted(want - have)
+        add("iTerm2", "profiles", _DOCTOR_OK if not missing else _DOCTOR_BAD,
+            f"{len(want)} present" if not missing
+            else f"missing {', '.join(missing)} — run `beacon refresh-iterm-profiles`")
+        if running:
+            guid = read_state("iterm_session_id")
+            if not guid:
+                add("iTerm2", "this pane", _DOCTOR_WARN,
+                    "no iTerm2 handle recorded for this session")
+            else:
+                found, why = _iterm_session_reachable(guid)
+                add("iTerm2", "this pane", _DOCTOR_OK if found else _DOCTOR_BAD,
+                    f"{guid} reachable" if found
+                    else f"{guid} not reachable via Apple Events ({why})")
+
+    # Claude Code — the status line exists only if this key is set.
+    wired = False
+    if CLAUDE_SETTINGS.exists():
+        try:
+            data = json.loads(CLAUDE_SETTINGS.read_text())
+            cmd = (data.get("statusLine") or {}).get("command", "")
+            wired = "beacon statusline" in cmd
+        except Exception:
+            pass
+    add("Claude Code", "status line", _DOCTOR_OK if wired else _DOCTOR_WARN,
+        f"wired in {CLAUDE_SETTINGS}" if wired
+        else f"no `beacon statusline` in {CLAUDE_SETTINGS} — run `beacon install`")
+
+    return checks
+
+
+def cmd_doctor(args):
+    since = _parse_since(args.since, strict=True)
+    entries = read_error_log()
+    if since is not None:
+        kept = []
+        for e in entries:
+            try:
+                ts = datetime.fromisoformat(
+                    str(e.get("at", "")).replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                continue
+            if ts >= since:
+                kept.append(e)
+        entries = kept
+
+    checks = _doctor_checks()
+
+    if args.json:
+        print(json.dumps({"checks": checks, "errors": entries,
+                          "log": str(ERRORS_LOG)}, indent=2))
+        return
+
+    section = None
+    for c in checks:
+        if c["section"] != section:
+            section = c["section"]
+            print(f"\n{_color('1', section)}")
+        code, mark = _DOCTOR_MARKS[c["status"]]
+        print(f"  {_color(code, mark)} {c['name']:<12} {c['detail']}")
+
+    print(f"\n{_color('1', 'Errors')}")
+    print(f"  log  {ERRORS_LOG}")
+    if not entries:
+        window = f" in the last {args.since}" if args.since else ""
+        print(f"  {_color('32', '✓')} none recorded{window}")
+    else:
+        groups: dict[str, list[dict]] = {}
+        for e in entries:
+            groups.setdefault(str(e.get("op", "?")), []).append(e)
+        for op, rows in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+            last = rows[-1]
+            print(f"  {_color('31', '✗')} {op}  ×{len(rows)}  "
+                  f"last {last.get('at', '?')}")
+            print(f"      {last.get('detail', '')}")
+            advice = _advice_for(op)
+            if advice:
+                print(textwrap.fill(advice, width=78,
+                                    initial_indent="      → ",
+                                    subsequent_indent="        "))
+
+    failed = [c for c in checks if c["status"] == _DOCTOR_BAD]
+    print()
+    if failed or entries:
+        sys.exit(1)
+
+
 CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 
@@ -5165,7 +5460,8 @@ def cmd_install(_args):
                            env=_layout_env())
         print(textwrap.indent(r.stdout.rstrip(), "  "))
         layout_drifted = r.returncode != 0  # the audit exits non-zero on drift
-    except Exception:
+    except Exception as exc:
+        log_error("layout.audit", f"{type(exc).__name__}: {exc}")
         print(_color("33", "  ! could not audit layout prefs — see docs/iterm.md"))
     print()
 
@@ -5534,6 +5830,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--force", action="store_true",
                     help="overwrite sessions already present on disk (default: skip them)")
 
+    sp = sub.add_parser("doctor",
+                        help="check the install and report recorded errors")
+    sp.add_argument("--since", default="7d", metavar="WHEN",
+                    help="error-log window (duration like 7d/2h, or ISO-8601)")
+    sp.add_argument("--json", action="store_true", help="machine-readable output")
     sub.add_parser("data-dir", help="print the resolved data dir")
 
     sub.add_parser("shell-init",
@@ -5577,6 +5878,7 @@ def main(argv=None):
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
         "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir,
+        "doctor": cmd_doctor,
         "shell-init": cmd_shell_init,
     }
     if not args.cmd:

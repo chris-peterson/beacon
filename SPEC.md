@@ -363,6 +363,8 @@ Sourcing the shell integration asked for these one subcommand at a time, and eac
 
 It is a separate verb from `refresh-iterm-profiles` (CMD-23) because the two write disjoint things and only one needs a restart: `layout` covers app-wide Appearance preferences no dynamic profile can carry, while `refresh-iterm-profiles` re-renders beacon's own profiles, which iTerm2 reloads live. CMD-23's exclusion of an app-wide layout advisory stands — the layout has its own door rather than a mention inside another command's output.
 
+**CMD-29.** When the user invokes `doctor [--since <when>] [--json]`, the plugin shall apply DIAG-05, DIAG-06, and DIAG-07. `--since` accepts the same duration-or-timestamp form as `wip` (WIP-03) and defaults to 7d.
+
 ---
 
 ### 3.8 Cross-session introspection / export (WIP)
@@ -468,6 +470,26 @@ Where `wip` / `serve` (WIP) emit a *derived* sessions view — windowed (WIP-03)
 **DUMP-03.** When the user invokes `import FILE`, the plugin shall read the export (transparently decompressing a gzipped file, detected by magic bytes) and restore each session record's `fields` to `<hash>.<field>`, setting each file's mtime to the record's recorded `mtime` so the restored sessions preserve the activity-window signal (WIP-03) rather than appearing freshly active. It shall be **non-destructive** by default: a session already present on disk is skipped (a restore cannot clobber live sessions), and `--force` is required to overwrite; state files not named in the export are never removed. It shall refuse an unrecognized `schemaVersion` rather than guess at a format it cannot faithfully restore (per the no-fallbacks convention), and shall reject any record whose hash is not the expected hex form or whose field name would resolve outside the state directory (path-traversal defense on a crafted export), counting rather than writing them.
 
 **DUMP-04.** `export` and `import` are full-fidelity by design: the export contains raw conversation text (`latest_turn`, `latest_turn_full`, a mode's note) and local filesystem paths (`transcript_path`), so it is treated as a sensitive artifact — the raw payload *is* the product for a restore, so the control is how the artifact is stored and shared, not dropping fields. This is the deliberate exception to the shape-not-payload default that governs derived logs; a future shape-only export for analytics would be a separate surface with its own `schemaVersion`.
+
+### 3.13 Diagnostics (DIAG)
+
+Every external command beacon runs is swallowed on failure, so a display problem can never crash a Claude Code hook (NFR-06). That guarantee is why a persistent failure can go a whole session unnoticed: the swallow is correct, the silence is not. DIAG is the other half — a record of what was suppressed, and the command that reads it back.
+
+**DIAG-01.** The plugin shall record each swallowed external-command failure to `<DATA_DIR>/logs/errors.log` as one JSON object per line, carrying `at` (UTC ISO-8601), `op` (the failing operation as `<subsystem>.<detail>`, e.g. `cli.set-name`), `detail` (the error text), `exit` (the exit status, where the failure was a non-zero exit rather than a raised exception), and `session` (the per-pane hash). A non-zero exit is recorded as well as a raised exception: the render CLI reports a failed iTerm2 operation by exiting non-zero with stderr, so a record keyed only on exceptions would miss the failure class this log exists for.
+
+**DIAG-02.** Where a `detail` spans multiple lines or exceeds the per-record cap, the plugin shall flatten it to a single line and truncate it, keeping each record well below `PIPE_BUF`. Concurrent sessions append to one file, and POSIX guarantees an atomic append only below that size — a record that exceeds it interleaves with another session's and renders both unparseable.
+
+**DIAG-03.** While the log exceeds its size cap, the plugin shall trim it to its most recent entries. The tail is what `doctor` reports on, and a repeating failure has already made its own older entries redundant.
+
+**DIAG-04.** The plugin shall record only failures of operations it shells out to — the render CLI, `osascript`, `git`, and resolver providers (NFR-05). It shall not record ordinary absences: a state file that does not exist, a non-JSON line in a Claude Code transcript, or a project manifest it cannot parse are normal operation, and recording them would bury the failures the log exists to surface.
+
+**DIAG-05.** When the user invokes `doctor`, the plugin shall report the state of the install: which `<DATA_DIR>` the current context resolved and whether the recorded pointer (§6.2) agrees, whether the state directory is writable, whether the `$PATH` wrapper is present (CMD-13), and whether the Claude Code status line is wired (STATUSLINE-01). Where the iTerm2 adapter applies, it shall also report whether iTerm2 is installed and running, whether every dynamic profile is present (STATUS-BAR-01 / RENDER-05), and whether the session's recorded pane handle (FOCUS-02) is still reachable through Apple Events. That last check is the end-to-end one: *installed* and *running* can both hold while every session lookup fails.
+
+**DIAG-06.** When the user invokes `doctor`, the plugin shall report the errors recorded within its `--since` window, grouped by `op` with an occurrence count and the most recent entry, each accompanied by the advice for that operation — a check that can fail without an actionable next step wastes the reader's time. `--json` shall emit the checks and the entries as one machine-readable object.
+
+**DIAG-07.** If any check fails or any error falls within the window, then `doctor` shall exit non-zero, so it can gate a health check rather than only inform a reader.
+
+**DIAG-08.** An adapter that does not apply shall not read as a fault: on a box without iTerm2 the sessions view is the whole supported surface (NFR-06), and `doctor` shall report that state as healthy.
 
 ---
 
@@ -948,6 +970,8 @@ The footer is the home rather than an iTerm2 status-bar segment: the refs are on
 **NFR-06.** When an optional integration is unavailable (`tack`, `gh`, or `glab` absent, or `osascript` unavailable off-macOS), the plugin shall degrade gracefully — text signals continue to work, the affected provider or action is skipped, and no hook or command fails. Every remaining integration is a `$PATH` binary probed with `_which`.
 
 **NFR-07.** The plugin shall function in directories that are not inside any recognized project (no git, no manifest).
+
+**NFR-12.** A swallowed failure shall not be a silent one. Every site that suppresses an error to satisfy NFR-06 shall record it per DIAG-01, so the guarantee that a display failure cannot crash a hook does not also make it undetectable.
 
 ### 5.3 Isolation
 

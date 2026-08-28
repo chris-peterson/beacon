@@ -190,8 +190,12 @@ def cmd_clear_screen(_args):
 # where select/activate can't reach it, so de-miniaturize the captured window
 # first (a no-op when it isn't minimized). Indented with spaces, not tabs:
 # AppleScript is whitespace-insensitive and spaces survive string embedding.
+# Every tell targets the *bundle id*, never a name: an Xcode build of iTerm2
+# ships as `iTerm2.app` where the release is `iTerm.app`, so `tell application
+# "iTerm2"` matches the dev build by name and every lookup fails with
+# `no session (3)` against its empty window list.
 _FOCUS_APPLESCRIPT = '''
-tell application "iTerm2"
+tell application id "com.googlecode.iterm2"
   set theID to "__SID__"
   set targetSession to missing value
   set targetTab to missing value
@@ -247,7 +251,7 @@ def cmd_focus(args):
 # re-evaluate it live as SetUserVar updates flow in, so it need only be set once
 # per profile swap rather than on every render. Indented with spaces (see focus).
 _SET_NAME_APPLESCRIPT = '''
-tell application "iTerm2"
+tell application id "com.googlecode.iterm2"
   set theID to "__SID__"
   repeat with w in windows
     repeat with t in tabs of w
@@ -359,7 +363,7 @@ def _is_iterm_running() -> bool:
 
     try:
         r = subprocess.run(
-            ["osascript", "-e", 'application "iTerm" is running'],
+            ["osascript", "-e", 'application id "com.googlecode.iterm2" is running'],
             capture_output=True, text=True, timeout=5,
         )
     except Exception:
@@ -514,7 +518,7 @@ def _configure_write(args):
     self_path = os.path.realpath(__file__)
     # Same running-check as _is_iterm_running, in shell: pgrep would fall
     # through immediately and write before iTerm2 had finished quitting.
-    still_up = "osascript -e " + shlex.quote('application "iTerm" is running')
+    still_up = "osascript -e " + shlex.quote('application id "com.googlecode.iterm2" is running')
     helper = (
         f'while [ "$({still_up})" = true ]; do sleep 0.5; done; '
         f"python3 {shlex.quote(self_path)} configure --write --yes "
@@ -526,7 +530,7 @@ def _configure_write(args):
         subprocess.Popen(["nohup", "zsh", "-c", helper], stdout=log,
                          stderr=subprocess.STDOUT, start_new_session=True)
     print(f"Quitting iTerm2 — it relaunches with the new layout (log: {log_path}).")
-    subprocess.run(["osascript", "-e", 'tell application "iTerm" to quit'],
+    subprocess.run(["osascript", "-e", 'tell application id "com.googlecode.iterm2" to quit'],
                    capture_output=True, timeout=10)
 
 
