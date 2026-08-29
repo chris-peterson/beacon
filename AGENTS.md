@@ -76,6 +76,14 @@ No hook or render ever runs `defaults write com.googlecode.iterm2 ...`, and beac
 
 Clicking a session in the dashboard raises its iTerm2 window. The chain: dashboard `POST /focus {hash}` → `serve` resolves `hash` → the recorded `iterm_session_id` GUID **server-side** (the GUID never reaches the browser) → `beacon-iterm focus <guid>`. The CLI's osascript **captures the target with no side effects, then** selects session→tab→window→activate — selecting mid-enumeration reorders iTerm2's window list and throws `Invalid index -1719` on nested splits. The `/focus` route is loopback-only with a Host-header rebind check and an Origin allowlist (FOCUS-04); `GET /wip.json` keeps its permissive CORS. Non-iTerm sessions record no handle and are not focusable (`focusable: false` in the payload).
 
+## Releasing
+
+Releases are dispatched, not tagged by hand: run the **Release** workflow with a
+bump level, and shipyard derives the version from `plugin.yml`, retitles
+`CHANGELOG.md`'s `## Unreleased` section, commits, tags that commit, and
+publishes. Write the notes into `## Unreleased` first — reading what landed is
+what picks the level.
+
 ## Conventions
 
 - **No fallbacks.** Don't add a "simple alternative" path inside a try/except around the real logic. Let primary failures surface. (`_cli()` is an exception — it deliberately swallows errors so a bad CLI invocation can't crash a hook.)
