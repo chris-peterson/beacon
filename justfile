@@ -1,26 +1,31 @@
+# shipyard runs from its git ref, with no checkout and no install. CI is the
+# writer for what lands; these recipes are for seeing the projection first.
+shipyard := "uvx --from 'git+https://github.com/chris-peterson/shipyard@v2' shipyard"
+
 default:
     @just --list
 
-# regenerate all generated artifacts from source (describe, plugin.json, docs)
+# regenerate all generated artifacts from source (describe, plugin.json, hooks.json, docs)
 generate:
-    scripts/shipyard generate
+    {{shipyard}} generate
 
-# validate source projects cleanly and preview the pending projection (no write)
+# read what the projection job would commit, without keeping it; `git restore .` discards
 check:
-    scripts/shipyard generate --dry-run
+    {{shipyard}} generate
+    git --no-pager diff --stat
 
 # preview the docsify docs site locally
 docs:
-    scripts/shipyard build-docs
+    {{shipyard}} build-docs
     docsify serve docs --open
 
 # regenerate .claude-plugin/plugin.json from plugin.yml (the canonical descriptor)
 plugin-json:
-    scripts/shipyard gen-plugin-json
+    {{shipyard}} gen-plugin-json
 
 # resync plugin.yml suite.describe from the skills/rules/hooks sources
 describe:
-    scripts/shipyard gen-describe
+    {{shipyard}} gen-describe
 
 # launch an interactive Claude Code session with the local plugin loaded
 try:

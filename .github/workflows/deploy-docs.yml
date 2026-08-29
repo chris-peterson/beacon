@@ -1,8 +1,7 @@
 name: Deploy docs
 
-# Delegates to shipyard's reusable docs deploy (float to @actions during
-# consolidation). Pages permissions are granted here because reusable-workflow
-# permissions are capped by the caller's token.
+# Delegates to shipyard's reusable docs deploy. Pages permissions are granted
+# here because reusable-workflow permissions are capped by the caller's token.
 
 on:
   push:
@@ -15,4 +14,4 @@ permissions:
 
 jobs:
   deploy:
-    uses: chris-peterson/shipyard/.github/workflows/deploy-docs.yml@v1
+    uses: chris-peterson/shipyard/.github/workflows/deploy-docs.yml@v2
