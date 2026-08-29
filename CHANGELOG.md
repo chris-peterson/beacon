@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.7.1
 
 ### A session keeps its project when the agent works in a scratch directory
 
