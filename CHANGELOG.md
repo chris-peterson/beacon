@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### A session keeps its project when the agent works in a scratch directory
+
+Claude Code re-fires SessionStart when it compacts a session's context, and the cwd it passes is its own live working directory rather than the one the session started in. beacon read that as a new session: it re-pinned the navigational anchor onto wherever the agent happened to be, and cleared the pinned label, the accumulated deliverables, and the status-line window along with it. A long session that compacted while working in a temp directory came back named after that directory. Compaction and forks now keep the anchor the session already has and refresh only the chips, the way the end of a turn does.
+
+Outside a recognized project the project chain also named the bare directory, so a session in macOS's `$TMPDIR` read as a project called `T` on the tab while the sessions view showed the full path. The last chained tier now names a *project root* only, and where there is none the abbreviated path answers (PROV-06) — the same value the anchor already recorded, so the two surfaces agree.
+
 ## 2.7.0
 
 ### Tab labels come back on a machine with two iTerm2 builds

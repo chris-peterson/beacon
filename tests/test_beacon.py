@@ -2898,6 +2898,114 @@ class SessionAnchor(BeaconTest):
         self.assertIsNone(self.beacon.read_state("anchor.icon"))
 
 
+class ProjectOutsideAProject(BeaconTest):
+    """PROV-01 / PROV-06: the `dir` tier names a *project root*. Where no
+    marker is found the chain falls through to the abbreviated path, so a
+    session parked in a scratch directory reads as `/tmp`, not `tmp`."""
+
+    def _root(self, *parts) -> Path:
+        d = Path(self._tmp.name).joinpath("home", *parts)
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_the_dir_tier_names_the_project_root(self):
+        root = self._root("widgets")
+        (root / ".git").mkdir()
+        nested = self._root("widgets", "src")
+        with mock.patch("pathlib.Path.home", return_value=root.parent):
+            self.assertEqual(self.beacon.p_project_dir(nested), "widgets")
+
+    def test_the_dir_tier_is_empty_without_a_marker(self):
+        scratch = self._root("scratch")
+        with mock.patch("pathlib.Path.home", return_value=scratch.parent):
+            self.assertIsNone(self.beacon.p_project_dir(scratch))
+
+    def test_the_chain_falls_through_to_the_path(self):
+        with mock.patch.object(self.beacon, "p_git_remote", return_value=None), \
+             mock.patch.object(self.beacon, "p_package_name", return_value=None):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["project"], "/tmp")
+        self.assertEqual(state["project_provider"], "pwd")
+
+    def test_the_system_temp_dir_is_not_a_project(self):
+        # macOS resolves `$TMPDIR` to a path ending in `/T`, so naming the bare
+        # directory painted a session that had wandered there as project "T".
+        tmpdir = Path("/private/var/folders/xm/w8qj7c7521x2w0dkkpl8b9zm0000gp/T")
+        with mock.patch.object(self.beacon, "p_git_remote", return_value=None), \
+             mock.patch.object(self.beacon, "p_package_name", return_value=None):
+            state = self.beacon.resolve(tmpdir)
+        self.assertEqual(state["project"], str(tmpdir))
+
+
+class CompactionIsNotAFreshStart(BeaconTest):
+    """HOOK-08: the anchor is the cwd Claude was *invoked* with. Claude Code
+    re-fires SessionStart with `source` of `compact` (context rebuilt in place)
+    and `fork` (a new id for the conversation already in the pane) — neither
+    begins a session, and by then the payload carries wherever the agent has
+    navigated, so adopting it repins the session onto a directory the work
+    merely passed through."""
+
+    def setUp(self):
+        super().setUp()
+        self.chip_cwds: list[str] = []
+        p = mock.patch.object(
+            self.beacon, "_publish_chips",
+            side_effect=lambda cwd: self.chip_cwds.append(str(cwd).replace("\\", "/")),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+
+    def _fire(self, source: str, cwd: str):
+        args = mock.Mock(event="SessionStart")
+        payload = {"cwd": cwd, "source": source}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def _anchor(self) -> str:
+        return (self.beacon.read_state("anchor.cwd") or "").replace("\\", "/")
+
+    def test_compaction_keeps_the_startup_anchor(self):
+        self._fire("startup", "/work/acme/widget")
+        self._fire("compact", "/private/var/folders/xm/abc/T")
+        self.assertEqual(self._anchor(), "/work/acme/widget")
+
+    def test_a_fork_keeps_the_startup_anchor(self):
+        self._fire("startup", "/work/acme/widget")
+        self._fire("fork", "/private/var/folders/xm/abc/T")
+        self.assertEqual(self._anchor(), "/work/acme/widget")
+
+    def test_compaction_keeps_the_pinned_label(self):
+        self._fire("startup", "/work/acme/widget")
+        self.beacon.write_state("override.task", "shipping the release")
+        self._fire("compact", "/work/acme/widget")
+        self.assertEqual(self.beacon.read_state("override.task"), "shipping the release")
+
+    def test_compaction_keeps_the_acquisition_window(self):
+        self._fire("startup", "/work/acme/widget")
+        started = self.beacon.read_state("session_started_at")
+        self.beacon.write_state("deliverables", json.dumps([{"ref": "#4"}]))
+        self._fire("compact", "/work/acme/widget")
+        self.assertEqual(self.beacon.read_state("session_started_at"), started)
+        self.assertIsNotNone(self.beacon.read_state("deliverables"))
+
+    def test_compaction_still_refreshes_the_chips(self):
+        self._fire("startup", "/work/acme/widget")
+        self.chip_cwds.clear()
+        self._fire("compact", "/private/var/folders/xm/abc/T")
+        self.assertEqual(self.chip_cwds, ["/work/acme/widget"])
+
+    def test_a_fresh_start_still_reanchors(self):
+        self._fire("startup", "/work/acme/widget")
+        self._fire("clear", "/work/acme/other")
+        self.assertEqual(self._anchor(), "/work/acme/other")
+
+    def test_compaction_before_any_anchor_still_anchors(self):
+        # A pane whose first beacon-visible event is a compaction has no anchor
+        # to keep, so the payload cwd is the only navigational signal there is.
+        self._fire("compact", "/work/acme/widget")
+        self.assertEqual(self._anchor(), "/work/acme/widget")
+
+
 class LatestTurn(BeaconTest):
     """WIP-11: latest_turn is auto-derived at hook time from observable events
     — the submitted prompt (human) and the last assistant text (agent) — with

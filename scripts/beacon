@@ -205,6 +205,17 @@ ICON_CONTENT_TYPES = {
     ".webp": "image/webp",
 }
 
+# SessionStart's `source` is one of `startup`, `clear`, `resume`, `compact`,
+# `fork`. The first two begin a session, and only those drop the prior tenant's
+# signals; these three continue one already under way.
+CONTINUING_SESSION_SOURCES = ("resume", "fork", "compact")
+
+# The subset that fires without a new `claude` invocation. Claude Code fills a
+# hook payload's `cwd` from its own live `process.cwd()`, which follows the
+# agent's navigation, so for these the value is wherever the session happens to
+# be — not the cwd it was started in that HOOK-08 anchors on.
+MID_SESSION_START_SOURCES = ("fork", "compact")
+
 # Slash commands that should reset stale per-session state when invoked
 # mid-session. `/recipe` re-bootstraps a session from scratch (it loads a
 # playbook), so signals from the prior task — pending attention, a stale
@@ -886,8 +897,12 @@ def p_git_remote(cwd: Path):
 
 
 def p_project_dir(cwd: Path):
-    name = find_project_root(cwd).name
-    return name or None
+    """The **project root's** name (PROV-01's last chained tier). Strict where
+    `find_project_root` is lenient: an answer for every cwd starves PROV-06's
+    pwd fallback, and a directory that is no project makes a poor identity —
+    macOS resolves `$TMPDIR` to a path whose last segment is `T`."""
+    root = _project_root(cwd)
+    return (root.name or None) if root else None
 
 
 def p_branch(cwd: Path):
@@ -5603,19 +5618,27 @@ def cmd_hook(args):
         return
 
     if event == "SessionStart":
-        cwd_str = payload.get("cwd") or os.getcwd()
         # State files key on the pane (the GUID of ITERM_SESSION_ID, per
         # _session_seed), which outlives any single Claude session. A fresh
         # `claude` invocation (source=startup) or `/clear` (source=clear) in a
         # pane that hosted a prior session would otherwise inherit that
         # session's stale `activity = waiting` / `pending-attention` and
-        # render red. A resumed session (source=resume) continues prior state
-        # by design.
+        # render red. The continuing sources carry prior state forward by
+        # design.
         source = (payload.get("source") or "").lower()
-        if source != "resume":
+        if source not in CONTINUING_SESSION_SOURCES:
             _wipe_session_for_fresh_start()
         _record_focus_handle()
-        _publish_anchor(Path(cwd_str))
+        anchored = read_state("anchor.cwd") if source in MID_SESSION_START_SOURCES else ""
+        if anchored:
+            # HOOK-08: the anchor is the cwd Claude was *invoked* with, and a
+            # compaction or a fork fires mid-session — by then the payload
+            # carries `process.cwd()` as the agent has since moved it, so
+            # adopting it repins the session onto a scratch directory the work
+            # merely passed through. The chips still refresh, as at Stop.
+            _publish_chips(Path(anchored))
+        else:
+            _publish_anchor(Path(payload.get("cwd") or os.getcwd()))
 
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
