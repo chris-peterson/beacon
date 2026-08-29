@@ -2921,10 +2921,13 @@ class ProjectOutsideAProject(BeaconTest):
             self.assertIsNone(self.beacon.p_project_dir(scratch))
 
     def test_the_chain_falls_through_to_the_path(self):
+        # PROV-06's own worked example: `/tmp` renders as `/tmp`, not `tmp`.
+        # Separators are normalized because the fallback is `str(cwd)`, which
+        # a Windows runner renders with backslashes.
         with mock.patch.object(self.beacon, "p_git_remote", return_value=None), \
              mock.patch.object(self.beacon, "p_package_name", return_value=None):
             state = self.beacon.resolve(Path("/tmp"))
-        self.assertEqual(state["project"], "/tmp")
+        self.assertEqual(state["project"].replace("\\", "/"), "/tmp")
         self.assertEqual(state["project_provider"], "pwd")
 
     def test_the_system_temp_dir_is_not_a_project(self):
