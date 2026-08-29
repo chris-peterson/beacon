@@ -12,6 +12,15 @@ icon: docs/favicon.svg
 license: MIT
 keywords: [dashboard, session-management, sessions, cross-platform, workflow, iterm2, macos]
 
+validate:
+  accept:
+    - warning: root
+      path: CLAUDE.md
+      because: >-
+        CLAUDE.md at the root is this repo's own agent instructions, not context
+        the plugin ships. It is a pointer to AGENTS.md plus the @AGENTS.md ref
+        that loads it.
+
 # → marketplace.json entry
 marketplace:
   category: development
