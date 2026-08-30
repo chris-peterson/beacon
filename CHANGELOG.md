@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.0
 
 ### An uncolored tab paints itself again
 
