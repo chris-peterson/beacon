@@ -4266,13 +4266,18 @@ def apply(state: dict):
         _set_session_title()
 
     # RENDER-04: tab color for the logical color state (and the badge color too
-    # when the badge is enabled). Repaint when the state changed, or
-    # unconditionally after a profile switch wiped the OSC.
-    if switched or color_state != prev.get("color_state"):
-        hex_color = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
-        if badge_on:
-            _cli("badge-color", hex_color)
-        _cli("tab-color", hex_color)
+    # when the badge is enabled). Emitted every render, deliberately not gated on
+    # the snapshot the way the identity vars below are: the color is session OSC
+    # state beacon does not own exclusively. `SetProfile` wipes it (§6.10) — and
+    # so does a `claude` nested in this pane disengaging on its way out, whose
+    # OSC reaches this tty while its state lands in its own bucket (HOOK-12). A
+    # persisted gate cannot see a wipe it did not cause, so it suppresses the one
+    # repaint that would recover the tab and leaves it unpainted for the rest of
+    # the session. Same argument _publish_chips makes for the chip user vars.
+    hex_color = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
+    if badge_on:
+        _cli("badge-color", hex_color)
+    _cli("tab-color", hex_color)
 
     # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. The badge
     # text is always the raw project — no mode decorates it (BADGE-11). Republish

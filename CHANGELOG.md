@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### An uncolored tab paints itself again
+
+The tab color is a per-session OSC override, and things other than beacon clear
+it: any `SetProfile=` wipes it, including one a nested `claude` emits on its way
+out — that OSC reaches the pane it was started in, while its state goes to a
+bucket of its own. beacon painted the tab only when the activity moved, compared
+against the last-rendered snapshot, so a wipe it hadn't caused was invisible to
+it and the tab stayed uncolored for the rest of the session. A pane sitting at
+`working` through a long run could go the whole run unpainted.
+
+The color is now re-emitted on every render, the way the status-bar chips already
+were and for the same reason: beacon can't tell whether the override it wrote
+last is still there, so it writes it again. A lost tab color comes back on the
+next hook.
+
 ## 2.7.2
 
 ### A nested `claude` no longer takes over the pane it was started in

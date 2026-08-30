@@ -255,8 +255,8 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
     """RENDER-04 / §6.6: the first render switches into the base `beacon`
     profile and sets the badge format; for ready/busy/blocked, state color is
     delivered by OSC badge-color/tab-color with no per-state profile (paused is
-    the one exception — see PausedSwapsProfile, RENDER-05). Subsequent
-    non-paused renders repaint color only when the logical state changes."""
+    the one exception — see PausedSwapsProfile, RENDER-05). Every render repaints
+    the color, so a wipe beacon did not cause recovers on the next hook."""
 
     def test_first_render_switches_base_profile_and_sets_ready_color(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
@@ -281,17 +281,21 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
             "A state transition repaints via OSC color, never a profile switch",
         )
 
-    def test_unchanged_state_emits_no_color(self):
+    def test_unchanged_state_still_repaints_color(self):
         self.beacon.apply({**_base_state(), "activity": "working"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "activity": "working"})
 
+        busy = self.beacon.COLOR_PALETTE["busy"]
+        self.assertIn(("tab-color", busy), self.cli_calls,
+                      "The color is re-emitted every render: beacon cannot see a "
+                      "wipe it did not cause, so gating on the snapshot would "
+                      "strand the tab unpainted")
+        self.assertIn(("badge-color", busy), self.cli_calls)
         self.assertEqual(
-            [c for c in self.cli_calls
-             if c[0] in ("badge-color", "tab-color", "set-profile")],
-            [],
-            "Identical logical state must not repaint color or switch profiles",
+            [c for c in self.cli_calls if c[0] == "set-profile"], [],
+            "Identical logical state must not switch profiles",
         )
 
 
@@ -1494,7 +1498,7 @@ class ModeNoteStaysOffLineOne(BeaconTest):
         self.beacon.apply({**_base_state(), "activity": "working"})
         self.assertIn(("uservar", "beacon_title_prefix", ""), self.cli_calls)
 
-    def test_note_alone_does_not_repaint(self):
+    def test_note_alone_moves_no_surface(self):
         # Adding a note without moving either axis is data-only.
         self.beacon.apply({**_base_state(), "mode": "pause", "note": ""})
         self.cli_calls.clear()
@@ -1504,8 +1508,15 @@ class ModeNoteStaysOffLineOne(BeaconTest):
         })
 
         self.assertEqual(
-            [c for c in self.cli_calls if c[0] in ("badge-color", "tab-color")], [],
-            "neither axis moved → no color repaint; the note is data",
+            [c for c in self.cli_calls if c[0] == "set-profile"], [],
+            "neither axis moved → no profile swap; the note is data",
+        )
+        # The color is re-emitted every render, but at the hex the axes already
+        # resolved to — a note cannot move it.
+        idle = self.beacon.COLOR_PALETTE["ready"]
+        self.assertEqual(
+            [c for c in self.cli_calls if c[0] == "tab-color"],
+            [("tab-color", idle)],
         )
 
 
