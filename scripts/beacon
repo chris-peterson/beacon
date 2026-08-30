@@ -569,8 +569,28 @@ def _first_line(text: str) -> str:
 
 
 def session_hash() -> str:
-    seed = _session_seed() or "default"
+    return _hash_seed(_session_seed() or "default")
+
+
+def _hash_seed(seed: str) -> str:
     return hashlib.sha1(seed.encode()).hexdigest()[:16]
+
+
+def _guest_seed() -> str | None:
+    """HOOK-12: the seed of a session that was handed its own bucket because
+    the pane it started in was already held.
+
+    A `claude` spawned from inside a live session inherits that session's
+    ITERM_SESSION_ID, so the pane GUID names the *host's* bucket. SessionStart
+    hands such a guest a bucket of its own and records `guest_of` in it; the
+    guest's later hooks, and a `beacon set` from its subprocesses, all read
+    that marker to land in the same place — none of them sees the payload the
+    decision was made from."""
+    claude_sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    if not claude_sid:
+        return None
+    seed = f"claude-session:{claude_sid}"
+    return seed if (STATE_DIR / f"{_hash_seed(seed)}.guest_of").exists() else None
 
 
 def _session_seed() -> str | None:
@@ -595,7 +615,7 @@ def _session_seed() -> str | None:
         # raw CLAUDE_CODE_SESSION_ID branch below.
         if iterm.startswith("claude-session:"):
             return iterm
-        return iterm.rsplit(":", 1)[-1]
+        return _guest_seed() or iterm.rsplit(":", 1)[-1]
     claude_sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
     if claude_sid:
         return f"claude-session:{claude_sid}"
@@ -2022,7 +2042,10 @@ def _resolve_session(sh: str, session_index: dict | None = None,
     branch tier of the route fallback) — used for the cheap first pass of a
     fleet scan, since branch feeds neither the dedup nor the activity window,
     so it is filled in only for the sessions actually emitted."""
-    project = _read_state_for(sh, "anchor.project") or _read_state_for(sh, "override.project")
+    # Override first, as the render chain reads it (RES-01/OVR-01). Reading the
+    # anchor first meant `beacon set project` repaired the tab and left the row
+    # showing the anchored name — one session, two answers.
+    project = _read_state_for(sh, "override.project") or _read_state_for(sh, "anchor.project")
     cwd = _read_state_for(sh, "anchor.cwd")
     cwd_path = Path(cwd).expanduser() if cwd else None
     display_cwd = _local_path_at(cwd_path) if cwd_path else None
@@ -5565,6 +5588,54 @@ def _record_focus_handle() -> None:
             write_state("iterm_session_id", guid)
 
 
+def _pane_held_by_other(claude_sid: str, source: str) -> bool:
+    """HOOK-12: whether this SessionStart belongs to a `claude` nested inside a
+    session that already holds the pane.
+
+    State keys on the pane GUID (§6.2), and a nested `claude` inherits the
+    pane through ITERM_SESSION_ID — so without this its SessionStart wipes the
+    live session's signals (HOOK-08a) and repins the anchor onto wherever the
+    guest was launched, which the host then renders as its own identity for the
+    rest of its life. Three things have to hold together to read as a guest:
+    the pane is engaged (BADGE-14, a session is live in it), the bucket records
+    a *different* Claude session id, and the source is a fresh `claude`
+    invocation. `clear` is excluded because there it is the incumbent
+    restarting itself — SessionEnd skips disengagement for `clear` (HOOK-09),
+    so the marker is still down and the recorded id is still the old one, which
+    is exactly a guest's shape.
+
+    A pane whose session died without SessionEnd keeps its marker, so the next
+    real session started there reads as a guest and takes a bucket of its own.
+    That costs one stale row until `prune`; the reverse error costs a live
+    session its identity, which is what this exists to stop."""
+    if source not in ("", "startup"):
+        return False
+    iterm = os.environ.get("ITERM_SESSION_ID") or ""
+    if not iterm or iterm.startswith("claude-session:"):
+        return False
+    marker = _engagement_marker_path()
+    if not (marker and marker.exists()):
+        return False
+    pane_bucket = _hash_seed(iterm.rsplit(":", 1)[-1])
+    incumbent = _read_state_for(pane_bucket, "claude_session_id")
+    return bool(incumbent) and incumbent != claude_sid
+
+
+def _claim_guest_bucket(claude_sid: str, pane: str) -> None:
+    """Give a guest (HOOK-12) its own bucket and re-key this process onto it.
+
+    The marker is written by explicit path: `write_state` would resolve through
+    `_guest_seed`, which can't answer yes until the marker it is being asked
+    about exists. Rewriting ITERM_SESSION_ID to the same `claude-session:` form
+    a non-iTerm session carries then moves the guest off the host's *pane*
+    files too — its own engagement marker and cwd handoff, and no focus handle,
+    since it owns no pane to raise."""
+    seed = f"claude-session:{claude_sid}"
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    (STATE_DIR / f"{_hash_seed(seed)}.guest_of").write_text(pane)
+    os.environ["ITERM_SESSION_ID"] = seed
+
+
 def cmd_hook(args):
     payload = {}
     try:
@@ -5594,7 +5665,23 @@ def cmd_hook(args):
     # write_state below so the claude_session_id record lands in the right bucket.
     if not os.environ.get("ITERM_SESSION_ID") and claude_sid:
         os.environ["ITERM_SESSION_ID"] = f"claude-session:{claude_sid}"
+    source = (payload.get("source") or "").lower()
     if claude_sid:
+        # `_guest_seed` reads the env var Claude Code sets in every in-session
+        # subprocess; the payload names the session this hook is *for*, so it
+        # is the authority when both are present.
+        os.environ["CLAUDE_CODE_SESSION_ID"] = claude_sid
+        pane = os.environ.get("ITERM_SESSION_ID") or ""
+        if event == "SessionStart" and _pane_held_by_other(claude_sid, source):
+            _claim_guest_bucket(claude_sid, pane.rsplit(":", 1)[-1])
+        else:
+            # A guest's later hooks (its own Stop, SessionEnd) arrive carrying
+            # the host's pane id, same as its SessionStart did. Re-key on the
+            # marker so they follow their SessionStart into the guest's bucket
+            # instead of resuming writes to the host's pane files.
+            guest = _guest_seed()
+            if guest:
+                os.environ["ITERM_SESSION_ID"] = guest
         write_state("claude_session_id", claude_sid)
     transcript_path = payload.get("transcript_path") or ""
     if transcript_path:
@@ -5625,7 +5712,6 @@ def cmd_hook(args):
         # session's stale `activity = waiting` / `pending-attention` and
         # render red. The continuing sources carry prior state forward by
         # design.
-        source = (payload.get("source") or "").lower()
         if source not in CONTINUING_SESSION_SOURCES:
             _wipe_session_for_fresh_start()
         _record_focus_handle()

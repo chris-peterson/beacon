@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### A nested `claude` no longer takes over the pane it was started in
+
+Per-session state keys on the iTerm2 pane, which is what lets a pane keep one
+identity across a `/clear` or a compaction. A `claude` started from *inside* a
+live session — by a hook, a script, a terminal integration — inherits that pane
+id, so its own SessionStart landed in the running session's state: wiping the
+label, the turn history and the accumulated deliverables, and repinning the
+session's project onto wherever the nested one happened to launch. A session
+working in a repo would go on reporting a scratch directory as its project for
+the rest of its life, on the tab, the window title and the dashboard.
+
+A SessionStart that finds the pane already held by a different session now takes
+a bucket of its own, and its later hooks follow it there. The host keeps its
+anchor, its signals, its focus handle and its pane files.
+
+`beacon set project` also reaches the sessions view now. The row read the
+anchored project ahead of the pinned one, so pinning a label repaired the tab
+and left the dashboard disagreeing with it.
+
 ### Every command, on the docs site, recorded from the binary
 
 The docs sampled the handful of commands you type most and left the rest to
