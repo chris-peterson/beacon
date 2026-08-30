@@ -17,6 +17,18 @@ were and for the same reason: beacon can't tell whether the override it wrote
 last is still there, so it writes it again. A lost tab color comes back on the
 next hook.
 
+### A release phase marks itself
+
+Entering `release` mode meant remembering to run `beacon release` in the middle
+of cutting one. beacon now watches for the release skill being invoked — the
+agent calling `anchor:release`, or you typing `/anchor:release` or `/release` —
+and enters the mode itself, so the 🚀 reaches the tab whether or not anyone
+thought about the tab.
+
+Nothing is asked of anchor, which has no idea beacon is listening, and nothing
+changes about how you leave the mode. A note you set by declaring the phase
+yourself survives the skill firing afterward.
+
 ## 2.7.2
 
 ### A nested `claude` no longer takes over the pane it was started in

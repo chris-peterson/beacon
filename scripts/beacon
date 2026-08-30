@@ -540,6 +540,19 @@ MODE_SPECS = {
 # the same single-sourcing ACTIVITIES gets from ACTIVITY_TO_COLOR_STATE.
 MODES = tuple(MODE_SPECS)
 
+# Skills whose invocation declares a phase beacon already has a mode for
+# (HOOK-13). The key is the skill name as it arrives — namespaced when the agent
+# invokes it, bare when the user types it — so the subscription holds whichever
+# plugin supplies the skill and whichever form the session reaches for. A bare
+# `/release` from some other plugin still means a release is underway, which is
+# what the mode records.
+SKILL_MODE_SUBSCRIPTIONS = {
+    "anchor:release": "release",
+    "release": "release",
+}
+
+TYPED_SKILL_RE = re.compile(r"^\s*/([A-Za-z0-9:_-]+)")
+
 
 def _mode_glyph(mode: str | None) -> str:
     """A mode's tab glyph, "" in the dev cycle (which carries no mark)."""
@@ -826,6 +839,41 @@ def write_mode(name: str, note: str = "") -> None:
         remove_state("mode")
         return
     write_state("mode", json.dumps({"name": name, "note": note}, indent=2))
+
+
+def _invoked_skill(payload: dict) -> str:
+    """The skill this payload reports as invoked, from either shape the
+    invocation arrives in. An agent invocation emits a `Skill` tool call
+    carrying the name; a user-typed `/name` emits no tool call at all — Claude
+    Code expands the skill body straight into the prompt, so UserPromptSubmit is
+    the only event and the typed command heads it. Reading one shape is blind to
+    the other in silence, which is how the retired HOOK-11 subscriber spent its
+    life: the tool call covers only what the agent invoked, and typed commands
+    are most of what a human runs.
+
+    Only the prompt's first line counts, so a turn that *mentions* the command
+    ("run /anchor:release when the pipeline is green") declares nothing."""
+    if payload.get("tool_name") == "Skill":
+        tool_input = payload.get("tool_input")
+        if isinstance(tool_input, dict):
+            return str(tool_input.get("skill") or "")
+        return ""
+    first_line = str(payload.get("prompt") or "").split("\n", 1)[0]
+    match = TYPED_SKILL_RE.match(first_line)
+    return match.group(1) if match else ""
+
+
+def _enter_subscribed_mode(payload: dict) -> None:
+    """Enter the mode a subscribed skill's invocation declares (HOOK-13).
+
+    Re-entering the mode already held is skipped rather than rewritten: entering
+    a mode writes the note with it (RES-07), so a second write would drop a note
+    the user set when they declared the phase themselves. Both hooks that call
+    this can fire for one invocation, and the publisher can be invoked twice in a
+    session, so the reaction has to be safe to repeat."""
+    mode = SKILL_MODE_SUBSCRIPTIONS.get(_invoked_skill(payload))
+    if mode and read_mode()[0] != mode:
+        write_mode(mode)
 
 
 def read_activity() -> str:
@@ -5750,6 +5798,9 @@ def cmd_hook(args):
             # dropping the note with the mode. The other modes are deliberate
             # declarations that persist until explicitly left.
             write_mode(DEV_MODE)
+        # After the auto-resume above, which would otherwise drop a mode this
+        # same prompt just declared.
+        _enter_subscribed_mode(payload)
         # The activity write is unconditional now. It used to sit in the else
         # branch, because a mode override would have discarded it anyway — under
         # the split the two are disjoint, so a session that submits a prompt
@@ -5816,6 +5867,7 @@ def cmd_hook(args):
         # pending-attention: a late PostToolUse arriving after a fresh
         # Notification must not undo the sticky waiting marker.
         write_state("activity", "working")
+        _enter_subscribed_mode(payload)
 
     render()
 

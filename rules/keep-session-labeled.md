@@ -18,6 +18,6 @@ beacon shows every concurrent Claude Code session in one sessions view — `beac
 
 - **Don't set `activity`.** The hooks own the ready / busy / blocked transitions, and there is no way to pin it — a pinned activity outranks what the hooks observe and goes stale the moment the session moves on.
 
-- **Set a `mode` only when a phase genuinely starts**, and prefer the named verb: `beacon release`, `beacon retro`, `beacon done`. A mode marks the tab with its glyph and persists until it is left, so it is a declaration, not a status update. The user parks a session themselves with `/beacon:pause`.
+- **Set a `mode` only when a phase genuinely starts**, and prefer the named verb: `beacon retro`, `beacon done`. A mode marks the tab with its glyph and persists until it is left, so it is a declaration, not a status update. `release` sets itself off the release skill's invocation, so leave it alone. The user parks a session themselves with `/beacon:pause`.
 
 - Run the command silently — don't narrate it to the user.

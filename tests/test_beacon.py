@@ -5528,5 +5528,66 @@ class DevInstallMarker(unittest.TestCase):
         self.assertEqual(self.beacon.read_error_log()[0]["op"], "git.describe")
 
 
+class SubscribedSkillEntersItsMode(BeaconTest):
+    """HOOK-13: a subscribed skill's invocation declares the phase, on both
+    shapes the invocation arrives in. anchor has no idea beacon is listening."""
+
+    def _skill_call(self, skill):
+        args = mock.Mock(event="PostToolUse")
+        payload = json.dumps({"tool_name": "Skill", "tool_input": {"skill": skill}})
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)):
+            self.beacon.cmd_hook(args)
+
+    def _typed(self, prompt):
+        args = mock.Mock(event="UserPromptSubmit")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt}))):
+            self.beacon.cmd_hook(args)
+
+    def test_the_agent_invoking_it_enters_release(self):
+        self._skill_call("anchor:release")
+        self.assertEqual(self.beacon.read_mode()[0], "release")
+
+    def test_the_user_typing_it_enters_release(self):
+        # The shape the retired HOOK-11 subscriber never saw: a typed slash
+        # command fires no Skill tool call at all.
+        self._typed("/anchor:release")
+        self.assertEqual(self.beacon.read_mode()[0], "release")
+
+    def test_the_bare_name_enters_release(self):
+        self._typed("/release minor")
+        self.assertEqual(self.beacon.read_mode()[0], "release")
+
+    def test_an_unsubscribed_skill_declares_nothing(self):
+        self._skill_call("anchor:commit")
+        self.assertEqual(self.beacon.read_mode()[0], self.beacon.DEV_MODE)
+
+    def test_mentioning_the_command_declares_nothing(self):
+        self._typed("run /anchor:release once the pipeline is green")
+        self.assertEqual(self.beacon.read_mode()[0], self.beacon.DEV_MODE)
+
+    def test_a_longer_name_sharing_the_prefix_declares_nothing(self):
+        self._typed("/releases")
+        self.assertEqual(self.beacon.read_mode()[0], self.beacon.DEV_MODE)
+
+    def test_it_leaves_pause_the_way_the_prompt_does(self):
+        # Auto-resume runs first on this prompt; the declaration outlives it.
+        self.beacon.write_mode("pause", "waiting for VPN")
+        self._typed("/anchor:release")
+        self.assertEqual(self.beacon.read_mode(), ("release", ""))
+
+    def test_re_entry_keeps_a_note_already_set(self):
+        # Both hooks can fire for one invocation and the skill can be invoked
+        # twice, so the reaction must be safe to repeat (RES-07).
+        self.beacon.write_mode("release", "2.8.0")
+        self._skill_call("anchor:release")
+        self._typed("/anchor:release")
+        self.assertEqual(self.beacon.read_mode(), ("release", "2.8.0"))
+
+    def test_the_activity_axis_is_untouched(self):
+        # RES-06: declaring a mode says nothing about what the hooks observed.
+        self._typed("/anchor:release")
+        self.assertEqual(self.beacon.read_activity(), "working")
+
+
 if __name__ == "__main__":
     unittest.main()
