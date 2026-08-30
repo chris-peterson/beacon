@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Every command, on the docs site, recorded from the binary
+
+The docs sampled the handful of commands you type most and left the rest to
+`beacon --help`. The site now carries a [CLI reference](https://chris-peterson.github.io/beacon/#/cli):
+every command, its flags, what each one is for, and the notes and worked examples
+help output has no room for — grouped by what they do, from session state through
+the sessions view to the install steps.
+
+It is generated, not written. shipyard runs `beacon --help` and each command's own
+help, records the grammar into `spec/cli.yml`, and renders the page from that, so
+the page says what the binary you have installed accepts. A command missing from
+the page now fails the build instead of going unnoticed, which is how the handful
+became the sample in the first place. The `cli` mark on the docs home page and on
+the marketplace card is the way there.
+
 ## 2.7.1
 
 ### A session keeps its project when the agent works in a scratch directory

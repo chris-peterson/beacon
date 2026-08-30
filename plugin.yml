@@ -61,3 +61,136 @@ suite:
 docs:
   code_languages: [bash, yaml, python, json]
   mermaid: true
+
+# The CLI is what a person types, and what the hooks, the shell snippet, and the
+# status-bar buttons all call, so its command and flag grammar is a public
+# contract. gen-cli-manifest runs the CLI, records what its help documents, and
+# writes the manifest below; build-docs renders that as the command reference
+# page, so the page can't drift from the binary.
+#
+# It goes through `python3 scripts/beacon` rather than the installed wrapper: the
+# wrapper pins a version-stamped plugin path that exists only on a machine where
+# `/beacon:install-beacon` has run, where the checkout is what CI has.
+cli:
+  invoke: python3 scripts/beacon
+  engine: argparse
+  manifest: spec/cli.yml
+  lede: |
+    `beacon` acts on one session: the one it runs in, keyed to the iTerm2 pane
+    it sits in, else to the Claude Code session id. Run it from a Claude Code
+    prompt with a leading `!`: it costs no model turn, so it lands the instant
+    you hit return.
+
+    Two axes resolve independently, and each has one writer. `activity` (idle /
+    working / waiting) belongs to the hooks, which observe it several times a
+    turn. `mode` (`dev` / `pause` / `release` / `retro` / `done`) is what you or
+    a skill declares, and carries an optional note alongside it.
+  groups:
+    - name: Session state
+      about: >-
+        What this session resolves to: the project and task chains, and the
+        overrides that sit above them.
+      commands: [show, json, set, task, project, clear, resume, reset, render]
+    - name: Modes
+      about: >-
+        The phase you declare. It marks the tab with a glyph, swaps the pane
+        into that mode's background, and holds a note until you leave it.
+      commands: [status, pause, release, retro, done]
+    - name: The sessions view
+      about: >-
+        Reading across every session at once. Terminal-agnostic: they paint
+        no pane and work anywhere Claude Code runs.
+      commands: [wip, watch, serve, forget, prune]
+    - name: Deliverables
+      about: What the Claude Code status line lists for this session.
+      commands: [drop]
+    - name: Status-bar actions
+      about: >-
+        What the iTerm2 status bar's buttons run when clicked. Each is also
+        useful by hand.
+      commands: [open-url, open-code, copy-url]
+    - name: Installation
+      commands: [install, completions, refresh-iterm-profiles, layout]
+    - name: Backup
+      commands: [export, import]
+    - name: Diagnostics
+      commands: [doctor, data-dir]
+    - name: Internal
+      about: >-
+        Called by the hooks, the Claude Code status line, and the shell snippet.
+        Listed because they are part of the grammar, not because you type them.
+      commands: [hook, statusline, shell-init]
+  notes:
+    status: >-
+      The mode name is the shared vocabulary across the CLI, the tab glyph, the
+      pane background, and the sessions view, so `beacon status release` and
+      `beacon release` are one declaration written two ways. `dev` is how you
+      leave a mode. The note is stored with the mode and cleared with it, so it
+      can't outlive what it annotates.
+    resume: >-
+      Two things at once: the overrides go, and any declared mode goes with
+      them. To leave the mode and keep the labels, declare `dev`.
+    wip: >-
+      Groups sessions by the tack route they correlate to when tack is
+      installed, and lists them flat when it isn't. `--json` is the payload the
+      dashboard reads.
+    serve: >-
+      With no argument it serves in the foreground on 127.0.0.1 until Ctrl-C.
+      `install` registers a launchd (macOS) or systemd (Linux) unit that keeps
+      it running across logins, and `status` reports what that unit is doing.
+      Mutating routes are loopback-only.
+    forget: >-
+      Takes the per-pane hash `wip --json` reports, which is also what the
+      dashboard's dismiss button sends.
+    prune: >-
+      Sweeps the per-session state and the per-pane cache files together. The
+      cache files are swept by their own mtime, since a pane GUID can't be
+      recovered from a session hash.
+    drop: >-
+      Remembers the removal, so re-reading the tack route doesn't put the entry
+      back on the row.
+    install: >-
+      After a plugin upgrade, reach this through `/beacon:install-beacon`
+      instead. The wrapper on `$PATH` pins the plugin's version-stamped path, so
+      running `beacon install` from the shell re-installs from the version the
+      stale wrapper already names.
+    layout: >-
+      Audits the app-wide iTerm2 preferences no dynamic profile can carry: tab
+      position and size, status-bar position. `--write` quits iTerm2, writes,
+      and relaunches it, closing every window and pane: iTerm2 holds its
+      preferences in memory and overwrites the file on quit, so a write while it
+      runs is discarded.
+    open-url: >-
+      Resolves the URL at click time from the directory it is given: the open
+      PR/MR for the branch when tack or the forge CLI can name one, else the
+      branch tree, else the project. The command it runs is
+      `statusbar.buttons.web.cmd` in `~/.config/beacon/config.json`.
+    import: >-
+      Merges into whatever state is already on disk. `--force` lets the file's
+      fields replace a session's.
+    doctor: >-
+      Exits non-zero on a problem, so it can gate a health check. On a box with
+      no iTerm2 it reports the adapter as inapplicable rather than broken.
+  examples:
+    show:
+      - run: beacon show
+        note: The resolved project and task with the provider each came from, plus both axes.
+    task:
+      - run: beacon task perms
+        note: Label the unit of work. It sits under the project on the tab, and in the sessions view.
+    pause:
+      - run: beacon pause "out for lunch"
+        note: >-
+          `/beacon:pause` is the same declaration from inside Claude Code, and
+          the next prompt resumes it.
+    wip:
+      - run: beacon wip --since 1d
+    serve:
+      - run: beacon serve install
+    export:
+      - run: beacon export --out-file ~/beacon-state.json
+        note: >-
+          Joins to a `tack export` on `claude_session_id`, so a pair of backups
+          reconstructs which route each session was driving.
+    doctor:
+      - run: beacon doctor --since 7d

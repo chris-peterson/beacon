@@ -1,5 +1,13 @@
 # <img src="favicon.svg" alt="beacon" width="64" height="64" style="vertical-align: middle"> beacon
 
+<!--
+  The marks row — the cli badge, which links to the command reference, and the
+  version, which links to the release. shipyard renders it from plugin.yml, the
+  same source the release bumps, so the version here can't fall behind. Same row
+  the catalog card carries.
+-->
+[](_tags.md ':include')
+
 At-a-glance awareness across concurrent Claude Code sessions.
 
 beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan every session without focusing each one. It does this two ways:
@@ -320,6 +328,8 @@ beacon clear task                            # clear just the task override
 ```
 
 The modes are mostly entered *for* you — a release flow sets `beacon release`, and a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
+
+Every command, with its flags and what each one is for, is on the [CLI reference](/cli) — recorded from `beacon --help` itself, so it says what the binary you have installed accepts.
 
 ### Claude Code's own `/rename` and `/color`
 
