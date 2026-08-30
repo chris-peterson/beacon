@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.7.2
 
 ### A nested `claude` no longer takes over the pane it was started in
 

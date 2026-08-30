@@ -1,6 +1,6 @@
 {
   "name": "beacon",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "description": "At-a-glance awareness across concurrent Claude Code sessions \u2014 a terminal-agnostic sessions view plus iTerm2 per-pane painting.",
   "author": {
     "name": "chris-peterson"
