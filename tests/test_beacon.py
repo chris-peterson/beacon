@@ -3009,6 +3009,118 @@ class CompactionIsNotAFreshStart(BeaconTest):
         self.assertEqual(self._anchor(), "/work/acme/widget")
 
 
+class ANestedSessionDoesNotTakeThePane(BeaconTest):
+    """HOOK-12: state keys on the pane GUID (§6.2), which a `claude` spawned
+    from inside a live session inherits through ITERM_SESSION_ID. Its
+    SessionStart must not wipe the host's signals or repin the host's anchor."""
+
+    PANE = "w0t0p0:PANE-GUID"
+    HOST = "host-session-id"
+    GUEST = "guest-session-id"
+
+    def setUp(self):
+        super().setUp()
+        os.environ["ITERM_SESSION_ID"] = self.PANE
+        self.addCleanup(os.environ.pop, "CLAUDE_CODE_SESSION_ID", None)
+        chips = mock.patch.object(self.beacon, "_publish_chips")
+        chips.start()
+        self.addCleanup(chips.stop)
+        # Real directories: the wander check (HOOK-08c) shells to git against
+        # the anchor cwd, and a path that does not exist raises there.
+        self.host_cwd = self.data_dir / "host"
+        self.guest_cwd = self.data_dir / "guest"
+        self.other_cwd = self.data_dir / "other"
+        for d in (self.host_cwd, self.guest_cwd, self.other_cwd):
+            d.mkdir()
+
+    def _fire(self, event: str, payload: dict):
+        # Each hook is its own process in production, so it starts from the
+        # pane id the shell exported — undo any re-key the last one made.
+        os.environ["ITERM_SESSION_ID"] = self.PANE
+        args = mock.Mock(event=event, type=None)
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(args)
+
+    def _host(self, field: str):
+        return self.beacon._read_state_for(self.beacon._hash_seed("PANE-GUID"), field)
+
+    def _guest(self, field: str):
+        seed = f"claude-session:{self.GUEST}"
+        return self.beacon._read_state_for(self.beacon._hash_seed(seed), field)
+
+    def _start(self, sid: str, cwd, source: str = "startup"):
+        self._fire("SessionStart", {"cwd": str(cwd), "source": source, "session_id": sid})
+
+    def _start_host(self):
+        self._start(self.HOST, self.host_cwd)
+
+    def _start_guest(self):
+        self._start(self.GUEST, self.guest_cwd)
+
+    def test_guest_leaves_the_host_anchor_alone(self):
+        self._start_host()
+        self._start_guest()
+        self.assertEqual(self._host("anchor.cwd"), str(self.host_cwd))
+        self.assertEqual(self._host("claude_session_id"), self.HOST)
+
+    def test_guest_gets_its_own_bucket(self):
+        self._start_host()
+        self._start_guest()
+        self.assertEqual(self._guest("claude_session_id"), self.GUEST)
+        self.assertEqual(self._guest("guest_of"), "PANE-GUID")
+
+    def test_guest_does_not_wipe_the_host_signals(self):
+        self._start_host()
+        self.beacon.write_state("override.task", "shipping the release")
+        self._start_guest()
+        self.assertEqual(self._host("override.task"), "shipping the release")
+
+    def test_the_guests_later_hooks_follow_it(self):
+        self._start_host()
+        self._fire("UserPromptSubmit", {"prompt": "go", "session_id": self.HOST})
+        self._start_guest()
+        self._fire("Stop", {"session_id": self.GUEST})
+        self.assertEqual(self._host("activity"), "working")
+        self.assertEqual(self._guest("activity"), "idle")
+
+    def test_guest_records_no_focus_handle(self):
+        # FOCUS-02: it owns no pane, so there is nothing for the dashboard to
+        # raise — and the host's handle must survive its visit.
+        self._start_host()
+        self._start_guest()
+        self.assertEqual(self._host("iterm_session_id"), "PANE-GUID")
+        self.assertIsNone(self._guest("iterm_session_id"))
+
+    def test_guest_leaves_the_host_engagement_marker(self):
+        self._start_host()
+        self._start_guest()
+        self._fire("SessionEnd", {"reason": "other", "session_id": self.GUEST})
+        os.environ["ITERM_SESSION_ID"] = self.PANE
+        marker = self.beacon._engagement_marker_path()
+        self.assertTrue(marker.exists())
+
+    def test_clear_is_the_incumbent_restarting(self):
+        # `/clear` leaves the marker down (HOOK-09 skips disengagement) and
+        # arrives with a new session id — a guest's shape exactly, so the
+        # source is what separates them.
+        self._start_host()
+        self._start("cleared-id", self.other_cwd, "clear")
+        self.assertEqual(self._host("anchor.cwd"), str(self.other_cwd))
+        self.assertEqual(self._host("claude_session_id"), "cleared-id")
+
+    def test_a_disengaged_pane_is_free(self):
+        self._start_host()
+        self._fire("SessionEnd", {"reason": "other", "session_id": self.HOST})
+        self._start("next-tenant", self.other_cwd)
+        self.assertEqual(self._host("anchor.cwd"), str(self.other_cwd))
+        self.assertEqual(self._host("claude_session_id"), "next-tenant")
+
+    def test_the_first_session_in_a_pane_owns_it(self):
+        self._start_host()
+        self.assertEqual(self._host("anchor.cwd"), str(self.host_cwd))
+        self.assertIsNone(self._host("guest_of"))
+
+
 class LatestTurn(BeaconTest):
     """WIP-11: latest_turn is auto-derived at hook time from observable events
     — the submitted prompt (human) and the last assistant text (agent) — with
@@ -4085,6 +4197,29 @@ class ReadCcSignals(BeaconTest):
             self.assertIsNone(self.beacon.read_state(f))
 
 
+class SessionsPayloadProject(BeaconTest):
+    """The row reads the project the way the render chain does — override
+    (OVR-01) above the anchor — so `beacon set project` repairs the tab and
+    the sessions view together rather than leaving them disagreeing."""
+
+    def _seed(self):
+        sh = self.beacon.session_hash()
+        self.beacon.write_state("anchor.project", "acme/widget")
+        self.beacon.write_state("anchor.cwd", "/tmp/x")
+        return sh
+
+    def test_override_outranks_the_anchor(self):
+        sh = self._seed()
+        self.beacon.write_state("override.project", "widget-api")
+        row = self.beacon._resolve_session(sh, compute_branch=False)
+        self.assertEqual(row["project"], "widget-api")
+
+    def test_the_anchor_answers_when_nothing_is_pinned(self):
+        sh = self._seed()
+        row = self.beacon._resolve_session(sh, compute_branch=False)
+        self.assertEqual(row["project"], "acme/widget")
+
+
 class SessionsPayloadColor(BeaconTest):
     """The /color signal is sessions-view metadata exposed in the wip payload."""
 
@@ -4716,8 +4851,11 @@ class DocsCiteRealPaths(unittest.TestCase):
     # Directories belonging to iTerm2, Claude Code, or other projects' layouts.
     EXTERNAL_ROOTS = {"DynamicProfiles", "public", "static", "Application Support"}
 
-    # Generated from SPEC.md / the rules by `shipyard build-docs`, and gitignored.
-    GENERATED = {"docs/spec.md", "docs/rules/", "docs/skills/", "docs/guides/"}
+    # Rendered by `shipyard build-docs` from SPEC.md, the rules, and the CLI
+    # manifest, and gitignored — so they exist after a docs build and never in a
+    # fresh checkout.
+    GENERATED = {"docs/spec.md", "docs/rules/", "docs/skills/", "docs/guides/",
+                 "docs/cli.md"}
 
     def test_every_cited_path_exists(self):
         missing = []
