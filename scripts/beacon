@@ -166,8 +166,16 @@ def _mkdir_private(path: Path) -> None:
 
 def _open_private(path: Path, mode: str = "w"):
     """Open a file for writing, owner-only — the one place the flags are
-    chosen, so a later writer can't half-copy them."""
-    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+    chosen, so a later writer can't half-copy them.
+
+    `O_BINARY` is what keeps the descriptor out of the Windows CRT's text mode,
+    where it would translate newlines *underneath* the text layer that already
+    translates them: gzip bytes would be corrupted and every text write would
+    come out `\\r\\r\\n`. It doesn't exist off Windows, hence the getattr. The
+    mode bits are POSIX-only in effect — Windows chmod sets just the read-only
+    flag — so the owner-only guarantee is a POSIX one (SPEC.md §6.2)."""
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_BINARY", 0)
+    flags |= os.O_APPEND if "a" in mode else os.O_TRUNC
     fh = os.fdopen(os.open(path, flags, _PRIVATE_FILE), mode,
                    encoding=None if "b" in mode else "utf-8")
     os.chmod(path, _PRIVATE_FILE)

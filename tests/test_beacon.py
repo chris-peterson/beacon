@@ -4695,11 +4695,21 @@ class PruneCollectsCacheFiles(BeaconTest):
                         "the sweep is scoped to the two per-pane filename shapes")
 
 
+@unittest.skipIf(sys.platform == "win32",
+                 "POSIX mode bits: Windows chmod sets only the read-only flag")
 class StateFilePermissions(BeaconTest):
     """Everything beacon writes under DATA_DIR is owner-only. The state files
     carry `latest_turn` / `latest_turn_full` — the user's prompts and the
     agent's replies — so the process umask is the wrong thing to decide who can
-    read them."""
+    read them.
+
+    Windows has no umask and no POSIX mode to assert: chmod there sets only the
+    read-only flag, so every path reads back 0o666 / 0o777 whatever beacon
+    passed. Access is an ACL question on that platform, which is why this class
+    is POSIX-only — the finding it guards against, a second local account
+    reading turn text out of a 0755 home, is a POSIX one.
+    `BinaryWritesSurviveTheOpener` covers what `_open_private` still owes
+    Windows."""
 
     def _mode(self, path):
         return stat.S_IMODE(Path(path).stat().st_mode)
@@ -4785,6 +4795,42 @@ class StateFilePermissions(BeaconTest):
         self.assertEqual(
             [rec["fields"]["latest_turn_full"] for rec in payload["sessions"]],
             ["a private turn"])
+
+
+class BinaryWritesSurviveTheOpener(BeaconTest):
+    """`_open_private` hands `os.fdopen` a raw descriptor, and on Windows a raw
+    descriptor defaults to the CRT's text mode — which would translate newlines
+    below the text layer that already translates them. These run everywhere:
+    the platform that can break them is the one that skips
+    `StateFilePermissions`, so nothing else would catch it."""
+
+    def test_binary_bytes_round_trip_unmodified(self):
+        raw = b"\r\n\x00\x1f gzip-ish \n\r payload \x8b"
+        path = self.data_dir / "blob.bin"
+        with self.beacon._open_private(path, "wb") as fh:
+            fh.write(raw)
+        self.assertEqual(path.read_bytes(), raw)
+
+    def test_a_compressed_dump_round_trips(self):
+        # The one production caller that writes binary through the opener.
+        self.beacon.write_state("latest_turn_full", "line one\nline two")
+        dest = self.data_dir / "dump.json.gz"
+        self.beacon.cmd_export(self.beacon.argparse.Namespace(
+            out_file=str(dest), compress=True))
+        payload = json.loads(gzip.decompress(dest.read_bytes()))
+        self.assertEqual(
+            [r["fields"]["latest_turn_full"] for r in payload["sessions"]],
+            ["line one\nline two"])
+
+    def test_text_writes_read_back_as_written(self):
+        self.beacon.write_state("task", "ship it")
+        self.assertEqual(self.beacon.read_state("task"), "ship it")
+
+    def test_appends_accumulate_one_record_per_line(self):
+        for i in range(3):
+            self.beacon.log_error("cli.render", f"failure {i}")
+        self.assertEqual([r["detail"] for r in self.beacon.read_error_log()],
+                         ["failure 0", "failure 1", "failure 2"])
 
 
 class AutomaticStateSweep(BeaconTest):
@@ -5263,7 +5309,8 @@ class ConfigureLayoutWrite(unittest.TestCase):
         self.assertNotEqual(logs[0].name, "beacon-configure.log",
                             "the name must not be derivable in advance")
         self.assertTrue(logs[0].name.startswith("beacon-configure."))
-        self.assertEqual(stat.S_IMODE(logs[0].stat().st_mode), 0o600)
+        if sys.platform != "win32":   # POSIX modes only — see StateFilePermissions
+            self.assertEqual(stat.S_IMODE(logs[0].stat().st_mode), 0o600)
         self.assertIn(str(logs[0]), buf.getvalue())
 
     def test_running_declined_makes_no_changes(self):
