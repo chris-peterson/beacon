@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### `serve` refuses an opaque origin
+
+2.9.0's origin gate read a literal `Origin: null` as the same fact as a missing header and served it. A browser sends `null` for every *opaque* origin — a sandboxed iframe, a `data:` URL, a cross-origin redirect — and any page can create one on demand, so a page you had open could still read the sessions feed, latest turn text included, and reach `focus` and `forget` through the preflight. A present `Origin: null` is now foreign, and rejected on every route.
+
+A request that sends no `Origin` at all is unchanged: that is `curl` or a same-origin fetch, and a browser cannot suppress the header on a cross-origin request. The bundled dashboard at `http://127.0.0.1:8787/` and an allowlisted one are unaffected.
+
 ## 2.9.0
 
 ### `serve` answers only origins you allow

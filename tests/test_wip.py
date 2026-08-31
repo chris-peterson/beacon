@@ -889,6 +889,37 @@ class FocusTest(unittest.TestCase):
             self._post_focus(port, origin="https://evil.example")
         self.assertEqual(cm.exception.code, 403)
 
+    def test_focus_route_rejects_opaque_null_origin(self):
+        # A sandboxed iframe or a data: URL page sends the literal `Origin: null`
+        # — a browser context whose contents an attacker chose, not the absent
+        # header a curl or same-origin fetch sends.
+        port = self._start_server()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._post_focus(port, origin="null")
+        self.assertEqual(cm.exception.code, 403)
+
+    def _preflight(self, port, origin):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/focus", method="OPTIONS")
+        req.add_header("Origin", origin)
+        req.add_header("Access-Control-Request-Method", "POST")
+        return urllib.request.urlopen(req, timeout=3)
+
+    def test_focus_preflight_rejects_opaque_null_origin(self):
+        # The preflight decides whether the browser sends the POST at all, so
+        # it carries the same gate.
+        port = self._start_server()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._preflight(port, "null")
+        self.assertEqual(cm.exception.code, 403)
+
+    def test_focus_preflight_allows_loopback_origin(self):
+        port = self._start_server()
+        with self._preflight(port, "http://127.0.0.1:8787") as resp:
+            self.assertEqual(resp.status, 204)
+            self.assertEqual(resp.headers["Access-Control-Allow-Origin"],
+                             "http://127.0.0.1:8787")
+
     def test_focus_route_invokes_focus_for_allowed_request(self):
         port = self._start_server()
         with mock.patch.object(self.beacon, "_focus_session",
@@ -969,6 +1000,13 @@ class ReadRouteAccessTest(_WipBase):
     def test_foreign_origin_refused_on_every_read_route(self):
         for path in self.ROUTES:
             self._assert_forbidden(path, origin="https://evil.example.com")
+
+    def test_opaque_null_origin_refused_on_every_read_route(self):
+        # `Origin: null` is what a browser sends for every opaque origin — a
+        # sandboxed iframe, a data: URL, a cross-origin redirect. Any page can
+        # create one on demand, so it is foreign, not the absent-header case.
+        for path in self.ROUTES:
+            self._assert_forbidden(path, origin="null")
 
     def test_non_loopback_host_refused_on_every_read_route(self):
         # DNS rebinding: the request reaches the loopback socket but carries the
@@ -1078,6 +1116,14 @@ class ForgetTest(unittest.TestCase):
         port = self._start_server()
         with self.assertRaises(urllib.error.HTTPError) as cm:
             self._post_forget(port, origin="https://evil.example")
+        self.assertEqual(cm.exception.code, 403)
+        self.assertTrue(list(self.state_dir.glob("abcdef01.*")))  # not deleted
+
+    def test_forget_route_rejects_opaque_null_origin(self):
+        self._write("abcdef01", "anchor.project", "p")
+        port = self._start_server()
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._post_forget(port, origin="null")
         self.assertEqual(cm.exception.code, 403)
         self.assertTrue(list(self.state_dir.glob("abcdef01.*")))  # not deleted
 

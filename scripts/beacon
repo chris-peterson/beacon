@@ -3066,10 +3066,14 @@ def wip_http_server(port: int):
     allowed_origins = _allowed_origins()
 
     def origin_allowed(origin: str) -> bool:
-        # A missing Origin (curl, same-origin, some file:// browsers) is not
-        # the threat — only a *foreign* browser origin is. A present Origin
-        # must be loopback or an allowlisted dashboard.
-        if not origin or origin == "null":
+        # A missing Origin (curl, a same-origin fetch) is not the threat —
+        # only a *foreign* browser origin is, and a browser cannot suppress
+        # the header on a cross-origin request. A present Origin must be
+        # loopback or an allowlisted dashboard. The literal "null" is present,
+        # so it is foreign: a browser sends it for every opaque origin — a
+        # sandboxed iframe, a data: URL, a cross-origin redirect — and any
+        # page can create one on demand.
+        if not origin:
             return True
         try:
             host = urlparse(origin).hostname
