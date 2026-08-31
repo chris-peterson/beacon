@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.9.0
 
 ### `serve` answers only origins you allow
 
