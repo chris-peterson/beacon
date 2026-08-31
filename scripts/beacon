@@ -145,6 +145,49 @@ ERRORS_LOG = LOGS_DIR / "errors.log"
 BEACON_ITERM = PLUGIN_ROOT / "bin" / "beacon-iterm"
 DASHBOARD_HTML = PLUGIN_ROOT / "dashboard" / "index.html"
 
+# Everything beacon writes under DATA_DIR is owner-only. The state files carry
+# `latest_turn` / `latest_turn_full` — the user's own prompts and the agent's
+# replies, verbatim — and the error log carries the detail of failed operations,
+# so the process umask is the wrong thing to decide who can read them: a 0755
+# home leaves the lot world-readable to every other account on the box.
+#
+# Every creator below chmods as well as passing a creation mode, because a
+# creation mode does nothing to a file or directory that already exists — which
+# is how a tree written by an earlier version converges instead of keeping the
+# umask's permissions for the life of the install.
+_PRIVATE_DIR = 0o700
+_PRIVATE_FILE = 0o600
+
+
+def _mkdir_private(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    os.chmod(path, _PRIVATE_DIR)
+
+
+def _open_private(path: Path, mode: str = "w"):
+    """Open a file for writing, owner-only — the one place the flags are
+    chosen, so a later writer can't half-copy them."""
+    flags = os.O_WRONLY | os.O_CREAT | (os.O_APPEND if "a" in mode else os.O_TRUNC)
+    fh = os.fdopen(os.open(path, flags, _PRIVATE_FILE), mode,
+                   encoding=None if "b" in mode else "utf-8")
+    os.chmod(path, _PRIVATE_FILE)
+    return fh
+
+
+def _write_private(path: Path, value: str) -> None:
+    with _open_private(path) as fh:
+        fh.write(value)
+
+
+def _touch_private(path: Path) -> None:
+    """Create the file if absent and stamp its mtime now. `Path.touch(mode=…)`
+    leaves an existing file's mode alone, which is the gap this closes — and
+    two callers read that mtime back as a timestamp (the engagement marker, the
+    retention stamp)."""
+    with _open_private(path, "a"):
+        pass
+    os.utime(path, None)
+
 
 # Set by the global --color flag (always/never); None means auto-detect.
 _COLOR_OVERRIDE: bool | None = None
@@ -717,9 +760,9 @@ def log_error(op: str, detail: str, *, exit_code: int | None = None) -> None:
             rec["session"] = session_hash()
         except Exception:
             pass
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        _mkdir_private(LOGS_DIR)
         line = json.dumps(rec, ensure_ascii=False) + "\n"
-        with open(ERRORS_LOG, "a", encoding="utf-8") as fh:
+        with _open_private(ERRORS_LOG, "a") as fh:
             fh.write(line)
         _trim_errors_log()
     except Exception:
@@ -735,7 +778,8 @@ def _trim_errors_log() -> None:
             fh.readline()  # drop the partial line the seek landed inside
             tail = fh.read()
         tmp = ERRORS_LOG.with_suffix(".log.trim")
-        tmp.write_bytes(tail)
+        with _open_private(tmp, "wb") as fh:
+            fh.write(tail)
         tmp.replace(ERRORS_LOG)
     except Exception:
         pass
@@ -789,8 +833,8 @@ def read_state_json(field: str, default):
 
 
 def write_state(field: str, value: str) -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    _state_path(field).write_text(value)
+    _mkdir_private(STATE_DIR)
+    _write_private(_state_path(field), value)
 
 
 def remove_state(field: str) -> None:
@@ -2169,7 +2213,7 @@ def _resolve_session(sh: str, session_index: dict | None = None,
         "branch": branch,
         "_epoch": epoch if epoch is not None else _session_last_activity(sh),
         "pending_attention": pending,
-        "focusable": bool(_read_state_for(sh, "iterm_session_id")),
+        "focusable": bool(_read_iterm_handle(sh)),
         "agent_color": _read_state_for(sh, "cc.agent_color") or None,
     }
 
@@ -2573,6 +2617,17 @@ def _watch_polling(since, interval):
         sys.stdout.flush()
 
 
+# The per-pane filename shapes the cache sweep collects. `url-*.txt` is the URL
+# handoff 2.0 retired (STATUS-BAR-08 resolves at click time now): no writer
+# creates one, but every pane that ran an earlier version left one behind and
+# nothing has ever collected them. Shapes are enumerated, not inferred, because
+# the cache dir also holds files the sweep must not touch — the retention stamp
+# among them.
+def _swept_cache_name(name: str) -> bool:
+    return ((name.startswith(("cwd-", "url-")) and name.endswith(".txt"))
+            or name.startswith("engaged-"))
+
+
 def _prune_cache(cutoff: float) -> int:
     """Sweep the per-pane handoff files and engagement markers (WIP-06). These
     are keyed by pane GUID, not session hash, and the hash is a one-way SHA-1 of
@@ -2586,44 +2641,98 @@ def _prune_cache(cutoff: float) -> int:
     key = _iterm_cache_key()
     keep = {f"cwd-{key}.txt", f"engaged-{key}"} if key else set()
     removed = 0
-    # `url-*.txt` is the URL handoff file 2.0 retired (STATUS-BAR-08 resolves at
-    # click time now). No writer creates one, but every pane that ran an earlier
-    # version left one behind and nothing has ever collected them — so the sweep
-    # names it explicitly rather than leaving thousands of files no code reads.
-    # Patterns are enumerated, not inferred, because the cache dir also holds
-    # non-per-pane files the sweep must not touch.
-    for pattern in ("cwd-*.txt", "engaged-*", "url-*.txt"):
-        for p in CACHE_DIR.glob(pattern):
-            if p.name in keep:
-                continue
-            try:
-                if p.stat().st_mtime >= cutoff:
+    try:
+        with os.scandir(CACHE_DIR) as it:
+            for entry in it:
+                if entry.name in keep or not _swept_cache_name(entry.name):
                     continue
-                p.unlink()
-                removed += 1
-            except OSError:
-                pass
+                try:
+                    if entry.stat().st_mtime >= cutoff:
+                        continue
+                    os.unlink(entry.path)
+                    removed += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
     return removed
+
+
+# How long a session's state outlives its last activity, and how often the
+# automatic sweep re-runs. One number for the CLI verb and the automatic sweep,
+# so `prune`'s documented default is the retention the install actually gets.
+STATE_RETENTION = "30d"
+PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
+PRUNE_STAMP = "last-prune"
+
+
+def _prune_state(cutoff: float) -> tuple[int, int]:
+    """Delete every state file of every session idle since before `cutoff`.
+    Returns (sessions, files). The current session is always kept; a pruned
+    session repaints on its next hook event.
+
+    Two whole-directory passes, never one per session: `_session_mtimes` reads
+    the dir once for the entire activity map (PERF-01), and the delete pass
+    reads it once more against the resolved set. Globbing per hash costs
+    O(sessions × files) — seconds on an accumulated install, which is not a
+    price a hook can pay (NFR-01)."""
+    current = session_hash()
+    stale = {sh for sh, mtime in _session_mtimes().items()
+             if sh != current and mtime < cutoff}
+    if not stale:
+        return 0, 0
+    files = 0
+    try:
+        with os.scandir(STATE_DIR) as it:
+            for entry in it:
+                if entry.name.split(".", 1)[0] not in stale:
+                    continue
+                try:
+                    os.unlink(entry.path)
+                    files += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return len(stale), files
+
+
+def _sweep_stale_state() -> None:
+    """Run the age sweep on the session's behalf (WIP-06). Reachable only as a
+    CLI verb, it went unrun — so state accumulated for every pane ever opened,
+    `latest_turn` / `latest_turn_full` among it, indefinitely past the window
+    any sessions-view consumer reads. A stamp file's mtime throttles it to once
+    a day, so a burst of `claude` launches costs one `stat` apiece, and nothing
+    it does may fail a hook (NFR-06).
+
+    Measured over 12k state files / 1.5k sessions: 0.03 ms throttled, 15 ms on
+    the day it runs. The one exception is the first sweep of an install that
+    accumulated a backlog before this existed, where the deletes themselves cost
+    about a second — paid once, and only by a tree that was never collected."""
+    stamp = CACHE_DIR / PRUNE_STAMP
+    now = time.time()
+    try:
+        if now - stamp.stat().st_mtime < PRUNE_INTERVAL_SECONDS:
+            return
+    except OSError:
+        pass
+    try:
+        _mkdir_private(CACHE_DIR)
+        _touch_private(stamp)
+        cutoff = _parse_since(STATE_RETENTION, strict=True)
+        _prune_state(cutoff)
+        _prune_cache(cutoff)
+    except Exception as exc:
+        log_error("prune.auto", f"{type(exc).__name__}: {exc}")
 
 
 def cmd_prune(args):
     """Remove per-session state for sessions idle longer than the threshold —
     a GC for the panes beacon has accumulated state for. The current session is
     always kept; pruned sessions simply repaint on their next hook event."""
-    raw = getattr(args, "keep", None) or "30d"
+    raw = getattr(args, "keep", None) or STATE_RETENTION
     cutoff = _parse_since(raw, strict=True)
-    current = session_hash()
-    sessions = files = 0
-    for sh in _all_session_hashes():
-        if sh == current or _session_last_activity(sh) >= cutoff:
-            continue
-        for p in STATE_DIR.glob(f"{sh}.*"):
-            try:
-                p.unlink()
-                files += 1
-            except OSError:
-                pass
-        sessions += 1
+    sessions, files = _prune_state(cutoff)
     cached = _prune_cache(cutoff)
     print(f"pruned {sessions} session(s) idle longer than {raw} "
           f"({files} state files, {cached} cache files removed)")
@@ -2724,12 +2833,16 @@ def cmd_export(args):
         sys.stdout.write(data + "\n")
         return
     dest = Path(out).expanduser()
+    # A dump is every session's turn text in one file, so it lands owner-only
+    # like the state files it copies.
     if getattr(args, "compress", False) or dest.suffix == ".gz":
         import gzip
-        with gzip.open(dest, "wt", encoding="utf-8") as fh:
+        # GzipFile does not close a fileobj it was handed, so the raw writer
+        # needs its own context or its buffer never reaches disk.
+        with _open_private(dest, "wb") as raw, gzip.open(raw, "wt", encoding="utf-8") as fh:
             fh.write(data)
     else:
-        dest.write_text(data, encoding="utf-8")
+        _write_private(dest, data)
     n = len(payload["sessions"])
     print(f"exported {n} session{'s' if n != 1 else ''} to {dest}", file=sys.stderr)
 
@@ -2764,7 +2877,7 @@ def cmd_import(args):
         sys.exit(f"import: unsupported schemaVersion {ver!r} — this beacon reads "
                  f"{EXPORT_SCHEMA_VERSION} (refusing to guess at the format)")
 
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    _mkdir_private(STATE_DIR)
     written = skipped = bad = 0
     for rec in payload.get("sessions") or []:
         sh = (rec.get("hash") or "").strip()
@@ -2786,8 +2899,7 @@ def cmd_import(args):
                 bad += 1
                 continue
             p = STATE_DIR / name
-            p.write_text(value if isinstance(value, str) else json.dumps(value),
-                         encoding="utf-8")
+            _write_private(p, value if isinstance(value, str) else json.dumps(value))
             if mtime:
                 try:
                     os.utime(p, (mtime, mtime))
@@ -2803,11 +2915,13 @@ def cmd_import(args):
     print(msg, file=sys.stderr)
 
 
-# Browser origins allowed to POST the mutating routes /focus and /forget
-# (FOCUS-04, FORGET-03), beyond loopback origins
-# (which origin_allowed permits unconditionally). The built-in entry is the
-# public dashboard's Pages origin; a foreign page's Origin is rejected.
-FOCUS_ORIGIN_ALLOWLIST = {
+# Browser origins allowed to reach the serve routes — the reads and the
+# mutating /focus and /forget alike (WIP-18) — beyond loopback
+# origins (which origin_allowed permits unconditionally). The built-in entry is
+# the public dashboard's Pages origin; a foreign page's Origin is rejected.
+# The read payload carries transcript-derived turn text, so a page the user
+# happens to have open is exactly the reader to keep out.
+BROWSER_ORIGIN_ALLOWLIST = {
     "https://chris-peterson.github.io",
 }
 
@@ -2843,17 +2957,36 @@ def _badge_enabled() -> bool:
     return val is not None and str(val).strip().lower() in ("1", "true", "on", "yes")
 
 
-def _focus_origins() -> set[str]:
-    """The origin allowlist for the mutating routes /focus and /forget
-    (FOCUS-04, FORGET-03): the built-in public dashboard origin plus the
-    `focus_origins` list in the user config file. A private deployment (e.g. a
-    GitLab Pages host) adds its origin to the config rather than editing this
-    source, so internal hostnames stay out of the public tree. Read at serve
-    startup — edit the config and restart to apply."""
+def _allowed_origins() -> set[str]:
+    """The origin allowlist every serve route is gated on (WIP-18): the
+    built-in public dashboard origin plus the `focus_origins` list in the user
+    config file. A private deployment (e.g. a GitLab Pages host) adds its origin
+    to the config rather than editing this source, so internal hostnames stay
+    out of the public tree. Read at serve startup — edit the config and restart
+    to apply."""
     extra = _load_config().get("focus_origins") or []
     if isinstance(extra, str):
         extra = [extra]
-    return set(FOCUS_ORIGIN_ALLOWLIST) | {o.strip() for o in extra if isinstance(o, str) and o.strip()}
+    return set(BROWSER_ORIGIN_ALLOWLIST) | {o.strip() for o in extra if isinstance(o, str) and o.strip()}
+
+
+# The shape of an iTerm2 session GUID (FOCUS-02), and the same pattern
+# `bin/beacon-iterm` enforces before it interpolates one into AppleScript. The
+# state file is just bytes on disk, and a value carrying a quote would close the
+# AppleScript literal and append whatever follows to a script running under the
+# user's iTerm2 Automation grant.
+ITERM_GUID_RE = re.compile(r"^[A-Za-z0-9-]+$")
+
+
+def _read_iterm_handle(sh: str) -> str | None:
+    """The session's focus handle, or None when what is recorded is not one.
+
+    The single read boundary, so a handle that fails the shape check *is* no
+    handle everywhere at once — the `focusable` flag, the focus dispatch and the
+    doctor row cannot disagree about it. Checking at each consumer instead left
+    `focusable` reporting true for a value `/focus` would then refuse."""
+    guid = _read_state_for(sh, "iterm_session_id")
+    return guid if guid and ITERM_GUID_RE.match(guid) else None
 
 
 def _focus_session(sh: str) -> tuple[bool, str]:
@@ -2863,7 +2996,7 @@ def _focus_session(sh: str) -> tuple[bool, str]:
     (ok, detail)."""
     if not re.fullmatch(r"[0-9a-f]{8,}", sh or ""):
         return False, "bad hash"
-    guid = _read_state_for(sh, "iterm_session_id")
+    guid = _read_iterm_handle(sh)
     if not guid:
         return False, "not focusable"
     try:
@@ -2884,43 +3017,45 @@ POST_BODY_MAX = 64 * 1024
 def wip_http_server(port: int):
     """Build (don't start) the localhost fleet server, bound to 127.0.0.1 only.
 
+    Every route — reads included — carries the WIP-18 access model: the Host
+    header must name the loopback endpoint (DNS-rebind defense) and a present
+    Origin must be loopback or on the dashboard allowlist. The reads carry
+    transcript-derived turn text (WIP-11, WIP-14), which is the user's own
+    prompts and the agent's replies, so a page they happen to have open is
+    exactly the reader to keep out; a remotely-hosted dashboard reaches the feed
+    by adding its origin to `focus_origins`.
+
     GET / — the bundled reference dashboard (dashboard/index.html), so a
     coworker with no dashboard of their own just runs `beacon serve` and opens
     the page. It polls /wip.json from this same origin.
 
-    GET /wip.json — the read-only wip payload (WIP-04), CORS-open so a
-    dashboard on file:// or the deployed Pages origin can fetch it.
+    GET /wip.json — the read-only wip payload (WIP-04).
 
-    GET /icon/<hash> — the session's project icon bytes (WIP-08), CORS-open
-    like wip.json. The `icon` field of a record points here when the icon is
-    a local file; an online (http) icon is in the field directly.
+    GET /icon/<hash> — the session's project icon bytes (WIP-08). The `icon`
+    field of a record points here when the icon is a local file; an online
+    (http) icon is in the field directly.
 
     GET /turn/<hash> — the session's most recent turn with its *full* text
     (WIP-14), the on-demand enrichment the dashboard fetches when a card is
     expanded. The bulk /wip.json carries only the single-line excerpt (WIP-11);
-    this reads the companion `latest_turn_full` state, CORS-open like wip.json.
+    this reads the companion `latest_turn_full` state.
 
     GET /mode-bg/<mode> — the mode watermark PNG a moded card renders (WIP-17):
     the very asset the iTerm2 pane paints (iterm/resources/<mode>-bg.png), so the
     card and pane can't drift. The filename is resolved from MODE_SPECS by mode
-    name, never from the URL, so there's nothing to traverse. CORS-open like
-    wip.json.
+    name, never from the URL, so there's nothing to traverse.
 
     POST /forget — delete a session's per-session state (FORGET-01), the
-    dashboard's close button on a timed-out card. Mutating, so it shares the
-    FOCUS-04 access model with /focus.
+    dashboard's close button on a timed-out card (FORGET-03).
 
-    POST /focus — bring a session's window forward (FOCUS-01). Mutating, so it
-    carries the tighter FOCUS-04 access model: the Host header must be the
-    loopback endpoint (DNS-rebind defense) and a present Origin must be on the
-    dashboard allowlist — not the `*` the read route uses.
+    POST /focus — bring a session's window forward (FOCUS-01).
 
     Returns the HTTPServer; the caller drives it (serve_forever, or a single
     handle_request in tests)."""
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from urllib.parse import urlparse, parse_qs
 
-    allowed_origins = _focus_origins()
+    allowed_origins = _allowed_origins()
 
     def origin_allowed(origin: str) -> bool:
         # A missing Origin (curl, same-origin, some file:// browsers) is not
@@ -2940,15 +3075,35 @@ def wip_http_server(port: int):
         def log_message(self, *a):
             pass
 
-        def _send(self, code: int, body: str, origin: str = "*") -> None:
-            data = body.encode()
+        def _access_ok(self) -> bool:
+            """WIP-18, in one place for every verb. Both halves or nothing —
+            spelling it per handler is how a route added later ships open."""
+            return self._host_ok() and origin_allowed(self.headers.get("Origin") or "")
+
+        def _send_cors(self) -> None:
+            # Echo only an origin that already passed the gate. A wildcard hands
+            # the payload to whatever page asked, and echoing a rejected origin
+            # would undo the gate. A request that sent no Origin needs no header:
+            # the browser consults one only when it sent one.
+            origin = self.headers.get("Origin") or ""
+            if origin and origin_allowed(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+
+        def _respond(self, code: int, ctype: str, data: bytes) -> None:
+            """The one response emitter. Every route lands here, so a header
+            the model depends on can't be present on three routes and absent
+            on the fourth."""
             self.send_response(code)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
-            self.send_header("Access-Control-Allow-Origin", origin)
+            self._send_cors()
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(data)
+
+        def _send(self, code: int, body: str) -> None:
+            self._respond(code, "application/json", body.encode())
 
         def _host_ok(self) -> bool:
             # DNS-rebind defense: the Host header's hostname must be loopback.
@@ -2995,13 +3150,7 @@ def wip_http_server(port: int):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
             ctype = ICON_CONTENT_TYPES.get(p.suffix.lower(), "application/octet-stream")
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
+            self._respond(200, ctype, data)
 
         def _send_mode_bg(self, mode: str) -> None:
             # The mark file comes from our own MODE_SPECS constant keyed by the
@@ -3016,13 +3165,7 @@ def wip_http_server(port: int):
             if not data:
                 self._send(404, json.dumps({"error": "not found"}))
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "image/png")
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
+            self._respond(200, "image/png", data)
 
         def _send_turn(self, sh: str) -> None:
             # Same slash/dot-free token guard as /icon — the segment is only a
@@ -3054,14 +3197,14 @@ def wip_http_server(port: int):
             except OSError:
                 self._send(404, json.dumps({"error": "dashboard not found"}))
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(data)
+            self._respond(200, "text/html; charset=utf-8", data)
 
         def do_GET(self):
+            # WIP-18 governs the reads too: the payload carries the turn text
+            # of every session, so an unvetted browser origin gets nothing.
+            if not self._access_ok():
+                self._send(403, json.dumps({"error": "forbidden"}))
+                return
             parsed = urlparse(self.path)
             if parsed.path in ("/", "/index.html"):
                 self._send_dashboard()
@@ -3080,28 +3223,25 @@ def wip_http_server(port: int):
                 self._send(404, json.dumps({"error": "not found"}))
 
         def do_OPTIONS(self):
-            origin = self.headers.get("Origin") or ""
-            if (urlparse(self.path).path in ("/focus", "/forget")
-                    and self._host_ok() and origin_allowed(origin)):
-                self.send_response(204)
-                self.send_header("Access-Control-Allow-Origin", origin or "*")
-                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type")
-                self.send_header("Access-Control-Max-Age", "600")
-                self.end_headers()
-            else:
-                self.send_response(403)
-                self.end_headers()
+            if not (self._access_ok()
+                    and urlparse(self.path).path in ("/focus", "/forget")):
+                self._send(403, json.dumps({"error": "forbidden"}))
+                return
+            self.send_response(204)
+            self._send_cors()
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Max-Age", "600")
+            self.end_headers()
 
         def do_POST(self):
-            origin = self.headers.get("Origin") or ""
             path = urlparse(self.path).path
             raw = self._read_body()
             if path not in ("/focus", "/forget"):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
-            if not self._host_ok() or not origin_allowed(origin):
-                self._send(403, json.dumps({"error": "forbidden"}), origin or "*")
+            if not self._access_ok():
+                self._send(403, json.dumps({"error": "forbidden"}))
                 return
             try:
                 sh = (json.loads(raw or b"{}").get("hash") or "").strip()
@@ -3110,11 +3250,11 @@ def wip_http_server(port: int):
             if path == "/focus":
                 ok, msg = _focus_session(sh)
                 code = 200 if ok else (404 if msg == "not focusable" else 400)
-                self._send(code, json.dumps({"focused": ok, "detail": msg}), origin or "*")
+                self._send(code, json.dumps({"focused": ok, "detail": msg}))
             else:
                 valid, files = _forget_session(sh)
                 self._send(200 if valid else 400,
-                           json.dumps({"forgotten": valid, "files": files}), origin or "*")
+                           json.dumps({"forgotten": valid, "files": files}))
 
     return HTTPServer(("127.0.0.1", port), Handler)
 
@@ -3246,12 +3386,11 @@ def _service_install(port: int, indent: str = "") -> bool:
     sup = _service_supervisor()
 
     if sup == "launchd":
-        logs = DATA_DIR / "logs"
-        logs.mkdir(parents=True, exist_ok=True)
+        _mkdir_private(LOGS_DIR)
         plist = _launchd_plist_path()
         plist.parent.mkdir(parents=True, exist_ok=True)
         plist.write_text(_render_launchd_plist(
-            wrapper, port, logs / "serve.out.log", logs / "serve.err.log"))
+            wrapper, port, LOGS_DIR / "serve.out.log", LOGS_DIR / "serve.err.log"))
         domain = f"gui/{os.getuid()}"
         _launchctl("bootout", domain, str(plist))  # clear any prior load
         r = _launchctl("bootstrap", domain, str(plist))
@@ -3894,8 +4033,8 @@ def _publish_chips(cwd: Path) -> None:
 
     key = _iterm_cache_key()
     if key:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        (CACHE_DIR / f"cwd-{key}.txt").write_text(f"{cwd}\n")
+        _mkdir_private(CACHE_DIR)
+        _write_private(CACHE_DIR / f"cwd-{key}.txt", f"{cwd}\n")
 
 
 def _publish_anchor(cwd: Path) -> None:
@@ -3968,13 +4107,15 @@ def ensure_initialized():
     global _initialized
     if _initialized:
         return
-    for d in (STATE_DIR, CACHE_DIR, LOGS_DIR):
-        d.mkdir(parents=True, exist_ok=True)
+    for d in (DATA_DIR, STATE_DIR, CACHE_DIR, LOGS_DIR):
+        _mkdir_private(d)
     # The error log is created empty rather than on first failure, so the path
     # `doctor` prints is one the user can actually open and tail. A log that
     # springs into existence only once something has already gone wrong is the
-    # least useful moment for it to appear.
-    ERRORS_LOG.touch(exist_ok=True)
+    # least useful moment for it to appear. Created through the private opener,
+    # not `touch`: whoever creates the file fixes its mode, and `log_error`'s
+    # own `os.open` mode would never fire on a file that already exists.
+    _touch_private(ERRORS_LOG)
     _initialized = True
 
 
@@ -4216,8 +4357,8 @@ def place_engagement_marker() -> None:
     if not p:
         return
     try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.touch(exist_ok=True)
+        _mkdir_private(p.parent)
+        _touch_private(p)
     except OSError:
         pass
 
@@ -5295,7 +5436,12 @@ def _advice_for(op: str) -> str | None:
 def _iterm_session_reachable(guid: str) -> tuple[bool, str]:
     """Whether Apple Events can still find the pane beacon recorded for this
     session — the end-to-end check, and the one that actually failed. `installed`
-    and `running` were both true throughout the incident that motivated it."""
+    and `running` were both true throughout the incident that motivated it.
+
+    The handle is interpolated into the script, so it has to match a session id
+    (ITERM_GUID_RE) before it gets there — see that constant."""
+    if not ITERM_GUID_RE.match(guid or ""):
+        return False, "not a session id"
     script = (
         'tell application id "com.googlecode.iterm2"\n'
         f'  set theID to "{guid}"\n'
@@ -5393,6 +5539,13 @@ def _doctor_checks() -> list[dict]:
             if not guid:
                 add("iTerm2", "this pane", _DOCTOR_WARN,
                     "no iTerm2 handle recorded for this session")
+            elif not ITERM_GUID_RE.match(guid):
+                # Reported by shape, never quoted: the report is printed to a
+                # terminal, and the value that got here is by definition not the
+                # session id it claims to be.
+                add("iTerm2", "this pane", _DOCTOR_BAD,
+                    "recorded iTerm2 handle is not a session id — "
+                    "`beacon forget <hash>` this pane, then start a new session")
             else:
                 found, why = _iterm_session_reachable(guid)
                 add("iTerm2", "this pane", _DOCTOR_OK if found else _DOCTOR_BAD,
@@ -5637,7 +5790,7 @@ def _record_focus_handle() -> None:
     sid = os.environ.get("ITERM_SESSION_ID") or ""
     if ":" in sid and not sid.startswith("claude-session:"):
         guid = sid.rsplit(":", 1)[-1].strip()
-        if guid:
+        if guid and ITERM_GUID_RE.match(guid):
             write_state("iterm_session_id", guid)
 
 
@@ -5684,8 +5837,8 @@ def _claim_guest_bucket(claude_sid: str, pane: str) -> None:
     files too — its own engagement marker and cwd handoff, and no focus handle,
     since it owns no pane to raise."""
     seed = f"claude-session:{claude_sid}"
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    (STATE_DIR / f"{_hash_seed(seed)}.guest_of").write_text(pane)
+    _mkdir_private(STATE_DIR)
+    _write_private(STATE_DIR / f"{_hash_seed(seed)}.guest_of", pane)
     os.environ["ITERM_SESSION_ID"] = seed
 
 
@@ -5778,6 +5931,7 @@ def cmd_hook(args):
             _publish_chips(Path(anchored))
         else:
             _publish_anchor(Path(payload.get("cwd") or os.getcwd()))
+        _sweep_stale_state()
 
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()
@@ -6017,9 +6171,9 @@ def _build_parser() -> "argparse.ArgumentParser":
                     help=f"port to bind (default {DEFAULT_SERVE_PORT})")
 
     sp = sub.add_parser("prune", help="remove per-session state for long-idle sessions")
-    sp.add_argument("--since", "--keep", dest="keep", default="30d", metavar="WHEN",
+    sp.add_argument("--since", "--keep", dest="keep", default=STATE_RETENTION, metavar="WHEN",
                     help="keep sessions active within this window and prune the rest — "
-                         "a duration (14d, 12h) or ISO-8601 timestamp (default 30d)")
+                         f"a duration (14d, 12h) or ISO-8601 timestamp (default {STATE_RETENTION})")
 
     sp = sub.add_parser("forget", help="remove per-session state for one session, by its per-pane hash")
     sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")

@@ -138,7 +138,8 @@ cli:
       With no argument it serves in the foreground on 127.0.0.1 until Ctrl-C.
       `install` registers a launchd (macOS) or systemd (Linux) unit that keeps
       it running across logins, and `status` reports what that unit is doing.
-      Mutating routes are loopback-only.
+      Every route is loopback-only and answers only an allowed browser
+      origin; a dashboard hosted elsewhere declares itself in `focus_origins`.
     forget: >-
       Takes the per-pane hash `wip --json` reports, which is also what the
       dashboard's dismiss button sends.

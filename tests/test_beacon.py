@@ -8,15 +8,19 @@ calls would have fired.
 from __future__ import annotations
 
 import contextlib
+import gzip
 import importlib.machinery
 import importlib.util
 import io
 import json
 import os
 import re
+import stat
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -4691,6 +4695,179 @@ class PruneCollectsCacheFiles(BeaconTest):
                         "the sweep is scoped to the two per-pane filename shapes")
 
 
+class StateFilePermissions(BeaconTest):
+    """Everything beacon writes under DATA_DIR is owner-only. The state files
+    carry `latest_turn` / `latest_turn_full` — the user's prompts and the
+    agent's replies — so the process umask is the wrong thing to decide who can
+    read them."""
+
+    def _mode(self, path):
+        return stat.S_IMODE(Path(path).stat().st_mode)
+
+    def test_state_dir_and_files_are_owner_only_under_a_permissive_umask(self):
+        # umask(0) rather than the ambient one: otherwise the assertion passes
+        # on the runner's umask rather than on anything the code does.
+        old = os.umask(0)
+        self.addCleanup(os.umask, old)
+        self.beacon.write_state("task", "ship it")
+        self.assertEqual(self._mode(self.beacon.STATE_DIR), 0o700)
+        self.assertEqual(self._mode(self.beacon._state_path("task")), 0o600)
+
+    def test_a_file_written_before_this_is_corrected_on_the_next_write(self):
+        # An install predating the tightening keeps 0o644 for the life of the
+        # file otherwise: `open`'s mode argument applies only at creation.
+        self.beacon.write_state("task", "first")
+        path = self.beacon._state_path("task")
+        os.chmod(path, 0o644)
+        self.beacon.write_state("task", "second")
+        self.assertEqual(self._mode(path), 0o600)
+        self.assertEqual(self.beacon.read_state("task"), "second")
+
+    def test_a_widened_state_dir_is_corrected(self):
+        self.beacon.write_state("task", "first")
+        os.chmod(self.beacon.STATE_DIR, 0o755)
+        self.beacon.write_state("task", "second")
+        self.assertEqual(self._mode(self.beacon.STATE_DIR), 0o700)
+
+    def test_error_log_is_owner_only(self):
+        self.beacon.log_error("cli.render", "something failed")
+        self.assertEqual(self._mode(self.beacon.LOGS_DIR), 0o700)
+        self.assertEqual(self._mode(self.beacon.ERRORS_LOG), 0o600)
+
+    def test_error_log_created_by_initialization_is_owner_only(self):
+        # ensure_initialized creates the log empty so `doctor` can name a path
+        # that exists — and it, not log_error, is what usually creates the file,
+        # so an `open` mode in log_error alone never fires.
+        os.umask(0o022)
+        self.beacon.ensure_initialized()
+        self.assertEqual(self._mode(self.beacon.ERRORS_LOG), 0o600)
+        self.beacon.log_error("cli.render", "something failed")
+        self.assertEqual(self._mode(self.beacon.ERRORS_LOG), 0o600)
+
+    def test_a_log_left_world_readable_by_an_earlier_version_converges(self):
+        self.beacon.log_error("cli.render", "first")
+        os.chmod(self.beacon.ERRORS_LOG, 0o644)
+        self.beacon.log_error("cli.render", "second")
+        self.assertEqual(self._mode(self.beacon.ERRORS_LOG), 0o600)
+
+    def test_initialization_creates_every_dir_owner_only(self):
+        self.beacon.ensure_initialized()
+        for d in (self.beacon.DATA_DIR, self.beacon.STATE_DIR,
+                  self.beacon.CACHE_DIR, self.beacon.LOGS_DIR):
+            self.assertEqual(self._mode(d), 0o700, d)
+
+    def test_pane_cache_is_owner_only(self):
+        # The per-pane handoff carries the session's cwd, and the shell probes
+        # the engagement marker by existence — both need only the owner.
+        with mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID-1"):
+            self.beacon.place_engagement_marker()
+        self.assertEqual(self._mode(self.beacon.CACHE_DIR), 0o700)
+        self.assertEqual(self._mode(self.beacon.CACHE_DIR / "engaged-GUID-1"), 0o600)
+
+    def test_export_dump_is_owner_only(self):
+        # A dump is every session's turn text in one file.
+        self.beacon.write_state("latest_turn_full", "a private turn")
+        dest = self.data_dir / "dump.json"
+        self.beacon.cmd_export(self.beacon.argparse.Namespace(
+            out_file=str(dest), compress=False))
+        self.assertEqual(self._mode(dest), 0o600)
+
+    def test_compressed_dump_is_owner_only_and_complete(self):
+        # The gzip path writes through a raw fd, and a GzipFile does not close a
+        # fileobj it was handed — so the round-trip is what proves the buffer
+        # reached disk.
+        self.beacon.write_state("latest_turn_full", "a private turn")
+        dest = self.data_dir / "dump.json.gz"
+        self.beacon.cmd_export(self.beacon.argparse.Namespace(
+            out_file=str(dest), compress=True))
+        self.assertEqual(self._mode(dest), 0o600)
+        payload = json.loads(gzip.decompress(dest.read_bytes()))
+        self.assertEqual(
+            [rec["fields"]["latest_turn_full"] for rec in payload["sessions"]],
+            ["a private turn"])
+
+
+class AutomaticStateSweep(BeaconTest):
+    """WIP-06: the age sweep runs on the session's behalf at SessionStart.
+    Reachable only as a CLI verb it went unrun, and state accumulated for every
+    pane ever opened — turn text included — with nothing collecting it."""
+
+    OLD = 1_600_000_000.0
+
+    def _stale_session(self, sh="deadbeefdead"):
+        sd = self.beacon.STATE_DIR
+        self.beacon._mkdir_private(sd)
+        p = sd / f"{sh}.latest_turn_full"
+        self.beacon._write_private(p, "an old turn")
+        os.utime(p, (self.OLD, self.OLD))
+        return p
+
+    def test_sweep_removes_state_idle_past_the_retention_window(self):
+        p = self._stale_session()
+        self.beacon._sweep_stale_state()
+        self.assertFalse(p.exists())
+
+    def test_sweep_keeps_recent_state(self):
+        self.beacon.write_state("latest_turn_full", "a live turn")
+        self.beacon._sweep_stale_state()
+        self.assertEqual(self.beacon.read_state("latest_turn_full"), "a live turn")
+
+    def test_sweep_is_throttled_by_its_stamp(self):
+        self.beacon._sweep_stale_state()
+        stamp = self.beacon.CACHE_DIR / self.beacon.PRUNE_STAMP
+        self.assertTrue(stamp.exists())
+        p = self._stale_session()
+        self.beacon._sweep_stale_state()
+        self.assertTrue(p.exists(), "a second sweep the same day should not scan")
+
+    def test_sweep_runs_again_once_the_stamp_ages_out(self):
+        self.beacon._sweep_stale_state()
+        stamp = self.beacon.CACHE_DIR / self.beacon.PRUNE_STAMP
+        aged = time.time() - self.beacon.PRUNE_INTERVAL_SECONDS - 1
+        os.utime(stamp, (aged, aged))
+        p = self._stale_session()
+        self.beacon._sweep_stale_state()
+        self.assertFalse(p.exists())
+
+    def test_the_stamp_survives_the_cache_sweep(self):
+        # _prune_cache enumerates the per-pane filename shapes; the stamp is not
+        # one of them, and collecting it would make the throttle a no-op.
+        self.beacon._sweep_stale_state()
+        stamp = self.beacon.CACHE_DIR / self.beacon.PRUNE_STAMP
+        os.utime(stamp, (self.OLD, self.OLD))
+        self.beacon._prune_cache(time.time())
+        self.assertTrue(stamp.exists())
+
+    def test_sweep_cost_does_not_grow_with_session_count(self):
+        """The sweep runs on a hook (NFR-01), so its directory reads must be a
+        fixed number of whole-dir passes — not one glob per session, which is
+        what `cmd_prune` did when it was only ever a CLI verb."""
+        def scans_for(n):
+            self.beacon._mkdir_private(self.beacon.STATE_DIR)
+            for i in range(n):
+                sh = f"{i:016x}"
+                for field in ("anchor.project", "latest_turn_full"):
+                    q = self.beacon.STATE_DIR / f"{sh}.{field}"
+                    self.beacon._write_private(q, "old")
+                    os.utime(q, (self.OLD, self.OLD))
+            calls = []
+            real = os.scandir
+            with mock.patch.object(os, "scandir",
+                                   side_effect=lambda p=".": calls.append(p) or real(p)):
+                self.beacon._prune_state(time.time())
+            return len(calls)
+
+        few = scans_for(4)
+        many = scans_for(60)
+        self.assertEqual(few, many, "scan count must not scale with sessions")
+
+    def test_a_failing_sweep_is_logged_not_raised(self):
+        with mock.patch.object(self.beacon, "_prune_state",
+                               side_effect=RuntimeError("disk gone")):
+            self.beacon._sweep_stale_state()
+        self.assertEqual([r["op"] for r in self.beacon.read_error_log()], ["prune.auto"])
+
+
 class ExportImport(BeaconTest):
     """DUMP-01..DUMP-03: lossless backup/restore of the state-file directory."""
 
@@ -5067,6 +5244,27 @@ class ConfigureLayoutWrite(unittest.TestCase):
         self.assertTrue(self._quit_requested(calls))
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls),
                          "must defer the write to the helper, not write while iTerm2 runs")
+
+    def test_helper_log_path_is_unpredictable_and_owner_only(self):
+        """A fixed name under TMPDIR lets another local user pre-create the path
+        as a symlink and have the truncating open follow it. mkstemp creates the
+        file itself, O_EXCL and 0600, and the printed path is the one it got."""
+        calls, popen, tmp = [], [], tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        buf = io.StringIO()
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)), \
+                mock.patch("subprocess.Popen",
+                           side_effect=lambda cmd, *a, **k: popen.append(k) or mock.Mock()), \
+                mock.patch.object(tempfile, "tempdir", tmp), \
+                contextlib.redirect_stdout(buf):
+            self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
+        logs = list(Path(tmp).iterdir())
+        self.assertEqual(len(logs), 1)
+        self.assertNotEqual(logs[0].name, "beacon-configure.log",
+                            "the name must not be derivable in advance")
+        self.assertTrue(logs[0].name.startswith("beacon-configure."))
+        self.assertEqual(stat.S_IMODE(logs[0].stat().st_mode), 0o600)
+        self.assertIn(str(logs[0]), buf.getvalue())
 
     def test_running_declined_makes_no_changes(self):
         calls, popen = [], []
@@ -5473,6 +5671,84 @@ class ErrorLogCreatedEagerly(unittest.TestCase):
         state = [c for c in checks if c["name"] == "state"][0]
         self.assertEqual(state["status"], self.beacon._DOCTOR_WARN)
         self.assertFalse(self.beacon.STATE_DIR.exists())
+
+
+class ItermHandleGuard(unittest.TestCase):
+    """The `iterm_session_id` state file is bytes on disk, and two plugin-side
+    readers put it somewhere a quote is dangerous: `_iterm_session_reachable`
+    interpolates it into AppleScript, and `doctor` prints it to a terminal.
+    Both check it against ITERM_GUID_RE first."""
+
+    INJECTION = '''" & (do shell script "touch /tmp/pwned") & "'''
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self.beacon.STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    def test_injected_handle_never_reaches_osascript(self):
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            found, why = self.beacon._iterm_session_reachable(self.INJECTION)
+        run.assert_not_called()
+        self.assertFalse(found)
+        self.assertEqual(why, "not a session id")
+
+    def test_empty_handle_never_reaches_osascript(self):
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            found, _ = self.beacon._iterm_session_reachable("")
+        run.assert_not_called()
+        self.assertFalse(found)
+
+    def test_well_formed_handle_is_probed(self):
+        with mock.patch.object(
+                self.beacon.subprocess, "run",
+                return_value=mock.Mock(returncode=0, stdout="found", stderr="")) as run:
+            found, _ = self.beacon._iterm_session_reachable("ABC-123")
+        self.assertTrue(found)
+        self.assertEqual(run.call_args.args[0][0], "osascript")
+        self.assertIn('set theID to "ABC-123"', run.call_args.args[0][2])
+
+    def test_focus_refuses_an_injected_handle_without_spawning_the_cli(self):
+        (self.beacon.STATE_DIR / "abcdef01.iterm_session_id").write_text(self.INJECTION)
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            ok, msg = self.beacon._focus_session("abcdef01")
+        run.assert_not_called()
+        self.assertFalse(ok)
+        # A handle that fails the shape check is no handle, so the answer is the
+        # same one an unrecorded handle gets.
+        self.assertEqual(msg, "not focusable")
+
+    def test_payload_and_focus_agree_about_a_bad_handle(self):
+        # Both go through _read_iterm_handle, so the dashboard cannot be shown a
+        # focus button for a session /focus would then refuse.
+        (self.beacon.STATE_DIR / "abcdef01.anchor.project").write_text("p")
+        (self.beacon.STATE_DIR / "abcdef01.iterm_session_id").write_text(self.INJECTION)
+        rec = next(s for s in self.beacon.collect_sessions(None)["sessions"]
+                   if s["hash"] == "abcdef01")
+        self.assertFalse(rec["focusable"])
+        self.assertFalse(self.beacon._focus_session("abcdef01")[0])
+
+    def test_a_malformed_env_handle_is_not_recorded(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w1t0p0:" + self.INJECTION}):
+            self.beacon._record_focus_handle()
+        self.assertIsNone(self.beacon.read_state("iterm_session_id"))
+
+    def test_doctor_reports_a_bad_handle_without_quoting_it(self):
+        self.beacon.write_state("iterm_session_id", self.INJECTION)
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_is_iterm_running", return_value=True), \
+                mock.patch.object(self.beacon.subprocess, "run",
+                                  return_value=mock.Mock(returncode=0, stdout="", stderr="")) as run:
+            checks = self.beacon._doctor_checks()
+        # doctor shells out for other checks (a `git describe`); what must not
+        # happen is an osascript carrying the handle.
+        self.assertEqual(
+            [c for c in run.call_args_list if c.args and c.args[0][:1] == ["osascript"]], [])
+        pane = [c for c in checks if c["name"] == "this pane"][0]
+        self.assertEqual(pane["status"], self.beacon._DOCTOR_BAD)
+        self.assertIn("not a session id", pane["detail"])
+        self.assertNotIn("do shell script", pane["detail"])
 
 
 class DevInstallMarker(unittest.TestCase):

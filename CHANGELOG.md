@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+### The sessions feed is no longer readable by any page you have open
+
+`serve`'s read routes — `/wip.json`, `/turn/<hash>`, the project icons and the
+mode watermarks — answered every origin with a wildcard CORS header and did not
+check the `Host` header at all. Those routes carry each session's most recent
+turn: your own prompts and Claude's replies, across every session on the
+machine. Any page open in your browser could read the lot cross-origin, and the
+missing `Host` check left the reads open to DNS rebinding — with `serve install`
+keeping the listener up whether or not a dashboard is open.
+
+Every route now carries the access model `/focus` and `/forget` already had: a
+loopback `Host`, and an `Origin` that is either loopback or on the allowlist.
+Only a vetted origin comes back as `Access-Control-Allow-Origin`, and a request
+that sends no `Origin` at all gets no such header.
+
+The bundled dashboard at `http://127.0.0.1:8787/` is same-origin and needs
+nothing. A dashboard you host elsewhere declares its origin in `focus_origins`
+in `~/.config/beacon/config.json` — the same list that already governed the
+click actions, now covering the reads too.
+
+### Your state files are yours, and they expire
+
+Everything beacon writes under its data dir is created `0700` / `0600` rather
+than at whatever the process umask happened to be, turn text included. On a
+`0755` home directory — the default on most Linux distributions — the whole tree
+was readable by every other account on the machine. A tree written by an earlier
+version is corrected the next time each file is written.
+
+`prune`'s age sweep now also runs on its own at session start, throttled to once
+a day, at the same 30-day default the verb documents. Reachable only as a verb
+it went unrun, and an install accumulated state for every pane it had ever
+opened with nothing collecting it.
+
+### Two smaller hardening fixes
+
+The recorded iTerm2 session handle is checked against the shape of a session id
+before it reaches AppleScript or a `doctor` report — `beacon-iterm` already did
+this, and the plugin's own reachability probe did not. And `configure --write`'s
+helper log is created exclusively, under a name that can't be guessed, instead
+of at a fixed path in the temp dir.
+
 ## 2.8.0
 
 ### An uncolored tab paints itself again

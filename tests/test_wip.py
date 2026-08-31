@@ -492,14 +492,16 @@ class WipTest(_WipBase):
 
     # --- serve ---
 
-    def test_serve_returns_payload_with_cors(self):
+    def test_serve_returns_payload_and_no_cors_header_for_originless_read(self):
+        # An originless request (curl, a same-origin fetch) is served, and gets
+        # no Access-Control-Allow-Origin: nothing asked to share it.
         self._write("s1", "anchor.project", "served")
         server = self.beacon.wip_http_server(0)  # ephemeral port
         self.addCleanup(server.server_close)
         port = server.server_address[1]
         threading.Thread(target=server.handle_request, daemon=True).start()
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/wip.json", timeout=3) as resp:
-            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+            self.assertIsNone(resp.headers["Access-Control-Allow-Origin"])
             payload = json.loads(resp.read())
         self.assertEqual([s["project"] for s in payload["sessions"]], ["served"])
 
@@ -525,7 +527,7 @@ class WipTest(_WipBase):
         port = server.server_address[1]
         threading.Thread(target=server.handle_request, daemon=True).start()
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/turn/t1", timeout=3) as resp:
-            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+            self.assertIsNone(resp.headers["Access-Control-Allow-Origin"])
             body = json.loads(resp.read())
         self.assertEqual(body["role"], "agent")
         self.assertEqual(body["text"], "line one\nline two\nline three")
@@ -628,7 +630,7 @@ class IconTest(_WipBase):
         threading.Thread(target=server.handle_request, daemon=True).start()
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/icon/served", timeout=3) as resp:
             self.assertEqual(resp.headers["Content-Type"], "image/svg+xml")
-            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+            self.assertIsNone(resp.headers["Access-Control-Allow-Origin"])
             self.assertEqual(resp.read(), b"<svg/>")
 
     def test_serve_icon_route_404_unknown(self):
@@ -913,7 +915,7 @@ class FocusTest(unittest.TestCase):
         with mock.patch.object(
                 self.beacon, "_load_config",
                 return_value={"focus_origins": ["https://a.example", "https://b.example"]}):
-            origins = self.beacon._focus_origins()
+            origins = self.beacon._allowed_origins()
         self.assertIn("https://a.example", origins)
         self.assertIn("https://b.example", origins)
         self.assertIn("https://chris-peterson.github.io", origins)
@@ -924,8 +926,79 @@ class FocusTest(unittest.TestCase):
             cfg.parent.mkdir(parents=True)
             cfg.write_text(json.dumps({"focus_origins": ["https://x.example"]}))
             with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": d}):
-                origins = self.beacon._focus_origins()
+                origins = self.beacon._allowed_origins()
         self.assertIn("https://x.example", origins)
+
+
+class ReadRouteAccessTest(_WipBase):
+    """WIP-18 over the read half. The payload and /turn carry transcript-derived
+    turn text, so the reads are gated on the same Host + Origin model the mutating
+    routes use, and only a vetted origin is echoed back as CORS."""
+
+    def setUp(self):
+        super().setUp()
+        self._write("abcdef01", "anchor.project", "secret-proj")
+        self._write("abcdef01", "latest_turn", json.dumps(
+            {"role": "human", "text": "an excerpt", "at": "2026-08-01T00:00:00Z"}))
+        self._write("abcdef01", "latest_turn_full", "the whole turn")
+
+    # Every read route, so a later route addition that skips the gate fails here
+    # rather than shipping open.
+    ROUTES = ("/", "/wip.json", "/turn/abcdef01", "/icon/abcdef01", "/mode-bg/pause")
+
+    def _get(self, path, origin=None, host=None):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")
+        if origin is not None:
+            req.add_header("Origin", origin)
+        if host is not None:
+            req.add_header("Host", host)
+        return urllib.request.urlopen(req, timeout=3)
+
+    def _assert_forbidden(self, path, **kw):
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._get(path, **kw)
+        self.assertEqual(cm.exception.code, 403, path)
+        # The rejection carries no CORS header, so the browser cannot read the
+        # body either.
+        self.assertIsNone(cm.exception.headers["Access-Control-Allow-Origin"], path)
+
+    def test_foreign_origin_refused_on_every_read_route(self):
+        for path in self.ROUTES:
+            self._assert_forbidden(path, origin="https://evil.example.com")
+
+    def test_non_loopback_host_refused_on_every_read_route(self):
+        # DNS rebinding: the request reaches the loopback socket but carries the
+        # attacker's own name in Host.
+        for path in self.ROUTES:
+            self._assert_forbidden(path, host="evil.example.com")
+
+    def test_loopback_origin_is_served_and_echoed(self):
+        with self._get("/wip.json", origin="http://127.0.0.1:8787") as resp:
+            self.assertEqual(resp.headers["Access-Control-Allow-Origin"],
+                             "http://127.0.0.1:8787")
+            self.assertEqual(resp.headers["Vary"], "Origin")
+            payload = json.loads(resp.read())
+        self.assertEqual([s["project"] for s in payload["sessions"]], ["secret-proj"])
+
+    def test_allowlisted_origin_is_served_and_echoed(self):
+        # A remotely-hosted dashboard keeps working by being on the allowlist —
+        # the built-in public dashboard origin, or one added via focus_origins.
+        origin = "https://chris-peterson.github.io"
+        with self._get("/turn/abcdef01", origin=origin) as resp:
+            self.assertEqual(resp.headers["Access-Control-Allow-Origin"], origin)
+            body = json.loads(resp.read())
+        self.assertEqual(body["text"], "the whole turn")
+
+    def test_config_origin_reaches_the_read_routes(self):
+        cfg_origin = "https://dashboard.pages.example"
+        with mock.patch.object(self.beacon, "_load_config",
+                               return_value={"focus_origins": [cfg_origin]}):
+            with self._get("/wip.json", origin=cfg_origin) as resp:
+                self.assertEqual(resp.headers["Access-Control-Allow-Origin"], cfg_origin)
 
 
 class ForgetTest(unittest.TestCase):
