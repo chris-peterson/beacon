@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### A blocked tab turns red when it blocks
+
+A session waiting on a permission prompt — a plan card, a question, a command to approve — read as busy for the first six seconds. Claude Code reports the prompt on a timer that fires only once it has gone unanswered, and the tool's own `PreToolUse` has painted the tab orange by then. beacon now also reads Claude Code's `PermissionRequest` event, which arrives with the prompt, so the tab is red from the moment the session stops. Idle prompts are unchanged.
+
 ## 2.9.1
 
 ### `serve` refuses an opaque origin

@@ -34,6 +34,9 @@ suite:
     - name: tack
       required: false
       reason: supplies the routes the sessions view joins a session to, and the deliverables its status line lists
+    - name: anchor
+      required: false
+      reason: announces the CR it opens, which the status-line URL takes over asking tack and the forge for
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]
@@ -52,7 +55,7 @@ suite:
     hooks:
       cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
-      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI (permission_prompt, idle_prompt); PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
       pause: Park this session's beacon — enter pause mode, with an optional note

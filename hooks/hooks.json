@@ -68,6 +68,16 @@
         ]
       }
     ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook PermissionRequest"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "hooks": [

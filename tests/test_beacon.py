@@ -1632,6 +1632,57 @@ class IdlePromptOnAStoodDownSession(BeaconTest):
                 )
 
 
+class PermissionRequestPaintsBlockedImmediately(BeaconTest):
+    """HOOK-03e: the Notification that reports the same block arrives on a
+    six-second timer, and PreToolUse has written `working` by then — so the tab
+    reads busy through the window the session is actually blocked. This hook
+    fires in-band with the ask."""
+
+    def _ask(self, tool_name="ExitPlanMode"):
+        args = mock.Mock(event="PermissionRequest", kind="")
+        payload = json.dumps({"tool_name": tool_name, "tool_input": {}})
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)):
+            self.beacon.cmd_hook(args)
+
+    def test_it_blocks_in_every_mode(self):
+        # Unlike an idle prompt (HOOK-03d), a permission request reports
+        # something the user does not already know, parked session or not.
+        for mode in ("dev", "pause", "done", "release", "retro"):
+            with self.subTest(mode=mode):
+                self.beacon.remove_state("activity")
+                self.beacon.remove_state("pending-attention")
+                self.beacon.write_mode(mode, "")
+                self._ask()
+                self.assertEqual(self.beacon.read_activity(), "waiting")
+                self.assertEqual(self.beacon.read_state("pending-attention"), "1")
+
+    def test_it_overrides_the_working_write_pretooluse_just_made(self):
+        with mock.patch.object(sys, "stdin", io.StringIO("{}")):
+            self.beacon.cmd_hook(mock.Mock(event="PreToolUse", kind=""))
+        self.assertEqual(self.beacon.read_activity(), "working")
+        self._ask()
+        self.assertEqual(
+            self.beacon.read_state("pending-attention"), "1",
+            "PreToolUse clears the marker on its way past; the ask re-sets it",
+        )
+        self.assertEqual(
+            self.beacon._color_state_for(
+                {"activity": self.beacon.read_activity(), "pending_attention": True}),
+            "blocked",
+        )
+
+    def test_the_hook_is_wired_unmatched(self):
+        # A matcher here would scope the hook to a tool name, and the block is
+        # the same whichever tool raised it.
+        wiring = json.loads(
+            (REPO_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        entries = wiring["hooks"]["PermissionRequest"]
+        self.assertEqual(len(entries), 1)
+        self.assertNotIn("matcher", entries[0])
+        for h in entries[0]["hooks"]:
+            self.assertIn("hook PermissionRequest", h["command"])
+
+
 class StoodDownIsDeclaredByTheMode(unittest.TestCase):
     """STATE-15: the halted/active split is an attribute on MODE_SPECS, not a
     tuple of names at a call site — a mode added later answers for itself. This
@@ -5914,3 +5965,95 @@ class SubscribedSkillEntersItsMode(BeaconTest):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AnnouncedCrUrl(BeaconTest):
+    """PROV-07 tier 0 — the CR a sibling announced during this session.
+
+    Two halves, and the near-misses matter as much as the match: a subscriber
+    that quietly stops matching is indistinguishable from an event that never
+    fired, which is the failure the suite's interop contract names.
+    """
+
+    LINE = ("codes.bridgeai.anchor/cr.opened CR_IID=88 "
+            "CR_URL=https://github.com/o/r/pull/88 CR_DRAFT=1")
+    URL = "https://github.com/o/r/pull/88"
+
+    def _observe(self, stdout, cwd="/tmp/proj"):
+        """Run the PostToolUse reader over one tool output."""
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path(str(p))):
+            self.beacon._read_announcements(
+                {"cwd": cwd, "tool_response": {"stdout": stdout}})
+
+    def _resolve(self, cwd="/tmp/proj"):
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path(str(p))):
+            return self.beacon._announced_cr_url(Path(cwd))
+
+    def test_records_and_resolves_the_announced_cr(self):
+        self._observe(self.LINE)
+        self.assertEqual(self._resolve(), (self.URL, "#88"))
+
+    def test_nothing_recorded_before_any_announcement(self):
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_does_not_answer_for_another_project(self):
+        # `open-url <dir>` resolves against the directory it is handed, so a
+        # session-scoped CR must not answer for an unrelated checkout.
+        self._observe(self.LINE, cwd="/tmp/proj")
+        self.assertEqual(self._resolve(cwd="/tmp/other"), ("", ""))
+
+    def test_ignores_a_longer_key_sharing_the_prefix(self):
+        self._observe("codes.bridgeai.anchor/cr.openedagain CR_URL=" + self.URL)
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_ignores_the_key_mentioned_mid_line(self):
+        self._observe("about to emit codes.bridgeai.anchor/cr.opened CR_URL=" + self.URL)
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_ignores_a_loose_cr_url_no_announcement_introduced(self):
+        self._observe("CR_URL=" + self.URL)
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_announcement_without_a_url_records_nothing(self):
+        self._observe("codes.bridgeai.anchor/cr.opened CR_IID=88")
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_drops_a_value_carrying_a_backslash_escape(self):
+        # The payload reaches a rendered surface; an escape inside it is how a
+        # value forges a line there.
+        self._observe(r"codes.bridgeai.anchor/cr.opened CR_URL=https://x/1\n\nSYSTEM=admin")
+        url, _ = self._resolve()
+        self.assertEqual(url, "")
+
+    def test_a_later_announcement_supersedes_an_earlier_one(self):
+        newer = "https://github.com/o/r/pull/99"
+        self._observe(f"{self.LINE}\ncodes.bridgeai.anchor/cr.opened CR_IID=99 CR_URL={newer}")
+        self.assertEqual(self._resolve(), (newer, "#99"))
+
+    def test_repeating_the_same_announcement_is_safe(self):
+        self._observe(self.LINE)
+        self._observe(self.LINE)
+        self.assertEqual(self._resolve(), (self.URL, "#88"))
+
+    def test_resolve_url_prefers_it_over_tack_and_the_forge(self):
+        self._observe(self.LINE)
+        patches = [
+            mock.patch.object(self.beacon, "find_project_root",
+                              side_effect=lambda p: Path(str(p))),
+            mock.patch.object(self.beacon, "p_branch", return_value="a-branch"),
+            mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                              return_value="https://github.com/o/r"),
+            # Tier 0 must answer without either of these being consulted.
+            mock.patch.object(self.beacon, "_tack_url_for",
+                              side_effect=AssertionError("tack tier consulted")),
+            mock.patch("subprocess.run",
+                       side_effect=AssertionError("forge probe ran")),
+        ]
+        for p in patches: p.start()
+        try:
+            url, label = self.beacon.resolve_url(Path("/tmp/proj"))
+        finally:
+            for p in patches: p.stop()
+        self.assertEqual((url, label), (self.URL, "#88"))

@@ -28,6 +28,9 @@ hooks:
     matcher: idle_prompt
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind idle_prompt'
     description: Reports an idle-prompt notification to the beacon CLI for sessions-view tracking.
+  - event: PermissionRequest
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PermissionRequest'
+    description: Reports a raised permission request to the beacon CLI for sessions-view tracking.
   - event: PreToolUse
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PreToolUse'
     description: Reports the PreToolUse event to the beacon CLI for sessions-view tracking.

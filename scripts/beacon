@@ -928,6 +928,91 @@ def _enter_subscribed_mode(payload: dict) -> None:
         write_mode(mode)
 
 
+# A sibling plugin's interop announcement: one self-contained line on its own
+# stdout, which reaches a PostToolUse hook as `tool_response.stdout`. The suite's
+# contract is in the marketplace repo at `authoring/plugin-contract.md`.
+#
+# The lookahead is what keeps `cr.opened` from also matching `cr.openedagain`.
+ANNOUNCED_CR_OPENED_RE = re.compile(
+    r"^codes\.bridgeai\.anchor/cr\.opened(?=[ \t]|$)(.*)$", re.MULTILINE)
+
+
+def _announced_fields(rest: str) -> dict:
+    """The `KEY=value` tokens of an announcement's payload.
+
+    The contract forbids whitespace inside a value, so splitting on whitespace is
+    the entire parse. A value is still text beacon did not author, arriving on a
+    surface that gets rendered, so one carrying a backslash is dropped rather
+    than repaired — an escape riding inside it is how a payload forges a line."""
+    fields = {}
+    for token in rest.split():
+        key, sep, value = token.partition("=")
+        if sep and key and "\\" not in value:
+            fields[key] = value
+    return fields
+
+
+def _read_announcements(payload: dict) -> None:
+    """Record the CR a sibling announced in this tool's output (PROV-07 tier 0).
+
+    anchor knows a CR's URL the moment it opens one. Without this beacon
+    reconstructs the same fact downstream — shelling out to `tack list`, then
+    asking the forge over the network — and the tack route only carries it at
+    all if the agent chose to run `tack deliverable` when nudged.
+
+    The project root is stored with the URL because PROV-07 resolves against a
+    directory it is handed, not against the session (`open-url <dir>` is correct
+    in a pane beacon isn't tracking). Session-scoped state alone would answer for
+    an unrelated checkout.
+
+    Last announcement in the output wins: one tool call opens at most one CR, so
+    a later line is the newer fact. Safe to repeat, per the contract — no
+    ordering guarantee holds between subscribers, and a session can publish the
+    same key twice."""
+    response = payload.get("tool_response")
+    stdout = str(response.get("stdout") or "") if isinstance(response, dict) else ""
+    if "codes.bridgeai.anchor/cr.opened" not in stdout:
+        return
+    announced = {}
+    for match in ANNOUNCED_CR_OPENED_RE.finditer(stdout):
+        fields = _announced_fields(match.group(1))
+        if fields.get("CR_URL"):
+            announced = fields
+    if not announced:
+        return
+    try:
+        root = str(find_project_root(Path(payload.get("cwd") or Path.cwd())))
+    except OSError:
+        return
+    write_state("announced.cr", json.dumps({
+        "url": announced["CR_URL"],
+        "iid": announced.get("CR_IID", ""),
+        "root": root,
+    }))
+
+
+def _announced_cr_url(cwd: Path) -> tuple[str, str]:
+    """PROV-07 tier 0 — the CR a sibling announced during this session.
+
+    The only tier that knows rather than infers, and the reason every tier below
+    it stays: this covers a CR opened while the session was running and nothing
+    else, so a pre-existing CR still reaches the chain no other way."""
+    cached = read_state_json("announced.cr", None)
+    if not isinstance(cached, dict):
+        return "", ""
+    url = str(cached.get("url") or "")
+    root = str(cached.get("root") or "")
+    if not url or not root:
+        return "", ""
+    try:
+        if str(find_project_root(cwd)) != root:
+            return "", ""
+    except OSError:
+        return "", ""
+    iid = str(cached.get("iid") or "")
+    return url, f"#{iid}" if iid else ""
+
+
 def read_activity() -> str:
     """What the hooks last observed. Unlike mode there is no declared tier: an
     activity pinned above the hooks is a value that goes stale the moment the
@@ -1402,6 +1487,12 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
     # Either may be empty (default branch / no `origin`); helpers handle that.
     branch = p_branch(cwd)
     remote = _git_remote_url_normalized(cwd)
+
+    # 0. announced by a sibling this session — no subprocess, and the only tier
+    # that was told rather than left to work it out.
+    url, label = _announced_cr_url(cwd)
+    if url:
+        return url, label
 
     # 1. tack-derived
     url, label = _tack_url_for(cwd, branch, _project_name_at(cwd))
@@ -6016,6 +6107,19 @@ def cmd_hook(args):
         # above only to decide whether the observation is worth recording at all.
         write_state("pending-attention", "1")
 
+    elif event == "PermissionRequest":
+        # Same block as HOOK-03, six seconds earlier. Claude Code raises the
+        # permission ask, then arms a timer that only reports it as a
+        # Notification once the prompt has gone unanswered — measured at 6s for
+        # both a plan card and a question card. PreToolUse has already written
+        # `working` by then, so the tab reads busy through the whole window the
+        # session is in fact blocked. This fires in-band with the ask.
+        #
+        # Ask path only: a tool an allow rule covers never reaches here, so
+        # this does not repaint on ordinary tool calls.
+        write_state("activity", "waiting")
+        write_state("pending-attention", "1")
+
     elif event == "PreToolUse":
         # Tool activity means the agent is working, not waiting. This
         # transitions out of `waiting` after a permission_prompt Notification
@@ -6034,6 +6138,7 @@ def cmd_hook(args):
         # Notification must not undo the sticky waiting marker.
         write_state("activity", "working")
         _enter_subscribed_mode(payload)
+        _read_announcements(payload)
 
     render()
 
