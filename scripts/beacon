@@ -311,6 +311,33 @@ SYNTHETIC_PROMPT_RE = re.compile(r"^\s*<[a-z][a-z0-9-]*>")
 # listed twice — a value in one and not the other resolves to a default silently.
 DEFAULT_ACTIVITY = "idle"
 
+# The one notification kind that reports only what the user did themselves, and
+# so the only one HOOK-03d drops on a stood-down session.
+IDLE_NOTIFICATION = "idle_prompt"
+
+# Notification kinds that mean the session is blocked on its user (HOOK-03).
+# Claude Code delivers every kind through one event and names it in the payload's
+# `notification_type`, so the handler reads the kind rather than the matcher that
+# selected it.
+#
+# An allowlist, not "everything except the quiet ones": most kinds report
+# something that already finished — `auth_success`, `agent_completed`,
+# `computer_use_exit`, the `quota_auto_resume_*` trio — and a kind Claude Code
+# adds later is better left unpainted than painted red on a session nobody is
+# waiting on. Red is the one color that claims the user's attention; spending it
+# on a guess is what makes it stop meaning anything.
+#
+# The teammate kinds (`worker_permission_prompt`, `agent_needs_input`) stay out
+# for a second reason: they report that *another* session is blocked, where
+# `activity` describes the pane the hook fires in. That pane's own turn is still
+# running, so painting it red says something untrue about it.
+ATTENTION_NOTIFICATIONS = frozenset({
+    "permission_prompt",         # Claude is blocked on a tool decision
+    "elicitation_dialog",        # an MCP server is asking for input
+    "elicitation_url_dialog",    # ... and wants a link opened for it
+    IDLE_NOTIFICATION,           # the prompt has gone unanswered
+})
+
 # The absence of a mode. `dev` is not stored — it *is* the empty mode file — so
 # it names the default in argument lists and reads back out of resolve(), and
 # `beacon status dev` is how you leave a mode. The modes themselves are the keys
@@ -6086,22 +6113,29 @@ def cmd_hook(args):
         _write_latest_turn("agent", _last_assistant_text())
 
     elif event == "Notification":
+        # One unmatched hook for every kind, told apart by the payload's
+        # `notification_type`. A kind outside the attention set reports something
+        # that already finished, so it changes nothing and skips the render.
+        kind = str(payload.get("notification_type") or "")
+        if kind not in ATTENTION_NOTIFICATIONS:
+            return
         # HOOK-03d: an `idle_prompt` on a session that was stood down on purpose
         # (`pause`, `done` — STATE-15) reports nothing its user doesn't already
         # know: it is idle *because* they parked or finished it. Since a halted
         # session sits at an idle prompt by definition, the timer is guaranteed
         # to fire on it, so red would be the resting state of every parked tab
         # rather than a signal. A `permission_prompt` still goes red in every
-        # mode — Claude is blocked on a decision, which the user does not know.
+        # mode — Claude is blocked on a decision, which the user does not know,
+        # and so does every other attention kind.
         # This is not a mode-beats-activity precedence rule (RES-06): the two
         # axes stay independent, and what is dropped is one uninformative
         # observation, not the activity axis losing an argument to the mode.
-        if args.kind == "idle_prompt" and _mode_stood_down(read_mode()[0]):
+        if kind == IDLE_NOTIFICATION and _mode_stood_down(read_mode()[0]):
             return
         write_state("activity", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
-        # Only its presence matters — permission and idle both read as "needs the
+        # Only its presence matters — every attention kind reads as "needs the
         # user" and beacon does not distinguish them on any *surface* (HOOK-03),
         # so the marker carries a constant, not the prompt type. The kind is read
         # above only to decide whether the observation is worth recording at all.
@@ -6219,12 +6253,6 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("hook", help="(internal) handle a Claude Code hook event")
     sp.add_argument("event")
-    # Claude Code fires one Notification event for both prompt kinds and tells
-    # them apart only by the matcher that selected the hook, which the payload
-    # does not carry — so hooks.yml passes the matcher it matched on.
-    sp.add_argument("--kind", default="",
-                    help="the matcher that selected this hook (Notification: "
-                         "permission_prompt | idle_prompt)")
 
     sp = sub.add_parser("completions", help="install or print shell completions")
     sp.add_argument("shell", choices=["zsh"], nargs="?", default="zsh")

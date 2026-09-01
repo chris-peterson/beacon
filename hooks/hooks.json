@@ -50,20 +50,10 @@
     ],
     "Notification": [
       {
-        "matcher": "permission_prompt",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --kind permission_prompt"
-          }
-        ]
-      },
-      {
-        "matcher": "idle_prompt",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification --kind idle_prompt"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/beacon\" hook Notification"
           }
         ]
       }

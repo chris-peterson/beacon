@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### An MCP server asking for input turns the tab red
+
+beacon matched two of Claude Code's notification kinds, so a session blocked on
+an MCP elicitation — waiting for input, or for you to open a link — kept
+painting its tab orange. The Notification hook now reads the kind from the
+payload rather than from the matcher that selected it, and every kind that means
+this session is waiting on you paints red. Kinds reporting something already
+finished, such as a successful login or a resumed quota, paint nothing.
+
 ### A blocked tab turns red when it blocks
 
 A session waiting on a permission prompt — a plan card, a question, a command to approve — read as busy for the first six seconds. Claude Code reports the prompt on a timer that fires only once it has gone unanswered, and the tool's own `PreToolUse` has painted the tab orange by then. beacon now also reads Claude Code's `PermissionRequest` event, which arrives with the prompt, so the tab is red from the moment the session stops. Idle prompts are unchanged.

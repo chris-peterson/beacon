@@ -21,13 +21,8 @@ hooks:
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook SessionEnd'
     description: Reports the SessionEnd event to the beacon CLI for sessions-view tracking.
   - event: Notification
-    matcher: permission_prompt
-    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind permission_prompt'
-    description: Reports a permission-prompt notification to the beacon CLI for sessions-view tracking.
-  - event: Notification
-    matcher: idle_prompt
-    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification --kind idle_prompt'
-    description: Reports an idle-prompt notification to the beacon CLI for sessions-view tracking.
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Notification'
+    description: Reports a notification to the beacon CLI for sessions-view tracking; the handler reads the kind from the payload.
   - event: PermissionRequest
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PermissionRequest'
     description: Reports a raised permission request to the beacon CLI for sessions-view tracking.

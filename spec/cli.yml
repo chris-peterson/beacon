@@ -113,9 +113,6 @@ commands:
   - summary: (internal) handle a Claude Code hook event
     args:
     - name: event
-    flags:
-    - name: --kind
-      arg: KIND
 - name: completions
   usages:
   - summary: install or print shell completions

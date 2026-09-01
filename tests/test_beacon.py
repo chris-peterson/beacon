@@ -1597,8 +1597,9 @@ class IdlePromptOnAStoodDownSession(BeaconTest):
     observation, not the activity axis losing an argument to the mode."""
 
     def _notify(self, kind):
-        args = mock.Mock(event="Notification", kind=kind)
-        with mock.patch.object(sys, "stdin", io.StringIO("{}")):
+        args = mock.Mock(event="Notification")
+        payload = json.dumps({"notification_type": kind})
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)):
             self.beacon.cmd_hook(args)
 
     def test_idle_prompt_is_dropped_while_stood_down(self):
@@ -1630,6 +1631,75 @@ class IdlePromptOnAStoodDownSession(BeaconTest):
                     self.beacon.read_activity(), "waiting",
                     "Claude is blocked on a decision the user does not know about",
                 )
+
+
+class NotificationKindsAreReadFromThePayload(BeaconTest):
+    """HOOK-03: one unmatched hook for every kind, told apart by the payload's
+    `notification_type`. Matching in the wiring instead hid every kind the
+    wiring didn't name — an MCP elicitation, a parked worker, a stalled
+    message — while the session sat blocked on the user."""
+
+    def _notify(self, kind):
+        payload = json.dumps({"notification_type": kind})
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)):
+            self.beacon.cmd_hook(mock.Mock(event="Notification"))
+
+    def test_every_attention_kind_blocks(self):
+        for kind in sorted(self.beacon.ATTENTION_NOTIFICATIONS):
+            with self.subTest(kind=kind):
+                self.beacon.remove_state("activity")
+                self.beacon.remove_state("pending-attention")
+                self._notify(kind)
+                self.assertEqual(self.beacon.read_activity(), "waiting")
+                self.assertEqual(self.beacon.read_state("pending-attention"), "1")
+
+    def test_a_finished_event_paints_nothing(self):
+        # These report something that already happened. Red is the one color
+        # that claims the user's attention; a session nobody is waiting on
+        # wearing it is what stops it meaning anything.
+        for kind in ("auth_success", "agent_completed", "push_notification",
+                     "computer_use_enter", "computer_use_exit",
+                     "quota_auto_resume_fired"):
+            with self.subTest(kind=kind):
+                self.beacon.remove_state("activity")
+                self.beacon.remove_state("pending-attention")
+                self._notify(kind)
+                self.assertIsNone(self.beacon.read_state("activity"))
+                self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_another_sessions_block_is_not_this_panes(self):
+        # The teammate kinds report that a *worker* is parked. `activity`
+        # describes the pane the hook fires in, whose own turn is still running.
+        for kind in ("worker_permission_prompt", "agent_needs_input"):
+            with self.subTest(kind=kind):
+                self.beacon.remove_state("activity")
+                self.beacon.remove_state("pending-attention")
+                self._notify(kind)
+                self.assertIsNone(self.beacon.read_state("activity"))
+                self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_an_unknown_kind_paints_nothing(self):
+        # The allowlist's whole point: a kind Claude Code adds later waits for
+        # beacon to decide what it means rather than defaulting to red.
+        self._notify("a_kind_from_a_later_release")
+        self.assertIsNone(self.beacon.read_state("activity"))
+        self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_a_payload_with_no_kind_paints_nothing(self):
+        with mock.patch.object(sys, "stdin", io.StringIO("{}")):
+            self.beacon.cmd_hook(mock.Mock(event="Notification"))
+        self.assertIsNone(self.beacon.read_state("activity"))
+
+    def test_the_hook_is_wired_unmatched(self):
+        # A matcher would scope the hook to one kind, which is the wiring this
+        # replaced. The handler reads the kind, so the wiring carries them all.
+        wiring = json.loads(
+            (REPO_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+        entries = wiring["hooks"]["Notification"]
+        self.assertEqual(len(entries), 1)
+        self.assertNotIn("matcher", entries[0])
+        for h in entries[0]["hooks"]:
+            self.assertNotIn("--kind", h["command"])
 
 
 class PermissionRequestPaintsBlockedImmediately(BeaconTest):
@@ -1700,15 +1770,12 @@ class StoodDownIsDeclaredByTheMode(unittest.TestCase):
             with self.subTest(mode=mode):
                 self.assertIsInstance(spec.get("stood_down", False), bool)
 
-    def test_the_notification_hooks_pass_their_matcher(self):
-        # The payload carries no prompt kind, so hooks.json is the only place the
-        # matcher survives to the CLI — the whole mechanism rests on this flag.
-        wiring = json.loads(
-            (REPO_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-        for entry in wiring["hooks"]["Notification"]:
-            with self.subTest(matcher=entry["matcher"]):
-                for h in entry["hooks"]:
-                    self.assertIn(f"--kind {entry['matcher']}", h["command"])
+    def test_the_dropped_kind_is_the_only_one_hook_03d_names(self):
+        # HOOK-03d exempts exactly one kind, and it is the one that reports
+        # what the user did themselves. Every other attention kind is news.
+        self.assertIn(self.beacon.IDLE_NOTIFICATION,
+                      self.beacon.ATTENTION_NOTIFICATIONS)
+        self.assertEqual(self.beacon.IDLE_NOTIFICATION, "idle_prompt")
 
 
 class PauseWritesOnlyTheMode(BeaconTest):
