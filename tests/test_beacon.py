@@ -1951,67 +1951,92 @@ class ResolveUrlForgeFallback(BeaconTest):
         self.assertEqual(url, "https://github.com/chris-peterson/beacon/tree/chip-best-url")
 
 
-class TackUrlHonorsSessionPin(BeaconTest):
-    """_tack_url_for resolves the route via the session→route pin, not the
-    branch slug alone, so the status-line link and the sessions-view chip read the
-    same route. A route pinned to the session whose slug differs from the
-    branch (a pin, not a branch-slug match) must still surface its deliverable
-    URL; location correlation (via _tack_route_for) is the fallback."""
+class TackUrlComesFromTheAnnouncedRoute(BeaconTest):
+    """PROV-07's tack tier reads the route tack announced for this session, and
+    asks tack's CLI what that route currently holds.
+
+    Which route was a guess before: the session id scanned out of every route
+    file, then a `.tack` pin, then the branch, then the project name. tack names
+    it now, so there is nothing to correlate — and nothing to ask when it has
+    named none, which is what keeps the dependency optional.
+    """
 
     ISSUE = "https://gl.test/acme/widgets/-/issues/2"
 
-    def _tack_url(self, routes, *, sid, branch, tack_route=("", None)):
+    def _tack_url(self, doc, *, route="widget-cache-maintenance"):
         def fake_run(cmd, *a, **k):
-            if cmd[:2] == ["tack", "list"]:
+            if cmd[:2] == ["tack", "tree"]:
+                self.assertEqual(cmd[2], route, "asks for the announced route")
                 return subprocess.CompletedProcess(
-                    cmd, 0, stdout=json.dumps(routes), stderr="")
+                    cmd, 0, stdout=json.dumps(doc), stderr="")
             return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+        if route:
+            self.beacon.write_state("announced.route", json.dumps({"route": route}))
         patches = [
             mock.patch.object(self.beacon, "_which",
                               side_effect=lambda x: "/bin/tack" if x == "tack" else None),
-            mock.patch.object(self.beacon, "read_state",
-                              side_effect=lambda f: (sid or None) if f == "claude_session_id" else None),
-            mock.patch.object(self.beacon, "_tack_route_for", return_value=tack_route),
-            mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": ""}, clear=False),
+            mock.patch.dict(self.beacon._ROUTE_DOCS, {}, clear=True),
             mock.patch("subprocess.run", side_effect=fake_run),
         ]
         for p in patches: p.start()
         try:
-            return self.beacon._tack_url_for(Path("/tmp/fake"), branch, "widgets")
+            return self.beacon._tack_url_for()
         finally:
             for p in patches: p.stop()
 
-    def test_pin_resolves_even_when_slug_differs_from_branch(self):
-        routes = [{
-            "slug": "widget-cache-maintenance",
-            "sessions": [{"id": "sid-1", "started_at": "2026-07-08T22:24:34Z"}],
-            "tacks": [{"status": "in_progress",
-                       "deliverable": {"label": "widgets#2", "url": self.ISSUE}}],
-        }]
-        url, _ = self._tack_url(routes, sid="sid-1",
-                                branch="add-maintenance-cicd-component")
-        self.assertEqual(url, self.ISSUE)
+    def test_the_announced_route_supplies_the_deliverable(self):
+        # The slug differs from any branch or project name, which is exactly the
+        # case the old correlation could not reach.
+        doc = {"slug": "widget-cache-maintenance",
+               "tacks": [{"status": "in_progress",
+                          "deliverable": {"label": "widgets#2", "url": self.ISSUE}}]}
+        self.assertEqual(self._tack_url(doc)[0], self.ISSUE)
 
-    def test_most_recently_started_pin_wins(self):
-        routes = [
-            {"slug": "old", "sessions": [{"id": "sid-1", "started_at": "2026-07-01T00:00:00Z"}],
-             "tacks": [{"status": "in_progress", "deliverable": {"url": "https://x/old"}}]},
-            {"slug": "new", "sessions": [{"id": "sid-1", "started_at": "2026-07-08T00:00:00Z"}],
-             "tacks": [{"status": "in_progress", "deliverable": {"url": self.ISSUE}}]},
-        ]
-        url, _ = self._tack_url(routes, sid="sid-1", branch="whatever")
-        self.assertEqual(url, self.ISSUE)
+    def test_the_chain_prefers_in_progress_over_done(self):
+        doc = {"slug": "widget-cache-maintenance", "tacks": [
+            {"status": "done", "done_at": "2026-07-01",
+             "deliverable": {"url": "https://x/old"}},
+            {"status": "in_progress", "deliverable": {"url": self.ISSUE}},
+        ]}
+        self.assertEqual(self._tack_url(doc)[0], self.ISSUE)
 
-    def test_falls_back_to_location_route_when_no_pin(self):
-        routes = [{
-            "slug": "add-maintenance-cicd-component",
-            "sessions": [],
-            "tacks": [{"status": "in_progress", "deliverable": {"url": self.ISSUE}}],
-        }]
-        url, _ = self._tack_url(
-            routes, sid="", branch="add-maintenance-cicd-component",
-            tack_route=("add-maintenance-cicd-component", None))
-        self.assertEqual(url, self.ISSUE)
+    def test_it_falls_through_to_the_newest_completed_deliverable(self):
+        doc = {"slug": "widget-cache-maintenance", "tacks": [
+            {"status": "done", "done_at": "2026-07-01",
+             "deliverable": {"url": "https://x/old"}},
+            {"status": "done", "done_at": "2026-08-01",
+             "deliverable": {"url": self.ISSUE}},
+        ]}
+        self.assertEqual(self._tack_url(doc)[0], self.ISSUE)
+
+    def test_a_route_the_cli_cannot_serve_yields_nothing(self):
+        # Renamed, removed, or a tack version that does not know the route.
+        self.assertEqual(self._tack_url({"tacks": []}), ("", ""))
+
+    def test_no_announced_route_asks_tack_nothing(self):
+        # The dependency is optional and costs nothing when absent: with no
+        # binding there is no slug, so no subprocess runs.
+        with mock.patch.dict(self.beacon._ROUTE_DOCS, {}, clear=True), \
+             mock.patch("subprocess.run",
+                        side_effect=AssertionError("tack invoked")):
+            self.assertEqual(self.beacon._tack_url_for(), ("", ""))
+
+    def test_the_route_is_asked_for_once_per_process(self):
+        calls = []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=json.dumps({"slug": "r", "tacks": []}), stderr="")
+
+        self.beacon.write_state("announced.route", json.dumps({"route": "r"}))
+        with mock.patch.object(self.beacon, "_which", return_value="/bin/tack"), \
+             mock.patch.dict(self.beacon._ROUTE_DOCS, {}, clear=True), \
+             mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._tack_url_for()
+            self.beacon._tack_route_urls()
+            self.beacon._tack_landed_urls()
+        self.assertEqual(len(calls), 1, "one route, one subprocess")
 
 
 class CacheKeyIsPaneStable(BeaconTest):
@@ -2349,8 +2374,8 @@ class TackRouteAcquisition(BeaconTest):
     def _urls(self, route, started=None):
         if started is not False:
             self.beacon.write_state("session_started_at", started or self.SESSION_START)
-        with mock.patch.object(self.beacon, "_bound_tack_route", return_value=route):
-            return self.beacon._tack_route_urls(Path("/x"), "topic", "widgets")
+        with mock.patch.object(self.beacon, "_route_doc", return_value=route):
+            return self.beacon._tack_route_urls()
 
     def test_this_session_s_deliverables_and_links_gather_in_route_order(self):
         self.assertEqual(self._urls(self.ROUTE), [
@@ -2396,15 +2421,16 @@ class TackRouteAcquisition(BeaconTest):
 
     def _publish(self, url, route=(), project_full="gh:acme/widgets",
                  bound=None, location=LOCATION):
-        # _bound_tack_route is patched even when a test doesn't care: the
-        # resolved-URL guard consults it, and unpatched it would shell out to the
-        # developer's real `tack list`. _location_url_at likewise shells to git.
+        # _route_doc is patched even when a test doesn't care: the
+        # resolved-URL guard consults it, and unpatched it would shell out to
+        # the developer's real `tack tree`. _location_url_at likewise shells to
+        # git.
         with mock.patch.object(self.beacon, "_detect_branch_info",
                                return_value=("main", "clean", "", "default")), \
              mock.patch.object(self.beacon, "_project_full_at", return_value=project_full), \
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value=None), \
              mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
-             mock.patch.object(self.beacon, "_bound_tack_route", return_value=bound), \
+             mock.patch.object(self.beacon, "_route_doc", return_value=bound), \
              mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
              mock.patch.object(self.beacon, "_location_url_at", return_value=location), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
@@ -6200,3 +6226,504 @@ class AnnouncedCrUrl(BeaconTest):
         finally:
             for p in patches: p.stop()
         self.assertEqual((url, label), (self.URL, self.TITLE))
+
+
+class AnnouncedArtifacts(BeaconTest):
+    """STATUSLINE-03: the artifacts a sibling announces reach the row directly.
+
+    The row's other sources answer narrower questions — which URL this branch
+    points at, what the bound route holds — so a merge, a filed issue, and a
+    published release arrive here or not at all on a session with no route.
+    """
+
+    CR = "https://github.com/o/r/pull/88"
+    OTHER = "https://github.com/o/r/pull/4"
+    ISSUE = "https://github.com/o/r/issues/12"
+    RELEASE = "https://github.com/o/r/releases/tag/v2.9.2"
+
+    def _line(self, key, **body):
+        return f"codes.bridgeai.anchor/{key} " + json.dumps(body)
+
+    def _observe(self, *lines, cwd="/tmp/proj"):
+        """Run the PostToolUse reader over one tool output. tack is on PATH on a
+        dev machine, so the landed probe is stubbed rather than left to read the
+        author's real routes."""
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path(str(p))), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._read_announcements(
+                {"cwd": cwd, "tool_response": {"stdout": "\n".join(lines)}})
+
+    def _touch(self, ref, url):
+        with mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._record_deliverable(ref, url, "gh:o/r")
+
+    def _entries(self):
+        return self.beacon.read_state_json("deliverables", [])
+
+    def _refs(self):
+        return [e["ref"] for e in self._entries()]
+
+    def _delivered(self):
+        return [e["ref"] for e in self._entries() if e.get("delivered")]
+
+    # --- each key reaches the row -------------------------------------------
+
+    def test_a_merged_cr_lands_delivered(self):
+        self._observe(self._line("cr.merged", uri=self.CR, title="Add a thing",
+                                 merged_at="2026-09-02T15:04:05Z", sha="abc1234"))
+        self.assertEqual(self._refs(), ["#88"])
+        self.assertEqual(self._delivered(), ["#88"])
+
+    def test_a_filed_issue_lands_open(self):
+        self._observe(self._line("issue.created", uri=self.ISSUE, title="Bug"))
+        self.assertEqual(self._refs(), ["#12"])
+        self.assertEqual(self._delivered(), [])
+
+    def test_a_published_release_lands_delivered(self):
+        self._observe(self._line("release.created", uri=self.RELEASE, tag="v2.9.2"))
+        self.assertEqual(self._refs(), ["v2.9.2"])
+        self.assertEqual(self._delivered(), ["v2.9.2"])
+
+    def test_a_merge_delivers_a_cr_already_on_the_row(self):
+        self._touch("#88", self.CR)
+        self.assertEqual(self._delivered(), [])
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self.assertEqual(self._delivered(), ["#88"])
+
+    def test_the_merge_survives_a_later_re_stamp(self):
+        # Every _record_deliverable recomputes `delivered` for every entry, so
+        # the announced set has to persist apart from the entries it flags —
+        # otherwise the next deliverable the session touches clears the merge.
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self._touch("#4", self.OTHER)
+        self.assertEqual(self._delivered(), ["#88"])
+
+    # --- the two slots stay independent -------------------------------------
+
+    def test_a_merge_does_not_become_the_resolved_cr(self):
+        # PROV-07 tier 0 is what the session is about; the row is what it
+        # produced. A merge fills one and not the other.
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self.assertIsNone(self.beacon.read_state_json("announced.cr", None))
+
+    def test_one_output_can_fill_both(self):
+        self._observe(self._line("cr.created", uri=self.CR, title="Add a thing"),
+                      self._line("issue.created", uri=self.ISSUE, title="Bug"))
+        self.assertEqual(self._refs(), ["#12"])
+        self.assertEqual(
+            self.beacon.read_state_json("announced.cr", {}).get("uri"), self.CR)
+
+    def test_every_artifact_in_one_output_is_recorded(self):
+        # Unlike the CR slot, these accumulate: two announcements are two facts,
+        # not one superseding the other.
+        self._observe(self._line("issue.created", uri=self.ISSUE),
+                      self._line("release.created", uri=self.RELEASE))
+        self.assertEqual(self._refs(), ["#12", "v2.9.2"])
+
+    # --- near misses --------------------------------------------------------
+
+    def test_a_longer_key_sharing_the_prefix_records_nothing(self):
+        self._observe(f'codes.bridgeai.anchor/cr.mergedagain {{"uri":"{self.CR}"}}')
+        self.assertEqual(self._refs(), [])
+
+    def test_a_key_beacon_does_not_subscribe_to_records_nothing(self):
+        # anchor publishes these; beacon paints no surface from either, so they
+        # parse and dispatch nowhere.
+        self._observe(self._line("cr.ready", uri=self.CR),
+                      self._line("commit.pushed", uri=self.CR, sha="abc1234",
+                                 branch="a-branch"))
+        self.assertEqual(self._refs(), [])
+
+    def test_a_url_carrying_no_ref_records_nothing(self):
+        self._observe(self._line("cr.merged", uri="https://git.example.com/o/r/changes/abc"))
+        self.assertEqual(self._refs(), [])
+
+    def test_a_body_that_will_not_parse_is_skipped(self):
+        self._observe("codes.bridgeai.anchor/cr.merged {not json")
+        self.assertEqual(self._refs(), [])
+
+    def test_an_announcement_without_a_uri_records_nothing(self):
+        self._observe(self._line("release.created", tag="v2.9.2"))
+        self.assertEqual(self._refs(), [])
+
+    def test_the_key_mentioned_mid_line_records_nothing(self):
+        self._observe("about to emit " + self._line("cr.merged", uri=self.CR))
+        self.assertEqual(self._refs(), [])
+
+    # --- repetition, sanitation, scope --------------------------------------
+
+    def test_repeating_a_merge_is_safe(self):
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self.assertEqual(self._refs(), ["#88"])
+        self.assertEqual(self.beacon.read_state_json("announced.delivered", []),
+                         [self.CR])
+
+    def test_a_dropped_deliverable_stays_dropped(self):
+        # CMD-24: the removal is remembered, and an announcement is one more
+        # thing that would otherwise put the entry straight back.
+        self.beacon.write_state("deliverables.dropped", json.dumps([self.CR]))
+        self._observe(self._line("cr.merged", uri=self.CR))
+        self.assertEqual(self._refs(), [])
+
+    def test_control_characters_are_stripped_from_the_uri(self):
+        self._observe(self._line("cr.merged", uri=self.CR + "\x1b]8;;evil\x07"))
+        self.assertNotIn("\x1b", self._entries()[0]["url"])
+
+    def test_a_fresh_start_clears_what_a_prior_session_announced(self):
+        self._observe(self._line("cr.created", uri=self.CR, title="Add a thing"),
+                      self._line("cr.merged", uri=self.CR))
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertIsNone(self.beacon.read_state_json("announced.cr", None))
+        self.assertEqual(self.beacon.read_state_json("announced.delivered", []), [])
+
+    def test_a_long_url_is_not_truncated(self):
+        # The display cap is the status line's, for titles. A shortened URL is
+        # not a shorter link, it is one that resolves somewhere else.
+        url = "https://gitlab.example.com/" + "/".join(["group"] * 20) + "/-/merge_requests/17"
+        self.assertGreater(len(url), 120)
+        self._observe(self._line("cr.merged", uri=url))
+        self.assertEqual(self._entries()[0]["url"], url)
+
+
+class MidTurnBranchRefresh(BeaconTest):
+    """HOOK-08c: a tool call that moved the branch republishes the branch slots
+    without waiting for Stop.
+
+    The gate is what makes it affordable — read-only git is most of what a
+    session runs, and each refresh is three subprocesses."""
+
+    def _post(self, command, tool_name="Bash"):
+        """Run the PostToolUse branch refresh over one tool call, returning the
+        uservar-batch argv the CLI was handed (empty when it was skipped)."""
+        calls = []
+        with mock.patch.object(self.beacon, "_cli",
+                               side_effect=lambda *a: calls.append(a)), \
+             mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("a-branch", "clean", "", "feature")):
+            self.beacon._refresh_branch_chips_if_git(
+                {"tool_name": tool_name, "cwd": "/x",
+                 "tool_input": {"command": command}})
+        return calls
+
+    def _slots(self, calls):
+        return dict(p.split("=", 1) for p in calls[0][1:])
+
+    # --- what moves the chip ------------------------------------------------
+
+    def test_a_push_refreshes_the_slots(self):
+        calls = self._post("git push")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0], "uservar-batch")
+        self.assertEqual(self._slots(calls)["beacon_branch_clean"], "a-branch")
+
+    def test_a_commit_and_push_chain_refreshes(self):
+        self.assertEqual(len(self._post("git add -A; git commit -m x; git push")), 1)
+
+    def test_a_checkout_refreshes(self):
+        self.assertEqual(len(self._post("git checkout -b feature/x")), 1)
+
+    def test_a_force_push_with_lease_refreshes(self):
+        self.assertEqual(len(self._post("git push --force-with-lease")), 1)
+
+    def test_a_fetch_refreshes(self):
+        # Someone else's push only reaches the ahead/behind count via a fetch.
+        self.assertEqual(len(self._post("git fetch origin")), 1)
+
+    # --- what does not -----------------------------------------------------
+
+    def test_read_only_git_is_skipped(self):
+        for command in ("git status", "git log --oneline -5",
+                        "git diff HEAD~1", "git show abc123"):
+            self.assertEqual(self._post(command), [], command)
+
+    def test_a_log_flag_naming_branches_is_skipped(self):
+        # `--branches` is not the `branch` subcommand; the word boundary is what
+        # keeps a read-only listing off the refresh path.
+        self.assertEqual(self._post("git log --branches --oneline"), [])
+
+    def test_a_non_git_command_is_skipped(self):
+        self.assertEqual(self._post("ls -la"), [])
+
+    def test_a_forge_cli_merge_is_skipped(self):
+        # A forge-side merge changes the forge, not the local refs the chip
+        # reads — nothing moves until a fetch or pull, which has its own trigger.
+        self.assertEqual(self._post("gh pr merge 88 --squash"), [])
+
+    def test_another_tool_is_skipped(self):
+        self.assertEqual(self._post("git push", tool_name="Edit"), [])
+
+    def test_a_payload_with_no_command_is_skipped(self):
+        with mock.patch.object(self.beacon, "_cli",
+                               side_effect=AssertionError("CLI invoked")):
+            self.beacon._refresh_branch_chips_if_git(
+                {"tool_name": "Bash", "cwd": "/x", "tool_input": None})
+
+    # --- where it resolves from --------------------------------------------
+
+    def test_it_resolves_from_the_session_anchor(self):
+        # HOOK-08b's rule: the chip names the session's project, not a scratch
+        # directory the agent stepped into mid-turn.
+        self.beacon.write_state("anchor.cwd", "/anchored")
+        seen = []
+        with mock.patch.object(self.beacon, "_cli"), \
+             mock.patch.object(self.beacon, "_detect_branch_info",
+                               side_effect=lambda p: seen.append(p) or ("b", "clean", "", "feature")):
+            self.beacon._refresh_branch_chips_if_git(
+                {"tool_name": "Bash", "cwd": "/elsewhere",
+                 "tool_input": {"command": "git push"}})
+        self.assertEqual(seen, [Path("/anchored")])
+
+    # --- the two publishers agree ------------------------------------------
+
+    def test_the_slots_match_what_the_per_turn_publish_emits(self):
+        # One classifier, so a mid-turn refresh cannot paint a branch a state
+        # the end-of-turn publish would then contradict.
+        for identity, state, slot in (("default", "diverged", "beacon_branch_default"),
+                                      ("feature", "clean", "beacon_branch_clean"),
+                                      ("feature", "diverged", "beacon_branch_diverged"),
+                                      ("feature", "untracked", "beacon_branch_untracked")):
+            pairs = dict(p.split("=", 1) for p in
+                         self.beacon._branch_slot_pairs("b", state, identity))
+            self.assertEqual(pairs[slot], "b", (identity, state))
+            self.assertEqual(pairs["beacon_branch_state"], state)
+
+
+class AnnouncedLinkReachesTheRow(BeaconTest):
+    """STATUSLINE-02: an announced CR reaches the status line on the hook that
+    read it, not at the end of the turn.
+
+    `resolved.url` is what the row renders; its other writer is the per-turn
+    chip publish, and PROV-07 resolves tier 0 to this same CR when that runs —
+    so this is the same value, one hook earlier.
+    """
+
+    URL = "https://github.com/o/r/pull/88"
+    TITLE = "Announce the CR anchor opens"
+
+    def _observe(self, key="cr.created", cwd="/tmp/proj", **body):
+        body.setdefault("uri", self.URL)
+        line = f"codes.bridgeai.anchor/{key} " + json.dumps(body)
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path(str(p))), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._read_announcements(
+                {"cwd": cwd, "tool_response": {"stdout": line}})
+
+    def _link(self):
+        return (self.beacon.read_state("resolved.url") or "",
+                self.beacon.read_state("resolved.url_label") or "")
+
+    def _refs(self):
+        return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def test_the_link_is_published_on_the_announcement(self):
+        self.beacon.write_state("anchor.cwd", "/tmp/proj")
+        self._observe(title=self.TITLE)
+        self.assertEqual(self._link(), (self.URL, self.TITLE))
+
+    def test_the_ref_lands_on_the_row_too(self):
+        self.beacon.write_state("anchor.cwd", "/tmp/proj")
+        self._observe(title=self.TITLE)
+        self.assertEqual(self._refs(), ["#88"])
+
+    def test_the_label_falls_back_to_the_ref(self):
+        # cr.updated reads its title back from the forge and can arrive empty.
+        self.beacon.write_state("anchor.cwd", "/tmp/proj")
+        self._observe(key="cr.updated", title="")
+        self.assertEqual(self._link(), (self.URL, "#88"))
+
+    def test_a_cr_announced_in_another_checkout_does_not_take_the_link(self):
+        # The row names this session's work. The root guard is what decides, so
+        # the link is resolved against the anchor rather than the announcing
+        # tool's cwd.
+        self.beacon.write_state("anchor.cwd", "/tmp/proj")
+        self._observe(cwd="/tmp/elsewhere", title=self.TITLE)
+        self.assertEqual(self._link(), ("", ""))
+        self.assertEqual(self._refs(), [])
+
+    def test_an_unanchored_session_publishes_nothing(self):
+        # SessionStart anchors every session, so this is the pane that has not
+        # had one yet — it gets the link on the next publish like anything else.
+        self._observe(title=self.TITLE)
+        self.assertEqual(self._link(), ("", ""))
+
+    def test_a_produced_artifact_does_not_move_the_link(self):
+        # The link is what the session is about; a merge, an issue, or a release
+        # goes on the row without claiming that slot.
+        self.beacon.write_state("anchor.cwd", "/tmp/proj")
+        self._observe(key="issue.created", uri="https://github.com/o/r/issues/12")
+        self.assertEqual(self._link(), ("", ""))
+        self.assertEqual(self._refs(), ["#12"])
+
+
+class AnnouncedTackRoute(BeaconTest):
+    """WIP-02: the route a session is on is what tack announced when it bound
+    the session — the join beacon used to reconstruct by scanning route files
+    for the session id, then guessing from a pin file, a branch, or a project
+    name.
+
+    The announcement carries identity only. Everything the sessions view renders
+    about a tack is mutable after the binding fires, so it is asked for, not
+    carried.
+    """
+
+    SID = "sid-abc"
+
+    def setUp(self):
+        super().setUp()
+        # Both halves of the id the guard compares against, so a real
+        # CLAUDE_CODE_SESSION_ID in the developer's own shell cannot decide
+        # whether a synthetic announcement belongs to this session.
+        self.beacon.write_state("claude_session_id", self.SID)
+        pinned = mock.patch.dict(os.environ, {"CLAUDE_CODE_SESSION_ID": self.SID})
+        pinned.start()
+        self.addCleanup(pinned.stop)
+
+    def _line(self, key, **body):
+        return f"codes.bridgeai.tack/{key} " + json.dumps(body)
+
+    def _observe(self, *lines, cwd="/tmp/proj"):
+        with mock.patch.object(self.beacon, "find_project_root",
+                               side_effect=lambda p: Path(str(p))), \
+             mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._read_announcements(
+                {"cwd": cwd, "tool_response": {"stdout": "\n".join(lines)}})
+
+    def _record(self):
+        return self.beacon._bound_route_record()
+
+    def _refs(self):
+        return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    # --- the binding ---------------------------------------------------------
+
+    def test_a_binding_records_the_route(self):
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.assertEqual(self._record(), {"session": self.SID, "route": "cart"})
+
+    def test_a_binding_naming_a_tack_records_it(self):
+        self._observe(self._line("session.started", session=self.SID,
+                                 route="cart", tack="t4"))
+        self.assertEqual(self._record(),
+                         {"session": self.SID, "route": "cart", "tacks": ["t4"]})
+
+    def test_a_route_level_binding_records_no_tack(self):
+        # The prompt hook binds the route before the work has a tack.
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.assertEqual(self._record().get("tacks"), None)
+
+    def test_a_payload_naming_no_session_is_taken_as_ours(self):
+        # The id is the field a subscriber checks; its absence is a publisher
+        # with nothing to disambiguate.
+        self._observe(self._line("session.started", route="cart"))
+        self.assertEqual(self._record().get("route"), "cart")
+
+    def test_a_binding_for_another_session_is_ignored(self):
+        # `tack session <slug> <id>` binds a session by name, so an announcement
+        # can be about someone else's. Repinning this pane onto it would put
+        # another session's work on this row.
+        self._observe(self._line("session.started", session="someone-else",
+                                 route="theirs"))
+        self.assertEqual(self._record(), {})
+
+    def test_a_binding_for_this_session_is_kept(self):
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.assertEqual(self._record().get("route"), "cart")
+
+    def test_a_body_with_no_route_records_nothing(self):
+        self._observe(self._line("session.started", session=self.SID))
+        self.assertEqual(self._record(), {})
+
+    # --- the session stamp ---------------------------------------------------
+
+    def test_the_record_names_the_session_it_was_announced_for(self):
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.assertEqual(self._record()["session"], self.SID)
+
+    def test_a_reused_pane_does_not_inherit_the_last_tenant_s_route(self):
+        # State keys on the pane, which outlives any single Claude session.
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.beacon.write_state("claude_session_id", "a-later-session")
+        with mock.patch.dict(os.environ,
+                             {"CLAUDE_CODE_SESSION_ID": "a-later-session"}):
+            self.assertEqual(self._record(), {})
+
+    def test_a_session_that_kept_its_id_keeps_its_route(self):
+        # tack announces a binding once per session id, so wiping at the
+        # boundary would strand this case with no route and nothing left to
+        # re-announce one. The stamp still matches, so the record stands.
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self.beacon._wipe_session_for_fresh_start()
+        self.beacon.write_state("claude_session_id", self.SID)
+        self.assertEqual(self._record()["route"], "cart")
+
+    # --- the close -----------------------------------------------------------
+
+    def test_the_close_records_the_tacks_the_session_drove(self):
+        self._observe(self._line("session.started", session=self.SID,
+                                 route="cart", tack="t4"))
+        self._observe(self._line("session.ended", session=self.SID, route="cart",
+                                 tacks=["t4", "t5"], deliverables=[]))
+        record = self._record()
+        self.assertEqual(record["tacks"], ["t4", "t5"])
+        self.assertTrue(record["ended"])
+
+    def test_the_close_puts_its_deliverables_on_the_row(self):
+        self._observe(self._line(
+            "session.ended", session=self.SID, route="cart", tacks=["t4"],
+            deliverables=["https://github.com/o/r/pull/88"]))
+        self.assertEqual(self._refs(), ["#88"])
+
+    def test_the_close_keeps_the_route(self):
+        # It reports the work closing out, not the conversation ending, so the
+        # row keeps naming what the session shipped.
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        self._observe(self._line("session.ended", session=self.SID, route="cart",
+                                 tacks=[], deliverables=[]))
+        self.assertEqual(self._record()["route"], "cart")
+
+    # --- near misses ---------------------------------------------------------
+
+    def test_a_key_beacon_does_not_subscribe_to_is_ignored(self):
+        self._observe('codes.bridgeai.tack/session.startedagain {"route":"x"}')
+        self.assertEqual(self._record(), {})
+
+    def test_another_publisher_s_session_key_is_ignored(self):
+        self._observe('codes.bridgeai.other/session.started {"route":"x"}')
+        self.assertEqual(self._record(), {})
+
+    def test_a_body_that_will_not_parse_is_skipped(self):
+        self._observe("codes.bridgeai.tack/session.started {not json")
+        self.assertEqual(self._record(), {})
+
+    def test_control_characters_are_stripped_from_the_slug(self):
+        # The slug reaches a subprocess argv and the sessions view.
+        self._observe(self._line("session.started", session=self.SID,
+                                 route="cart\x1b]8;;evil\x07"))
+        self.assertNotIn("\x1b", self._record()["route"])
+
+    def test_both_publishers_in_one_output_are_read(self):
+        self._observe(
+            self._line("session.started", session=self.SID, route="cart"),
+            'codes.bridgeai.anchor/cr.merged {"uri":"https://github.com/o/r/pull/88"}')
+        self.assertEqual(self._record()["route"], "cart")
+        self.assertEqual(self._refs(), ["#88"])
+
+    # --- what it feeds -------------------------------------------------------
+
+    def test_the_recorded_route_is_what_the_cli_is_asked_for(self):
+        self._observe(self._line("session.started", session=self.SID, route="cart"))
+        asked = []
+
+        def fake_run(cmd, *a, **k):
+            asked.append(cmd)
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=json.dumps({"slug": "cart", "tacks": []}), stderr="")
+
+        with mock.patch.object(self.beacon, "_which", return_value="/bin/tack"), \
+             mock.patch.dict(self.beacon._ROUTE_DOCS, {}, clear=True), \
+             mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._route_doc()
+        self.assertEqual(asked, [["tack", "tree", "cart", "--json"]])

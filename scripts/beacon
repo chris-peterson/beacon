@@ -957,15 +957,39 @@ def _enter_subscribed_mode(payload: dict) -> None:
 
 # A sibling plugin's interop announcement: one self-contained line on its own
 # stdout, which reaches a PostToolUse hook as `tool_response.stdout`. anchor
-# declares both events in its own `plugin.yml`; the format is the suite's
-# contract, in the marketplace repo at `authoring/plugin-contract.md`.
+# declares every key it publishes in its own `plugin.yml`; the format is the
+# suite's contract, in the marketplace repo at `authoring/plugin-contract.md`.
 #
-# Both keys, because either one means a change request is there to resolve to.
-# anchor announces one or the other per run and never both, so watching only
-# `cr.updated` would miss every freshly opened CR. The lookahead is what keeps
-# `cr.created` from also matching `cr.createdagain`.
-ANNOUNCED_CR_RE = re.compile(
-    r"^codes\.bridgeai\.anchor/cr\.(?:created|updated)(?=[ \t])[ \t]+(.*)$", re.MULTILINE)
+# The publisher and the key are both captured, so one pass reads every
+# announcement in the output and the dispatch below decides what beacon does
+# with each. Capturing rather than spelling out the keys is also what keeps
+# `cr.created` from matching `cr.createdagain`: the longer key is captured whole
+# and lands on no handler.
+ANNOUNCEMENT_RE = re.compile(
+    r"^codes\.bridgeai\.([a-z][a-z0-9-]*)/([a-z]+\.[a-z]+)(?=[ \t])[ \t]+(.*)$",
+    re.MULTILINE)
+
+# PROV-07 tier 0 takes either key, because a run announces one or the other and
+# never both — watching only `cr.updated` would miss every freshly opened CR.
+ANNOUNCED_CR_KEYS = ("cr.created", "cr.updated")
+
+# Artifacts an announcement puts on the status-line row (STATUSLINE-03). The
+# row's other sources answer "what does this branch point at" (PROV-07) and
+# "what does the bound route hold" (tack); these answer neither and are the only
+# source that knows — an issue filed from the default branch, a release that
+# exists only as a tag, a merge tack used to learn by being called.
+ANNOUNCED_ARTIFACT_KEYS = ("cr.merged", "issue.created", "release.created")
+
+# The announced keys that also settle the delivered flag. A release tag URL only
+# exists once published, so its kind settles it (STATUSLINE-03 *Kind*), and an
+# issue is open by definition — a merge is the one that has to be recorded.
+ANNOUNCED_DELIVERING_KEYS = ("cr.merged",)
+
+# tack's session lifecycle: which route this session is working (WIP-02), and
+# what its work closed with. These carry identity, not content — the route slug
+# and the tack ids — because everything the sessions view renders about a tack
+# is mutable after the binding fires. `_route_doc` asks tack for that.
+TACK_SESSION_KEYS = ("session.started", "session.ended")
 
 # Everything a terminal or an escape sequence would read as structure rather
 # than as text. The announcement is guaranteed to be one line; a value decoded
@@ -973,7 +997,7 @@ ANNOUNCED_CR_RE = re.compile(
 _DISPLAY_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-def _display_safe(text: str, limit: int = 120) -> str:
+def _display_safe(text: str, limit: int | None = 120) -> str:
     """A value from an announcement, made safe to render.
 
     `resolved.url_label` becomes OSC-8 link text (STATUSLINE-02), and `_osc8`
@@ -983,55 +1007,190 @@ def _display_safe(text: str, limit: int = 120) -> str:
     nothing a status line wants to do with one.
 
     The cap is the status line's, not the format's. A title runs as long as its
-    author made it, and the row it lands on is one line of a terminal."""
+    author made it, and the row it lands on is one line of a terminal. It is a
+    caller's choice for that reason: a URL is the other kind of value, where
+    shortening produces a link that goes somewhere else, so `_safe_uri` passes
+    `None`."""
     cleaned = _DISPLAY_UNSAFE_RE.sub("", text).strip()
-    return cleaned[:limit]
+    return cleaned if limit is None else cleaned[:limit]
+
+
+def _safe_uri(value) -> str:
+    """An announced URI, sanitized and left whole. A nested GitLab group or a
+    long repo name puts a legitimate forge URL past the display cap, and a
+    truncated URL is not a shorter link — it is one that resolves elsewhere or
+    not at all."""
+    return _display_safe(str(value), limit=None)
 
 
 def _read_announcements(payload: dict) -> None:
-    """Record the CR a sibling announced in this tool's output (PROV-07 tier 0).
+    """Record what a sibling announced in this tool's output.
 
-    anchor knows a CR's URL and title the moment it opens or changes one.
-    Without this beacon reconstructs the same fact downstream — shelling out to
+    anchor knows a CR's URL and title the moment it opens or changes one, and
+    knows a merge, a filed issue, and a published release the moment each lands.
+    Without this beacon reconstructs the same facts downstream — shelling out to
     `tack list`, then asking the forge over the network — and the tack route
-    only carries it at all if the agent chose to run `tack deliverable` when
+    only carries them at all if the agent chose to run `tack deliverable` when
     nudged.
 
-    The project root is stored with the URL because PROV-07 resolves against a
-    directory it is handed, not against the session (`open-url <dir>` is correct
-    in a pane beacon isn't tracking). Session-scoped state alone would answer for
-    an unrelated checkout.
+    tack knows which route a session is working the moment it binds it, which
+    is the join beacon used to reconstruct by scanning tack's route files for
+    the session id and, failing that, guessing from a pin file, a branch, or a
+    project name.
 
-    Last announcement in the output wins: one tool call touches at most one CR,
-    so a later line is the newer fact. Safe to repeat, per the contract — no
-    ordering guarantee holds between subscribers, and a session can publish the
-    same key twice."""
+    Three shapes of fact, read differently. The CR the session is *about* is a
+    single slot, so the last announcement of it wins: one tool call touches at
+    most one CR, so a later line is the newer fact. Artifacts the session
+    *produced* accumulate, so every one in the output is recorded. tack's
+    session lifecycle updates one record in place.
+
+    Safe to repeat, per the contract — no ordering guarantee holds between
+    subscribers, and a session can publish the same key twice."""
     response = payload.get("tool_response")
     stdout = str(response.get("stdout") or "") if isinstance(response, dict) else ""
-    if "codes.bridgeai.anchor/cr." not in stdout:
+    if "codes.bridgeai." not in stdout:
         return
-    announced = None
-    for match in ANNOUNCED_CR_RE.finditer(stdout):
+    announced_cr = None
+    produced = []
+    for match in ANNOUNCEMENT_RE.finditer(stdout):
         # A body that will not parse is skipped rather than raised: the contract
         # puts a malformed line on its publisher, and this runs on every Bash
         # call in the session.
         try:
-            body = json.loads(match.group(1))
+            body = json.loads(match.group(3))
         except (ValueError, TypeError):
             continue
-        if isinstance(body, dict) and body.get("uri"):
-            announced = body
-    if announced is None:
-        return
+        if not isinstance(body, dict):
+            continue
+        publisher, key = match.group(1), match.group(2)
+        if publisher == "tack":
+            if key in TACK_SESSION_KEYS:
+                _record_announced_route(key, body)
+            continue
+        if publisher != "anchor" or not body.get("uri"):
+            continue
+        if key in ANNOUNCED_CR_KEYS:
+            announced_cr = body
+        elif key in ANNOUNCED_ARTIFACT_KEYS:
+            produced.append((key, body))
+    if announced_cr is not None:
+        _record_announced_cr(payload, announced_cr)
+    for key, body in produced:
+        _record_announced_artifact(key, body)
+
+
+def _record_announced_cr(payload: dict, announced: dict) -> None:
+    """PROV-07 tier 0 — the CR this session is about.
+
+    The project root is stored with the URL because PROV-07 resolves against a
+    directory it is handed, not against the session (`open-url <dir>` is correct
+    in a pane beacon isn't tracking). Session-scoped state alone would answer for
+    an unrelated checkout."""
     try:
         root = str(find_project_root(Path(payload.get("cwd") or Path.cwd())))
     except OSError:
         return
     write_state("announced.cr", json.dumps({
-        "uri": _display_safe(str(announced["uri"])),
+        "uri": _safe_uri(announced["uri"]),
         "title": _display_safe(str(announced.get("title") or "")),
         "root": root,
     }))
+    _publish_announced_link()
+
+
+def _publish_announced_link() -> None:
+    """Put the announced CR on the status line now, rather than at the end of
+    the turn (STATUSLINE-02).
+
+    `resolved.url` has one other writer, the per-turn chip publish, and PROV-07
+    resolves tier 0 to this same CR when it runs — so this writes the value that
+    publish would, one hook earlier. Without it the row keeps naming the branch
+    tree for the rest of a turn in which a change request was opened, which is
+    the one moment the link had something better to say.
+
+    Resolved against the session's anchor, not the announcing tool's cwd: a CR
+    announced in an unrelated checkout must not take over this session's link,
+    and `_announced_cr_url`'s root guard is what decides. No title is passed to
+    the row — that belongs to the badge's resolved task (STATUSLINE-03
+    *Titles*), which the per-turn publish supplies."""
+    anchored = read_state("anchor.cwd")
+    if not anchored:
+        return
+    url, label = _announced_cr_url(Path(anchored))
+    if not url:
+        return
+    write_state("resolved.url", url)
+    write_state("resolved.url_label", label)
+    ref = _deliverable_suffix(url)
+    if ref:
+        _record_deliverable(ref, url, _project_id_from_url(url))
+
+
+def _record_announced_route(key: str, body: dict) -> None:
+    """WIP-02 — the tack route this session is bound to, as tack named it.
+
+    tack keys its announcement on the Claude session id, so a `tack session`
+    run *about* another session (the skill binds one explicitly) is ignored
+    rather than repinning this pane onto someone else's route. A payload naming
+    no session is taken as this one's: the id is the field a subscriber checks,
+    and its absence is a publisher that had nothing to disambiguate.
+
+    `session.ended` reports the work closing out, not the conversation ending,
+    so the record is updated in place rather than cleared — the row keeps
+    naming what the session shipped for as long as the pane holds it. The tack
+    ids it carries are authoritative over the one `session.started` named:
+    that was the binding, this is what the session actually drove."""
+    session = str(body.get("session") or "")
+    mine = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    if session and mine and session != mine:
+        return
+    record = _bound_route_record()
+    if session or mine:
+        record["session"] = session or mine
+    route = _display_safe(str(body.get("route") or ""), limit=200)
+    if route:
+        record["route"] = route
+    tacks = [_display_safe(str(t), limit=200) for t in (body.get("tacks") or [])
+             if isinstance(t, (str, int))]
+    if key == "session.ended":
+        record["ended"] = True
+        if tacks:
+            record["tacks"] = tacks
+    else:
+        one = _display_safe(str(body.get("tack") or ""), limit=200)
+        if one and one not in record.get("tacks", []):
+            record["tacks"] = [*record.get("tacks", []), one]
+    if not record.get("route"):
+        return
+    write_state("announced.route", json.dumps(record))
+    for url in (body.get("deliverables") or []):
+        if isinstance(url, str):
+            _record_announced_artifact("tack.deliverable", {"uri": url})
+
+
+def _record_announced_artifact(key: str, body: dict) -> None:
+    """STATUSLINE-03 — put an artifact a sibling announced on this session's row.
+
+    A merge records the URL as delivered *before* the entry, so the re-stamp
+    every `_record_deliverable` performs sees it. The flag has to persist apart
+    from the entry because that re-stamp recomputes it on every call, and would
+    otherwise drop what the announcement established.
+
+    No title is passed. An open CR's title is the badge's own resolved task
+    (STATUSLINE-03 *Titles*) — sourcing it separately is what made the two
+    surfaces describe one PR differently, and an announcement is exactly such a
+    separate source."""
+    url = _safe_uri(body["uri"])
+    ref = _deliverable_suffix(url)
+    if not ref:
+        return
+    if key in ANNOUNCED_DELIVERING_KEYS:
+        delivered = read_state_json("announced.delivered", [])
+        if not isinstance(delivered, list):
+            delivered = []
+        if url not in delivered:
+            write_state("announced.delivered", json.dumps(delivered + [url]))
+    _record_deliverable(ref, url, _project_id_from_url(url))
 
 
 def _announced_cr_url(cwd: Path) -> tuple[str, str]:
@@ -1234,31 +1393,117 @@ def _branch_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     return f"{remote}{sep}{branch}", branch
 
 
-_TACK_ROUTES_UNSET = object()
-_TACK_ROUTES_CACHE = _TACK_ROUTES_UNSET
+_ROUTE_DOCS: dict[str, dict | None] = {}
 
 
-def _tack_routes() -> list:
-    """`tack list --json`, memoized for the life of the process. Every hook is
-    its own process, so the memo never spans a turn — it exists because a single
-    invocation asks tack the same question twice (the URL chain and the
-    landed-deliverable filter), and one subprocess is enough for both. Empty
-    list when tack is absent or unreadable."""
-    global _TACK_ROUTES_CACHE
-    if _TACK_ROUTES_CACHE is not _TACK_ROUTES_UNSET:
-        return _TACK_ROUTES_CACHE
-    _TACK_ROUTES_CACHE = []
+def _route_doc_for(slug: str) -> dict | None:
+    """`tack tree <slug> --json` for one route, memoized per process.
+
+    Keyed by slug because a fleet scan resolves many sessions and several share
+    a route; a hook resolves one. Either way tack is asked once per route."""
+    if not slug:
+        return None
+    if slug in _ROUTE_DOCS:
+        return _ROUTE_DOCS[slug]
+    doc = None
     if _which("tack"):
         try:
-            r = subprocess.run(["tack", "list", "--json"],
+            r = subprocess.run(["tack", "tree", slug, "--json"],
                                capture_output=True, text=True, timeout=2)
             if r.returncode == 0:
                 parsed = json.loads(r.stdout)
-                if isinstance(parsed, list):
-                    _TACK_ROUTES_CACHE = parsed
+                if isinstance(parsed, dict) and parsed.get("slug"):
+                    doc = parsed
         except (subprocess.SubprocessError, json.JSONDecodeError, OSError):
             pass
-    return _TACK_ROUTES_CACHE
+    _ROUTE_DOCS[slug] = doc
+    return doc
+
+
+def _bound_route_record(sh: str | None = None) -> dict:
+    """What tack announced about a session's binding —
+    `{session, route, tacks[], ended}` — empty when tack never bound it (or is
+    not installed). `sh` reads another session's bucket for a fleet scan;
+    omitted, it reads this one's.
+
+    The record names the Claude session it was announced for, and a record
+    naming a different one is discarded. State keys on the pane, which outlives
+    any single session, so this is what keeps a fresh `claude` in a reused pane
+    off the last tenant's route. It is a stamp rather than a HOOK-08a wipe
+    because tack announces a binding once per session id: wiping would strand a
+    session that kept its id across the boundary with no route and nothing left
+    to re-announce it, where the stamp is correct whichever way the id goes."""
+    raw = _read_state_for(sh, "announced.route") if sh else read_state("announced.route")
+    if not raw:
+        return {}
+    try:
+        record = json.loads(raw)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(record, dict):
+        return {}
+    stamped = str(record.get("session") or "")
+    mine = ((_read_state_for(sh, "claude_session_id") if sh
+             else read_state("claude_session_id"))
+            or (os.environ.get("CLAUDE_CODE_SESSION_ID") if not sh else "") or "")
+    if stamped and mine and stamped != mine:
+        return {}
+    return record
+
+
+def _bound_tack_records(slug: str, ids: list, doc: dict | None) -> list:
+    """WIP-09's `tacks` array: the tacks tack said this session is driving,
+    filled in from the route document.
+
+    `kind` and `refs` are derived here rather than carried by the announcement,
+    which is the whole reason the content comes from the CLI: a tack that gained
+    a deliverable after the binding reads as `existing` with nothing needing to
+    re-announce it."""
+    meta = {str(t.get("id")): t for t in ((doc or {}).get("tacks") or [])
+            if isinstance(t, dict)}
+    out = []
+    for tid in ids:
+        tack = meta.get(str(tid))
+        if tack is None:
+            continue
+        deliverable = ((tack.get("deliverable") or {}).get("url") or "")
+        urls = [deliverable] + [(ln or {}).get("url") or "" for ln in (tack.get("links") or [])]
+        refs = [{"type": _ref_type(u), "url": u} for u in urls if u]
+        existing = bool(deliverable) or any(_is_tracker_url(r["url"]) for r in refs)
+        out.append({
+            "id": f"{slug}/{tid}",
+            "tack_id": str(tid),
+            "summary": str(tack.get("summary") or ""),
+            "status": str(tack.get("status") or ""),
+            "kind": "existing" if existing else "emerging",
+            "refs": refs,
+        })
+    return out
+
+
+def _route_doc() -> dict | None:
+    """The route this session is bound to, read from tack — or None.
+
+    Which route is the *announcement's* answer (`announced.route`, WIP-02): tack
+    names the route when it binds the session, so beacon is told rather than
+    guessing from a pin file, a branch, or a project name. What is currently
+    *true* of that route is the CLI's answer, because the attributes the
+    sessions view renders are mutable — a tack's status changes after the
+    binding fires, its summary is editable, and its links grow as the work goes
+    on. An announcement states a fact at a moment; those are questions asked
+    when the answer is needed.
+
+    Neither half reads tack's storage. Reading the route files directly meant a
+    hand-rolled scan of a schema tack is free to change with nothing to catch
+    it; `tack tree` is grammar tack records and publishes.
+
+    Optional, and cheaply so: with no announcement there is no slug, so a
+    machine without tack — or a session with no route bound — never runs the
+    subprocess at all. Memoized for the life of the process, which is one hook:
+    a single invocation asks the same question from the URL chain, the landed
+    filter, and the row.
+    """
+    return _route_doc_for(str(_bound_route_record().get("route") or ""))
 
 
 def _tack_landed_urls() -> set[str]:
@@ -1266,15 +1511,15 @@ def _tack_landed_urls() -> set[str]:
     promotes these to the delivered line — shipping is rare enough to be worth
     keeping on screen, and it is what the session has to show for itself.
 
-    Read from the same `tack list` payload the URL chain already consumes, so it
+    Read from the same route document the URL chain already consumes, so it
     costs nothing extra. It drifts from forge truth when a tack isn't kept
     current; the forge is authoritative but only over the network, which the
     per-turn hook budget rules out. A session with no tack route gets an empty
     set and treats everything it touched as still open."""
+    route = _route_doc()
     return {
         url
-        for route in _tack_routes()
-        for t in (route.get("tacks") or [])
+        for t in ((route or {}).get("tacks") or [])
         if t.get("status") in ("done", "dropped")
         and (url := (t.get("deliverable") or {}).get("url"))
     }
@@ -1334,8 +1579,7 @@ def _tack_in_session_scope(tack: dict, started_at: float | None) -> bool:
     return bool(started_at and done and done >= started_at)
 
 
-def _url_delivered_before_session(cwd: Path, branch: str, url: str,
-                                  project: str | None = None) -> bool:
+def _url_delivered_before_session(url: str) -> bool:
     """True when `url` is a bound-route deliverable whose tack finished before
     this session started.
 
@@ -1347,7 +1591,7 @@ def _url_delivered_before_session(cwd: Path, branch: str, url: str,
     this session with work it never touched."""
     if not url:
         return False
-    route = _bound_tack_route(cwd, branch, project)
+    route = _route_doc()
     if not route:
         return False
     started = _iso_epoch(_session_started_at())
@@ -1357,40 +1601,7 @@ def _url_delivered_before_session(cwd: Path, branch: str, url: str,
     return False
 
 
-def _bound_tack_route(cwd: Path, branch: str, project: str | None = None) -> dict | None:
-    """The tack route this session is working, or None.
-
-    Route selection mirrors the dashboard's _resolve_session so the ↖ web
-    button and the fleet-view reference chip never diverge: the session→route
-    pin (`sessions[].id`) is authoritative — matching the branch slug alone
-    missed a route pinned to the session whose slug differs from the branch.
-    Location correlation (`.tack` pin / branch / project, via _tack_route_for)
-    is the fallback when no pin binds this session."""
-    routes = _tack_routes()
-    if not routes:
-        return None
-
-    sid = read_state("claude_session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
-    slug = None
-    if sid:
-        def _pin_started(route):
-            return max((s.get("started_at", "") for s in (route.get("sessions") or [])
-                        if s.get("id") == sid), default="")
-        pinned = [r for r in routes
-                  if any(s.get("id") == sid for s in (r.get("sessions") or []))]
-        if pinned:
-            # On several routes, the most recently started wins (the pane's
-            # current work) — mirrors _tack_session_index.
-            pinned.sort(key=_pin_started, reverse=True)
-            slug = pinned[0].get("slug")
-    if not slug:
-        slug, _group = _tack_route_for(cwd, branch, project)
-    if not slug:
-        return None
-    return next((r for r in routes if r.get("slug") == slug), None)
-
-
-def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list[str]:
+def _tack_route_urls() -> list[str]:
     """Every deliverable and tracker link the bound route holds, in route
     order, deduped. STATUSLINE-03's acquisition path.
 
@@ -1408,7 +1619,7 @@ def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list
     lifetime is the project's, the row's is one Claude session, so offering the
     whole route here is what let a fresh session's row read as a release log of
     work it never touched."""
-    route = _bound_tack_route(cwd, branch, project)
+    route = _route_doc()
     if not route:
         return []
     started = _iso_epoch(_session_started_at())
@@ -1422,10 +1633,10 @@ def _tack_route_urls(cwd: Path, branch: str, project: str | None = None) -> list
     return urls
 
 
-def _tack_url_for(cwd: Path, branch: str, project: str | None = None) -> tuple[str, str]:
+def _tack_url_for() -> tuple[str, str]:
     """URL for the session's tack route via the in_progress-deliverable →
     done-deliverable → first-link sub-chain."""
-    route = _bound_tack_route(cwd, branch, project)
+    route = _route_doc()
     if not route:
         return "", ""
     tacks = route.get("tacks", []) or []
@@ -1546,7 +1757,7 @@ def resolve_url(cwd: Path | None = None) -> tuple[str, str]:
         return url, label
 
     # 1. tack-derived
-    url, label = _tack_url_for(cwd, branch, _project_name_at(cwd))
+    url, label = _tack_url_for()
     if url:
         return url, label
 
@@ -1891,8 +2102,6 @@ def cmd_json(_args):
 # git/pwd providers — those need a live per-pane cwd and would be costly across
 # N sessions; the anchor already records where each session lives.
 
-TACK_HOME = Path(os.environ.get("TACK_HOME") or (Path.home() / ".tack"))
-
 # Default `wip` / `serve` window when the caller gives no explicit `--since`.
 # Without it the command dumps every session ever recorded (weeks of stale
 # panes); a day keeps the bare command to recent, legible work. `--all` opts
@@ -2002,39 +2211,6 @@ def _raw_branch(cwd: Path) -> str | None:
     return name if (r.returncode == 0 and name) else None
 
 
-def _tack_pin_slug(cwd: Path) -> str | None:
-    try:
-        for line in (cwd / ".tack").read_text().splitlines():
-            m = re.match(r"\s*slug:\s*(\S+)", line)
-            if m:
-                return m.group(1).strip().strip("\"'")
-    except (FileNotFoundError, OSError):
-        pass
-    return None
-
-
-def _read_route(name: str) -> tuple[str, str | None] | None:
-    """(canonical_slug, group) from $TACK_HOME/routes/<name>.yaml, or None when
-    no such route. The in-file `slug:` is authoritative — filename casing can
-    drift on case-insensitive filesystems, but the dashboard joins on tack's
-    canonical slug."""
-    if not name:
-        return None
-    try:
-        text = (TACK_HOME / "routes" / f"{name}.yaml").read_text()
-    except (FileNotFoundError, OSError):
-        return None
-    slug, group = name, None
-    for line in text.splitlines():
-        m = re.match(r"\s*slug:\s*(\S+)", line)
-        if m:
-            slug = m.group(1).strip().strip("\"'")
-        m = re.match(r"\s*group:\s*(\S+)", line)
-        if m:
-            group = m.group(1).strip().strip("\"'")
-    return (slug, group)
-
-
 # A tack is "existing" (vs "emerging") when it carries a forge PR/MR/issue
 # reference — the signal that the work was already tracked before a session
 # picked it up. Mirrors tack's CL-37 forge recognition (GitHub /pull|/issues,
@@ -2062,190 +2238,6 @@ def _ref_type(url: str) -> str:
     return "other"
 
 
-def _yv(s: str) -> str:
-    """A scalar YAML value with surrounding whitespace and quotes stripped."""
-    return s.strip().strip("\"'")
-
-
-def _parse_route_index(text: str):
-    """Parse one route YAML into (slug, group, tacks, sessions) for the
-    session→tack join. tacks: {tid: {summary, status, kind, refs}} where kind
-    is `existing` (carries a deliverable or forge tracker link) or `emerging`,
-    and refs is the tack's reference URLs each classified `cr` / `issue` /
-    `other` (WIP-09), in appearance order.
-    sessions: [{id, started_at, tacks: [tid,...]}] — the bound tacks per
-    RT-11, in touch order. Hand-rolled line scan rather than `tack … --json`:
-    beacon reads the source-of-record files directly so the join never depends
-    on the installed tack CLI being a version that knows the `tacks` field."""
-    slug = group = None
-    tacks: dict[str, dict] = {}
-    has_deliverable: dict[str, bool] = {}
-    has_tracker: dict[str, bool] = {}
-    refs: dict[str, list] = {}
-    sessions: list[dict] = []
-    section = None          # "tacks" | "sessions" | None
-    cur_tid = None
-    cur_sess = None
-    sub = None              # nested block: "deliverable" | "links" | "session_tacks"
-
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        if re.match(r"^\S", line):
-            cur_tid = cur_sess = sub = None
-            m = re.match(r"slug:\s*(\S+)", line)
-            if m:
-                slug = _yv(m.group(1))
-            m = re.match(r"group:\s*(\S+)", line)
-            if m:
-                group = _yv(m.group(1))
-            section = ("tacks" if line.startswith("tacks:")
-                       else "sessions" if line.startswith("sessions:") else None)
-            continue
-
-        if section == "tacks":
-            m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
-            if m:
-                cur_tid = _yv(m.group(1))
-                tacks[cur_tid] = {"summary": "", "status": ""}
-                has_deliverable[cur_tid] = has_tracker[cur_tid] = False
-                refs[cur_tid] = []
-                sub = None
-                continue
-            if cur_tid is None:
-                continue
-            m = re.match(r"\s{4}(\w+):\s*(.*)", line)
-            if m:
-                key, val = m.group(1), _yv(m.group(2))
-                if key == "summary":
-                    tacks[cur_tid]["summary"] = val
-                    sub = None
-                elif key == "status":
-                    tacks[cur_tid]["status"] = val
-                    sub = None
-                elif key == "deliverable":
-                    has_deliverable[cur_tid] = True
-                    sub = "deliverable"
-                    if val:  # inline `deliverable: <url>` form
-                        refs[cur_tid].append({"type": _ref_type(val), "url": val})
-                elif key == "links":
-                    sub = "links"
-                else:
-                    sub = None
-                continue
-            m = re.match(r"\s{6,}.*url:\s*(\S+)", line)
-            if m and sub in ("deliverable", "links"):
-                url = _yv(m.group(1))
-                refs[cur_tid].append({"type": _ref_type(url), "url": url})
-                if _is_tracker_url(url):
-                    has_tracker[cur_tid] = True
-            continue
-
-        if section == "sessions":
-            m = re.match(r"\s{2}-\s*id:\s*(\S+)", line)
-            if m:
-                cur_sess = {"id": _yv(m.group(1)), "started_at": "", "tacks": []}
-                sessions.append(cur_sess)
-                sub = None
-                continue
-            if cur_sess is None:
-                continue
-            m = re.match(r"\s{4}started_at:\s*(\S+)", line)
-            if m:
-                cur_sess["started_at"] = _yv(m.group(1))
-                sub = None
-                continue
-            if re.match(r"\s{4}tacks:\s*$", line):
-                sub = "session_tacks"
-                continue
-            m = re.match(r"\s{6}-\s*(\S+)", line)
-            if m and sub == "session_tacks":
-                cur_sess["tacks"].append(_yv(m.group(1)))
-                continue
-            if re.match(r"\s{4}\w+:", line):
-                sub = None
-
-    meta = {
-        tid: {
-            "summary": m["summary"],
-            "status": m["status"],
-            "kind": "existing" if (has_deliverable[tid] or has_tracker[tid]) else "emerging",
-            "refs": refs[tid],
-        }
-        for tid, m in tacks.items()
-    }
-    return slug, group, meta, sessions
-
-
-def _tack_session_index() -> dict:
-    """Map Claude session id → {route, group, tacks[]}, built from every
-    route's `sessions:` block. This is the authoritative beacon↔tack join:
-    Claude Code issues the session id, beacon stores it per pane, and tack
-    records it on the route — and now the tack(s) — the session worked.
-    `tacks` is the route-qualified list the session is driving (WIP-09), in
-    touch order; the last is its current focus. When a session was registered
-    on multiple routes, the most recently started wins (the pane's current
-    work). Scanned once per `wip` call."""
-    index: dict[str, dict] = {}
-    chosen: dict[str, str] = {}
-    try:
-        files = list((TACK_HOME / "routes").glob("*.yaml"))
-    except OSError:
-        return index
-    for path in files:
-        try:
-            text = path.read_text()
-        except OSError:
-            continue
-        slug, group, meta, sessions = _parse_route_index(text)
-        if slug is None:
-            slug = path.stem
-        for sess in sessions:
-            sid = sess["id"]
-            started = sess["started_at"]
-            if sid in chosen and started <= chosen[sid]:
-                continue
-            qualified = []
-            for tid in sess["tacks"]:
-                tm = meta.get(tid)
-                if tm is None:
-                    continue
-                qualified.append({
-                    "id": f"{slug}/{tid}",
-                    "tack_id": tid,
-                    "summary": tm["summary"],
-                    "status": tm["status"],
-                    "kind": tm["kind"],
-                    "refs": tm["refs"],
-                })
-            chosen[sid] = started
-            index[sid] = {"route": slug, "group": group, "tacks": qualified}
-    return index
-
-
-def _tack_route_for(cwd: Path | None, branch: str | None,
-                    project: str | None) -> tuple[str | None, str | None]:
-    """(route_slug, route_group) for a session. Candidate route names, most to
-    least authoritative: a `.tack` pin file at cwd (tack's own primary), the
-    branch name, then the resolved project name (exact or lowercased). The
-    project tier is the common case for work on a default branch with no pin —
-    route slugs are typically the project name. Returns the first candidate
-    that resolves to a real route; (None, None) if none do."""
-    pin = _tack_pin_slug(cwd) if cwd is not None else None
-    candidates = [pin, branch]
-    if project:
-        # Match the project both whole and as its last path segment, each
-        # cased and lowercased: a project resolved as `cpeterson/ai-sdlc`
-        # (git-remote form) should still correlate to route `ai-sdlc`.
-        for p in (project, project.rsplit("/", 1)[-1]):
-            candidates += [p, p.lower()]
-    for name in candidates:
-        route = _read_route(name)
-        if route:
-            return route
-    return (None, None)
-
-
 def _icon_local_path(sh: str) -> Path | None:
     """The on-disk icon file for a session: the icon discovered at the anchor
     (PROV-08). None when the file is gone or its suffix isn't an allowed image
@@ -2269,21 +2261,17 @@ def _session_icon_ref(sh: str) -> str | None:
     return f"/icon/{sh}" if _icon_local_path(sh) else None
 
 
-def _resolve_session(sh: str, session_index: dict | None = None,
-                     branch_cache: dict | None = None,
+def _resolve_session(sh: str, branch_cache: dict | None = None,
                      epoch: float | None = None,
                      compute_branch: bool = True) -> dict | None:
     """Point-in-time state for one session from stored fields only (no live
     providers). None when the hash carries no real beacon session.
-    session_index (session id → {route, group, tacks}) supplies the
-    authoritative tack join; cwd/branch/project correlation is the fallback
-    when tack never registered the session. branch_cache memoizes the per-cwd
-    git branch probe across a fleet scan; epoch supplies the precomputed
-    last-activity mtime (from _session_mtimes) so a fleet scan needn't re-glob
-    per hash. compute_branch=False skips the git branch probe (and the
-    branch tier of the route fallback) — used for the cheap first pass of a
-    fleet scan, since branch feeds neither the dedup nor the activity window,
-    so it is filled in only for the sessions actually emitted."""
+    branch_cache memoizes the per-cwd git branch probe across a fleet scan;
+    epoch supplies the precomputed last-activity mtime (from _session_mtimes)
+    so a fleet scan needn't re-glob per hash. compute_branch=False skips the git
+    branch probe — used for the cheap first pass of a fleet scan, since branch
+    feeds neither the dedup nor the activity window, so it is filled in only for
+    the sessions actually emitted."""
     # Override first, as the render chain reads it (RES-01/OVR-01). Reading the
     # anchor first meant `beacon set project` repaired the tab and left the row
     # showing the anchored name — one session, two answers.
@@ -2307,14 +2295,17 @@ def _resolve_session(sh: str, session_index: dict | None = None,
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
     branch = (_branch_for(cwd_path, branch_cache) if compute_branch else None) if cwd_path else None
-    route, route_group, tacks = (None, None, [])
-    if session_index and claude_session in session_index:
-        entry = session_index[claude_session]
-        route, route_group, tacks = entry["route"], entry["group"], entry["tacks"]
-    else:
-        # Location-correlated (WIP-02 tiers 2-4) — route only, no recorded
-        # session→tack binding, so the bound-tack list stays empty (WIP-09).
-        route, route_group = _tack_route_for(cwd_path, branch, project)
+    # WIP-02: the route tack announced when it bound this session. What is
+    # currently true of it — the group, and each tack's summary / status / refs
+    # — is the route document's answer, because all of that changes after the
+    # binding fires. A session tack never bound has no route and no tacks.
+    bound = _bound_route_record(sh)
+    route = str(bound.get("route") or "") or None
+    route_group, tacks = None, []
+    if route:
+        doc = _route_doc_for(route)
+        route_group = (doc or {}).get("group") or None
+        tacks = _bound_tack_records(route, bound.get("tacks") or [], doc)
 
     # task (PROV-02) isn't anchored like project; take the last-rendered value
     # from the resolved snapshot — it already folds in the override / PR-title /
@@ -2405,8 +2396,6 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     now = time.time()
     t = time.perf_counter
     t0 = t()
-    session_index = _tack_session_index()
-    t_index = t()
     mtimes = _session_mtimes()
     t_mtimes = t()
     # Phase A — cheap resolve (no per-cwd git branch). branch feeds neither the
@@ -2416,7 +2405,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     # subprocess spawns to surface a handful of recent sessions.
     resolved = []
     for sh, epoch in mtimes.items():
-        s = _resolve_session(sh, session_index, epoch=epoch, compute_branch=False)
+        s = _resolve_session(sh, epoch=epoch, compute_branch=False)
         if s:
             resolved.append(s)
     t_cheap = t()
@@ -2448,7 +2437,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     sessions = []
     for s in survivors:
         epoch = s.pop("_epoch", 0.0)
-        full = _resolve_session(s["hash"], session_index, branch_cache=branch_cache,
+        full = _resolve_session(s["hash"], branch_cache=branch_cache,
                                 epoch=epoch, compute_branch=True) or s
         full.pop("_epoch", None)
         full["last_activity"] = _iso(epoch) if epoch else None
@@ -2460,8 +2449,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
         sys.stderr.write(
             "beacon wip timing: "
             f"total={t_done - t0:.3f}s "
-            f"tack-index={t_index - t0:.3f}s "
-            f"mtimes={t_mtimes - t_index:.3f}s "
+            f"mtimes={t_mtimes - t0:.3f}s "
             f"cheap-resolve={t_cheap - t_mtimes:.3f}s "
             f"branch-fill={t_done - t_cheap:.3f}s | "
             f"hashes={len(mtimes)} resolved={len(resolved)} "
@@ -3961,6 +3949,19 @@ def _deliverable_kind(url: str) -> str:
 DELIVERABLES_MAX = 8
 
 
+def _announced_delivered_urls() -> set[str]:
+    """Deliverable URLs a sibling announced as landed this session
+    (STATUSLINE-03). anchor announces `cr.merged` when it merges one, which is
+    the fact tack's `done` status stood in for — and the only source that still
+    answers on a session with no route bound, or one whose route the agent never
+    marked done. Unlike the tack tier it cannot drift: the publisher read the
+    merge back from the forge before saying so."""
+    urls = read_state_json("announced.delivered", [])
+    if not isinstance(urls, list):
+        return set()
+    return {u for u in urls if isinstance(u, str)}
+
+
 def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") -> None:
     """STATUSLINE-03: append a deliverable the session has touched. Deduped on
     URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
@@ -3975,15 +3976,15 @@ def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") ->
     already captured for other entries are preserved: only the current
     deliverable has a live task to read.
 
-    Every entry is re-stamped against tack on each call, so a CR that merged (or
-    a release that shipped) mid-session moves to the delivered line without
-    waiting for anything to touch it again."""
+    Every entry is re-stamped against the landed sources on each call, so a CR
+    that merged (or a release that shipped) mid-session moves to the delivered
+    line without waiting for anything to touch it again."""
     # A dropped URL stays dropped for the session (CMD-24). The acquisition path
     # re-offers the whole route every publish, so removing an entry without
     # remembering the removal would put it back on the next turn.
     if url in read_state_json("deliverables.dropped", []):
         return
-    landed = _tack_landed_urls()
+    landed = _tack_landed_urls() | _announced_delivered_urls()
     prior = {e.get("url"): e.get("title", "")
              for e in read_state_json("deliverables", []) if isinstance(e, dict)}
     entries = [e for e in read_state_json("deliverables", [])
@@ -4100,6 +4101,60 @@ def _project_chip_at(cwd: Path) -> str:
     return _project_name_at(cwd) or cwd.name or str(cwd)
 
 
+def _branch_slot_pairs(display: str, state: str, identity: str) -> tuple[str, ...]:
+    """The hybrid branch slots (#20): the default branch fills its own
+    de-emphasized slot; a feature branch routes to its sync-state slot. Mirrors
+    the shell's precmd so Claude-session and interactive panes agree, and is
+    shared by the two publishers below so they cannot classify one branch two
+    ways."""
+    is_default = identity == "default"
+    return (
+        f"beacon_branch={display}",
+        f"beacon_branch_state={state}",
+        f"beacon_branch_default={display if is_default else ''}",
+        f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
+        f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
+        f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
+    )
+
+
+# Bash commands that can change what the branch chip shows — the branch name,
+# its upstream, or its ahead/behind count. Read-only git (`status`, `log`,
+# `diff`) is the bulk of what a session runs, and refreshing on those would
+# spend three subprocesses per call to republish the values already painted.
+#
+# A command this misses costs nothing but the wait the chip already had: the
+# Stop hook republishes at the end of the turn either way (HOOK-08b).
+_BRANCH_TOUCHING_RE = re.compile(
+    r"\bgit\b.*?\b(?:push|pull|fetch|clone|checkout|switch|branch|commit|merge"
+    r"|rebase|reset|revert|cherry-pick|stash|worktree|remote|tag)\b")
+
+
+def _refresh_branch_chips_if_git(payload: dict) -> None:
+    """HOOK-08c: republish the branch slots mid-turn when a tool just moved them.
+
+    `_publish_chips` covers this once per turn, but it also resolves the URL
+    (git, and possibly `gh`/`glab`) and reads the tack route (a `tack list`
+    subprocess) — a per-turn cost, which is why a push made early in a long turn
+    left the chip painting `↑1` until the turn ended. The shell's precmd, which
+    would otherwise catch it on the next prompt, cannot run while Claude holds
+    the pane.
+
+    The branch slots on their own are three local git reads, affordable per tool
+    call. Resolved from the session anchor rather than the payload cwd for the
+    same reason HOOK-08b is: the chip names the session's project, not whatever
+    directory the agent stepped into."""
+    if payload.get("tool_name") != "Bash":
+        return
+    tool_input = payload.get("tool_input")
+    command = str(tool_input.get("command") or "") if isinstance(tool_input, dict) else ""
+    if not _BRANCH_TOUCHING_RE.search(command):
+        return
+    cwd = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
+    display, state, _indicator, identity = _detect_branch_info(Path(cwd))
+    _cli("uservar-batch", *_branch_slot_pairs(display, state, identity))
+
+
 def _publish_chips(cwd: Path) -> None:
     """Refresh status-bar chips (project_name, branch*) + the `↗ code` handoff
     file from `cwd`, and persist the resolved URL for the status line. Does NOT
@@ -4121,7 +4176,7 @@ def _publish_chips(cwd: Path) -> None:
     # `↖ web` button still wants that target and resolves at click time, so the
     # substitution is scoped to the persisted link: the location tiers answer
     # instead — an open PR for the branch, else the branch tree, else the project.
-    if _url_delivered_before_session(cwd, branch, url, proj_name):
+    if _url_delivered_before_session(url):
         url, label = _location_url_at(cwd)
 
     # The bare forge identity (`gh:acme/widgets`) is not a chip value — the chip
@@ -4130,21 +4185,10 @@ def _publish_chips(cwd: Path) -> None:
     # (STATUSLINE-03).
     project_id = _project_full_at(cwd)
     ref = _deliverable_suffix(url)
-    route_urls = _tack_route_urls(cwd, branch, proj_name)
+    route_urls = _tack_route_urls()
 
-    # Hybrid branch slots (#20): the default branch fills its own de-emphasized
-    # slot; a feature branch routes to its sync-state slot. Mirrors the shell's
-    # precmd so Claude-session and interactive panes agree.
-    is_default = identity == "default"
-    pairs = (
-        f"beacon_project_name={_project_chip_at(cwd)}",
-        f"beacon_branch={display}",
-        f"beacon_branch_state={state}",
-        f"beacon_branch_default={display if is_default else ''}",
-        f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
-        f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
-        f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
-    )
+    pairs = (f"beacon_project_name={_project_chip_at(cwd)}",
+             *_branch_slot_pairs(display, state, identity))
     # Published unconditionally, and deliberately not gated on the last value the
     # way the shell's precmd sentinels are. The shell can gate because it is one
     # process for the pane's life; each hook is a fresh interpreter, so the only
@@ -4176,7 +4220,7 @@ def _publish_chips(cwd: Path) -> None:
     # leaves one case it can't reach: a tack marked done while its PR is still
     # open on this branch, which the forge probe hands straight back. Recording it
     # would credit this session with a delivery it had no part in.
-    if ref and not _url_delivered_before_session(cwd, branch, url, proj_name):
+    if ref and not _url_delivered_before_session(url):
         # The badge's own task, when the chain drew it from the PR title (or the
         # user said so outright). Any other tier — a branch name, an ai-title —
         # is spatial context rather than a name for the deliverable, and would
@@ -5169,6 +5213,11 @@ def _wipe_session_for_fresh_start() -> None:
     # never touched.
     remove_state("deliverables")
     remove_state("deliverables.dropped")
+    # What a sibling announced is scoped the same way and keys on the pane the
+    # same way: PROV-07 tier 0 is the CR announced *during this session*, and
+    # the landed set is what this session shipped.
+    remove_state("announced.cr")
+    remove_state("announced.delivered")
     # The window the row is scoped to (_session_started_at). Stamped at the same
     # boundary as the wipe so the two agree: the wipe empties the row, and this
     # keeps acquisition from refilling it with the route's earlier work.
@@ -6197,6 +6246,7 @@ def cmd_hook(args):
         write_state("activity", "working")
         _enter_subscribed_mode(payload)
         _read_announcements(payload)
+        _refresh_branch_chips_if_git(payload)
 
     render()
 
