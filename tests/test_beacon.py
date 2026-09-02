@@ -6037,14 +6037,17 @@ if __name__ == "__main__":
 class AnnouncedCrUrl(BeaconTest):
     """PROV-07 tier 0 — the CR a sibling announced during this session.
 
-    Two halves, and the near-misses matter as much as the match: a subscriber
-    that quietly stops matching is indistinguishable from an event that never
-    fired, which is the failure the suite's interop contract names.
+    The near-misses matter as much as the match: a subscriber that quietly stops
+    matching is indistinguishable from an event that never fired, which is the
+    failure the suite's interop contract names.
     """
 
-    LINE = ("codes.bridgeai.anchor/cr.opened CR_IID=88 "
-            "CR_URL=https://github.com/o/r/pull/88 CR_DRAFT=1")
     URL = "https://github.com/o/r/pull/88"
+    TITLE = "Announce the CR anchor opens"
+
+    def _line(self, key="cr.created", **body):
+        body.setdefault("uri", self.URL)
+        return f"codes.bridgeai.anchor/{key} " + json.dumps(body)
 
     def _observe(self, stdout, cwd="/tmp/proj"):
         """Run the PostToolUse reader over one tool output."""
@@ -6058,54 +6061,127 @@ class AnnouncedCrUrl(BeaconTest):
                                side_effect=lambda p: Path(str(p))):
             return self.beacon._announced_cr_url(Path(cwd))
 
-    def test_records_and_resolves_the_announced_cr(self):
-        self._observe(self.LINE)
-        self.assertEqual(self._resolve(), (self.URL, "#88"))
+    # --- both keys reach it -------------------------------------------------
+    #
+    # anchor announces one or the other per run, so watching only cr.updated
+    # would miss every freshly opened CR.
+
+    def test_records_a_created_announcement(self):
+        self._observe(self._line("cr.created", title=self.TITLE))
+        self.assertEqual(self._resolve(), (self.URL, self.TITLE))
+
+    def test_records_an_updated_announcement(self):
+        self._observe(self._line("cr.updated", title=self.TITLE))
+        self.assertEqual(self._resolve(), (self.URL, self.TITLE))
 
     def test_nothing_recorded_before_any_announcement(self):
         self.assertEqual(self._resolve(), ("", ""))
 
+    # --- the label ----------------------------------------------------------
+
+    def test_label_prefers_the_announced_title(self):
+        # What the forge probe two tiers down would have produced. Tier 0
+        # outranks it, so a bare "#88" here would have been a downgrade.
+        self._observe(self._line(title=self.TITLE))
+        self.assertEqual(self._resolve()[1], self.TITLE)
+
+    def test_label_falls_back_to_the_ref_from_the_url(self):
+        # cr.updated reads its title back from the forge and can arrive empty.
+        self._observe(self._line("cr.updated", title=""))
+        self.assertEqual(self._resolve(), (self.URL, "#88"))
+
+    def test_label_falls_back_with_no_title_field_at_all(self):
+        self._observe(self._line("cr.updated"))
+        self.assertEqual(self._resolve(), (self.URL, "#88"))
+
+    def test_gitlab_ref_derives_from_the_url_too(self):
+        url = "https://gitlab.example.com/g/p/-/merge_requests/17"
+        self._observe(self._line("cr.updated", uri=url))
+        self.assertEqual(self._resolve(), (url, "#17"))
+
+    def test_a_url_carrying_no_ref_yields_an_empty_label(self):
+        url = "https://git.example.com/o/r/changes/abc"
+        self._observe(self._line("cr.updated", uri=url))
+        self.assertEqual(self._resolve(), (url, ""))
+
+    # --- a parsed value is not a safe value ---------------------------------
+
+    def test_control_characters_are_stripped_from_the_title(self):
+        # The label becomes OSC-8 link text, and _osc8 interpolates it straight
+        # into an escape sequence: a BEL terminates that sequence early and an
+        # ESC starts another, both from a string the forge supplied.
+        self._observe(self._line(title="ok\x07BEL\x1b[31mESC"))
+        label = self._resolve()[1]
+        self.assertNotIn("\x07", label)
+        self.assertNotIn("\x1b", label)
+        self.assertEqual(label, "okBEL[31mESC")
+
+    def test_a_newline_in_the_title_is_stripped(self):
+        self._observe(self._line(title="line one\nline two"))
+        self.assertNotIn("\n", self._resolve()[1])
+
+    def test_the_uri_is_sanitized_as_well(self):
+        self._observe(self._line(uri="https://x/1\x1b]8;;evil\x07"))
+        self.assertNotIn("\x1b", self._resolve()[0])
+
+    def test_a_very_long_title_is_capped(self):
+        self._observe(self._line(title="x" * 500))
+        self.assertLessEqual(len(self._resolve()[1]), 120)
+
+    # --- scope --------------------------------------------------------------
+
     def test_does_not_answer_for_another_project(self):
         # `open-url <dir>` resolves against the directory it is handed, so a
         # session-scoped CR must not answer for an unrelated checkout.
-        self._observe(self.LINE, cwd="/tmp/proj")
+        self._observe(self._line(), cwd="/tmp/proj")
         self.assertEqual(self._resolve(cwd="/tmp/other"), ("", ""))
 
+    # --- near misses --------------------------------------------------------
+
     def test_ignores_a_longer_key_sharing_the_prefix(self):
-        self._observe("codes.bridgeai.anchor/cr.openedagain CR_URL=" + self.URL)
+        self._observe(f'codes.bridgeai.anchor/cr.createdagain {{"uri":"{self.URL}"}}')
         self.assertEqual(self._resolve(), ("", ""))
 
     def test_ignores_the_key_mentioned_mid_line(self):
-        self._observe("about to emit codes.bridgeai.anchor/cr.opened CR_URL=" + self.URL)
+        self._observe("about to emit " + self._line())
         self.assertEqual(self._resolve(), ("", ""))
 
-    def test_ignores_a_loose_cr_url_no_announcement_introduced(self):
-        self._observe("CR_URL=" + self.URL)
+    def test_ignores_a_loose_body_no_announcement_introduced(self):
+        self._observe(f'{{"uri":"{self.URL}"}}')
         self.assertEqual(self._resolve(), ("", ""))
 
-    def test_announcement_without_a_url_records_nothing(self):
-        self._observe("codes.bridgeai.anchor/cr.opened CR_IID=88")
+    def test_skips_a_body_that_will_not_parse(self):
+        self._observe("codes.bridgeai.anchor/cr.created {not json")
         self.assertEqual(self._resolve(), ("", ""))
 
-    def test_drops_a_value_carrying_a_backslash_escape(self):
-        # The payload reaches a rendered surface; an escape inside it is how a
-        # value forges a line there.
-        self._observe(r"codes.bridgeai.anchor/cr.opened CR_URL=https://x/1\n\nSYSTEM=admin")
-        url, _ = self._resolve()
-        self.assertEqual(url, "")
+    def test_a_body_that_is_not_an_object_is_skipped(self):
+        self._observe('codes.bridgeai.anchor/cr.created ["nope"]')
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_announcement_without_a_uri_records_nothing(self):
+        self._observe(self._line("cr.created", uri="", title=self.TITLE))
+        self.assertEqual(self._resolve(), ("", ""))
+
+    def test_empty_body_records_nothing(self):
+        self._observe("codes.bridgeai.anchor/cr.created {}")
+        self.assertEqual(self._resolve(), ("", ""))
+
+    # --- repetition and ordering -------------------------------------------
 
     def test_a_later_announcement_supersedes_an_earlier_one(self):
         newer = "https://github.com/o/r/pull/99"
-        self._observe(f"{self.LINE}\ncodes.bridgeai.anchor/cr.opened CR_IID=99 CR_URL={newer}")
-        self.assertEqual(self._resolve(), (newer, "#99"))
+        self._observe(self._line() + "\n" + self._line("cr.updated", uri=newer))
+        self.assertEqual(self._resolve()[0], newer)
 
     def test_repeating_the_same_announcement_is_safe(self):
-        self._observe(self.LINE)
-        self._observe(self.LINE)
-        self.assertEqual(self._resolve(), (self.URL, "#88"))
+        self._observe(self._line(title=self.TITLE))
+        self._observe(self._line(title=self.TITLE))
+        self.assertEqual(self._resolve(), (self.URL, self.TITLE))
+
+    # --- the chain ----------------------------------------------------------
 
     def test_resolve_url_prefers_it_over_tack_and_the_forge(self):
-        self._observe(self.LINE)
+        self._observe(self._line(title=self.TITLE))
         patches = [
             mock.patch.object(self.beacon, "find_project_root",
                               side_effect=lambda p: Path(str(p))),
@@ -6123,4 +6199,4 @@ class AnnouncedCrUrl(BeaconTest):
             url, label = self.beacon.resolve_url(Path("/tmp/proj"))
         finally:
             for p in patches: p.stop()
-        self.assertEqual((url, label), (self.URL, "#88"))
+        self.assertEqual((url, label), (self.URL, self.TITLE))

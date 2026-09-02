@@ -956,64 +956,80 @@ def _enter_subscribed_mode(payload: dict) -> None:
 
 
 # A sibling plugin's interop announcement: one self-contained line on its own
-# stdout, which reaches a PostToolUse hook as `tool_response.stdout`. The suite's
-# contract is in the marketplace repo at `authoring/plugin-contract.md`.
+# stdout, which reaches a PostToolUse hook as `tool_response.stdout`. anchor
+# declares both events in its own `plugin.yml`; the format is the suite's
+# contract, in the marketplace repo at `authoring/plugin-contract.md`.
 #
-# The lookahead is what keeps `cr.opened` from also matching `cr.openedagain`.
-ANNOUNCED_CR_OPENED_RE = re.compile(
-    r"^codes\.bridgeai\.anchor/cr\.opened(?=[ \t]|$)(.*)$", re.MULTILINE)
+# Both keys, because either one means a change request is there to resolve to.
+# anchor announces one or the other per run and never both, so watching only
+# `cr.updated` would miss every freshly opened CR. The lookahead is what keeps
+# `cr.created` from also matching `cr.createdagain`.
+ANNOUNCED_CR_RE = re.compile(
+    r"^codes\.bridgeai\.anchor/cr\.(?:created|updated)(?=[ \t])[ \t]+(.*)$", re.MULTILINE)
+
+# Everything a terminal or an escape sequence would read as structure rather
+# than as text. The announcement is guaranteed to be one line; a value decoded
+# out of its JSON body is not, and `title` arrives from a forge.
+_DISPLAY_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
-def _announced_fields(rest: str) -> dict:
-    """The `KEY=value` tokens of an announcement's payload.
+def _display_safe(text: str, limit: int = 120) -> str:
+    """A value from an announcement, made safe to render.
 
-    The contract forbids whitespace inside a value, so splitting on whitespace is
-    the entire parse. A value is still text beacon did not author, arriving on a
-    surface that gets rendered, so one carrying a backslash is dropped rather
-    than repaired — an escape riding inside it is how a payload forges a line."""
-    fields = {}
-    for token in rest.split():
-        key, sep, value = token.partition("=")
-        if sep and key and "\\" not in value:
-            fields[key] = value
-    return fields
+    `resolved.url_label` becomes OSC-8 link text (STATUSLINE-02), and `_osc8`
+    interpolates it straight into an escape sequence — so a BEL would terminate
+    that sequence early and an ESC would start another one, both from a string
+    a forge supplied. Control characters go rather than being escaped: there is
+    nothing a status line wants to do with one.
+
+    The cap is the status line's, not the format's. A title runs as long as its
+    author made it, and the row it lands on is one line of a terminal."""
+    cleaned = _DISPLAY_UNSAFE_RE.sub("", text).strip()
+    return cleaned[:limit]
 
 
 def _read_announcements(payload: dict) -> None:
     """Record the CR a sibling announced in this tool's output (PROV-07 tier 0).
 
-    anchor knows a CR's URL the moment it opens one. Without this beacon
-    reconstructs the same fact downstream — shelling out to `tack list`, then
-    asking the forge over the network — and the tack route only carries it at
-    all if the agent chose to run `tack deliverable` when nudged.
+    anchor knows a CR's URL and title the moment it opens or changes one.
+    Without this beacon reconstructs the same fact downstream — shelling out to
+    `tack list`, then asking the forge over the network — and the tack route
+    only carries it at all if the agent chose to run `tack deliverable` when
+    nudged.
 
     The project root is stored with the URL because PROV-07 resolves against a
     directory it is handed, not against the session (`open-url <dir>` is correct
     in a pane beacon isn't tracking). Session-scoped state alone would answer for
     an unrelated checkout.
 
-    Last announcement in the output wins: one tool call opens at most one CR, so
-    a later line is the newer fact. Safe to repeat, per the contract — no
+    Last announcement in the output wins: one tool call touches at most one CR,
+    so a later line is the newer fact. Safe to repeat, per the contract — no
     ordering guarantee holds between subscribers, and a session can publish the
     same key twice."""
     response = payload.get("tool_response")
     stdout = str(response.get("stdout") or "") if isinstance(response, dict) else ""
-    if "codes.bridgeai.anchor/cr.opened" not in stdout:
+    if "codes.bridgeai.anchor/cr." not in stdout:
         return
-    announced = {}
-    for match in ANNOUNCED_CR_OPENED_RE.finditer(stdout):
-        fields = _announced_fields(match.group(1))
-        if fields.get("CR_URL"):
-            announced = fields
-    if not announced:
+    announced = None
+    for match in ANNOUNCED_CR_RE.finditer(stdout):
+        # A body that will not parse is skipped rather than raised: the contract
+        # puts a malformed line on its publisher, and this runs on every Bash
+        # call in the session.
+        try:
+            body = json.loads(match.group(1))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(body, dict) and body.get("uri"):
+            announced = body
+    if announced is None:
         return
     try:
         root = str(find_project_root(Path(payload.get("cwd") or Path.cwd())))
     except OSError:
         return
     write_state("announced.cr", json.dumps({
-        "url": announced["CR_URL"],
-        "iid": announced.get("CR_IID", ""),
+        "uri": _display_safe(str(announced["uri"])),
+        "title": _display_safe(str(announced.get("title") or "")),
         "root": root,
     }))
 
@@ -1022,22 +1038,30 @@ def _announced_cr_url(cwd: Path) -> tuple[str, str]:
     """PROV-07 tier 0 — the CR a sibling announced during this session.
 
     The only tier that knows rather than infers, and the reason every tier below
-    it stays: this covers a CR opened while the session was running and nothing
-    else, so a pre-existing CR still reaches the chain no other way."""
+    it stays: this covers a CR anchor touched while the session was running and
+    nothing else, so a pre-existing CR still reaches the chain no other way.
+
+    The label prefers the announced `title`, which is what the forge probe two
+    tiers down would have produced. Falling back to the `#<n>` derived from the
+    URL matters because `cr.updated` reads its title back from the forge and can
+    arrive with the field empty, where `cr.created` always carries one."""
     cached = read_state_json("announced.cr", None)
     if not isinstance(cached, dict):
         return "", ""
-    url = str(cached.get("url") or "")
+    uri = str(cached.get("uri") or "")
     root = str(cached.get("root") or "")
-    if not url or not root:
+    if not uri or not root:
         return "", ""
     try:
         if str(find_project_root(cwd)) != root:
             return "", ""
     except OSError:
         return "", ""
-    iid = str(cached.get("iid") or "")
-    return url, f"#{iid}" if iid else ""
+    label = str(cached.get("title") or "")
+    if not label:
+        ref = _CR_URL_RE.search(uri)
+        label = "#" + ref.group(0).rsplit("/", 1)[-1] if ref else ""
+    return uri, label
 
 
 def read_activity() -> str:
