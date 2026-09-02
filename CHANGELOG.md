@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.9.2
 
 ### An MCP server asking for input turns the tab red
 
