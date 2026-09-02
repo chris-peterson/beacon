@@ -15,6 +15,17 @@ finished, such as a successful login or a resumed quota, paint nothing.
 
 A session waiting on a permission prompt — a plan card, a question, a command to approve — read as busy for the first six seconds. Claude Code reports the prompt on a timer that fires only once it has gone unanswered, and the tool's own `PreToolUse` has painted the tab orange by then. beacon now also reads Claude Code's `PermissionRequest` event, which arrives with the prompt, so the tab is red from the moment the session stops. Idle prompts are unchanged.
 
+### The status line links the change request anchor just opened
+
+anchor's announcements settled on new keys in its v1.12.0, and beacon was still
+matching the old ones, so a change request a sibling plugin had just opened
+stopped reaching the status line and `↖ web` — both fell back to probing the
+forge for it. beacon matches the settled `cr.created` and `cr.updated` keys, and
+the link now reads with the change request's own title where it used to read as
+a bare `#88`. Announced values are stripped of control characters before they
+reach the terminal. The subscription is declared in `plugin.yml`, so a catalog
+reading across plugins reports those keys as heard.
+
 ## 2.9.1
 
 ### `serve` refuses an opaque origin
