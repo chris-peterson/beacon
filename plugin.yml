@@ -26,6 +26,25 @@ marketplace:
   category: development
   homepage: https://chris-peterson.github.io/beacon/#/
 
+# → the suite's event catalog. A consumer names only the key it depends on:
+# restating the publisher's fields would make N copies of one schema, each free
+# to drift. Keys are fully qualified, because they belong to someone else.
+#
+# Both keys, because anchor announces one or the other per run and never both,
+# and either one means there is a change request to resolve to.
+events:
+  subscribes:
+    - key: codes.bridgeai.anchor/cr.created
+      handled_by: scripts/beacon (_read_announcements)
+      reason: >-
+        supplies PROV-07's tier 0, so the status-line URL is the one anchor
+        named rather than one reconstructed from tack and the forge
+    - key: codes.bridgeai.anchor/cr.updated
+      handled_by: scripts/beacon (_read_announcements)
+      reason: >-
+        supplies PROV-07's tier 0, so the status-line URL is the one anchor
+        named rather than one reconstructed from tack and the forge
+
 # → marketplace SPA; keys mirror the SPA's PLUGINS object.
 suite:
   cli: true
