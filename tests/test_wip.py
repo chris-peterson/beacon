@@ -63,8 +63,8 @@ class _CountingReader:
 
 class _WipBase(unittest.TestCase):
     """Shared fixture for the wip/serve suites: a fresh tempdir DATA_DIR, tack
-    correlation isolated from the developer's real ~/.tack, and helpers to
-    write raw state files and collect the resolved sessions."""
+    stubbed at its CLI boundary, and helpers to write raw state files and
+    collect the resolved sessions."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -73,14 +73,16 @@ class _WipBase(unittest.TestCase):
         self.state_dir = self.beacon.STATE_DIR
         self.state_dir.mkdir(parents=True, exist_ok=True)
 
-        # Isolate tack correlation from the developer's real ~/.tack.
-        self._tack_tmp = tempfile.TemporaryDirectory()
-        self.tack_home = Path(self._tack_tmp.name)
-        (self.tack_home / "routes").mkdir(parents=True)
-        tack_patcher = mock.patch.object(self.beacon, "TACK_HOME", self.tack_home)
-        tack_patcher.start()
-        self.addCleanup(tack_patcher.stop)
-        self.addCleanup(self._tack_tmp.cleanup)
+        # tack is reached through `tack tree`, so a test registers route
+        # documents and the reader is stubbed to serve them. Nothing reads a
+        # route store, so there is no ~/.tack to isolate — a session with no
+        # announced binding never asks tack anything.
+        self.routes = {}
+        doc_patcher = mock.patch.object(
+            self.beacon, "_route_doc_for",
+            side_effect=lambda slug: self.routes.get(slug))
+        doc_patcher.start()
+        self.addCleanup(doc_patcher.stop)
         self.addCleanup(self._tmp.cleanup)
 
     def _write(self, sh: str, field: str, value: str, mtime: float | None = None):
@@ -90,36 +92,33 @@ class _WipBase(unittest.TestCase):
             os.utime(p, (mtime, mtime))
         return p
 
-    def _route_file(self, slug: str, group: str | None = None, sessions=None,
-                    tacks=None):
-        """Write a route YAML. `tacks` items are dicts: {id, summary?, status?,
-        deliverable? (url), links? (list of urls)}. `sessions` items are
-        (sid, started) or (sid, started, [bound_tack_ids]) — mirroring the
-        RT-11 `tacks` array on a session entry."""
-        body = f"slug: {slug}\n" + (f"group: {group}\n" if group else "")
-        if tacks:
-            body += "tacks:\n"
-            for t in tacks:
-                body += f"  - id: {t['id']}\n"
-                body += f"    summary: {t.get('summary', 'work')}\n"
-                body += f"    status: {t.get('status', 'pending')}\n"
-                if t.get("deliverable"):
-                    body += f"    deliverable:\n      label: d\n      url: {t['deliverable']}\n"
-                if t.get("links"):
-                    body += "    links:\n"
-                    for u in t["links"]:
-                        body += f"      - label: l\n        url: {u}\n"
-        if sessions:
-            body += "sessions:\n"
-            for entry in sessions:
-                sid, started = entry[0], entry[1]
-                body += f"  - id: {sid}\n    started_at: {started}\n"
-                bound = entry[2] if len(entry) > 2 else None
-                if bound:
-                    body += "    tacks:\n"
-                    for tid in bound:
-                        body += f"      - {tid}\n"
-        (self.tack_home / "routes" / f"{slug}.yaml").write_text(body)
+    def _route(self, slug: str, group: str | None = None, tacks=None):
+        """Register the route document `tack tree <slug> --json` would return.
+        `tacks` items are dicts: {id, summary?, status?, done_at?,
+        deliverable? (url), links? (list of urls)}."""
+        self.routes[slug] = {
+            "slug": slug,
+            "group": group,
+            "tacks": [
+                {
+                    "id": t["id"],
+                    "summary": t.get("summary", "work"),
+                    "status": t.get("status", "pending"),
+                    **({"done_at": t["done_at"]} if t.get("done_at") else {}),
+                    **({"deliverable": {"label": "d", "url": t["deliverable"]}}
+                       if t.get("deliverable") else {}),
+                    **({"links": [{"label": "l", "url": u} for u in t["links"]]}
+                       if t.get("links") else {}),
+                }
+                for t in (tacks or [])
+            ],
+        }
+
+    def _bind(self, sh: str, slug: str, tacks=None):
+        """Record what tack announced when it bound this session to a route —
+        `session.started`, and the tack ids `session.ended` reported."""
+        self._write(sh, "announced.route",
+                    json.dumps({"route": slug, "tacks": list(tacks or [])}))
 
     def _sessions(self, since=None):
         return self.beacon.collect_sessions(since)["sessions"]
@@ -306,60 +305,55 @@ class WipTest(_WipBase):
         self._write("new", "anchor.project", "fresh")
         self.assertEqual(len({s["project"] for s in self._sessions()}), 2)
 
-    # --- tack correlation ---
+    # --- tack correlation (WIP-02) ---
+    #
+    # The route is what tack announced when it bound the session, not something
+    # beacon infers. There is nothing to correlate: an unbound session has no
+    # route, whatever its project is named or which directory it sits in.
 
-    def test_correlates_via_project_name(self):
-        self._route_file("alpha", group="ai-tooling")
+    def test_the_announced_route_is_the_session_s_route(self):
+        self._route("alpha", group="ai-tooling")
+        self._bind("s1", "alpha")
         self._write("s1", "anchor.project", "alpha")
         s = self._sessions()[0]
         self.assertEqual(s["route"], "alpha")
         self.assertEqual(s["route_group"], "ai-tooling")
 
-    def test_project_name_match_is_case_insensitive(self):
-        self._route_file("claudewatch")
-        self._write("s1", "anchor.project", "ClaudeWatch")
-        self.assertEqual(self._sessions()[0]["route"], "claudewatch")
+    def test_the_route_group_comes_from_the_route_document(self):
+        # The announcement carries the slug; `group` is mutable route metadata
+        # (`tack group <slug>` sets and clears it), so it is read, not carried.
+        self._route("alpha", group="ai-tooling")
+        self._bind("s1", "alpha")
+        self._write("s1", "anchor.project", "p")
+        self.assertEqual(self._sessions()[0]["route_group"], "ai-tooling")
 
-    def test_correlates_via_tack_pin_file(self):
-        pin_dir = Path(self._tmp.name) / "checkout"
-        pin_dir.mkdir()
-        (pin_dir / ".tack").write_text("slug: pinned-route\npinned_at: 2026-01-01\n")
-        self._route_file("pinned-route", group="grp")
-        self._write("s1", "anchor.project", "unrelated-name")
-        self._write("s1", "anchor.cwd", str(pin_dir))
-        s = self._sessions()[0]
-        self.assertEqual(s["route"], "pinned-route")
-        self.assertEqual(s["route_group"], "grp")
-
-    def test_correlates_via_project_basename(self):
-        # Git-remote-form project (owner/repo) should still match route <repo>.
-        self._route_file("ai-sdlc", group="ai-tooling")
-        self._write("s1", "anchor.project", "cpeterson/ai-sdlc")
-        self.assertEqual(self._sessions()[0]["route"], "ai-sdlc")
-
-    def test_session_id_is_authoritative_over_project(self):
-        # The session id wins even when the project matches nothing — the
-        # registered route is ground truth.
-        self._route_file("real-route", group="grp",
-                         sessions=[("sid-xyz", "2026-05-01T00:00:00Z")])
-        self._write("s1", "claude_session_id", "sid-xyz")
-        self._write("s1", "anchor.project", "totally-unrelated")
-        s = self._sessions()[0]
-        self.assertEqual(s["route"], "real-route")
-        self.assertEqual(s["route_group"], "grp")
-
-    def test_session_id_multi_route_picks_latest_started(self):
-        self._route_file("older", sessions=[("dup", "2026-01-01T00:00:00Z")])
-        self._route_file("newer", sessions=[("dup", "2026-05-01T00:00:00Z")])
-        self._write("s1", "claude_session_id", "dup")
-        self._write("s1", "anchor.project", "p1")
-        self.assertEqual(self._sessions()[0]["route"], "newer")
-
-    def test_unmatched_project_is_unrouted(self):
-        self._write("s1", "anchor.project", "no-such-route")
+    def test_a_project_sharing_a_route_s_name_is_not_correlated(self):
+        # The old project-name heuristic guessed here. A session tack never
+        # bound is unrouted, which is the honest answer.
+        self._route("alpha", group="ai-tooling")
+        self._write("s1", "anchor.project", "alpha")
         s = self._sessions()[0]
         self.assertIsNone(s["route"])
         self.assertIsNone(s["route_group"])
+
+    def test_an_unbound_session_asks_tack_nothing(self):
+        # The dependency is optional, and this is what makes it cheap: with no
+        # announced binding there is no slug, so the CLI is never reached.
+        self._write("s1", "anchor.project", "whatever")
+        with mock.patch.object(self.beacon, "_route_doc_for",
+                               side_effect=AssertionError("tack consulted")):
+            self.assertIsNone(self._sessions()[0]["route"])
+
+    def test_a_route_tack_no_longer_holds_resolves_to_no_group(self):
+        # The slug was announced, but `tack tree` has nothing for it (renamed,
+        # removed, or tack uninstalled since). The route name stands; its
+        # content does not get invented.
+        self._bind("s1", "gone")
+        self._write("s1", "anchor.project", "p")
+        s = self._sessions()[0]
+        self.assertEqual(s["route"], "gone")
+        self.assertIsNone(s["route_group"])
+        self.assertEqual(s["tacks"], [])
 
     def test_branch_probe_memoized_per_cwd(self):
         # The git branch probe is a property of the directory, not the session.
@@ -377,13 +371,12 @@ class WipTest(_WipBase):
     def test_bound_tack_is_route_qualified_and_existing(self):
         # A bound tack carrying a deliverable reads as existing, and its id is
         # qualified with the route slug (tack ids are route-scoped).
-        self._route_file(
+        self._route(
             "feat", group="grp",
             tacks=[{"id": "t1", "summary": "Wire it",
                     "deliverable": "https://github.com/o/r/pull/7"}],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
         )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._bind("s1", "feat", ["t1"])
         self._write("s1", "anchor.project", "feat")
         s = self._sessions()[0]
         self.assertEqual(len(s["tacks"]), 1)
@@ -393,25 +386,20 @@ class WipTest(_WipBase):
         self.assertEqual(s["tacks"][0]["kind"], "existing")
 
     def test_bound_tack_without_tracker_is_emerging(self):
-        self._route_file(
-            "feat",
-            tacks=[{"id": "t1", "summary": "New idea"}],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
-        )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._route("feat", tacks=[{"id": "t1", "summary": "New idea"}])
+        self._bind("s1", "feat", ["t1"])
         self._write("s1", "anchor.project", "feat")
         self.assertEqual(self._sessions()[0]["tacks"][0]["kind"], "emerging")
 
     def test_tracker_link_marks_existing_but_docs_link_does_not(self):
-        self._route_file(
+        self._route(
             "feat",
             tacks=[
                 {"id": "t1", "links": ["https://github.com/o/r/issues/3"]},
                 {"id": "t2", "links": ["https://example.com/design-doc"]},
             ],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t2"])],
         )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._bind("s1", "feat", ["t1", "t2"])
         self._write("s1", "anchor.project", "feat")
         by_id = {t["tack_id"]: t for t in self._sessions()[0]["tacks"]}
         self.assertEqual(by_id["t1"]["kind"], "existing")
@@ -420,7 +408,7 @@ class WipTest(_WipBase):
     def test_bound_tack_refs_classified_cr_issue_other(self):
         # WIP-09: a tack's deliverable + links surface as classified refs so the
         # sessions view can emphasize change requests, then issues, then other.
-        self._route_file(
+        self._route(
             "feat",
             tacks=[{
                 "id": "t1",
@@ -428,40 +416,36 @@ class WipTest(_WipBase):
                 "links": ["https://gitlab.com/o/r/-/issues/5",
                           "https://example.com/design-doc"],
             }],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
         )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._bind("s1", "feat", ["t1"])
         self._write("s1", "anchor.project", "feat")
         refs = self._sessions()[0]["tacks"][0]["refs"]
         self.assertEqual([r["type"] for r in refs], ["cr", "issue", "other"])
         self.assertEqual(refs[0]["url"], "https://github.com/o/r/pull/7")
 
     def test_gitlab_merge_request_ref_is_cr(self):
-        self._route_file(
+        self._route(
             "feat",
             tacks=[{"id": "t1", "deliverable": "https://gitlab.com/o/r/-/merge_requests/2"}],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1"])],
         )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._bind("s1", "feat", ["t1"])
         self._write("s1", "anchor.project", "feat")
         refs = self._sessions()[0]["tacks"][0]["refs"]
         self.assertEqual(refs[0]["type"], "cr")
 
     def test_bound_tacks_preserve_touch_order_last_is_current(self):
-        self._route_file(
-            "feat",
-            tacks=[{"id": "t1"}, {"id": "t2"}],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t2"])],
-        )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._route("feat", tacks=[{"id": "t1"}, {"id": "t2"}])
+        self._bind("s1", "feat", ["t1", "t2"])
         self._write("s1", "anchor.project", "feat")
         ids = [t["tack_id"] for t in self._sessions()[0]["tacks"]]
         self.assertEqual(ids, ["t1", "t2"])
 
-    def test_location_correlated_session_has_empty_tacks(self):
-        # Correlated by project name (WIP-02 tier 4), not a recorded binding —
-        # so the bound-tack list is empty even though the route resolves.
-        self._route_file("feat", tacks=[{"id": "t1"}])
+    def test_a_route_level_binding_has_empty_tacks(self):
+        # `session.started` carries no `tack` on a route-level bind, which is
+        # what the prompt hook writes before the work has one — the route
+        # resolves and the bound-tack list stays empty.
+        self._route("feat", tacks=[{"id": "t1"}])
+        self._bind("s1", "feat")
         self._write("s1", "anchor.project", "feat")
         s = self._sessions()[0]
         self.assertEqual(s["route"], "feat")
@@ -470,12 +454,8 @@ class WipTest(_WipBase):
     def test_unknown_bound_tack_id_is_skipped(self):
         # A session referencing a tack that no longer exists (removed later)
         # is dropped from the resolved list rather than emitting a stub.
-        self._route_file(
-            "feat",
-            tacks=[{"id": "t1"}],
-            sessions=[("sid-1", "2026-05-01T00:00:00Z", ["t1", "t9"])],
-        )
-        self._write("s1", "claude_session_id", "sid-1")
+        self._route("feat", tacks=[{"id": "t1"}])
+        self._bind("s1", "feat", ["t1", "t9"])
         self._write("s1", "anchor.project", "feat")
         ids = [t["tack_id"] for t in self._sessions()[0]["tacks"]]
         self.assertEqual(ids, ["t1"])

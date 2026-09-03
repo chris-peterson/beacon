@@ -26,36 +26,63 @@ marketplace:
   category: development
   homepage: https://chris-peterson.github.io/beacon/#/
 
-# → the suite's event catalog. A consumer names only the key it depends on:
-# restating the publisher's fields would make N copies of one schema, each free
-# to drift. Keys are fully qualified, because they belong to someone else.
+# → the suite's event catalog, and from there the docs site — so these read for
+# someone who has never seen beacon's internals: what the subscription gets the
+# user, in their words, and `handled_by` naming the file that handles it rather
+# than a symbol inside it that a refactor renames silently.
 #
-# Both keys, because anchor announces one or the other per run and never both,
-# and either one means there is a change request to resolve to.
+# A consumer names only the key it depends on: restating the publisher's fields
+# would make N copies of one schema, each free to drift. Keys are fully
+# qualified, because they belong to someone else.
+#
+# The CR pair carries both keys, because anchor announces one or the other per
+# run and never both, and either one means there is a change request to link to.
+# `cr.ready` and `commit.pushed` are deliberately absent: beacon paints no
+# surface from either, and a subscription nothing feeds is silent in the same
+# way a broken one is.
 events:
   subscribes:
     - key: codes.bridgeai.anchor/cr.created
-      handled_by: scripts/beacon (_read_announcements)
+      handled_by: scripts/beacon
       reason: >-
-        supplies PROV-07's tier 0, so the status-line URL is the one anchor
-        named rather than one reconstructed from tack and the forge
+        links the status line to the change request anchor just opened, rather
+        than to one reconstructed from tack and the forge
     - key: codes.bridgeai.anchor/cr.updated
-      handled_by: scripts/beacon (_read_announcements)
+      handled_by: scripts/beacon
       reason: >-
-        supplies PROV-07's tier 0, so the status-line URL is the one anchor
-        named rather than one reconstructed from tack and the forge
+        links the status line to the change request anchor just described,
+        rather than to one reconstructed from tack and the forge
+    - key: codes.bridgeai.anchor/cr.merged
+      handled_by: scripts/beacon
+      reason: >-
+        moves the change request to what the session has shipped — the one
+        landed signal that answers with no tack route bound
+    - key: codes.bridgeai.anchor/issue.created
+      handled_by: scripts/beacon
+      reason: >-
+        puts a freshly filed issue on the status line; an issue filed from the
+        default branch has no branch to be found by
+    - key: codes.bridgeai.anchor/release.created
+      handled_by: scripts/beacon
+      reason: >-
+        puts the published release on what the session has shipped; a release
+        exists only as a tag, which no branch resolution reaches
+    - key: codes.bridgeai.tack/session.started
+      handled_by: scripts/beacon
+      reason: >-
+        names the route the session is working, which the sessions view groups
+        and labels by — where before it was guessed from a pin file, a branch,
+        or a matching project name
+    - key: codes.bridgeai.tack/session.ended
+      handled_by: scripts/beacon
+      reason: >-
+        reports the work the session closed with, so the status line keeps
+        naming what it shipped
 
 # → marketplace SPA; keys mirror the SPA's PLUGINS object.
 suite:
   cli: true
   group: bearings
-  dependencies:
-    - name: tack
-      required: false
-      reason: supplies the routes the sessions view joins a session to, and the deliverables its status line lists
-    - name: anchor
-      required: false
-      reason: announces the CR it opens, which the status-line URL takes over asking tack and the forge for
   # Activated by agent events (session hooks on Stop), user prompts, and
   # session start.
   activations: [agent, user, session]

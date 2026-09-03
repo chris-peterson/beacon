@@ -1,5 +1,74 @@
 # Changelog
 
+## Unreleased
+
+### The sessions view learns your route from tack, instead of guessing
+
+Which tack route a session is working used to be reconstructed: beacon scanned
+every route file in `~/.tack` for the session id, and where that found nothing it
+guessed from a `.tack` pin file, the branch name, or a project whose name matched
+a route slug. The guesses were wrong on any route named differently from all
+three, and the scan parsed a file format tack is free to change without telling
+anyone.
+
+tack now announces the binding, so beacon is told. What that route currently
+holds — its group, and each tack's summary, status and links — comes from `tack
+tree`, a documented command, asked only for the one route and only when there is
+one. So a machine without tack runs nothing, and neither does a session with no
+route bound.
+
+Two things follow. A route whose slug matches nothing about your checkout now
+resolves, where before it silently didn't. And a reused pane no longer inherits
+the last session's route: the record names the session it was announced for.
+
+### The status line shows what the session shipped, without a tack route
+
+A merged change request, a freshly filed issue, and a published release now
+reach the status-line row from anchor's own announcements, alongside the bound
+tack route and the branch resolution. Each is a fact anchor read back from the
+forge before saying so, so the row no longer waits on a route being kept current
+to show that something landed — a session with no route bound gets one at all.
+
+anchor used to call `tack done` when it merged and `tack link add` when it
+released, which is where beacon's delivered line learned that work had shipped.
+anchor is dropping those calls in favour of announcing the same two facts, so
+beacon listens for them rather than reading them back out of the route.
+
+`cr.ready` and `commit.pushed` are deliberately not subscribed: beacon paints no
+surface from either.
+
+### The status line links a new change request the moment it opens
+
+The link was published once per turn, so a change request anchor opened mid-turn
+reached the row only after the turn ended — the row named the branch tree
+through the one stretch where it had something better to say. The announcement
+carries the URL and the title outright, so the row takes them on arrival. A
+change request announced in an unrelated checkout still doesn't claim the slot.
+
+### The branch chip keeps up with a push made mid-turn
+
+The status bar's branch chip refreshed once per turn, so a push made early in a
+long turn left it painting `↑1` diverged until the turn ended — and the shell's
+own per-prompt refresh can't run while Claude holds the pane. A tool call whose
+command names a branch-moving git subcommand now republishes the branch slots on
+the spot. Read-only git (`status`, `log`, `diff`) doesn't trigger it, and a
+command the gate misses is no worse off than before: the end-of-turn refresh
+still catches it.
+
+### A long change-request URL links where it should
+
+An announced URL passed through the same length cap as the announced title, so a
+change request under a nested GitLab group or a long repo name arrived on the
+row as a link to somewhere else. The cap now applies to the title alone.
+
+### A reused pane no longer inherits the previous session's change request
+
+The status-line link is the change request a sibling announced *during this
+session*, but the announcement outlived the session it was made in: per-session
+state keys on the iTerm2 pane, which a `/clear` or a fresh `claude` reuses. The
+fresh-start wipe now clears it along with the deliverables it sits beside.
+
+
 ## 2.9.2
 
 ### An MCP server asking for input turns the tab red
