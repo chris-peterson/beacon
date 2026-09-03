@@ -26,10 +26,14 @@
       /* Status hexes MIRROR COLOR_PALETTE in scripts/beacon so a card's
          dot matches the same session's iTerm2 badge — do not drift these.
          SDLC cycles: dev (ready/busy/blocked) + the mode cycles. Green is
-         retired from the dev stoplight (ready is gray) and pins `release`. */
+         retired from the dev stoplight (ready is gray) and pins `release`.
+         `--planning` is not a state color: the permission axis takes no color
+         channel (PERM-02). It tints the `plan` tag alone, in Claude Code's own
+         plan-mode teal, so the tag reads as the same thing the pane says. */
       --ready:    #8b8fa0;
       --busy:     #ffb86c;
       --blocked:  #ff5555;
+      --planning: #1a988c;
       /* Generic success green. Not a mode color: mode tints live in the
          .card.mode-* rules, keyed to each mode's pane background. */
       --ok:       #50fa7b;
@@ -253,7 +257,7 @@
       to   { opacity: 1; transform: none; }
     }
     /* Activity accent — a bar along the BOTTOM edge, where the eye rests during a
-       session. Carries the tab's own color state (ready/busy/blocked); the
+       session. Carries the tab's own color state, whichever axis owns it; the
        full-width title band owns the top, so identity and activity never compete
        for the same hairline. Active states glow to pull focus.
 
@@ -323,6 +327,15 @@
     }
     .color-busy    .dot,
     .color-blocked .dot { box-shadow: 0 0 7px var(--state-color); }
+    /* The permission axis in words (PERM-01) — the whole of where it surfaces.
+       A card has room for a word where the tab's two channels are already spent
+       on urgency and the declared mode, which is why the terminal says nothing
+       about plan mode and this does. */
+    .plan-tag {
+      flex: none; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 0.1rem 0.32rem; border-radius: 0.2rem;
+      color: #04211e; background: var(--planning);
+    }
     /* The mode's glyph sits beside the dot — the same mark the tab carries
        the plugin publishes, so a card and its tab read identically. Absent in the dev
        cycle, which is what makes its presence mean "this session declared
@@ -787,9 +800,11 @@
     }
 
     // A session lands in the attention band when Claude is blocked on the user
-    // (color_state === "blocked", i.e. activity "waiting") or a sticky attention
-    // marker is set (HOOK-03b). The band is the loud one — everything else is
-    // the calm rest.
+    // (activity "waiting") or a sticky attention marker is set (HOOK-03b). Read
+    // off the axes themselves rather than off `color_state`, which a planning
+    // session spends on the permission axis instead (PERM-02) — the band asks a
+    // question the color no longer answers on every card. The band is the loud
+    // one — everything else is the calm rest.
     //
     // A session in a mode is never hoisted, even when its activity is `waiting`.
     // That isn't the mode outranking the signal — the card still turns its dot
@@ -805,9 +820,13 @@
     // the mode→glyph mapping, the way color_state is carried for activity.
     function modeGlyph(s) { return (s.mode && s.mode.glyph) || ""; }
 
+    function blockedOnUser(s) {
+      return s.activity === "waiting" || !!s.pending_attention;
+    }
+
     function needsYou(s) {
       if (modeName(s) !== "dev") return false;
-      return s.color_state === "blocked" || !!s.pending_attention;
+      return blockedOnUser(s);
     }
 
     // Lightweight markdown for the expanded turn (WIP-14). Claude's replies are
@@ -960,6 +979,7 @@
         <span class="attn-flag">waiting<span class="wait-time"></span></span>
         <div class="head">
           <span class="dot"></span>
+          <span class="plan-tag" hidden>plan</span>
           <span class="mode-glyph" aria-hidden="true"></span>
           <img class="icon" alt="" hidden>
           <span class="label"><span class="project"></span><span class="task"></span></span>
@@ -1147,11 +1167,14 @@
       const mode = modeName(s);
       if (mode !== "dev") el.classList.add("mode-" + mode);
       setText(el, ".mode-glyph", modeGlyph(s));
+      el.querySelector(".plan-tag").hidden = !s.planning;
       // Waiting-for-you emphasis (these cards live in the pinned needs-you band,
       // placeAttention). Amber (soft) attention = flagged but not a live block;
-      // red = blocked now.
+      // red = blocked now. Both read the activity axis, not the color the card
+      // is painted, so a planning session (PERM-02) is still classified by what
+      // it is actually waiting on.
       el.classList.toggle("needs-you", needsYou(s));
-      el.classList.toggle("soft-attn", s.color_state !== "blocked" && !!s.pending_attention);
+      el.classList.toggle("soft-attn", s.activity !== "waiting" && !!s.pending_attention);
       el.dataset.focusable = s.focusable ? "true" : "false";
       el.title = "Click to expand";
       const go = el.querySelector(".go");

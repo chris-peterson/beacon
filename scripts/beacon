@@ -479,12 +479,18 @@ _beacon "$@"
 # (BADGE-09); hex values come from the Dracula palette (THEME-01, THEME-02) and
 # are tunable here without touching call sites.
 #
-# Three entries, because the tab color answers one question — does this session
-# need me right now — and answers it the same way in every pane. A mode used to
-# own a hue here too, which meant the tab spent its only always-painted channel
-# on the 4% axis and had nothing left for the 96% one. The mode is legible from
-# another tab as its glyph and, once focused, as its pane
-# background (MODE_SPECS).
+# The gray / orange / red run is the activity stoplight, which answers one
+# question — does this session need me right now — and answers it the same way
+# in every pane. A mode used to own a hue here too, which meant the tab spent its only
+# always-painted channel on the 4% axis and had nothing left for the 96% one.
+# The mode is legible from another tab as its glyph and, once focused, as its
+# pane background (MODE_SPECS).
+#
+# `planning` is the one state that is not an activity: it is the permission axis
+# (PERM-01) taking the channel for as long as it is active, so the stoplight goes
+# unpainted and the attention signal moves to the tab
+# glyph (TITLE-07). The hex is Claude Code's own plan-mode teal, so the tab and
+# the "plan mode on" banner in the pane read as the same declaration.
 #
 # Green is deliberately absent: `ready` is a calm neutral gray so a fresh session
 # has a known default before its first turn, and green stays the "go / good" hue
@@ -495,6 +501,32 @@ COLOR_PALETTE = {
     "blocked":  "ff5555",
 }
 
+# How much of each state's hue the *tab* actually paints (TAB-04). The tab is the
+# one surface that fills a large area with a state color — iTerm2's Minimal style
+# (pinned by CLI-18) uses the color as the tab's whole background, not as a tint —
+# and a hue that reads right in a 10px dashboard dot is an assault across 90px of
+# left-strip tab. So the hues stay canonical in COLOR_PALETTE and the tab weights
+# them down.
+#
+# Weighted per state rather than by one global factor, because the fix is not
+# "quieter" — it is *contrast between* states. Uniform dimming calmed the strip
+# and flattened it: with every row equally muted, the one session that wants the
+# user no longer stood out from the several that don't. So the weight tracks how
+# often a state is on screen: `busy` and `ready` are most of every strip and
+# recede furthest, `blocked` is rare and is the whole point of the channel, so it
+# keeps nearly all of its voice.
+#
+# Multiplying the channels preserves hue and saturation and scales only HSV
+# value, which is the transform iTerm2's own inactive-window dimming applies —
+# measured off a dimmed tab strip at ~0.60, the same figure as iTerm2's
+# `NonMinimalDeselectedColoredTabAlpha` default. Tunable here; nothing else
+# reads them.
+TAB_MUTE = {
+    "blocked":  0.90,
+    "busy":     0.52,
+    "ready":    0.46,
+}
+
 ACTIVITY_TO_COLOR_STATE = {
     "idle":     "ready",
     "working":  "busy",
@@ -503,6 +535,20 @@ ACTIVITY_TO_COLOR_STATE = {
 
 # Every activity has a color, so this mapping is also the list of valid values.
 ACTIVITIES = tuple(ACTIVITY_TO_COLOR_STATE)
+
+# The value Claude Code reports in every hook payload's `permission_mode` while
+# the session is in plan mode (PERM-01). It is observed and published, and paints
+# no tab surface: colour answers urgency alone, and the glyph slot carries the
+# declared mode.
+PLAN_PERMISSION_MODE = "plan"
+
+# What leads line 1 when no mode is declared (TITLE-06) — a space, not a mark.
+# It holds the column so a dev label does not sit flush against the tab edge
+# while a moded one is inset, and it claims nothing: dev is the absence of a
+# declaration, so a glyph asserting it would make the default read as a fifth
+# phase. A mark on the ~90% of tabs that are dev would also cost the rare marks
+# the salience that is their whole job.
+DEV_TITLE_LEAD = " "
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries " · <task>" when set, "" when absent (BADGE-03). Both writers
@@ -630,6 +676,22 @@ SKILL_MODE_SUBSCRIPTIONS = {
 }
 
 TYPED_SKILL_RE = re.compile(r"^\s*/([A-Za-z0-9:_-]+)")
+
+
+def _mute_hex(hexstr: str, weight: float) -> str:
+    """`hexstr` scaled toward black by `weight`. Multiplying every channel leaves
+    hue and saturation alone and scales only HSV value, so a muted state is the
+    same color with less light behind it — not a different one."""
+    channels = (hexstr[0:2], hexstr[2:4], hexstr[4:6])
+    return "".join(f"{min(255, round(int(c, 16) * weight)):02x}" for c in channels)
+
+
+def _tab_hex(color_state: str) -> str:
+    """The hex the *tab* paints for a color state (TAB-04) — the canonical hue
+    under its area weight. Every other surface takes COLOR_PALETTE directly: a
+    weight tuned for a full-bleed tab erases a 10px dashboard dot."""
+    base = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
+    return _mute_hex(base, TAB_MUTE.get(color_state, 1.0))
 
 
 def _mode_glyph(mode: str | None) -> str:
@@ -1234,6 +1296,23 @@ def read_activity() -> str:
 def _normalize_activity(raw: object) -> str:
     """A stored activity, floored to the default when absent or unknown."""
     return raw if raw in ACTIVITIES else DEFAULT_ACTIVITY
+
+
+def read_planning() -> bool:
+    """Whether the session is in Claude Code's plan mode (PERM-01) — the third
+    axis, observed like activity rather than declared like mode. Recorded from
+    the `permission_mode` every hook payload carries, so a session that has
+    never reached a hook reads as not planning, which is what an unpainted tab
+    already says."""
+    return _is_planning(read_state("permission_mode"))
+
+
+def _is_planning(raw: object) -> bool:
+    """Whether a recorded `permission_mode` means plan mode. The other values
+    Claude Code reports (`default`, `acceptEdits`, `auto`) differ in what the
+    agent may do without asking, which is not something a beacon surface
+    answers — only plan mode changes what the session *is*."""
+    return raw == PLAN_PERMISSION_MODE
 
 
 def p_package_name(cwd: Path):
@@ -2080,6 +2159,7 @@ def cmd_json(_args):
         "mode": {"name": state["mode"], "note": state["note"],
                  "glyph": _mode_glyph(state["mode"])},
         "activity": state["activity"],
+        "planning": state["planning"],
         # Not a signal, and not resolved through a chain: empty means "on the
         # repo's default branch", not "unknown" and not "detached".
         "branch": p_branch(cwd) or "",
@@ -2288,10 +2368,13 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
 
     mode, note = _read_mode_for(sh)
     activity = _normalize_activity(_read_state_for(sh, "activity"))
+    planning = _is_planning(_read_state_for(sh, "permission_mode"))
     pending = (STATE_DIR / f"{sh}.pending-attention").exists()
     # The fleet reads the axes the way a tab paints them, so a glance at either
     # surface answers the same question: color for activity, glyph for mode.
-    color_state = _color_state_for({"activity": activity, "pending_attention": pending})
+    # `planning` rides as its own field — the dashboard says it in words (WIP-12).
+    color_state = _color_state_for({"activity": activity,
+                                    "pending_attention": pending})
 
     claude_session = _read_state_for(sh, "claude_session_id") or ""
     branch = (_branch_for(cwd_path, branch_cache) if compute_branch else None) if cwd_path else None
@@ -2346,6 +2429,10 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
         # `description` drift into claiming to be session-level recall context.
         "mode": {"name": mode, "note": note, "glyph": _mode_glyph(mode)},
         "activity": activity,
+        # PERM-01's axis, alongside the other two (WIP-12). The sessions view is
+        # where it surfaces: a card and a row have room for the word, where the
+        # tab's two channels are spent on urgency and the declared mode.
+        "planning": planning,
         # The color a tab in this state is painted, so the dashboard dot and the
         # tab agree without the browser re-deriving the mapping.
         "color_state": color_state,
@@ -2462,8 +2549,9 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     }
 
 
-# The fleet dot mirrors the tab: activity, three colors, and nothing else. A
-# mode reads as its glyph in the same row, exactly as it does on a tab.
+# The fleet dot mirrors the tab, color state for color state. A mode reads as
+# its glyph in the same row, exactly as it does on a tab, and `plan` reads as a
+# word in the state cell — a row has the width for one where a tab does not.
 _WIP_DOT_COLOR = {"ready": "37", "busy": "33", "blocked": "31"}
 
 
@@ -2474,12 +2562,20 @@ def _record_mode(record: dict) -> tuple[str, str]:
     return _mode_tuple(record.get("mode"))
 
 
-def _wip_state_cell(mode: str, activity: str) -> str:
-    """The fleet row's state column: `release·waiting` when a mode is declared,
-    the bare activity otherwise. Both axes, because a moded session that is
-    blocked on the user has to read as blocked — the merged field could show only
-    one of the two, and the mode was the one that won."""
-    return f"{mode}·{activity}" if mode != DEV_MODE else activity
+def _wip_state_cell(mode: str, activity: str, planning: bool = False) -> str:
+    """The fleet row's state column: every axis that has something to say, joined
+    by `·` — `plan·release·waiting` at its fullest, the bare activity when
+    nothing else is declared. All three, because a session blocked on the user is
+    blocked whatever mode it declared and whatever it is permitted to do; the
+    merged field could show only one, and the mode was the one that won.
+
+    A text row has words, so the `?` the tab needs (TITLE-07) has no job here —
+    the cell already says `waiting`."""
+    segments = ([PLAN_PERMISSION_MODE] if planning else [])
+    if mode != DEV_MODE:
+        segments.append(mode)
+    segments.append(activity)
+    return "·".join(segments)
 
 
 def _wip_note_segment(note: str) -> str:
@@ -2529,7 +2625,8 @@ def _print_wip_human(payload: dict) -> None:
         grp = group[0].get("route_group")
         print(_color("1", route + (f"  [{grp}]" if grp else "")))
         modes = {s["hash"]: _record_mode(s) for s in group}
-        cells = {s["hash"]: _wip_state_cell(modes[s["hash"]][0], s["activity"])
+        cells = {s["hash"]: _wip_state_cell(modes[s["hash"]][0], s["activity"],
+                                            s.get("planning", False))
                  for s in group}
         cellw = max(len(c) for c in cells.values())
         names = {s["hash"]: _wip_display_name(s, modes[s["hash"]][0]) for s in group}
@@ -2601,7 +2698,7 @@ def _watch_frame_lines(payload: dict, cols: int) -> list[str]:
         rows.append({
             "dot": _color(_WIP_DOT_COLOR.get(s["color_state"], "37"), "●"),
             "name": _wip_display_name(s, mode),
-            "state": _wip_state_cell(mode, s["activity"]),
+            "state": _wip_state_cell(mode, s["activity"], s.get("planning", False)),
             "age": _fmt_age(s["age_seconds"]),
             "route": "" if echoes_project else f"[{route_slug}]",
             "note": _first_line(mode_note),
@@ -3664,6 +3761,9 @@ def resolve(cwd: Path | None = None) -> dict:
     # not report that it was blocked on the user (RES-06).
     mode, note = read_mode()
     activity = read_activity()
+    # The third axis (PERM-01), observed like activity and independent of both:
+    # a session can be planning in any mode and at any activity.
+    planning = read_planning()
 
     # STATE-12: `done` suppresses the task slot — a completed session shows its
     # project alone. Reversible and non-destructive: applied here at resolve
@@ -3694,6 +3794,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "task_nl": task_nl,
         "mode": mode, "note": note.strip(),
         "activity": activity,
+        "planning": planning,
         "pending_attention": _state_path("pending-attention").exists(),
     }
 
@@ -4580,7 +4681,11 @@ def _color_state_for(state: dict) -> str:
     `pending_attention` (HOOK-03b) forces `blocked` over the activity mapping,
     because hook delivery isn't ordered: a late PostToolUse for an earlier tool
     can arrive after a fresh permission prompt, and without the sticky marker
-    the tab would flip back to `busy` while the user is still being asked."""
+    the tab would flip back to `busy` while the user is still being asked.
+
+    The permission axis does not reach here (PERM-02). Colour is the only
+    pre-attentive channel — the one a user reads across every tab at once
+    without scanning — so it answers urgency and nothing else."""
     if state.get("pending_attention"):
         return "blocked"
     return ACTIVITY_TO_COLOR_STATE.get(state.get("activity"),
@@ -4588,11 +4693,13 @@ def _color_state_for(state: dict) -> str:
 
 
 def _mode_glyph_for(state: dict) -> str:
-    """The glyph leading line 1 of the session name (TITLE-06) — the mode's only
-    cross-tab surface. Trailing space so it separates from the project without
-    the template having to carry one; empty in the dev cycle."""
+    """What leads line 1 of the session name (TITLE-06): the declared mode's
+    glyph, or `DEV_TITLE_LEAD` when there is no mode. Always non-empty, so every
+    label carries the same lead and the strip does not jitter between inset and
+    flush rows. Trailing space so the glyph separates from the project without
+    the template having to carry one."""
     glyph = _mode_glyph(state.get("mode"))
-    return f"{glyph} " if glyph else ""
+    return f"{glyph} " if glyph else DEV_TITLE_LEAD
 
 
 def _profile_for(state: dict) -> str:
@@ -4625,11 +4732,14 @@ def apply(state: dict):
     # BADGE-14: marker presence is the shell snippet's engagement gate.
     place_engagement_marker()
 
-    # The two axes paint two disjoint surfaces, so nothing here arbitrates
-    # between them: activity picks the tab color (BADGE-09), the mode picks the
+    # The axes paint disjoint surfaces, so nothing here arbitrates between mode
+    # and activity: activity picks the tab color (BADGE-09), the mode picks the
     # glyph (TITLE-06) and the profile whose background it owns (RENDER-05).
     # `release` + `waiting` therefore paints a red tab over the release pane —
-    # a state the merged field could not represent at all.
+    # a state the merged field could not represent at all. The permission axis
+    # (PERM-01) re-routes rather than arbitrates: while the session is planning
+    # it claims the color (PERM-02) and the attention signal it displaced moves
+    # to the glyph beside the mode's (TITLE-07).
     color_state = _color_state_for(state)
     glyph = _mode_glyph_for(state)
     target_profile = _profile_for(state)
@@ -4661,10 +4771,12 @@ def apply(state: dict):
     # persisted gate cannot see a wipe it did not cause, so it suppresses the one
     # repaint that would recover the tab and leaves it unpainted for the rest of
     # the session. Same argument _publish_chips makes for the chip user vars.
-    hex_color = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
+    # TAB-04: the tab takes the area-weighted hue, the badge the canonical one.
+    # The badge is small and sits over terminal output, so it wants full strength
+    # for the same reason the tab cannot have it.
     if badge_on:
-        _cli("badge-color", hex_color)
-    _cli("tab-color", hex_color)
+        _cli("badge-color", COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"]))
+    _cli("tab-color", _tab_hex(color_state))
 
     # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. The badge
     # text is always the raw project — no mode decorates it (BADGE-11). Republish
@@ -4702,14 +4814,15 @@ def apply(state: dict):
     if location_text != prev.get("location") or (switched and location_text):
         _cli("uservar", "beacon_location", location_text)
 
-    # TITLE-06: line 1 (tab label + single-line OS window title) leads with the
-    # mode's glyph. This is what makes a mode readable from a tab the user isn't
-    # looking at — the pane background it also owns is only visible in the focused
-    # pane, and the tab color now answers a different question. A glyph, not the
-    # word, because line 1 is shared by the tab and the window title and cannot
-    # differ between them. The mode's *note* is not here: it goes to the Claude
-    # Code status line (STATUSLINE-01), a footer row with room for prose.
-    if glyph != prev.get("mode_glyph", "") or (switched and glyph):
+    # TITLE-06 / TITLE-07: line 1 (tab label + single-line OS window title) leads
+    # with the attention glyph and the mode's. This is what makes a mode readable
+    # from a tab the user isn't looking at — the pane background it also owns is
+    # only visible in the focused pane, and the tab color answers a different
+    # question. A glyph, not the word, because line 1 is shared by the tab and the
+    # window title and cannot differ between them. The mode's *note* is not here:
+    # it goes to the Claude Code status line (STATUSLINE-01), a footer row with
+    # room for prose.
+    if glyph != prev.get("title_prefix", "") or (switched and glyph):
         _cli("uservar", "beacon_title_prefix", glyph)
 
     snapshot = {
@@ -4718,9 +4831,10 @@ def apply(state: dict):
         "task_nl": nl_text, "location": location_text,
         "mode": state["mode"], "note": state.get("note", ""),
         "activity": state["activity"],
+        "planning": state.get("planning", False),
         "pending_attention": state.get("pending_attention", False),
         "color_state": color_state,
-        "mode_glyph": glyph,
+        "title_prefix": glyph,
         "profile": target_profile,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
@@ -4827,6 +4941,8 @@ def cmd_show(_args):
         if state.get("note"):
             rows.append(("note", state["note"], None))
     rows.append(("activity", state["activity"], None))
+    if state.get("planning"):
+        rows.append(("permission", PLAN_PERMISSION_MODE, None))
     if state.get("pending_attention"):
         rows.append(("attention", "pending", None))
     width = max(len(v) for _, v, _ in rows)
@@ -5203,6 +5319,7 @@ def _wipe_session_for_fresh_start() -> None:
         remove_state(f"override.{f}")
     write_mode(DEV_MODE)
     remove_state("activity")
+    remove_state("permission_mode")
     remove_state("pending-attention")
     remove_state("latest_turn")
     remove_state("latest_turn_full")
@@ -6092,6 +6209,16 @@ def cmd_hook(args):
             if guest:
                 os.environ["ITERM_SESSION_ID"] = guest
         write_state("claude_session_id", claude_sid)
+    # PERM-01: every hook payload names the permission mode in force, so the
+    # third axis needs no cooperation and no transcript read. Entering or
+    # leaving plan mode fires no hook of its own (it is a keystroke between
+    # turns), so the next hook is the observation point — and an absent value
+    # leaves the recorded one alone rather than reading as "not planning",
+    # the same rule the transcript harvest follows (PROV-09).
+    permission_mode = str(payload.get("permission_mode") or "")
+    if permission_mode:
+        write_state("permission_mode", permission_mode)
+
     transcript_path = payload.get("transcript_path") or ""
     if transcript_path:
         write_state("transcript_path", transcript_path)

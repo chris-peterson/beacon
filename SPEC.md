@@ -19,7 +19,7 @@ A single Claude Code instance running in a terminal window or pane. Sessions are
 
 ### 1.2 Signals
 
-Four fields together describe a session. They are orthogonal — each varies independently of the others — and they differ in **who writes them**, which is what a consumer needs to know to read one correctly.
+These fields together describe a session. They are orthogonal — each varies independently of the others — and they differ in **who writes them**, which is what a consumer needs to know to read one correctly.
 
 | Field | Cardinality | Written by | Answers |
 |---|---|---|---|
@@ -27,8 +27,9 @@ Four fields together describe a session. They are orthogonal — each varies ind
 | `task` | 0..1 | Resolved (PROV-02), overridable | *What unit of work* is it on |
 | `mode` | 1, default `dev` (+ a note) | **Declared** by a user or skill | *What phase* has it declared itself in |
 | `activity` | 1, default `idle` | **Observed** by hooks | *What is happening right now* |
+| `permission` | 1, default not planning | **Observed** by hooks | *What the session is allowed to do* |
 
-Read that column before reading a value. `mode` is a claim the session makes about itself and persists until it is left; `activity` is a fact the hooks report and is rewritten several times a turn; `task` is a durable headline that may be an override, a PR title, or merely the branch name (which is why every resolved signal reports its provider, RES-02).
+Read that column before reading a value. `mode` is a claim the session makes about itself and persists until it is left; `activity` and `permission` are facts the hooks report, the first rewritten several times a turn and the second whenever the user changes it; `task` is a durable headline that may be an override, a PR title, or merely the branch name (which is why every resolved signal reports its provider, RES-02).
 
 `mode` and `activity` were one `status` field until 2.5.0, merged by a provider chain that ranked the declared value above the observed one. The declared value therefore *discarded* the observed one, so a session in `release`, `retro`, or `done` could not report that it was blocked on the user — suppressing the one signal whose whole purpose is to interrupt. They are now separate fields with no chain between them (RES-06).
 
@@ -36,7 +37,7 @@ Read that column before reading a value. `mode` is a claim the session makes abo
 
 A mode's **note** is not a fifth field. It is an argument of the mode, stored with it and cleared with it (STATE-02): only entering a mode writes either, and leaving one drops both. Recall context for the sessions view is `latest_turn`'s job (WIP-11), which is derived from the transcript and needs no cooperation.
 
-### 1.3 Mode and activity values
+### 1.3 Mode, activity, and permission values
 
 **`activity` = what's happening right now.** Hook-driven, and the only writer. Default `idle`.
 
@@ -61,6 +62,13 @@ Activity has no declared tier: it cannot be set by hand. A pinned activity outra
 Every mode owns a dedicated dynamic profile for its pane background (RENDER-05) and a glyph for its tab (TITLE-06). `pause` is a user halt; `release` marks a ship-it flow (the one *active* mode); `retro` is a deliberate closing-out phase; `done` is the terminal "this session is finished" signal a closing-out skill reaches for instead of `pause`.
 
 Each mode accepts an optional note: `beacon pause "waiting for the VPN"`. The note surfaces in the Claude Code status line (STATUSLINE-01) and the sessions view (§3.8); it is never painted on the pane, where there is no room for prose.
+
+**`permission` = what the session is allowed to do.** Hook-observed like `activity`, and settable by nothing: it is the user's own Claude Code keystroke. Beacon reads one distinction out of it — whether the session is in **plan mode** (PERM-01) — because that is the only value that changes what the session *is* rather than how often it asks. It surfaces in the sessions view and paints no terminal surface (PERM-02): the tab's two channels are spent on urgency and the declared mode, and colour in particular is the only pre-attentive one.
+
+| Value | Meaning | Written by |
+|:---|:---|:---|
+| not planning | The session can act — `default`, `acceptEdits`, or `auto` (the distinction between them is beacon's to ignore) | Default; any hook whose payload reports one of those |
+| planning | Plan mode: the session may read and propose, not change | Any hook whose payload reports `permission_mode: plan` |
 
 ### 1.4 Render target
 
@@ -192,7 +200,7 @@ A kind outside the set — `auth_success`, `agent_completed`, `push_notification
 
 **HOOK-08.** When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_name`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). Two of SessionStart's `source` values fire without a new `claude` invocation — `compact` (context rebuilt in place) and `fork` (a new id for the conversation already in the pane) — and a hook payload's cwd is Claude's own live process cwd, which follows the agent's navigation. For those the plugin shall keep the anchor it already holds and refresh only the chips, as at Stop (HOOK-08b); a pane with no anchor yet takes the payload cwd whatever the source. Rationale: a session that compacts while the agent is working in a scratch directory it cd'd into would otherwise adopt that directory as its identity, which is the opposite of what the anchor is for. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
-**HOOK-08a.** When SessionStart fires with `source` of `startup` or `clear` (the two values that begin a session), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, the declared `mode` (with its note), `activity`, `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), the accumulated `deliverables` plus the `deliverables.dropped` record (STATUSLINE-03 / CMD-24, both scoped to one Claude session), and what a sibling announced (`announced.*` — tier 0 is the CR announced *during this session*, and the landed set is what this session shipped). It shall also stamp `session_started_at`, the window STATUSLINE-03 scopes acquisition to — the wipe empties the row and the stamp is what keeps acquisition from refilling it from the bound route's earlier work. Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `activity = waiting` + `pending-attention` and render red. `resume`, `compact`, and `fork` are excluded: each continues a session already under way, so wiping there would drop the user's pinned label and the deliverables the session has accumulated.
+**HOOK-08a.** When SessionStart fires with `source` of `startup` or `clear` (the two values that begin a session), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, the declared `mode` (with its note), `activity`, the recorded `permission_mode` (PERM-01), `pending-attention`, `latest_turn`, the harvested Claude Code signals (`cc.*`, PROV-09), the accumulated `deliverables` plus the `deliverables.dropped` record (STATUSLINE-03 / CMD-24, both scoped to one Claude session), and what a sibling announced (`announced.*` — tier 0 is the CR announced *during this session*, and the landed set is what this session shipped). It shall also stamp `session_started_at`, the window STATUSLINE-03 scopes acquisition to — the wipe empties the row and the stamp is what keeps acquisition from refilling it from the bound route's earlier work. Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `activity = waiting` + `pending-attention` and render red. `resume`, `compact`, and `fork` are excluded: each continues a session already under way, so wiping there would drop the user's pinned label and the deliverables the session has accumulated.
 
 **HOOK-08b.** On the Stop hook (end of each turn), the plugin shall re-resolve and republish the chip slots (`beacon_project_name`, the six `beacon_branch*` slots), the `cwd-<pane-guid>.txt` handoff file, and the persisted `resolved.url` / `resolved.url_label` from the anchor cwd. `beacon_project` and `beacon_task` are owned by the engagement renderer (BADGE-02 / BADGE-12) and are not touched. Rationale: turn-by-turn the agent may create a branch, switch branches, or sharpen the URL provider's answer (e.g. the user pins a tack deliverable mid-session) — these are narrowings of the session's identity, not subprocess drift, and the chips should reflect them. The shell's prompt-driven publish path (§6.5) cannot run while Claude holds the terminal; this hook covers the gap.
 
@@ -227,6 +235,22 @@ The payload names the kind: `notification_type` is a required field on Claude Co
 Rationale: HOOK-03's Notification does not accompany the prompt. Claude Code arms a timer when the ask opens and reports it only once the prompt has gone unanswered — measured at six seconds for a plan card and a question card alike — by which point HOOK-03a's PreToolUse has already written `working`. The tab therefore reads busy for the whole window a session is in fact blocked, which is the state a glance across panes most needs to see. PermissionRequest fires in-band with the ask and closes that window.
 
 The two do not make each other redundant. The Notification is the only signal for `idle_prompt`, which no permission request precedes; PermissionRequest is the only one that arrives when the block does. Only asks reach this hook — a tool an allow rule covers is decided without one — so it does not repaint the tab on ordinary tool calls. HOOK-03d does not apply here: it drops an `idle_prompt` observation, and a permission request is the case it exempts in every mode.
+
+### 3.3a Observed permission mode (PERM)
+
+The permission mode is the user's own Claude Code keystroke, not a beacon concept — beacon only reads it, and reads one distinction out of it. It is the third **observed** axis alongside `activity`, and it re-routes the two tab channels rather than arbitrating with either (§4.1).
+
+**PERM-01.** The plugin shall record the permission mode Claude Code reports in every hook payload's `permission_mode`, and shall derive one boolean from it: whether the session is in **plan mode** (`permission_mode: plan`). The other values (`default`, `acceptEdits`, `auto`) differ only in how often the session stops to ask, which no beacon surface answers; plan mode changes what the session *is*, which every surface does. A payload carrying no `permission_mode` shall leave the recorded value in place rather than reading as "not planning" — the same rule the transcript harvest follows (PROV-09). A fresh-start wipe (HOOK-08a) clears it, so a reused pane does not inherit a prior tenant's plan mode.
+
+Rationale: entering and leaving plan mode fires no hook of its own — it is a keystroke between turns — so the next hook of any kind is the observation point. Every payload naming the mode in force is what makes this observation rather than cooperation: no skill has to announce a plan phase, and the axis needs no writer of beacon's own (contrast HOOK-13, which subscribes to a skill because a *mode* has no observable signal). It is read from the hook payload and not the transcript, so it costs no file read on the hot path.
+
+**PERM-02.** The permission axis shall paint **no terminal surface**. It is recorded (PERM-01) and published to the sessions view (WIP-01, WIP-12), where a card and a row have the width for the word `plan`; the tab says nothing about it.
+
+Rationale: the tab has two channels and **colour is the only pre-attentive one** — the only signal a user reads across every tab at once without scanning each. That makes it the scarce resource, and it answers the one question worth answering in parallel: *does this session need me?* The glyph slot is serial by nature and carries the declared mode. Neither is free for a third axis.
+
+The stoplight also tells the truth about a planning session without help: it is genuinely working while it researches, and genuinely blocked when a plan is waiting on the user. What made a planning session unpleasant to look at was **loudness, not inaccuracy** — full-strength colour across a full-bleed tab — and TAB-04's area weights address that directly, for every state rather than one.
+
+A mark for plan mode on the glyph slot stays open. It is not taken here because the slot holds one value, the declared mode already claims it, and a mark introduced before the vocabulary settles is harder to withdraw than to add.
 
 ### 3.4 User overrides (OVR)
 
@@ -392,7 +416,7 @@ It is a separate verb from `refresh-iterm-profiles` (CMD-23) because the two wri
 
 The state-file directory (§6.2) is the single source of record. Every consumer reads it: the per-pane adapter resolves the current session's fields, the sessions view's commands enumerate all sessions, and `serve` re-reads on every request (WIP-04) — it holds no state of its own. So the sessions view and the per-pane adapter cannot disagree: they project the same files.
 
-**WIP-01.** When the user invokes `wip`, the plugin shall enumerate every session with state on disk, resolve each from its stored fields (`mode` with its note, `activity`, task, anchored project/cwd, last-activity, Claude session id), and emit one record per session. Each record carries **both** state axes plus the `color_state` a tab in that state would be painted, so the sessions view and the tab strip agree without a consumer re-deriving the mapping. `mode` is the nested `{name, note}` tuple, byte-identical in shape to CMD-15's — beacon's two published payloads describe the same value the same way, and a consumer reading both writes one accessor. RES-07's ownership is what makes it nested rather than two sibling keys: a flat top-level `note` is precisely the shape that let the old `description` drift into claiming to be session-level recall context. With `--json` the plugin shall emit a single object `{ generated_at, window_since, sessions[] }`; otherwise a human-readable table grouped by correlated route. Each record carries both the Claude session id (`session`) and beacon's per-pane hash, plus a `focusable` boolean (FOCUS-03), the resolved `task` (PROV-02 — read from the last-rendered snapshot, since task is not anchored like project; this is also what supplies the identity stability that the retired pause-time freeze, STATE-03, used to pin into overrides), an `icon` reference (PROV-08, WIP-08 — null when the project ships no icon), the bound tacks (`tacks`, WIP-09 — the route-scoped tacks the session is driving, empty when none is recorded), and the most recent conversation turn (`latest_turn`, WIP-11 — null when none is recorded). When two state buckets carry the same Claude session id — a session that moved panes (e.g. `claude --resume` in a new pane) leaves its prior pane's bucket behind — the plugin shall emit only the most recently active bucket's record; buckets with no session id are distinct panes and are never collapsed. Resolution uses stored fields only — the anchored project/cwd (HOOK-08) under any `project` override (OVR-01), which is the order the render chain reads them in — so the snapshot does not depend on any pane's current subprocess cwd and a pinned label reads the same on the row as on the tab. A session that carries only a session id with no project/cwd anchor is omitted — it carries no work-stream signal.
+**WIP-01.** When the user invokes `wip`, the plugin shall enumerate every session with state on disk, resolve each from its stored fields (`mode` with its note, `activity`, `planning`, task, anchored project/cwd, last-activity, Claude session id), and emit one record per session. Each record carries **every** state axis plus the `color_state` a tab in that state would be painted, so the sessions view and the tab strip agree without a consumer re-deriving the mapping. `mode` is the nested `{name, note}` tuple, byte-identical in shape to CMD-15's — beacon's two published payloads describe the same value the same way, and a consumer reading both writes one accessor. RES-07's ownership is what makes it nested rather than two sibling keys: a flat top-level `note` is precisely the shape that let the old `description` drift into claiming to be session-level recall context. With `--json` the plugin shall emit a single object `{ generated_at, window_since, sessions[] }`; otherwise a human-readable table grouped by correlated route. Each record carries both the Claude session id (`session`) and beacon's per-pane hash, plus a `focusable` boolean (FOCUS-03), the resolved `task` (PROV-02 — read from the last-rendered snapshot, since task is not anchored like project; this is also what supplies the identity stability that the retired pause-time freeze, STATE-03, used to pin into overrides), an `icon` reference (PROV-08, WIP-08 — null when the project ships no icon), the bound tacks (`tacks`, WIP-09 — the route-scoped tacks the session is driving, empty when none is recorded), and the most recent conversation turn (`latest_turn`, WIP-11 — null when none is recorded). When two state buckets carry the same Claude session id — a session that moved panes (e.g. `claude --resume` in a new pane) leaves its prior pane's bucket behind — the plugin shall emit only the most recently active bucket's record; buckets with no session id are distinct panes and are never collapsed. Resolution uses stored fields only — the anchored project/cwd (HOOK-08) under any `project` override (OVR-01), which is the order the render chain reads them in — so the snapshot does not depend on any pane's current subprocess cwd and a pinned label reads the same on the row as on the tab. A session that carries only a session id with no project/cwd anchor is omitted — it carries no work-stream signal.
 
 **WIP-02.** A session's route is the one **tack announced** when it bound the session (`codes.bridgeai.tack/session.started`), recorded as `announced.route` by the same PostToolUse handler that reads anchor's announcements. A session tack never bound has no route, and no tacks. Nothing is inferred: the project's name, the branch, and a `.tack` pin file in the anchor cwd all say where a session *is*, never which route it is *working*, and every one of them guessed wrong on a route whose slug differs from all three.
 
@@ -426,9 +450,11 @@ The same sweep shall also collect the **per-pane cache files** — the shell han
 
 **WIP-11.** Each `wip` record shall carry a `latest_turn` object — the session's most recent conversation turn — or null when none is recorded. The object is `{ role, text, at }`: `role` is `human` (the user's prompt) or `agent` (Claude's reply); `text` is a single-line excerpt of that turn; `at` is its ISO-8601 capture time. The plugin shall derive it from observable events with no agent cooperation: at `UserPromptSubmit` from the submitted prompt, at `Stop` from the trailing text of the session's last assistant message (HOOK-03c reads the same transcript). It shall be written at hook time and persisted as per-session state, so the cross-session scan (WIP-01) reads a stored value and never opens a transcript. `text` is the turn's first non-empty line with leading markdown markers removed and whitespace collapsed, capped only to bound the payload — the *display* truncation (the trailing ellipsis, placed at the consumer's available width) belongs to the consumer (WIP-10), not to this stored value. A turn that yields no text (e.g. a pure tool-use turn at `Stop`) leaves the prior value in place rather than blanking it; a fresh-start wipe (HOOK-08a) clears it. Rationale: `task` (PROV-02) is the curated headline a session sets when its focus shifts and is only as current as that cooperation; `latest_turn` is the always-on play-by-play that fills the gap, so a session that never labels itself still carries signal in the sessions view.
 
-**WIP-12.** Every sessions-view consumer shall show **both** axes, because a session blocked on the user is blocked whatever mode it declared — and the merged field could surface only one of the two, always the mode.
+**WIP-12.** Every sessions-view consumer shall show **every** axis it has a value for, because a session blocked on the user is blocked whatever mode it declared and whatever it is permitted to do — and the merged field could surface only one of them, always the mode.
 
-The split follows the tab's (§4.1): the color dot carries `color_state` (activity), and the mode carries its own glyph — the same `MODE_SPECS` mark the tab shows, so a row and its tab read identically. The text-only consumers (`wip`, `watch`) render the state column as `release·waiting` when a mode is declared and the bare activity otherwise, with the mode's note on a plain `—` lead-in when set. The reference dashboard adds the mode-card treatment (WIP-17). No consumer splices the glyph into the project name (BADGE-11); it occupies its own slot.
+The split follows the tab's (§4.1): the color dot carries `color_state` (activity), and the mode carries its own glyph — the same `MODE_SPECS` mark the tab shows, so a row and its tab read identically. The text-only consumers (`wip`, `watch`) render the state column as every axis with something to say, joined by `·` — `plan·release·waiting` at its fullest, the bare activity when nothing else is declared — with the mode's note on a plain `—` lead-in when set. The reference dashboard adds the mode-card treatment (WIP-17) and says `plan` in words beside the dot. No consumer splices a glyph into the project name (BADGE-11); each occupies its own slot.
+
+A row has words where a tab has two channels, which is why the sessions view is where the permission axis surfaces at all (PERM-02) and the terminal says nothing about it.
 
 **WIP-13.** Each `wip` record shall carry an `agent_color` field — the color the user set with Claude Code's `/color` (PROV-09) — or null when none is set. It is sessions-view metadata for consumer dashboards, not a painted surface: the pane's badge/tab color stays the status traffic-light (BADGE-09), so the user's aesthetic color surfaces only in the sessions view. The reference dashboard (WIP-10) honors it as the session's identity color — a colored label echoing Claude Code's own `/color` framing, distinct from the status dot — using the raw color name as a CSS color (an unrecognized value simply renders no fill).
 
@@ -534,10 +560,10 @@ beacon writes to a small fixed set of surfaces of an iTerm2 window. Which surfac
 
 | Slot | Axis | Why this one |
 |:---|:---|:---|
-| Tab **color** | `activity` | It varies constantly and answers "does this need me now", which is what a sweep across the strip asks. Three values, one meaning. |
-| Tab **glyph** | `mode` | Declared and stable — what a persistent character is good at — and iconic, so it names *which* phase without a legend. |
+| Tab **color** | `activity` | The only **pre-attentive** channel — the one a user reads across every tab at once without scanning each — so it answers the one question worth answering in parallel: does this need me now. One meaning everywhere. |
+| Tab **glyph** | `mode`, else a space | Declared and stable — what a persistent character is good at — and iconic, so it names *which* phase without a legend. Serial by nature: you read it a tab at a time. |
 
-Nothing arbitrates between them: both are always readable, so `release · waiting` paints a red tab beside a 🚀. The **pane background** also belongs to the mode, but it is the weaker of the mode's two surfaces — visible only in the focused pane — so it enriches rather than carries. The badge is opt-in and off by default (BADGE-15). Every other surface is owned by Claude Code, the user's profile, or other tools, and beacon shall not touch them:
+Nothing arbitrates between them: both are always readable, so `release · waiting` paints a red tab beside a 🚀. A third axis does not fit — the permission axis (PERM-01) is observed and published but paints neither channel (PERM-02). The **pane background** also belongs to the mode, but it is the weaker of the mode's two surfaces — visible only in the focused pane — so it enriches rather than carries. The badge is opt-in and off by default (BADGE-15). Every other surface is owned by Claude Code, the user's profile, or other tools, and beacon shall not touch them:
 
 ```text
   ● ● ●   🚀 project                                 ← §4.8 window title (line 1)
@@ -558,7 +584,7 @@ Nothing arbitrates between them: both are always readable, so `release · waitin
 | Status bar | §4.4 | `STATUS-BAR` | Fixed-layout context + the one action a link can't express (`↗ code`) | Base profile status-bar layout + `SetUserVar` + Action component |
 | Tab color | §4.6 | `TAB` | The activity traffic-light, and the one surface visible from a tab the user isn't in | OSC `SetColors=tab=` |
 | Pane background | §4.5 | `RENDER` | The mode's second surface, for the focused pane — **a declared mode only** | Swap into the mode's dynamic profile (§6.6), which carries a distinct background and a faint watermark; leaving the mode swaps back (RENDER-05) |
-| Window title + tab label | §4.8 | `TITLE` | Two-line tab label (`project` over `task`) led by the **mode glyph** (TITLE-06), plus the single-line OS window-title identity that survives Claude's `/rename`, for a sea of windows (Mission Control, ⌘\`, Dock) | Session `name` set to the interpolated two-line title template (`TITLE_FORMAT`, TITLE-05) via Apple Events (`set-name`); the base profile disables OSC title-setting (`Allow Title Setting: false`) so Claude's title OSC can't overwrite it, and surfaces the name via `Title Components: 1` |
+| Window title + tab label | §4.8 | `TITLE` | Two-line tab label (`project` over `task`) led by the **mode glyph** (TITLE-06); the same string is the OS window title, which under the pinned Minimal style (CLI-18) reaches only the Dock's right-click menu | Session `name` set to the interpolated two-line title template (`TITLE_FORMAT`, TITLE-05) via Apple Events (`set-name`); the base profile disables OSC title-setting (`Allow Title Setting: false`) so Claude's title OSC can't overwrite it, and surfaces the name via `Title Components: 1` |
 
 beacon shall **not** write to: terminal foreground color, tab title, cursor color/shape. These are Claude Code's domain or the user's profile (foreground, cursor). The pane background is the one exception, and a narrow one: it is painted **only** in a declared mode and **only** by swapping into that mode's profile (RENDER-05), never by an ad-hoc background OSC the user's profile would then have to reclaim. Outside a mode, the background belongs to the user's profile as before. Badge and tab color carry the same activity state on different scopes (the badge is per-pane, visible inside the pane and in Mission Control; the tab color is per-tab, visible in the strip) — which is why the badge is redundant enough to default off.
 
@@ -599,6 +625,7 @@ The CLI is the only writer to iTerm2. It exposes one subcommand per surface beac
 | Setting | Key | Type | Want | Why |
 |:---|:---|:---|:---:|:---|
 | Tab bar always visible | `HideTab` | boolean | `0` | iTerm2 hides the bar at one tab per window — where a single-pane session lives — taking the tab color and two-line label with it |
+| Minimal tab style | `TabStyleWithAutomaticOption` | integer | `5` | Minimal paints the state color as the tab's whole background rather than a tint, which is the most legible the signal gets in a left strip; beacon's tab weights (TAB-04) are tuned for that area. `5` is `TAB_STYLE_MINIMAL` in iTerm2's own enum — the Theme popup's item order is *not* the enum, so the value comes from the enum |
 | Tabs on the left | `TabViewType` | integer | `2` | a tall left strip is the natural home for many tabs; the tab color reads as a scannable column |
 | Custom tab font size | `UseCustomTabBarFontSize` | boolean | `1` | the switch that lets the size below take effect |
 | Tab-label font size | `CustomTabBarFontSize` | float | `22` | default labels are unreadably small in a left strip |
@@ -669,6 +696,8 @@ Three states, because the color answers one question — does this session need 
 Green is deliberately **not** in the stoplight: `ready` is a neutral gray, so a fresh session has a known, calm default before its first turn, and green stays the "go / good" hue the branch chip owns (THEME-03). The mapping `state → hex` lives in implementation, not this spec, so the palette can be tuned without amending requirements. Logical names (`ready` / `busy` / `blocked`) are the contract.
 
 **BADGE-09a.** One condition takes precedence over the BADGE-09 mapping: the `pending-attention` marker (HOOK-03b) forces the `blocked` state, sticky over the activity value, so a stray PostToolUse from an earlier tool cannot repaint the tab `busy` while a prompt is still open. Otherwise BADGE-09 applies.
+
+**BADGE-09b — retired.** A planning session took a fourth colour state ahead of both BADGE-09 and BADGE-09a, with the displaced attention signal moving to a tab glyph. Colour is the only pre-attentive channel, so spending it on an axis that is not urgency costs the one signal that has to be readable across every tab at once — and it took a second mechanism (the retired TITLE-07) to buy back what it displaced. The permission axis now paints no terminal surface (PERM-02).
 
 There is no mode clause here any more. A mode used to outrank both the marker and the activity, which is precisely how a moded session came to be unable to report that it was blocked on the user.
 
@@ -832,11 +861,17 @@ Because `SetProfile=` wipes the session's OSC overrides for the keys it sets (§
 
 The tab color is beacon's primary signal-coloring surface, and with the badge off by default (BADGE-15) usually its only one. It matters more than its size suggests: with many tabs open only one pane is on screen, so the strip is where a session reaches a user who is looking somewhere else.
 
-That scarcity is why the tab's two slots are split by axis — color for `activity`, the label's leading glyph for `mode` (§4.1, TITLE-06). The badge, when enabled, mirrors the color on the per-pane scope; the two share one logical state (`ready` / `busy` / `blocked`) and one hex palette, so there is no second source of truth.
+That scarcity is why the tab's two slots are split by axis — color for `activity`, the label's leading glyph for `mode` (§4.1, TITLE-06) — and why a third axis takes neither (PERM-02). The badge, when enabled, mirrors the color on the per-pane scope; the two share one logical state and one hex palette, so there is no second source of truth.
 
-**TAB-01.** The tab color shall be the logical color state of BADGE-09 (`ready` / `busy` / `blocked` → palette hex) and nothing else — no mode reaches it. It is delivered by `tab-color` (CLI-11) as an OSC write on every render, alongside the badge color when the badge is enabled (RENDER-04).
+**TAB-01.** The tab color shall be the logical color state of BADGE-09 (`ready` / `busy` / `blocked` → palette hex, under TAB-04's area weight) and nothing else — no mode reaches it, and neither does the permission axis (PERM-02). It is delivered by `tab-color` (CLI-11) as an OSC write on every render, alongside the badge color when the badge is enabled (RENDER-04) — which takes the *unweighted* hue, being small and sitting over terminal output.
 
 **TAB-02.** When the resolved session is cleared (CMD-06 reset, or `beacon-iterm clear`), the tab color shall revert to `default` so the user's profile colors take over again.
+
+**TAB-04.** The tab shall paint each color state's canonical hue (THEME-02) under a **per-state area weight**, because it is the one surface that fills a large area with a state color: iTerm2's Minimal style — pinned by CLI-18 — uses the color as the tab's entire background rather than a tint, and a left strip makes each tab tall. Every other surface takes the hue at full strength; a weight tuned for a full-bleed tab erases a 10px dashboard dot. The weight preserves hue and saturation and scales only value, so a weighted state is the same color with less light behind it. The `state → weight` table lives in implementation (`TAB_MUTE`), like the palette itself.
+
+The weight is **per state, not one global factor**, and tracks how often a state is on screen: `busy` and `ready` are most of every strip and recede furthest; `blocked` is rare and is the whole reason the channel exists, so it keeps nearly all of its voice; `planning` sits between.
+
+Rationale: what the channel needs is not to be quieter, it is *contrast between* states. Under Minimal at full strength the loudness ladder ran backwards — `busy` orange measured 8.37 contrast against the tab ground where `blocked` red measured 4.54, so the state meaning "carry on" out-shouted the one meaning "stop and look", and a strip of them was painful to read. Dimming everything uniformly fixed the pain and flattened the signal with it: with every row equally muted, the one session that wants the user stopped standing out from the several that don't. Weighting by frequency restores the ladder. Luminance contrast is deliberately **not** the target — red is intrinsically dark, so making it top a luminance ladder means making it brighter pink; red is loud because it is red.
 
 **TAB-03.** beacon shall not infer or guarantee the per-pane semantics of tab color — iTerm2 binds tab color to the *tab*, not the pane, so multi-pane tabs will show the most-recent painter. The intended workflow is one Claude session per tab; users who split panes within a tab accept that the tab color reflects whichever pane painted last. This is a workflow constraint, not a bug to engineer around.
 
@@ -844,19 +879,21 @@ That scarcity is why the tab's two slots are split by axis — color for `activi
 
 beacon's visible color values are drawn from the [Dracula palette](https://draculatheme.com/contribute). One palette across all surfaces — badge color, tab color, status-bar chip text, the docs-site favicon — keeps a glance across many panes coherent and the project's visual identity unified.
 
-The activity stoplight (BADGE-09) uses **neutral gray / orange / red** for at-rest / working / blocked, and those three are the whole of what beacon paints as a *state* color. A mode is signalled by shape instead — its tab glyph (TITLE-06) and its pane background (RENDER-05) — so no mode competes for a hue. **Green** is the "go / good" hue and belongs to the `beacon_branch_clean` chip; **pink** is the single "interactive" accent on action chips; **orange** and **comment** branch-state chips mirror the stoplight (diverged / untracked) so the same color carries the same meaning across surfaces.
+The activity stoplight (BADGE-09) uses **neutral gray / orange / red** for at-rest / working / blocked, and that is the whole of what beacon paints as an *activity* color. A mode is signalled by shape instead — its tab glyph (TITLE-06) and its pane background (RENDER-05) — so no mode competes for a hue. **Green** is the "go / good" hue and belongs to the `beacon_branch_clean` chip; **pink** is the single "interactive" accent on action chips; **orange** and **comment** branch-state chips mirror the stoplight (diverged / untracked) so the same color carries the same meaning across surfaces.
 
 **THEME-01.** Visible color values that beacon paints (tab and badge color via BADGE-09 / TAB-01, status-bar chip text via STATUS-BAR-02, the mode pane backgrounds via RENDER-05) shall be drawn from the Dracula palette, with one deliberate exception: `ready` uses a palette-neutral gray so at-rest recedes rather than signals, since Dracula has no true neutral gray (its `comment` is bluish). Each hue shall serve a single semantic role across surfaces — colors that signal state shall not be reused as decorative chip identity, and the action-affordance hue (pink) shall not overlap with state hues. Hex values are tunable in one place per surface (`COLOR_PALETTE` in the plugin script for tab/badge, `MODE_SPECS` for the mode backgrounds, the dynamic profile template for chip text); call sites speak in logical names so the palette can be retuned without touching call sites.
 
-**THEME-02.** The tab / badge palette maps the three activity color states to Dracula hex:
+**THEME-02.** The palette maps each color state to a Dracula hex, plus the weight the tab paints it at (TAB-04):
 
-| State          | Hex       | Name          | When                                                               |
-|:---------------|:----------|:--------------|:-------------------------------------------------------------------|
-| `ready`        | `#8b8fa0` | neutral gray  | `activity = idle` — at rest, the calm default (BADGE-09)           |
-| `busy`         | `#ffb86c` | orange        | `activity = working` — UserPromptSubmit, Pre/PostToolUse           |
-| `blocked`      | `#ff5555` | red           | `activity = waiting` — permission or idle prompt, or `pending-attention` (BADGE-09a) |
+| State          | Hex       | Tab       | Weight | Name          | When                                                               |
+|:---------------|:----------|:----------|-------:|:--------------|:-------------------------------------------------------------------|
+| `ready`        | `#8b8fa0` | `#40424a` | 0.46   | neutral gray  | `activity = idle` — at rest, the calm default (BADGE-09)           |
+| `busy`         | `#ffb86c` | `#856038` | 0.52   | orange        | `activity = working` — UserPromptSubmit, Pre/PostToolUse           |
+| `blocked`      | `#ff5555` | `#e64c4c` | 0.90   | red           | `activity = waiting` — permission or idle prompt, or `pending-attention` (BADGE-09a) |
 
-Three rows, and no mode among them. A mode is signalled by **shape** — its tab glyph (TITLE-06) and its pane background (RENDER-05) — which is what frees the color to mean one thing everywhere.
+The **Hex** column is what every surface but the tab paints, and the one a hue means; the **Tab** column is that hue under its area weight, derived rather than a second palette to keep in step.
+
+No mode among them. A mode is signalled by **shape** — its tab glyph (TITLE-06) and its pane background (RENDER-05) — which is what frees the color to mean one thing everywhere.
 
 **THEME-02a.** Each mode's pane background and watermark, delivered by its dynamic profile (RENDER-05) rather than by any OSC:
 
@@ -882,9 +919,11 @@ All are tunable in one place, the `MODE_SPECS` table. `done` is the dimmest at h
 
 The base dynamic profile stores chip colors as RGB float components (sRGB). The hex values above are authoritative; the float forms in `iterm/profile.json.template` are derived from them.
 
-### 4.8 Window title (TITLE)
+### 4.8 Session name (TITLE)
 
-The OS window title carries the session's identity — `project · task` — so a window keeps its project context when Claude Code's `/rename` (or auto-title) would otherwise replace it. This is what a *sea of windows* is scanned by: Mission Control, ⌘\`, the Dock, the window bar. It complements the badge (visible inside the pane) rather than duplicating it: the same `project · task`, on the OS chrome instead of the pane.
+The iTerm2 **session name** carries the session's identity — `project` over `task` — so the tab keeps its project context when Claude Code's `/rename` (or auto-title) would otherwise replace it. Its reach is the **tab strip**: the two-line label is drawn on every tab at once, which is what makes it one of the three always-visible surfaces (§4.1).
+
+The same string is also the OS window title, but under the Minimal tab style CLI-18 pins, that title is not drawn in the window frame and reaches neither Mission Control nor ⌘-Tab; the Dock's right-click menu shows it, for the current tab only. So the window title is a by-product of this requirement rather than a reason for it, and line 1 is shaped for the strip's width.
 
 The mechanism resolves the OSC-contention problem recorded historically in §8: rather than trying to out-write Claude's title OSC (beacon is structurally never the last writer), beacon removes OSC from the title's priority chain and supplies the title from a channel Claude can't touch — the iTerm2 *session name*, set out-of-band via Apple Events.
 
@@ -898,7 +937,7 @@ The mechanism resolves the OSC-contention problem recorded historically in §8: 
 
 Because the shell's write is a one-shot at source time that an engaged pane skips, **disengagement is what returns the name** — the plugin sets it back to `\(user.beacon_title)` (HOOK-09) when the session ends or `beacon clear` runs. Nothing else would: the shell does not re-source when Claude exits, so a name left on the managed template reads blank once disengagement has emptied the vars it interpolates. `beacon_title` is republished every precmd and floors on the abbreviated cwd (TITLE-01), so the reclaimed name is never empty.
 
-**TITLE-05.** The session name shall render as a **two-line tab label** — `project` on line 1, the task on an indented line 2 — via `TITLE_FORMAT = <b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.beacon_location)\(user.beacon_task_nl)`, where `beacon_task_nl` carries a leading newline + two-space indent when a task is set and `""` when absent (so line 2 self-collapses), `beacon_title_prefix` leads line 1 with the declared mode's glyph (TITLE-06), `""` in the dev cycle, and `beacon_location` closes line 1 with ` @ <where>` while the session is working away from its anchor (PROV-02a), `""` otherwise. Line 1 therefore carries the three things that answer *which session is this* — mode, project, and where it is — leaving line 2 for the unit of work alone. iTerm2's single-line OS window title shows line 1 (`project`, with the mode glyph when one is set) alone, so a `/rename`d window keeps its project context (§4.8). The project is wrapped in `<b>` as the one sparing HTML accent so the identity reads as the title; this needs iTerm2's HTML tab titles (`HTMLTabTitles`, recommended by CLI-18) — without it the `<b>` renders literally, so the accent is advisory, not load-bearing. The two-line label wants a taller tab bar (`DefaultTabBarHeight`, CLI-18).
+**TITLE-05.** The session name shall render as a **two-line tab label** — `project` on line 1, the task on an indented line 2 — via `TITLE_FORMAT = <b>\(user.beacon_title_prefix)\(user.beacon_project)</b>\(user.beacon_location)\(user.beacon_task_nl)`, where `beacon_task_nl` carries a leading newline + two-space indent when a task is set and `""` when absent (so line 2 self-collapses), `beacon_title_prefix` leads line 1 with the declared mode's glyph, or a space when there is no mode (TITLE-06), and `beacon_location` closes line 1 with ` @ <where>` while the session is working away from its anchor (PROV-02a), `""` otherwise. Line 1 therefore carries the three things that answer *which session is this* — mode, project, and where it is — leaving line 2 for the unit of work alone. iTerm2's single-line OS window title shows line 1 (`project`, with the mode glyph when one is set) alone. Under the Minimal style CLI-18 pins, that title is not drawn in the window frame and does not reach Mission Control or ⌘-Tab — the Dock's right-click menu is the one place it surfaces, for the current tab only. Line 1 is therefore shaped for the **tab strip**, which is what makes a compact mark rather than a word the right lead (TITLE-06). The project is wrapped in `<b>` as the one sparing HTML accent so the identity reads as the title; this needs iTerm2's HTML tab titles (`HTMLTabTitles`, recommended by CLI-18) — without it the `<b>` renders literally, so the accent is advisory, not load-bearing. The two-line label wants a taller tab bar (`DefaultTabBarHeight`, CLI-18).
 
 **TITLE-05a.** While the declared mode is stood down (STATE-15) and carries a note, line 2 of the session name shall carry **the note in place of the task**. The substitution is presentation-only and reversible: it is resolved from `mode` at resolve time, like STATE-12, not by deleting any `task` override, so leaving the mode restores the task.
 
@@ -906,13 +945,17 @@ Rationale: the note's other home is the Claude Code status line (STATUSLINE-01),
 
 This does not reopen line 1 or the badge. The note stays off line 1, which the tab shares with the single-line window title (TITLE-06), and off the badge, which overlays terminal output and carries no free text (BADGE-11).
 
-**TITLE-06.** While a mode is declared, line 1 of the session name shall lead with that **mode's glyph** — the `beacon_title_prefix` user var, `""` in the dev cycle — mapping `pause` → `⏸`, `release` → `🚀`, `retro` → `📋`, `done` → `🏁` (`MODE_SPECS`). Each glyph matches its mode's pane watermark (RENDER-05), so the tab and the pane say the same thing.
+**TITLE-06.** Line 1 of the session name shall always lead with the `beacon_title_prefix` user var, which carries the declared **mode's glyph** — `pause` → `⏸`, `release` → `🚀`, `retro` → `📋`, `done` → `🏁` (`MODE_SPECS`) — and, when no mode is declared, a **space**. Each glyph matches its mode's pane watermark (RENDER-05), so the tab and the pane say the same thing.
+
+The lead is never empty, so every label in the strip starts at the same inset and the column does not jitter between flush and indented rows. The dev value is whitespace rather than a mark for two reasons: a glyph asserting "development" would make the default read as a fifth phase, where it is the absence of a declaration (STATE-01 stores nothing for it, for the same reason); and a mark on the great majority of tabs carries no information while costing the rare marks the salience that is their whole purpose.
 
 This is the mode's **only cross-tab surface**, which is what makes it load-bearing rather than decorative: the pane background is visible solely in the focused pane, and the tab color now reports activity (TAB-01). Until 2.5.0 only `paused` marked the title, so four of five modes were legible from another tab by color alone — and that color was about to be needed for something else.
 
 The mode's *note* is not on line 1, and for a stood-down mode it is on line 2 (TITLE-05a); otherwise its home is the status line (STATUSLINE-01), which has room for prose.
 
 A glyph rather than the word, because line 1 is a single string shared by the tab and the single-line OS window title (§4.8): the two cannot differ (a separate window title would need the iTerm2 Python API over a websocket, which beacon does not use), so a compact mark serves both without a word crowding the tab. The trade is that the window title is not string-searchable by mode name. The glyph is set on entering a mode (a profile swap that re-sets the name, RENDER-05) and cleared on leaving it.
+
+**TITLE-07 — retired.** A planning session blocked on its user led line 1 with a `?` ahead of the mode's glyph. It existed only to carry the attention signal the retired BADGE-09b displaced from the colour channel; with colour answering urgency again, it repeats what the always-painted channel already says. The glyph slot holds one value, and it is the declared mode's (TITLE-06).
 
 ### 4.9 Claude Code status line (STATUSLINE)
 
@@ -1074,10 +1117,11 @@ state/<session-hash>.override.{project,task}  # OVR-01: only where a provider ch
 state/<session-hash>.anchor.icon            # PROV-08: discovered project icon path
 state/<session-hash>.mode                   # RES-06/-07: {"name","note"} — declared; absent = dev
 state/<session-hash>.activity               # RES-06: idle|working|waiting — hooks only, no override tier
+state/<session-hash>.permission_mode        # PERM-01: the mode Claude Code reported — `plan` is the one beacon reads
 state/<session-hash>.pending-attention
 state/<session-hash>.latest_turn        # WIP-11: most recent turn {role,text,at} for the sessions view
 state/<session-hash>.iterm_session_id   # FOCUS-02: iTerm2 session GUID (focus handle)
-state/<session-hash>.resolved           # last-rendered snapshot {project,task,mode,activity,color_state,mode_glyph,profile}
+state/<session-hash>.resolved           # last-rendered snapshot {project,task,mode,activity,planning,color_state,title_prefix,profile}
 state/<session-hash>.resolved.url       # STATUSLINE-02: PROV-07's URL (its location tiers when the answer shipped pre-session), persisted so the row never re-resolves
 state/<session-hash>.resolved.url_label # STATUSLINE-02: its display label (the link text)
 state/<session-hash>.resolved.project   # STATUSLINE-03: forge identity, for bare-vs-qualified refs
@@ -1141,7 +1185,7 @@ The status bar's chips and action buttons (STATUS-BAR-02 / STATUS-BAR-05) consum
 | `beacon_branch_untracked` | `beacon_branch` when a feature branch is `untracked`, else empty | n/a |
 | `beacon_task` | plugin-only; carries `" · <task>"` when the resolved task (PROV-02) is non-empty | no task resolved |
 | `beacon_task_nl` | plugin-only; carries the task on an indented second line (`"\n  <task>"`) for the two-line tab label (TITLE-05) | no task resolved |
-| `beacon_title_prefix` | plugin-only; leads title line 1 with the declared mode's glyph (`MODE_SPECS`, TITLE-06), marking the mode on the tab + window title — its only cross-tab surface | `""` in the dev cycle |
+| `beacon_title_prefix` | plugin-only; leads title line 1 with the declared mode's glyph (`MODE_SPECS`, TITLE-06) — the mode's only cross-tab surface — and holds the column with a space when there is none | a space when no mode |
 | `beacon_title` | window-title only (TITLE-01), not a status-bar chip; the project name when in a project, else the abbreviated cwd — it floors on the *path* where the chip floors on the directory name, since a title has room for one | never — the cwd is the floor |
 
 The per-session handoff file for the `↗ code` action button (see §6.10 caveat 6) lives at `<DATA_DIR>/cache/cwd-<pane-guid>.txt` — `<pane-guid>` is the GUID segment of `ITERM_SESSION_ID` (§6.10 caveat 6) and `<DATA_DIR>` is resolved per the convergence rule above, so the shell, hooks, and slash commands all read and write the same file.
@@ -1218,17 +1262,18 @@ Any row of the left table combines with any row of the right: `release` + `waiti
 ```
 hook fires
   ↓
-write activity  (or, for a declared mode, write mode{name,note})
+write activity + permission_mode  (or, for a declared mode, write mode{name,note})
   ↓
-resolve()  → state{project, task, mode, note, activity, pending_attention}
+resolve()  → state{project, task, mode, note, activity, planning, pending_attention}
   ↓
 apply(state):
   load prev resolved snapshot (or empty on first render)
   place engagement marker for this pane                        # BADGE-14
-  # The three surfaces resolve from their own axis. Nothing arbitrates.
+  # The surfaces resolve from their own axis, and nothing arbitrates.
   color_state = blocked if state.pending_attention             # BADGE-09a, sticky
                 else ACTIVITY_TO_COLOR_STATE[state.activity]   # BADGE-09
-  glyph       = MODE_SPECS.get(state.mode, {}).get("glyph", "")  # TITLE-06
+  prefix      = MODE_SPECS.get(state.mode, {}).get("glyph", "")   # TITLE-06
+                or DEV_TITLE_LEAD                              # a space, not a mark
   profile     = MODE_SPECS[state.mode].profile or beacon-dev  # RENDER-05
   if profile changed (covers first render):
     beacon-iterm set-profile <profile>                         # RENDER-05
@@ -1238,10 +1283,10 @@ apply(state):
   if color_state changed (and no swap above):
     beacon-iterm tab-color <hex>                               # OSC, RENDER-04
     beacon-iterm badge-color <hex>                             # OSC, only when the badge is on
-  if glyph changed (or swap): publish beacon_title_prefix       # TITLE-06
+  if prefix changed (or swap): publish beacon_title_prefix      # TITLE-06 / -07
   badge text = project (never decorated); task suppressed when mode == done  # BADGE-11 / STATE-12
   # a mode's note is not painted here — it surfaces in the status line (STATUSLINE-01)
-write state/<sid>.resolved (snapshot incl. color_state, mode_glyph, profile)
+write state/<sid>.resolved (snapshot incl. color_state, title_prefix, profile)
 ```
 
 Diff-against-previous keeps the per-render escape-sequence count low — a typical mid-session render emits one OSC call (the tab color), and only when the color state actually changed. A mode transition is the heavier path (swap + re-emit), but it fires only on that rare, user/session-initiated boundary. Because the axes are disjoint, activity churn inside a mode costs a color OSC and nothing more — the profile is untouched.

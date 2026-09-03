@@ -20,7 +20,9 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .panefig {
   --abyss: #21222c; --body: #282a36; --bar: #30323e; --fg: #f8f8f2;
   --identity: #9aa3c0; --sep: #a0a4b3; --pink: #ff79c6;
-  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4;
+  /* Tab figures paint the tab weights (TAB-04) — iTerm2's Minimal style fills
+     the whole tab, so this is what a tab actually shows. */
+  --ready: #40424a; --busy: #856038; --blocked: #e64c4c;
   --green: #50fa7b;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   max-width: 720px; margin: 1rem 0;
@@ -58,23 +60,22 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .pf-strip .cap { font-size: 0.85rem; color: #cdd2e6; padding: 0.45rem 0.7rem; background: var(--body); }
 .pf-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
 .pf-chip { border: 1px solid rgba(139,233,253,0.14); border-radius: 10px; background: var(--body); padding: 1rem 0.9rem 0.8rem; text-align: center; }
-.pf-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; }
-.pf-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.9; }
-.pf-chip .b.ready { color: var(--ready); }
-.pf-chip .b.busy { color: var(--busy); }
-.pf-chip .b.blocked { color: var(--blocked); }
-.pf-chip .b.paused { color: var(--paused); }
+.pf-chip .b { font: 700 19px/1.15 var(--mono); line-height: 1.3; color: var(--fg);
+  border-radius: 6px; padding: 0.7rem 0.8rem; text-align: left; }
+.pf-chip .b .task { display: block; font-weight: 400; font-size: 0.8em; opacity: 0.82;
+  padding-left: 0.85em; }
+.pf-chip .b.ready { background: var(--ready); }
+.pf-chip .b.busy { background: var(--busy); }
+.pf-chip .b.blocked { background: var(--blocked); }
 .pf-chip .cap { margin-top: 0.6rem; font-size: 0.82rem; color: #cdd2e6; }
 .pf-tabcol { display: flex; gap: 1.1rem; align-items: flex-start; flex-wrap: wrap; }
 .pf-tabstrip { display: grid; gap: 5px; width: 15rem; flex: 0 0 auto; }
-.pf-tab { display: flex; align-items: center; gap: 0.55rem; font: 600 13px var(--mono); color: var(--fg); background: var(--body); border-left: 4px solid var(--sep); border-radius: 5px; padding: 0.6rem 0.65rem; }
-.pf-tab i { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.pf-tab { display: flex; align-items: center; font: 600 13px var(--mono); color: var(--fg); background: var(--body); border-radius: 5px; padding: 0.7rem 0.75rem; }
 .pf-tab .pf-lbl { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
-.pf-tab .t { font-weight: 400; color: var(--identity); padding-left: 0.85em; }
-.pf-tab.ready { border-left-color: var(--ready); } .pf-tab.ready i { background: var(--ready); }
-.pf-tab.busy { border-left-color: var(--busy); background: linear-gradient(rgba(255,184,108,0.13), rgba(255,184,108,0.13)), var(--body); } .pf-tab.busy i { background: var(--busy); }
-.pf-tab.blocked { border-left-color: var(--blocked); background: linear-gradient(rgba(255,85,85,0.16), rgba(255,85,85,0.16)), var(--body); } .pf-tab.blocked i { background: var(--blocked); }
-.pf-tab.paused { border-left-color: var(--paused); } .pf-tab.paused i { background: var(--paused); }
+.pf-tab .t { font-weight: 400; opacity: 0.82; padding-left: 0.85em; }
+.pf-tab.ready { background: var(--ready); }
+.pf-tab.busy { background: var(--busy); }
+.pf-tab.blocked { background: var(--blocked); }
 /* this caption sits beside the strip on the page, not inside a dark panel like
    the other .cap variants — so it takes the page's own text color, not theirs */
 .pf-tabcol .cap { flex: 1 1 12rem; font-size: 0.9rem; color: inherit; line-height: 1.5; align-self: center; }
@@ -114,7 +115,9 @@ The tab carries the session's identity and its state, the status bar runs along 
 
 ## The tab: a traffic light
 
-The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. The color is the same as a [dashboard card](/demo): the **dev** stoplight — a neutral gray at rest, amber working, red waiting for you — plus a distinct color for each mode cycle (`pause`, `release`, `retro`, `done`). See [The beacon palette](/palette) for the whole set.
+The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. It carries the **dev** stoplight and nothing else — a neutral gray at rest, amber working, red waiting for you. A mode is carried by the label's glyph instead, so no mode competes for a hue, and neither does anything else: colour is the only signal you read across every tab at once, so it answers *does this need me* alone.
+
+The hexes here are each hue under its **tab weight**: beacon pins iTerm2's Minimal style, which fills the whole tab with the color rather than tinting it, and the states you see constantly recede so the rare one that wants you stands out. [The beacon palette](/palette) has the weights and the reasoning; a [dashboard card](/demo) paints the same hues unweighted, its dot being a fraction of the area.
 
 <div class="panefig pf-states">
   <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
@@ -129,13 +132,13 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
 
 <div class="panefig pf-tabcol">
   <div class="pf-tabstrip">
-    <div class="pf-tab blocked"><i></i><span class="pf-lbl">checkout-api<span class="t">refunds</span></span></div>
-    <div class="pf-tab busy"><i></i><span class="pf-lbl">widgets-web<span class="t">#42</span></span></div>
-    <div class="pf-tab ready"><i></i><span class="pf-lbl">auth-svc</span></div>
-    <div class="pf-tab busy"><i></i><span class="pf-lbl">beacon<span class="t">#14</span></span></div>
-    <div class="pf-tab paused"><i></i><span class="pf-lbl">infra-tf</span></div>
+    <div class="pf-tab blocked"><span class="pf-lbl">checkout-api<span class="t">refunds</span></span></div>
+    <div class="pf-tab busy"><span class="pf-lbl">widgets-web<span class="t">#42</span></span></div>
+    <div class="pf-tab ready"><span class="pf-lbl">auth-svc</span></div>
+    <div class="pf-tab busy"><span class="pf-lbl">beacon<span class="t">#14</span></span></div>
+    <div class="pf-tab ready"><span class="pf-lbl">⏸ infra-tf</span></div>
   </div>
-  <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, one paused. No window focused, no dashboard open.</div>
+  <div class="cap">Five sessions, one column: <b>checkout-api</b> is red — it needs you — while two are working, one idle, and one is paused. No window focused, no dashboard open.</div>
 </div>
 
 Line 1 is the project name; line 2 is the task (or, on a parked or finished session, its note), and it collapses when there is neither. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note rides line 2 of the tab in place of the task, and also shows in the [dashboard](/demo) and the [status line](#the-status-line); the next prompt clears it.
