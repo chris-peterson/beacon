@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.10.0
 
 ### The sessions view learns your route from tack, instead of guessing
 
