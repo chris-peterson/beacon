@@ -8,6 +8,8 @@ beacon paints two independent things about a session, so a glance tells you both
 
 They never compete, because they never share a surface. A releasing session that needs you is a red tab beside a `🚀`. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm?id=turning-the-badge-on) if you turn one on — it's off by default.)
 
+**Plan mode is watched but not painted.** beacon reads Claude Code's permission mode off every hook, and surfaces it in the [sessions view](/demo) — a card has room for the word `plan` where a tab does not. The tab says nothing about it: colour is the only signal you read across every tab at once, so it answers *does this need me* and nothing else.
+
 Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute), each hue serving one meaning across every surface.
 
 <!--
@@ -72,6 +74,20 @@ Everyday development. There's no mode background — the pane stays your own pro
 </div>
 
 The tab's label is the project name over the task, indented; line 2 collapses when no task is set. The hooks own these three transitions; you never set them by hand.
+
+## what the tab actually paints
+
+The hexes above are the hues, and every surface but one paints them as they are. iTerm2's Minimal style — the one beacon pins — paints the state color as the tab's *whole background* rather than a tint, and a left strip makes each tab tall. A hue that reads right in a small dashboard dot is an assault across that much area, so the tab paints each hue under a weight. [In iTerm2](/iterm?id=the-tab-a-traffic-light) shows the result rendered.
+
+The weight is per state rather than one global dimming, and that distinction is the whole point: uniform dimming calmed the strip and flattened it, because with every row equally muted the one session that wants you no longer stood out from the several that don't. So the weight tracks how often you see a state.
+
+| State | Weight | Tab hex | Why |
+|:---|--:|:---|:---|
+| `blocked` | 0.90 | `#e64c4c` | rare, and the whole reason the channel exists — keeps its voice |
+| `busy` | 0.52 | `#856038` | most of every strip — recedes |
+| `ready` | 0.46 | `#40424a` | most of every strip — recedes furthest |
+
+Multiplying the channels leaves hue and saturation alone and scales only value, so a weighted state is the same color with less light behind it. It's also the transform iTerm2's own inactive-window dimming applies, which is where the numbers started.
 
 ## branch — the status-bar chip
 

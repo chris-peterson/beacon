@@ -238,6 +238,26 @@ class WipTest(_WipBase):
         self.assertEqual(by_proj["p4"]["color_state"], "blocked",
                          "a mode must not hide that the session needs the user")
 
+    def test_planning_record_carries_the_axis_without_taking_the_color(self):
+        # PERM-02: the permission axis rides as its own field and the dot keeps
+        # following activity, so a planning session that is blocked still reads
+        # as blocked wherever the dot is the only signal.
+        self._write("s1", "anchor.project", "p1")
+        self._write("s1", "permission_mode", "plan")
+        self._write("s1", "activity", "waiting")
+        self._write("s1", "pending-attention", "permission")
+        self._write("s2", "anchor.project", "p2")
+        self._write("s2", "permission_mode", "default")
+        self._write("s2", "activity", "working")
+
+        by_proj = {s["project"]: s for s in self._sessions()}
+        self.assertTrue(by_proj["p1"]["planning"])
+        self.assertEqual(by_proj["p1"]["color_state"], "blocked")
+        self.assertEqual(by_proj["p1"]["activity"], "waiting")
+        self.assertTrue(by_proj["p1"]["pending_attention"])
+        self.assertFalse(by_proj["p2"]["planning"])
+        self.assertEqual(by_proj["p2"]["color_state"], "busy")
+
     def test_unknown_mode_name_reads_as_dev(self):
         # Live state still holds values retired in the pre-SDLC rename. A mode
         # name this version doesn't know is not a mode.
@@ -726,6 +746,22 @@ class WatchViewTest(unittest.TestCase):
         ], cols=200))[0]
         self.assertIn("release·waiting", row)
         self.assertIn("— cutting v2.5", row)
+
+    def test_planning_row_names_the_permission_axis(self):
+        # WIP-12: a row has words where a tab has two channels, so `plan` is
+        # spelled out rather than spending the dot color alone.
+        row = self._body(self._rows([
+            self._session(mode="release", activity="waiting", planning=True,
+                          color_state="blocked", note=""),
+        ], cols=200))[0]
+        self.assertIn("plan·release·waiting", row)
+
+    def test_planning_dev_row_joins_plan_to_the_activity(self):
+        row = self._body(self._rows([
+            self._session(mode="dev", activity="working", planning=True,
+                          color_state="busy", note=""),
+        ], cols=200))[0]
+        self.assertIn("plan·working", row)
 
     def test_moded_row_carries_the_mode_glyph(self):
         # The same glyph the tab shows, so a row and its tab read identically.

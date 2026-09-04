@@ -1,5 +1,75 @@
 # Changelog
 
+## Unreleased
+
+### The tab commits to iTerm2's Minimal style, and the palette is weighted for it
+
+beacon already pins where the tab strip sits, how tall its tabs are, and what
+size their labels print at. It left the *tab style* alone — the one setting that
+decides whether the state color is a thin tint or the tab's entire background.
+That made beacon's own primary surface depend on a preference it never named.
+
+`beacon layout` now pins **Minimal**, because full-bleed is the most legible the
+signal gets in a left strip: you can read every session's state from across the
+room without focusing anything.
+
+The palette is weighted to match. Under Minimal at full strength the loudness
+ladder ran backwards — `busy` orange measured 8.37 contrast against the tab
+ground where `blocked` red measured 4.54, so the state that means "carry on"
+out-shouted the one that means "stop and look", and a strip of them was painful.
+Dimming everything uniformly fixed the pain and flattened the signal with it. So
+the tab paints each hue under a **per-state weight**, tracking how often you see
+that state:
+
+| State | Weight | Tab hex |
+|:---|--:|:---|
+| `blocked` | 0.90 | `#e64c4c` |
+| `busy` | 0.52 | `#856038` |
+| `ready` | 0.46 | `#40424a` |
+
+One row wants you; the rest recede. The weight scales only value, so a weighted
+state is the same color with less light behind it — the hues are unchanged, and
+they still mean what they meant.
+
+This applies to **the tab alone**. The badge, the dashboard dot, and the docs
+figures keep the full-strength hues: a weight tuned for 90px of full bleed
+erases a 10px dot.
+
+If you run a different tab style, `beacon layout` will report the pin as drift
+and you can skip it with `--keys`; the tab weights apply either way.
+
+### beacon knows about plan mode, and the terminal stays quiet about it
+
+beacon reads Claude Code's permission mode off every hook, so it knows which
+sessions are in plan mode without any cooperation — no skill announces it, and
+entering or leaving is a keystroke between turns that fires no hook of its own,
+so the next hook of any kind is the observation point.
+
+It surfaces in the **sessions view**: `wip` and `watch` read `plan·release·waiting`,
+and the dashboard tags the card `plan`. A card and a row have room for a word.
+
+The **tab says nothing about it**, deliberately. The tab has two channels and
+colour is the only pre-attentive one — the only signal you read across every tab
+at once without scanning each — so it answers *does this session need me* and
+nothing else. The activity stoplight was already telling the truth about a
+planning session: it genuinely is working while it researches, and genuinely is
+blocked when a plan is waiting on you. What made it unpleasant to look at was
+loudness, and the tab weights above fix that for every state rather than one.
+
+A glyph for plan mode is still open. Nothing is claimed until the vocabulary
+settles, because a mark is harder to withdraw than to add.
+
+### Every tab label starts in the same column
+
+A session with no declared mode now leads its label with a space rather than
+nothing, so the strip no longer jitters between flush and inset rows as modes
+come and go.
+
+A space rather than a mark, for two reasons: a glyph asserting "development"
+would make the default read as a fifth phase, where it is the absence of a
+declaration — and a mark on the great majority of tabs carries no information
+while costing the rare marks (⏸ 🚀 📋 🏁) the salience that is their whole job.
+
 ## 2.10.0
 
 ### The sessions view learns your route from tack, instead of guessing
