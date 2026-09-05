@@ -5967,10 +5967,15 @@ class ProfileBakedPaths(unittest.TestCase):
                      | {s["profile"] for s in self.beacon.MODE_SPECS.values()})
 
     def _rewrite(self, stem, old, new):
+        # Both sides are encoded the way the installer encodes them, because
+        # the file holds each path inside a JSON string: on Windows that is
+        # `C:\\Users\\...`, which a search for the bare path never finds.
+        def encoded(value):
+            return json.dumps(str(value))[1:-1]
         path = self.profiles / f"{stem}.json"
         body = path.read_text()
-        self.assertIn(old, body, f"{stem} does not carry {old}")
-        path.write_text(body.replace(old, new))
+        self.assertIn(encoded(old), body, f"{stem} does not carry {old}")
+        path.write_text(body.replace(encoded(old), encoded(new)))
 
     def _check(self):
         return self.beacon._doctor_profile_paths(self.profiles, self.want)
