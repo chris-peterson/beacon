@@ -4395,6 +4395,35 @@ def _fit_action_button_widths(profile: dict) -> None:
         knobs["maxwidth"] = max(knobs.get("maxwidth") or 0, needed)
 
 
+# The action-button shells `install_dynamic_profile` bakes, read back out.
+# `parameter` is a shell one-liner, so the values are recovered by their quoting
+# rather than from a field of their own — see the template.
+_PROFILE_CACHE_DIR_RE = re.compile(r'cat "([^"]+)/cwd-')
+_PROFILE_EXEC_RE = re.compile(r'\$\("([^"]+)" "([^"]+)" ')
+
+
+def _profile_baked_paths(profile: dict) -> dict | None:
+    """The `{cache_dir, python, script}` an installed profile's buttons will
+    actually use, or None when it declares no action button.
+
+    These are baked at render time (see `install_dynamic_profile`), so nothing
+    re-derives them on a click: a profile written against one install keeps
+    pointing there after beacon moves, and the button fails with the same alert
+    it shows for a pane it has no cwd for. Reading them back is what lets
+    `doctor` tell the two apart."""
+    for comp in (profile.get("Status Bar Layout") or {}).get("components") or []:
+        knobs = (comp.get("configuration") or {}).get("knobs") or {}
+        param = (knobs.get("action") or {}).get("parameter")
+        if not isinstance(param, str):
+            continue
+        cache = _PROFILE_CACHE_DIR_RE.search(param)
+        exe = _PROFILE_EXEC_RE.search(param)
+        if cache and exe:
+            return {"cache_dir": cache.group(1),
+                    "python": exe.group(1), "script": exe.group(2)}
+    return None
+
+
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
     and one derived mode profile per MODE_SPECS entry (beacon-pause,
@@ -5677,6 +5706,59 @@ _DOCTOR_MARKS = {
 }
 
 
+def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
+    """Whether the installed profiles' action buttons still point at this
+    install — the half `profiles` present/absent can't see.
+
+    The cache dir is checked for *equality*: the button reads the pane's cwd
+    handoff file straight out of it, so a profile written against another
+    `<DATA_DIR>` finds nothing and alerts as though the pane had no directory,
+    which reads as a `↗ code` bug rather than a stale profile. The interpreter
+    and script are checked for *existence* instead — pointing them at a working
+    tree is how beacon is developed, so a difference is worth naming but is not
+    a fault.
+
+    One render writes all five profiles, so a finding almost always holds for
+    every one of them; each is reported once, named by profile only where they
+    disagree."""
+    this_script = PLUGIN_ROOT / "scripts" / "beacon"
+    faults, notes = [], []
+    for stem in sorted(want):
+        path = profiles_dir / f"{stem}.json"
+        try:
+            profile = json.loads(path.read_text(encoding="utf-8"))["Profiles"][0]
+        except (OSError, ValueError, KeyError, IndexError) as e:
+            faults.append((stem, f"unreadable ({e})"))
+            continue
+        baked = _profile_baked_paths(profile)
+        if not baked:
+            faults.append((stem, "declares no action button"))
+            continue
+        if Path(baked["cache_dir"]) != CACHE_DIR:
+            faults.append((stem, f"buttons read {baked['cache_dir']}, "
+                                 f"hooks write {CACHE_DIR}"))
+        if not os.access(baked["python"], os.X_OK):
+            faults.append((stem, f"interpreter {baked['python']} is gone"))
+        if not Path(baked["script"]).is_file():
+            faults.append((stem, f"script {baked['script']} is gone"))
+        elif Path(baked["script"]) != this_script:
+            notes.append((stem, f"buttons run {baked['script']}"))
+
+    def phrase(findings):
+        by_text = {}
+        for stem, detail in findings:
+            by_text.setdefault(detail, []).append(stem)
+        return "; ".join(detail if len(stems) == len(want)
+                         else f"{', '.join(stems)}: {detail}"
+                         for detail, stems in by_text.items())
+
+    if faults:
+        return _DOCTOR_BAD, f"{phrase(faults)} — run `beacon refresh-iterm-profiles`"
+    if notes:
+        return _DOCTOR_WARN, f"{phrase(notes)}, not this install's {this_script}"
+    return _DOCTOR_OK, f"buttons resolve to {CACHE_DIR} and {this_script}"
+
+
 def _doctor_checks() -> list[dict]:
     """Every probe, as {section, name, status, detail}. Split from the printing
     so `--json` and the human view can't drift."""
@@ -5737,6 +5819,9 @@ def _doctor_checks() -> list[dict]:
         add("iTerm2", "profiles", _DOCTOR_OK if not missing else _DOCTOR_BAD,
             f"{len(want)} present" if not missing
             else f"missing {', '.join(missing)} — run `beacon refresh-iterm-profiles`")
+        if not missing:
+            status, detail = _doctor_profile_paths(profiles, want)
+            add("iTerm2", "profile paths", status, detail)
         if running:
             guid = read_state("iterm_session_id")
             if not guid:

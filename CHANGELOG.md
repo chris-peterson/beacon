@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### `doctor` catches a profile left pointing at another install
+
+The `↖ web` and `↗ code` status-bar buttons read the pane's working directory
+out of a `<DATA_DIR>` baked into the iTerm2 profile when it was rendered, so
+beacon moving — reinstalled from a different marketplace, or bumped to a new
+version — leaves them reading a directory nothing writes. The button then says
+the session has no working directory, which is also what it says for a pane
+beacon really isn't tracking, and every click looks like a `↗ code` bug.
+
+`doctor` now reads those paths back out of each installed profile and reports
+them: the data dir has to be the one hooks write, and the interpreter and script
+have to still be there. A mismatch names both directories and the
+`beacon refresh-iterm-profiles` that fixes it. Buttons pointed at a working tree
+are reported as such and pass, since that is how beacon is developed.
+
 ## 2.10.0
 
 ### The sessions view learns your route from tack, instead of guessing

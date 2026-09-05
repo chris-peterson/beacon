@@ -5942,6 +5942,143 @@ class ItermHandleGuard(unittest.TestCase):
         self.assertNotIn("do shell script", pane["detail"])
 
 
+class ProfileBakedPaths(unittest.TestCase):
+    """A status-bar button reads the pane's cwd out of a directory baked into
+    the profile when it was rendered, so beacon moving (a reinstall from a
+    different marketplace, a version bump) leaves the buttons reading a
+    directory nothing writes. The button then alerts that the session has no
+    working directory — indistinguishable, from the user's side, from a pane
+    beacon really isn't tracking. `doctor` is where the two are told apart."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.beacon = _load_beacon(Path(tmp.name))
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        patcher = mock.patch("pathlib.Path.home", return_value=Path(home.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.profiles = (Path(home.name) / "Library" / "Application Support"
+                         / "iTerm2" / "DynamicProfiles")
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        self.want = ({self.beacon.BASE_PROFILE_NAME}
+                     | {s["profile"] for s in self.beacon.MODE_SPECS.values()})
+
+    def _rewrite(self, stem, old, new):
+        path = self.profiles / f"{stem}.json"
+        body = path.read_text()
+        self.assertIn(old, body, f"{stem} does not carry {old}")
+        path.write_text(body.replace(old, new))
+
+    def _check(self):
+        return self.beacon._doctor_profile_paths(self.profiles, self.want)
+
+    def test_the_values_read_back_are_the_ones_the_template_carries(self):
+        # Against the template rather than a rendered file: this is the assert
+        # that fails if the button's shell one-liner is reshaped, which is what
+        # the values are recovered by.
+        baked = self.beacon._profile_baked_paths(_render_profile_template())
+        self.assertEqual(baked, {"cache_dir": "/x/cache", "python": "/x/python3",
+                                 "script": "/x/scripts/beacon"})
+
+    def test_a_profile_carrying_no_action_button_reads_back_as_nothing(self):
+        profile = _render_profile_template()
+        profile["Status Bar Layout"]["components"] = []
+        self.assertIsNone(self.beacon._profile_baked_paths(profile))
+
+    def test_a_fresh_render_is_clean(self):
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_OK, detail)
+        self.assertIn(str(self.beacon.CACHE_DIR), detail)
+
+    def test_a_cache_dir_from_another_install_is_a_fault(self):
+        for stem in self.want:
+            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        # Both halves: which directory the buttons read, and which one hooks
+        # write — the mismatch is the finding, neither path alone.
+        self.assertIn("/gone/beacon-other/cache", detail)
+        self.assertIn(str(self.beacon.CACHE_DIR), detail)
+        self.assertIn("refresh-iterm-profiles", detail)
+
+    def test_a_finding_every_profile_shares_is_reported_once(self):
+        for stem in self.want:
+            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
+        _, detail = self._check()
+        self.assertEqual(detail.count("/gone/beacon-other/cache"), 1)
+        for stem in self.want:
+            self.assertNotIn(stem, detail)
+
+    def test_only_the_profile_that_drifted_is_named(self):
+        self._rewrite("beacon-retro", str(self.beacon.CACHE_DIR), "/gone/other/cache")
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        self.assertIn("beacon-retro", detail)
+        self.assertNotIn(self.beacon.BASE_PROFILE_NAME, detail)
+
+    def test_a_script_that_is_gone_is_a_fault(self):
+        script = str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")
+        for stem in self.want:
+            self._rewrite(stem, script, "/gone/beacon/2.9.0/scripts/beacon")
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        self.assertIn("/gone/beacon/2.9.0/scripts/beacon", detail)
+
+    def test_an_interpreter_that_is_gone_is_a_fault(self):
+        for stem in self.want:
+            # Bare, not quoted: the file holds the value inside a JSON string,
+            # where every quote around it is escaped.
+            self._rewrite(stem, sys.executable, "/gone/python3")
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        self.assertIn("/gone/python3", detail)
+
+    def test_buttons_pointed_at_another_checkout_are_a_note_not_a_fault(self):
+        # Running the buttons against a working tree is how beacon is developed,
+        # so this is worth saying and not worth failing on.
+        other = Path(self._other_checkout())
+        script = str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")
+        for stem in self.want:
+            self._rewrite(stem, script, str(other))
+        status, detail = self._check()
+        self.assertEqual(status, self.beacon._DOCTOR_WARN, detail)
+        self.assertIn(str(other), detail)
+        self.assertIn(script, detail)
+
+    def _other_checkout(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / "scripts"
+        path.mkdir()
+        (path / "beacon").write_text("#!/usr/bin/env python3\n")
+        return path / "beacon"
+
+    def test_doctor_reports_the_check_beside_the_profiles_it_covers(self):
+        for stem in self.want:
+            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
+            checks = self.beacon._doctor_checks()
+        paths = [c for c in checks if c["name"] == "profile paths"][0]
+        self.assertEqual(paths["status"], self.beacon._DOCTOR_BAD)
+        self.assertEqual(paths["section"], "iTerm2")
+
+    def test_missing_profiles_are_not_also_reported_as_bad_paths(self):
+        # `profiles` already says to re-render; a second line naming the same
+        # command is noise, and every present profile is fine here.
+        (self.profiles / "beacon-retro.json").unlink()
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
+            checks = self.beacon._doctor_checks()
+        self.assertEqual([c for c in checks if c["name"] == "profile paths"], [])
+        self.assertEqual(
+            [c for c in checks if c["name"] == "profiles"][0]["status"],
+            self.beacon._DOCTOR_BAD)
+
+
 class DevInstallMarker(unittest.TestCase):
     """A working tree and a marketplace install report the same manifest
     version, so nothing distinguishes an unreleased beacon from a released one
