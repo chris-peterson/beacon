@@ -308,6 +308,16 @@ RECOMMENDED_LAYOUT = (
             "single-pane session lives — the tab color and two-line label are "
             "the whole signal, so that window carries none",
      "where": "Appearance → Tabs"},
+    # TAB_STYLE_MINIMAL = 5 in iTerm2's own `iTermPreferencesTabStyle` (the
+    # comment there reads "minimal + compact windows"). The popup's item order is
+    # not the enum, so read the value from the enum and not from the menu.
+    {"key": "TabStyleWithAutomaticOption", "want": "5", "type": "int",
+     "label": "Minimal tab style",
+     "why": "Minimal paints the state color as the tab's whole background "
+            "instead of a tint, which is the most legible the signal gets in a "
+            "left strip — beacon's tab palette is weighted for that area "
+            "(TAB-04) and reads washed-out under the tinted styles",
+     "where": "Appearance → General → Theme"},
     {"key": "TabViewType", "want": "2", "type": "int", "label": "Tabs on the left",
      "why": "a tall left strip is the natural home for a fleet of sessions; "
             "the tab color reads as a scannable column",
