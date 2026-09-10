@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+### The two-line tab label fits again on iTerm2 3.7.0
+
+iTerm2 3.7.0 gives a Minimal left or right tab strip — the layout `beacon
+layout` recommends — its own tab-height setting, `CompactMinimalTabBarHeight`,
+and stops reading `DefaultTabBarHeight` there. At that setting's 38pt default a
+22pt label has room for one line, so line 2 of every tab, the task, was clipped.
+
+`beacon layout` now audits both keys at the same 90pt. Run `beacon layout
+--write` to apply it; which key iTerm2 reads depends on its version, so the
+strip is the same height either way.
+
+### `doctor` catches profiles iTerm2 has stopped loading
+
+Through iTerm2 3.6.x a profile was dynamic if it carried a `Dynamic` tag. 3.7.0
+moved that to an `Is Dynamic Profile` key its loader writes, and profiles iTerm2
+saved before the upgrade carry only the tag. Its loader then reads each beacon
+profile file, finds what it now takes for an ordinary saved profile already
+holding that Guid, and skips the file — so the status bar, mode backgrounds and
+badge sizing freeze at whatever was last loaded, and `beacon
+refresh-iterm-profiles` rewrites files nothing reads.
+
+`beacon refresh-iterm-profiles` now makes that check itself, after the render:
+the reload is the assumption the whole command rests on, and writing five files
+and reporting five files while iTerm2 reads none of them looks exactly like
+success. It exits non-zero naming the profiles and the two steps that recover
+them — delete the saved copies under iTerm2 → Settings → Profiles, then run it
+again. `install` reports the same at its profile step, which is where an iTerm2
+upgrade is most likely to be met, and `doctor` carries it as a row. The check is
+skipped where iTerm2 has never run 3.7.0, since the key means nothing there.
+
 ### `doctor` catches a profile left pointing at another install
 
 The `↖ web` and `↗ code` status-bar buttons read the pane's working directory

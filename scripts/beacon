@@ -18,6 +18,7 @@ import copy
 import hashlib
 import json
 import os
+import plistlib
 import re
 import shlex
 import shutil
@@ -4516,6 +4517,14 @@ def _profile_baked_paths(profile: dict) -> dict | None:
     return None
 
 
+def _iterm_profiles_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
+
+
+def _iterm_profile_names() -> set:
+    return {BASE_PROFILE_NAME} | {s["profile"] for s in MODE_SPECS.values()}
+
+
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
     and one derived mode profile per MODE_SPECS entry (beacon-pause,
@@ -4545,7 +4554,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
     per-state profiles a pre-1.0 install left behind so iTerm2 stops loading
     them.
     """
-    target_dir = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
+    target_dir = _iterm_profiles_dir()
     beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
     template = PLUGIN_ROOT / "iterm" / "profile.json.template"
     target = target_dir / "beacon-dev.json"
@@ -5709,6 +5718,9 @@ def cmd_refresh_iterm_profiles(_args):
     if not ok:
         sys.exit(msg)
     print(f"✓ {msg}")
+    warning = _render_shadowed_warning()
+    if warning:
+        sys.exit(f"! {warning}")
 
 
 # The name the CLI should advertise in the advice it prints. `beacon` is the
@@ -5864,6 +5876,104 @@ def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
     return _DOCTOR_OK, f"buttons resolve to {CACHE_DIR} and {this_script}"
 
 
+# The one-shot migration iTerm2 3.7.0 records once it has re-marked the
+# profiles it inherited. Its presence dates the prefs: an iTerm2 that has never
+# run 3.7.0 has no `Is Dynamic Profile` key on anything, and the absence of that
+# key says nothing about whether a profile is loading.
+_ITERM_DYNAMIC_FLAG_MIGRATION = "NoSyncMigratedDynamicProfileTagToFlag"
+_ITERM_PROFILE_IS_DYNAMIC = "Is Dynamic Profile"
+
+
+def _iterm_prefs() -> dict | None:
+    """iTerm2's app-wide preferences, or None when they can't be read. Read
+    through `defaults`, the same door the layout audit (CLI-18) reads its values
+    through, and so carrying the same caveat: a running iTerm2 keeps its own
+    copy and rewrites the plist on quit. What this reads them for outlives that
+    — a profile iTerm2 has stopped loading stays stopped across launches."""
+    try:
+        r = subprocess.run(["defaults", "export", "com.googlecode.iterm2", "-"],
+                           capture_output=True, timeout=10)
+    except Exception as exc:
+        log_error("doctor.iterm-prefs", f"{type(exc).__name__}: {exc}")
+        return None
+    if r.returncode != 0:
+        log_error("doctor.iterm-prefs", (r.stderr or b"").decode(errors="replace").strip(),
+                  exit=r.returncode)
+        return None
+    try:
+        return plistlib.loads(r.stdout)
+    except Exception as exc:
+        log_error("doctor.iterm-prefs", f"{type(exc).__name__}: {exc}")
+        return None
+
+
+def _shadowed_profiles(profiles_dir: Path, want: set) -> list[str] | None:
+    """The beacon profiles iTerm2 has stopped loading, holding a saved copy that
+    shadows the file instead — empty when every one loads, None when the check
+    doesn't apply (iTerm2 has never run 3.7.0, or its prefs are unreadable).
+
+    Through iTerm2 3.6.x a profile was dynamic if it carried the `Dynamic` tag;
+    3.7.0 moved that to an `Is Dynamic Profile` key its loader writes. A profile
+    saved by the older version carries the tag and not the key, so the loader
+    reads the file, finds a profile it now reads as *non-dynamic* already
+    holding that Guid, and skips it — leaving the pane on a frozen copy while
+    every re-render writes files nothing reads. Matching on the Guid is what
+    makes this answerable from outside: the Guid is in the file beacon wrote and
+    in the copy iTerm2 saved, and it is what the loader's own check compares."""
+    prefs = _iterm_prefs()
+    if not prefs or _ITERM_DYNAMIC_FLAG_MIGRATION not in prefs:
+        return None
+    mine = {}
+    for stem in sorted(want):
+        try:
+            body = (profiles_dir / f"{stem}.json").read_text(encoding="utf-8")
+            profile = json.loads(body)["Profiles"][0]
+        except (OSError, ValueError, KeyError, IndexError):
+            continue
+        if profile.get("Guid"):
+            mine[profile["Guid"]] = stem
+    return sorted(
+        mine[saved.get("Guid")]
+        for saved in prefs.get("New Bookmarks") or []
+        if isinstance(saved, dict) and saved.get("Guid") in mine
+        and not saved.get(_ITERM_PROFILE_IS_DYNAMIC)
+    )
+
+
+def _shadowed_remedy(shadowed: list[str], profiles_dir: Path, retry: str) -> str:
+    """What to do about profiles iTerm2 has stopped loading. The copies have to
+    go before a re-render has anywhere to land, so the delete leads and `retry`
+    names the command that reloads them."""
+    return (f"iTerm2 reads {', '.join(shadowed)} as saved profiles rather than "
+            f"dynamic ones, so it skips the file each is written from and every "
+            f"edit to them is inert. Delete them under iTerm2 → Settings → "
+            f"Profiles, then {retry} to have iTerm2 load them back from "
+            f"{profiles_dir}")
+
+
+def _render_shadowed_warning() -> str | None:
+    """What a render that just wrote the profiles has to add when iTerm2 will
+    not load them. Without it the step reports the write it did and nothing
+    about the reload it assumed, which is the whole point of the command."""
+    shadowed = _shadowed_profiles(_iterm_profiles_dir(), _iterm_profile_names())
+    if not shadowed:
+        return None
+    return _shadowed_remedy(shadowed, _iterm_profiles_dir(), "run this again")
+
+
+def _doctor_profiles_shadowed(profiles_dir: Path, want: set) -> tuple[str, str] | None:
+    """The `_shadowed_profiles` finding as a doctor row — the half `profiles`
+    and `profile paths` both miss, because each reads the file rather than what
+    iTerm2 made of it."""
+    shadowed = _shadowed_profiles(profiles_dir, want)
+    if shadowed is None:
+        return None
+    if not shadowed:
+        return _DOCTOR_OK, f"iTerm2 loads all {len(want)} from {profiles_dir}"
+    return _DOCTOR_BAD, _shadowed_remedy(
+        shadowed, profiles_dir, "run `beacon refresh-iterm-profiles`")
+
+
 def _doctor_checks() -> list[dict]:
     """Every probe, as {section, name, status, detail}. Split from the printing
     so `--json` and the human view can't drift."""
@@ -5917,8 +6027,8 @@ def _doctor_checks() -> list[dict]:
         running = _is_iterm_running()
         add("iTerm2", "running", _DOCTOR_OK if running else _DOCTOR_WARN,
             "yes" if running else "no — the adapter has nothing to paint")
-        profiles = Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
-        want = {BASE_PROFILE_NAME} | {s["profile"] for s in MODE_SPECS.values()}
+        profiles = _iterm_profiles_dir()
+        want = _iterm_profile_names()
         have = {p.stem for p in profiles.glob(f"{PROFILE_NAMESPACE}-*.json")}
         missing = sorted(want - have)
         add("iTerm2", "profiles", _DOCTOR_OK if not missing else _DOCTOR_BAD,
@@ -5927,6 +6037,9 @@ def _doctor_checks() -> list[dict]:
         if not missing:
             status, detail = _doctor_profile_paths(profiles, want)
             add("iTerm2", "profile paths", status, detail)
+            live = _doctor_profiles_shadowed(profiles, want)
+            if live:
+                add("iTerm2", "profiles live", *live)
         if running:
             guid = read_state("iterm_session_id")
             if not guid:
@@ -6126,6 +6239,9 @@ def cmd_install(_args):
     step("iTerm2 dynamic profile (status bar + badge sizing)")
     ok, msg = install_dynamic_profile()
     print(f"  ✓ {msg}" if ok else _color("33", f"  ! {msg}"))
+    warning = _render_shadowed_warning() if ok else None
+    if warning:
+        print(_color("33", f"  ! {warning}"))
     print()
     step("iTerm2 fleet layout (recommended, user-set)")
     # The tab-strip layout beacon's tab color is tuned for lives in app-wide

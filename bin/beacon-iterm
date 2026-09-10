@@ -294,13 +294,13 @@ def cmd_set_name(args):
 
 # --- layout audit ---
 
-# The app-wide iTerm2 Appearance prefs beacon's tab-color signal is *tuned for*
+# The app-wide iTerm2 prefs beacon's tab-color signal is *tuned for*
 # but cannot set: all are global keys in com.googlecode.iterm2, none are
 # per-profile, so a beacon dynamic profile can't carry them (confirmed against a
 # live left-tabs plist, iTerm2 3.6.10). beacon writes no iTerm2 pref — the
 # no-`defaults write` boundary that keeps it clear of the plist-cache trap — so
-# `configure` only audits and names each value for the user to set in
-# Preferences → Appearance.
+# `configure` only audits and names each value, with the pane of Preferences
+# that holds it, for the user to set.
 RECOMMENDED_LAYOUT = (
     {"key": "HideTab", "want": "0", "type": "bool",
      "label": "Tab bar always visible",
@@ -333,6 +333,15 @@ RECOMMENDED_LAYOUT = (
     {"key": "DefaultTabBarHeight", "want": "90", "type": "float", "label": "Taller tabs",
      "why": "gives the two-line project/task label room to show both lines",
      "where": "Appearance → Tabs"},
+    # iTerm2 3.7.0 routes Minimal + side tabs — the layout the rest of this table
+    # recommends — to this key instead of DefaultTabBarHeight, as the per-tab
+    # height of the vertical strip. Both are audited because which one iTerm2
+    # reads depends on its version, and the strip is the same height either way.
+    {"key": "CompactMinimalTabBarHeight", "want": "90", "type": "float",
+     "label": "Taller tabs (Minimal side strip)",
+     "why": "the height each tab gets in a Minimal left strip from iTerm2 3.7.0 "
+            "on; at its 38pt default the second label line is clipped",
+     "where": "Advanced → Tabs"},
     {"key": "StatusBarPosition", "want": "0", "type": "int",
      "label": "Status bar at the top",
      "why": "reads as a header for the pane; the bottom is where Claude Code "
@@ -438,7 +447,7 @@ def _running_caveat() -> str:
 def _configure_audit():
     aligned = "\x1b[32m✓\x1b[0m"
     differs = "\x1b[33m✗\x1b[0m"
-    print("Recommended iTerm2 fleet layout — app-wide Appearance prefs:\n")
+    print("Recommended iTerm2 fleet layout — app-wide prefs:\n")
     drift = []
     for s in RECOMMENDED_LAYOUT:
         cur = _read_default(s["key"])

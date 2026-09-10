@@ -1439,6 +1439,7 @@ class CustomizableStatusBarButtons(unittest.TestCase):
     def test_refresh_rerenders_without_the_rest_of_the_bootstrap(self):
         calls = []
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+             mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
              mock.patch.object(self.beacon, "install_dynamic_profile",
                                side_effect=lambda: (calls.append("profile") or (True, "wrote it"))), \
              mock.patch.object(self.beacon, "_install_cli_wrapper",
@@ -1448,6 +1449,38 @@ class CustomizableStatusBarButtons(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
         self.assertEqual(calls, ["profile"])
+
+    def _refresh(self, shadowed):
+        """Run `beacon refresh-iterm-profiles` over a render that succeeded,
+        returning (exit code, everything printed)."""
+        out = io.StringIO()
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+             mock.patch.object(self.beacon, "install_dynamic_profile",
+                               return_value=(True, "wrote it")), \
+             mock.patch.object(self.beacon, "_shadowed_profiles", return_value=shadowed), \
+             contextlib.redirect_stdout(out):
+            try:
+                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
+            except SystemExit as e:
+                return e.code, out.getvalue() + str(e.code)
+        return 0, out.getvalue()
+
+    def test_refresh_reports_profiles_iterm_will_not_load(self):
+        # The command's whole job is making the profiles current, and it can't:
+        # iTerm2 skips the file each is written from. Reporting the write alone
+        # is the failure it was silent about.
+        code, out = self._refresh(["beacon-dev", "beacon-retro"])
+        self.assertNotEqual(code, 0)
+        self.assertIn("beacon-dev", out)
+        self.assertIn("beacon-retro", out)
+        self.assertIn("Settings → Profiles", out)
+
+    def test_refresh_is_clean_when_iterm_loads_them(self):
+        self.assertEqual(self._refresh([])[0], 0)
+
+    def test_refresh_is_clean_when_the_check_does_not_apply(self):
+        # An iTerm2 that has never run 3.7.0 answers None, which is not a fault.
+        self.assertEqual(self._refresh(None)[0], 0)
 
     def test_refresh_exits_nonzero_when_the_write_fails(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
@@ -4102,6 +4135,9 @@ class InstallGating(unittest.TestCase):
             "_install_shell_source": None,
             "_service_install": True,
             "install_dynamic_profile": (True, "profile written"),
+            # None = iTerm2 has never run 3.7.0, so the shadowing check that
+            # follows the render doesn't apply and reaches no real prefs.
+            "_shadowed_profiles": None,
         }
         self.mocks = {}
         for name, val in returns.items():
@@ -4140,6 +4176,16 @@ class InstallGating(unittest.TestCase):
         self.assertFalse(self.mocks["_service_install"].called,
                          "the serve service is opt-in; install must not start it")
         self.assertIn("[6/6]", out)
+
+    def test_install_surfaces_profiles_iterm_will_not_load(self):
+        # install is the post-upgrade step, and the upgrade is where iTerm2
+        # stops loading them — writing the files and saying nothing about the
+        # reload leaves the whole adapter frozen with no sign of it.
+        self.mocks["_shadowed_profiles"].return_value = ["beacon-dev"]
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
+            out = self._run_install()
+        self.assertIn("beacon-dev", out)
+        self.assertIn("Settings → Profiles", out)
 
     def test_dir_reaches_the_wrapper_step(self):
         # CMD-13: `--dir` moved onto install when install-cli retired, so it is
@@ -5498,6 +5544,17 @@ class ConfigureLayoutAudit(unittest.TestCase):
         self.assertEqual(spec["type"], "bool")
         self.assertEqual(self.iterm._defaults_write_args(spec), ["-bool", "false"])
 
+    def test_minimal_side_strip_gets_its_own_tab_height(self):
+        # iTerm2 3.7.0 reads CompactMinimalTabBarHeight, not DefaultTabBarHeight,
+        # for the per-tab height of a Minimal left/right strip — which is the
+        # layout every other row here recommends. Both are audited because which
+        # one iTerm2 reads depends on its version; they agree so the strip is the
+        # same height either way.
+        side = self._spec("CompactMinimalTabBarHeight")
+        self.assertEqual(side["type"], "float")
+        self.assertEqual(side["want"], self._spec("DefaultTabBarHeight")["want"])
+        self.assertEqual(self.iterm._defaults_write_args(side), ["-float", "90"])
+
     def test_status_bar_sits_at_the_top(self):
         # The bottom of the pane is Claude Code's, where beacon renders its own
         # status line.
@@ -6227,6 +6284,7 @@ class ProfileBakedPaths(unittest.TestCase):
         for stem in self.want:
             self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
                 mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
             checks = self.beacon._doctor_checks()
         paths = [c for c in checks if c["name"] == "profile paths"][0]
@@ -6238,12 +6296,97 @@ class ProfileBakedPaths(unittest.TestCase):
         # command is noise, and every present profile is fine here.
         (self.profiles / "beacon-retro.json").unlink()
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
                 mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
             checks = self.beacon._doctor_checks()
         self.assertEqual([c for c in checks if c["name"] == "profile paths"], [])
         self.assertEqual(
             [c for c in checks if c["name"] == "profiles"][0]["status"],
             self.beacon._DOCTOR_BAD)
+
+
+class ProfilesShadowedBySavedCopies(unittest.TestCase):
+    """iTerm2 3.7.0 stopped reading the `Dynamic` tag and started reading an
+    `Is Dynamic Profile` key its loader writes. Profiles it saved before the
+    upgrade carry the tag alone, so the loader reads each file, finds what it
+    now takes for an ordinary profile already holding that Guid, and skips it.
+    The files then say one thing and the panes another, and every surface
+    beacon renders through a profile is frozen at whatever was last loaded."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.beacon = _load_beacon(Path(tmp.name))
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        patcher = mock.patch("pathlib.Path.home", return_value=Path(home.name))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.profiles = (Path(home.name) / "Library" / "Application Support"
+                         / "iTerm2" / "DynamicProfiles")
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        self.want = ({self.beacon.BASE_PROFILE_NAME}
+                     | {s["profile"] for s in self.beacon.MODE_SPECS.values()})
+
+    def _guid(self, stem):
+        return json.loads((self.profiles / f"{stem}.json").read_text())["Profiles"][0]["Guid"]
+
+    def _prefs(self, saved, migrated=True):
+        prefs = {"New Bookmarks": saved}
+        if migrated:
+            prefs[self.beacon._ITERM_DYNAMIC_FLAG_MIGRATION] = True
+        return prefs
+
+    def _saved(self, stem, dynamic):
+        # What iTerm2 persists for a profile it loaded from a file: 3.6.x wrote
+        # the tag, 3.7.0 writes the key, and only the key is read back.
+        entry = {"Guid": self._guid(stem), "Name": stem, "Tags": ["beacon", "Dynamic"],
+                 "Dynamic Profile Filename": str(self.profiles / f"{stem}.json")}
+        if dynamic:
+            entry[self.beacon._ITERM_PROFILE_IS_DYNAMIC] = True
+        return entry
+
+    def _check(self, prefs):
+        with mock.patch.object(self.beacon, "_iterm_prefs", return_value=prefs):
+            return self.beacon._doctor_profiles_shadowed(self.profiles, self.want)
+
+    def test_profiles_iterm_marked_dynamic_are_loading(self):
+        result = self._check(self._prefs([self._saved(s, True) for s in self.want]))
+        self.assertEqual(result[0], self.beacon._DOCTOR_OK, result[1])
+
+    def test_saved_copies_without_the_key_shadow_their_files(self):
+        status, detail = self._check(
+            self._prefs([self._saved(s, False) for s in self.want]))
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        for stem in self.want:
+            self.assertIn(stem, detail)
+        # Both halves of the remedy: the copies have to go before a re-render
+        # has anywhere to land.
+        self.assertIn("Profiles", detail)
+        self.assertIn("refresh-iterm-profiles", detail)
+
+    def test_only_the_shadowed_profile_is_named(self):
+        saved = [self._saved(s, s != "beacon-retro") for s in self.want]
+        status, detail = self._check(self._prefs(saved))
+        self.assertEqual(status, self.beacon._DOCTOR_BAD)
+        self.assertIn("beacon-retro", detail)
+        self.assertNotIn(self.beacon.BASE_PROFILE_NAME, detail)
+
+    def test_an_iterm2_that_never_ran_370_is_not_checked(self):
+        # There the key is absent from every profile, so its absence carries no
+        # finding — reporting one would fail every install on an older iTerm2.
+        self.assertIsNone(self._check(
+            self._prefs([self._saved(s, False) for s in self.want], migrated=False)))
+
+    def test_unreadable_prefs_are_not_a_finding(self):
+        self.assertIsNone(self._check(None))
+
+    def test_a_profile_that_is_not_beacon_s_is_left_alone(self):
+        saved = [self._saved(s, True) for s in self.want]
+        saved.append({"Guid": "not-a-beacon-guid", "Name": "Default"})
+        result = self._check(self._prefs(saved))
+        self.assertEqual(result[0], self.beacon._DOCTOR_OK, result[1])
 
 
 class DevInstallMarker(unittest.TestCase):

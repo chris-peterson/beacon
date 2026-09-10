@@ -229,9 +229,9 @@ The window title is the one surface it *did* take over: beacon sets the session 
 
 ## Recommended layout
 
-beacon paints per-*profile* surfaces it fully controls (status bar, colors, mode backgrounds). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide Appearance preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
+beacon paints per-*profile* surfaces it fully controls (status bar, colors, mode backgrounds). The *shape* of the tab strip those colors ride on — where the tabs sit, how big they are — lives in iTerm2's **app-wide preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them, and beacon writes no iTerm2 preference at all (that's what keeps `install` restart-free and clear of iTerm2's plist cache). So these are yours to set — beacon only recommends them and, at the end of `install`, tells you which differ.
 
-The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable, and they all live in **iTerm2 → Preferences → Appearance**. [CLI-18](/spec) lists each one: its `defaults` key, the value to set, and why it matters.
+The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable. [CLI-18](/spec) lists each one: its `defaults` key, the value to set, the pane of Preferences that holds it, and why it matters.
 
 Audit your current setup at any time — it reports only what differs and writes nothing:
 
@@ -245,7 +245,7 @@ Rather than hunt through the Preferences window, let beacon apply them for you:
 beacon layout --write
 ```
 
-It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a lot of work open.** (Prefer the GUI? Every setting is under Appearance → Tabs, except the status bar under Appearance → General.)
+It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a lot of work open.** (Prefer the GUI? Most are under Appearance → Tabs; the status bar is under Appearance → General, and the Minimal side strip's tab height under Advanced → Tabs.)
 
 That same in-memory copy is why the audit adds a caveat while iTerm2 is running: it reads the plist on disk, which is the effective value only once iTerm2 is down. When the audit reports every setting aligned but the tab strip disagrees, a write landed behind the running app and will be discarded on quit. Name the setting to write it regardless of what the plist says:
 
