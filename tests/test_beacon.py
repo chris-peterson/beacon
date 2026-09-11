@@ -5507,6 +5507,36 @@ class CrossWriterConstants(unittest.TestCase):
         self.assertIn(f"SetProfile={self.beacon.BASE_PROFILE_NAME}", self.shell)
 
 
+class PaletteHexesRestatedElsewhere(unittest.TestCase):
+    """COLOR_PALETTE is the source of the three activity hues, and two files
+    restate them because neither can read python: the dashboard's CSS custom
+    properties, whose card dot has to match the same session's tab, and the
+    palette doc, which shows the hue it names. Both say not to drift them —
+    this is what checks it."""
+
+    def setUp(self):
+        self.beacon = _load_beacon(REPO_ROOT / "tests")
+
+    # Both assert on a match rather than on the haystack, so a drift failure
+    # names the hue that moved instead of printing the file it looked in.
+
+    def test_the_dashboard_css_var_carries_each_hue(self):
+        html = (REPO_ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+        for state, hex6 in self.beacon.COLOR_PALETTE.items():
+            with self.subTest(state=state):
+                self.assertTrue(
+                    re.search(rf"--{state}:\s*#{hex6}\b", html),
+                    f"dashboard/index.html: --{state} is not #{hex6}")
+
+    def test_the_palette_doc_shows_each_hue(self):
+        doc = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
+        for state, hex6 in self.beacon.COLOR_PALETTE.items():
+            with self.subTest(state=state):
+                self.assertTrue(
+                    f"#{hex6}" in doc,
+                    f"docs/palette.md does not show #{hex6} for {state}")
+
+
 def _load_beacon_iterm():
     path = REPO_ROOT / "bin" / "beacon-iterm"
     sys.modules.pop("beacon_iterm", None)
