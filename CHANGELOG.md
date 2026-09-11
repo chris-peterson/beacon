@@ -53,6 +53,7 @@ them: the data dir has to be the one hooks write, and the interpreter and script
 have to still be there. A mismatch names both directories and the
 `beacon refresh-iterm-profiles` that fixes it. Buttons pointed at a working tree
 are reported as such and pass, since that is how beacon is developed.
+
 ### The tab commits to iTerm2's Minimal style, and the palette is weighted for it
 
 beacon already pins where the tab strip sits, how tall its tabs are, and what
