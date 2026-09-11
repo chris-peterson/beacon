@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.11.0
 
 ### The two-line tab label fits again on iTerm2 3.7.0
 
