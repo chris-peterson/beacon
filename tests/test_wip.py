@@ -1054,6 +1054,61 @@ class ReadRouteAccessTest(_WipBase):
             with self._get("/wip.json", origin=cfg_origin) as resp:
                 self.assertEqual(resp.headers["Access-Control-Allow-Origin"], cfg_origin)
 
+    # --- WIP-18a: a refusal reaches the error log, so `doctor` can name it ---
+
+    def _serve(self, count):
+        """A port backed by one server across `count` requests. The refusal log
+        dedupes per process, so a repeat has to reach the same server."""
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+
+        def run():
+            for _ in range(count):
+                server.handle_request()
+
+        threading.Thread(target=run, daemon=True).start()
+        return server.server_address[1]
+
+    def _ask(self, port, origin=None, host=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/wip.json")
+        if origin is not None:
+            req.add_header("Origin", origin)
+        if host is not None:
+            req.add_header("Host", host)
+        try:
+            urllib.request.urlopen(req, timeout=3).close()
+        except urllib.error.HTTPError:
+            pass
+
+    def test_refused_origin_is_recorded_with_the_origin_that_asked(self):
+        self._ask(self._serve(1), origin="https://dashboard.pages.example")
+        entries = self.beacon.read_error_log()
+        self.assertEqual([e["op"] for e in entries], ["serve.origin"])
+        self.assertIn("https://dashboard.pages.example", entries[0]["detail"])
+
+    def test_one_origin_is_recorded_once_however_often_it_polls(self):
+        # A dashboard polls every couple of seconds. An entry per poll would
+        # push every other error out of the log under _trim_errors_log.
+        port = self._serve(2)
+        self._ask(port, origin="https://dashboard.pages.example")
+        self._ask(port, origin="https://dashboard.pages.example")
+        self.assertEqual(len(self.beacon.read_error_log()), 1)
+
+    def test_refused_host_is_recorded_with_the_name_it_claimed(self):
+        self._ask(self._serve(1), host="evil.example.com")
+        entries = self.beacon.read_error_log()
+        self.assertEqual([e["op"] for e in entries], ["serve.host"])
+        self.assertIn("evil.example.com", entries[0]["detail"])
+
+    def test_a_served_request_records_nothing(self):
+        self._ask(self._serve(1), origin="http://127.0.0.1:8787")
+        self.assertEqual(self.beacon.read_error_log(), [])
+
+    def test_doctor_advice_names_the_config_file_for_a_refused_origin(self):
+        advice = self.beacon._advice_for("serve.origin")
+        self.assertIn("focus_origins", advice)
+        self.assertIn(str(self.beacon._config_file()), advice)
+
 
 class ForgetTest(unittest.TestCase):
     """FORGET-01..03: per-session state delete via the CLI verb and the

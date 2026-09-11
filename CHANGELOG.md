@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### `doctor` names the dashboard `serve` is refusing
+
+`serve` answers a request from an unlisted origin with a `403` and nothing else, so a dashboard on one reads as a dead feed in the browser and as a clean install in `doctor`. The browser console was the only place the cause appeared, and only while it was open.
+
+A refusal now reaches the error log, and `doctor` reports it with the fix:
+
+```
+✗ serve.origin  ×1  last 2026-01-01T00:00:00Z
+      https://dashboard.example
+      → serve refused the origin above, so a dashboard on it reads as a
+        dead feed. If it is yours, add it to the `focus_origins` list in
+        ~/.config/beacon/config.json and restart serve: the allowlist is
+        read at startup.
+```
+
+Each origin is recorded once per `serve` process, so a dashboard polling every couple of seconds leaves one entry rather than one per poll. A request naming a non-loopback host is recorded the same way, as `serve.host`.
+
 ## 2.11.0
 
 ### The two-line tab label fits again on iTerm2 3.7.0

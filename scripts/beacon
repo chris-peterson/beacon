@@ -3155,6 +3155,11 @@ BROWSER_ORIGIN_ALLOWLIST = {
     "https://chris-peterson.github.io",
 }
 
+# How many distinct refused values one serve process records (WIP-18a). The
+# cap bounds both the set and the log against a caller that varies its Origin
+# per request; past it the refusals are answered and not recorded.
+REFUSAL_LOG_CAP = 32
+
 
 def _config_file() -> Path:
     """The user config path: $XDG_CONFIG_HOME/beacon/config.json, else
@@ -3305,6 +3310,21 @@ def wip_http_server(port: int):
             return True
         return origin in allowed_origins
 
+    # WIP-18a. A refusal is answered with a 403 and nothing else, so a
+    # dashboard whose origin is absent from the config reads as a dead feed in
+    # the browser and as a clean install in `doctor`. Each distinct value is
+    # recorded once per process: a dashboard polls every couple of seconds, and
+    # an entry per poll would push every other error out of the log under
+    # `_trim_errors_log`.
+    refused: set[tuple[str, str]] = set()
+
+    def note_refusal(op: str, value: str) -> None:
+        key = (op, value)
+        if key in refused or len(refused) >= REFUSAL_LOG_CAP:
+            return
+        refused.add(key)
+        log_error(op, _display_safe(value) or "(absent)")
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):
             pass
@@ -3312,7 +3332,14 @@ def wip_http_server(port: int):
         def _access_ok(self) -> bool:
             """WIP-18, in one place for every verb. Both halves or nothing —
             spelling it per handler is how a route added later ships open."""
-            return self._host_ok() and origin_allowed(self.headers.get("Origin") or "")
+            if not self._host_ok():
+                note_refusal("serve.host", self.headers.get("Host") or "")
+                return False
+            origin = self.headers.get("Origin") or ""
+            if not origin_allowed(origin):
+                note_refusal("serve.origin", origin)
+                return False
+            return True
 
         def _send_cors(self) -> None:
             # Echo only an origin that already passed the gate. A wildcard hands
@@ -5793,6 +5820,15 @@ _DOCTOR_ADVICE = {
                 "tier — the project, task, or URL it feeds may be stale or blank.",
     "git": "A git probe failed, so the branch chip and its sync state may be blank.",
     "layout.audit": "The layout audit could not run — see docs/iterm.md.",
+    "serve.origin": "serve refused the origin above, so a dashboard on it reads as a "
+                    "dead feed. If it is yours, add it to the `focus_origins` list in "
+                    f"{_config_file()} and restart serve: the allowlist is read at "
+                    "startup. If you don't recognize it, a page you had open asked for "
+                    "the sessions feed and was refused.",
+    "serve.host": "serve refused a request naming the host above, which is not the "
+                  "loopback endpoint it binds. Open the dashboard by its 127.0.0.1 or "
+                  "localhost URL; a hostname that resolves to loopback is refused, "
+                  "which is what stops DNS rebinding.",
 }
 
 
