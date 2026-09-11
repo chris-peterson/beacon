@@ -199,6 +199,15 @@ cli:
     drop: >-
       Remembers the removal, so re-reading the tack route doesn't put the entry
       back on the row.
+    refresh-iterm-profiles: >-
+      iTerm2 reloads the `DynamicProfiles` directory on change, so a re-render
+      reaches every open pane with no restart. `--remigrate` is the exception:
+      where iTerm2 holds a saved profile on the Guid one of beacon's files
+      declares — the shape iTerm2 3.6.x saved, which 3.7.0 reads as an ordinary
+      profile and skips the file for — no re-render can reach it. iTerm2 repairs
+      that itself with a one-shot migration, so the flag re-arms that migration
+      and lets it. That costs an iTerm2 restart, which closes every window and
+      pane, so it asks first.
     install: >-
       After a plugin upgrade, reach this through `/beacon:install-beacon`
       instead. The wrapper on `$PATH` pins the plugin's version-stamped path, so

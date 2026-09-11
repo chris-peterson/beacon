@@ -255,6 +255,16 @@ beacon layout --write --keys CustomTabBarFontSize
 
 `beacon layout` is app-wide iTerm2 preferences. Its neighbour `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profiles — the status bar, badge sizing, and mode backgrounds — which iTerm2 reloads live, so that one needs no restart. Reach for it after changing a status-bar button `label` in your config.
 
+One case needs a restart anyway. iTerm2 3.7.0 decides a profile is dynamic by a key its loader writes, where 3.6.x used a `Dynamic` tag, so profiles saved before that upgrade read as ordinary saved profiles that already own beacon's Guids — and the loader skips the files they came from. `beacon doctor` reports it as `profiles live`, and re-rendering can't reach it.
+
+iTerm2 fixes this itself with a one-shot migration, so the repair is to let it run again:
+
+```
+beacon refresh-iterm-profiles --remigrate
+```
+
+It clears the one preference gating that migration and nothing else — your profile list is untouched. It confirms first, since the migration runs at launch and that means quitting iTerm2, closing every window and pane.
+
 One related knob is left entirely to taste — beacon renders identically whichever way you set it and never touches it: **pane/window dimming** (Appearance → Dimming). Dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning.
 
 ## Setup

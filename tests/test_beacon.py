@@ -14,6 +14,7 @@ import importlib.util
 import io
 import json
 import os
+import plistlib
 import re
 import stat
 import shutil
@@ -1447,20 +1448,27 @@ class CustomizableStatusBarButtons(unittest.TestCase):
              mock.patch.object(self.beacon, "_install_shell_source",
                                side_effect=AssertionError("must not run the shell step")):
             with contextlib.redirect_stdout(io.StringIO()):
-                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
+                self.beacon.cmd_refresh_iterm_profiles(
+                    self.beacon.argparse.Namespace(remigrate=False))
         self.assertEqual(calls, ["profile"])
 
-    def _refresh(self, shadowed):
+    def _refresh(self, shadowed, remigrate=False):
         """Run `beacon refresh-iterm-profiles` over a render that succeeded,
-        returning (exit code, everything printed)."""
+        returning (exit code, everything printed). Any handoff to the CLI lands
+        in `self.cli_calls`."""
         out = io.StringIO()
+        self.cli_calls = []
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
              mock.patch.object(self.beacon, "install_dynamic_profile",
                                return_value=(True, "wrote it")), \
              mock.patch.object(self.beacon, "_shadowed_profiles", return_value=shadowed), \
+             mock.patch("subprocess.run",
+                        side_effect=lambda cmd, *a, **k: self.cli_calls.append(cmd)
+                        or subprocess.CompletedProcess(cmd, 0)), \
              contextlib.redirect_stdout(out):
             try:
-                self.beacon.cmd_refresh_iterm_profiles(self.beacon.argparse.Namespace())
+                self.beacon.cmd_refresh_iterm_profiles(
+                    self.beacon.argparse.Namespace(remigrate=remigrate))
             except SystemExit as e:
                 return e.code, out.getvalue() + str(e.code)
         return 0, out.getvalue()
@@ -1473,7 +1481,19 @@ class CustomizableStatusBarButtons(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn("beacon-dev", out)
         self.assertIn("beacon-retro", out)
-        self.assertIn("Settings → Profiles", out)
+        self.assertIn("--remigrate", out)
+        self.assertEqual(self.cli_calls, [],
+                         "the restart is opt-in; advice must not quit iTerm2")
+
+    def test_remigrate_hands_off_to_the_cli(self):
+        code, _ = self._refresh(["beacon-dev", "beacon-retro"], remigrate=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(len(self.cli_calls), 1)
+        self.assertIn("remigrate-profiles", self.cli_calls[0])
+
+    def test_remigrate_is_not_reached_when_iterm_loads_them(self):
+        self.assertEqual(self._refresh([], remigrate=True)[0], 0)
+        self.assertEqual(self.cli_calls, [])
 
     def test_refresh_is_clean_when_iterm_loads_them(self):
         self.assertEqual(self._refresh([])[0], 0)
@@ -4185,7 +4205,7 @@ class InstallGating(unittest.TestCase):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True):
             out = self._run_install()
         self.assertIn("beacon-dev", out)
-        self.assertIn("Settings → Profiles", out)
+        self.assertIn("--remigrate", out)
 
     def test_dir_reaches_the_wrapper_step(self):
         # CMD-13: `--dir` moved onto install when install-cli retired, so it is
@@ -5703,6 +5723,96 @@ class ConfigureLayoutWrite(unittest.TestCase):
         self.assertIn("--keys", out)
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
 
+class RemigrateProfilesLetsITermRepairItsOwn(unittest.TestCase):
+    """CLI-19: iTerm2 3.7.0 ships a one-shot migration that flags the saved
+    profiles 3.6.x left behind (iTerm2 issue 12806), and a run that left one
+    unflagged has already closed the gate. Re-arming it is the whole repair —
+    beacon writes the gate and nothing else about the profile list."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def _fake_run(self, calls, running, gate="1"):
+        """Stand-in for `subprocess.run` answering the running-check with
+        `running` and the migration gate's `defaults read` with `gate`."""
+        def run(cmd, *a, **k):
+            calls.append(cmd)
+            if cmd[:1] == ["osascript"] and "is running" in cmd[-1]:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="true" if running else "false", stderr="")
+            if cmd[:2] == ["defaults", "read"]:
+                if gate is None:
+                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+                return subprocess.CompletedProcess(cmd, 0, stdout=gate, stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return run
+
+    def _run(self, running=False, gate="1", yes=True):
+        calls, popen = [], []
+        with mock.patch("subprocess.run", side_effect=self._fake_run(calls, running, gate)), \
+                mock.patch("subprocess.Popen",
+                           side_effect=lambda cmd, *a, **k: popen.append(cmd) or mock.Mock()), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_remigrate_profiles(types.SimpleNamespace(yes=yes))
+        return calls, popen
+
+    @staticmethod
+    def _gate_writes(calls):
+        return [c[3:] for c in calls if c[:2] == ["defaults", "write"]]
+
+    @staticmethod
+    def _quit_requested(calls) -> bool:
+        return any(c[:1] == ["osascript"] and "quit" in c[-1] for c in calls)
+
+    def test_clearing_the_gate_is_the_whole_write(self):
+        calls, _ = self._run()
+        self.assertEqual(self._gate_writes(calls),
+                         [[self.iterm._ITERM_MIGRATION_GATE, "-bool", "false"]])
+        self.assertTrue(any(c[:2] == ["open", "-a"] for c in calls),
+                        "the migration runs on launch, so iTerm2 has to come back")
+
+    def test_the_profile_list_is_never_touched(self):
+        # The repair belongs to iTerm2: it flags the saved profiles itself on
+        # the next launch. beacon rewriting `New Bookmarks` would be doing that
+        # job for it, destructively and without its knowledge.
+        calls, _ = self._run()
+        self.assertFalse(any(c[:2] == ["defaults", "import"] for c in calls))
+        self.assertFalse(any("Bookmarks" in str(c) for c in calls))
+
+    def test_an_already_armed_migration_is_left_alone(self):
+        calls, _ = self._run(gate="0")
+        self.assertEqual(self._gate_writes(calls), [])
+        self.assertFalse(any(c[:2] == ["open", "-a"] for c in calls))
+
+    def test_an_iterm2_that_never_ran_the_migration_is_left_alone(self):
+        # No gate key at all: its default is off, so the next launch migrates
+        # without any help.
+        calls, _ = self._run(gate=None)
+        self.assertEqual(self._gate_writes(calls), [])
+
+    def test_running_defers_the_write_to_the_helper(self):
+        calls, popen = self._run(running=True)
+        self.assertEqual(self._gate_writes(calls), [],
+                         "a write behind a live iTerm2 is discarded on quit")
+        self.assertEqual(len(popen), 1)
+        helper = popen[0][-1]
+        self.assertIn("remigrate-profiles --yes", helper)
+        self.assertIn("is running", helper)
+        self.assertNotIn("pgrep", helper,
+                         "the helper would fall through before iTerm2 finished quitting")
+        self.assertTrue(self._quit_requested(calls))
+
+    def test_declining_the_restart_makes_no_changes(self):
+        with mock.patch.object(self.iterm, "_prompt_tty", return_value=False):
+            calls, popen = self._run(running=True, yes=False)
+        self.assertEqual(popen, [])
+        self.assertEqual(self._gate_writes(calls), [])
+        self.assertFalse(self._quit_requested(calls))
+
+    def test_no_terminal_to_confirm_on_is_a_refusal(self):
+        with mock.patch.object(self.iterm, "_prompt_tty", return_value=None):
+            with self.assertRaises(SystemExit):
+                self._run(running=True, yes=False)
 
 class LayoutAdviceNamesTheFrontDoor(unittest.TestCase):
     """CLI-18/CMD-28: `beacon` is the only interface a user types, so the advice
@@ -6361,10 +6471,9 @@ class ProfilesShadowedBySavedCopies(unittest.TestCase):
         self.assertEqual(status, self.beacon._DOCTOR_BAD)
         for stem in self.want:
             self.assertIn(stem, detail)
-        # Both halves of the remedy: the copies have to go before a re-render
-        # has anywhere to land.
-        self.assertIn("Profiles", detail)
-        self.assertIn("refresh-iterm-profiles", detail)
+        # The remedy is the command that lets iTerm2 repair it — a re-render on
+        # its own has nowhere to land.
+        self.assertIn(self.beacon.REMIGRATE_COMMAND, detail)
 
     def test_only_the_shadowed_profile_is_named(self):
         saved = [self._saved(s, s != "beacon-retro") for s in self.want]

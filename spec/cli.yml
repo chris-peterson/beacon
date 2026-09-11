@@ -130,6 +130,8 @@ commands:
 - name: refresh-iterm-profiles
   usages:
   - summary: re-render the iTerm2 dynamic profiles (applies a changed button label)
+    flags:
+    - name: --remigrate
 - name: layout
   usages:
   - summary: audit the app-wide iTerm2 fleet layout, or --write it

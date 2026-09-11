@@ -13,7 +13,7 @@ and stops reading `DefaultTabBarHeight` there. At that setting's 38pt default a
 --write` to apply it; which key iTerm2 reads depends on its version, so the
 strip is the same height either way.
 
-### `doctor` catches profiles iTerm2 has stopped loading
+### Profiles iTerm2 has stopped loading, caught and handed back
 
 Through iTerm2 3.6.x a profile was dynamic if it carried a `Dynamic` tag. 3.7.0
 moved that to an `Is Dynamic Profile` key its loader writes, and profiles iTerm2
@@ -26,11 +26,18 @@ refresh-iterm-profiles` rewrites files nothing reads.
 `beacon refresh-iterm-profiles` now makes that check itself, after the render:
 the reload is the assumption the whole command rests on, and writing five files
 and reporting five files while iTerm2 reads none of them looks exactly like
-success. It exits non-zero naming the profiles and the two steps that recover
-them — delete the saved copies under iTerm2 → Settings → Profiles, then run it
-again. `install` reports the same at its profile step, which is where an iTerm2
-upgrade is most likely to be met, and `doctor` carries it as a row. The check is
-skipped where iTerm2 has never run 3.7.0, since the key means nothing there.
+success. It exits non-zero naming the profiles. `install` reports the same at
+its profile step, which is where an iTerm2 upgrade is most likely to be met, and
+`doctor` carries it as a row. The check is skipped where iTerm2 has never run
+3.7.0, since the key means nothing there.
+
+`beacon refresh-iterm-profiles --remigrate` is the fix, and the repair is
+iTerm2's own. 3.7.0 ships a one-shot migration that flags exactly these profiles,
+but a run that leaves one behind has already closed the gate on it, and it never
+reopens. The flag clears that gate so the next launch migrates again. Clearing it
+only sticks with iTerm2 down — it rewrites its preferences from memory on quit —
+so the command confirms, quits iTerm2, clears one boolean, and relaunches, the
+same way `beacon layout --write` does. Nothing in your profile list is written.
 
 ### `doctor` catches a profile left pointing at another install
 

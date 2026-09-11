@@ -467,6 +467,9 @@ _beacon() {
     layout)
       compadd -- --write --yes --keys
       ;;
+    refresh-iterm-profiles)
+      compadd -- --remigrate
+      ;;
     doctor)
       compadd -- --since --json
       ;;
@@ -5704,13 +5707,25 @@ def _install_cli_wrapper(target_dir: Path | None = None) -> Path:
     return target
 
 
-def cmd_refresh_iterm_profiles(_args):
+# The command the advice should tell a reader to type. Naming it once keeps
+# the doctor row, the install step, and the refusal below on the same string.
+REMIGRATE_COMMAND = "beacon refresh-iterm-profiles --remigrate"
+
+
+def cmd_refresh_iterm_profiles(args):
     """CMD-23: re-render the dynamic profiles from the template and the user
     config, skipping the rest of the install bootstrap. This is how a changed
     `statusbar.buttons.<name>.label` is applied (STATUS-BAR-09) — iTerm2 watches
     DynamicProfiles and reloads on change, so the new label reaches every open
     pane with no restart and no re-run of the wrapper / completions / shell
-    steps."""
+    steps.
+
+    `--remigrate` is the exception to that, and the exception is the point:
+    where iTerm2 holds a saved profile on the Guid a file declares, no re-render
+    can reach it, and the repair is iTerm2's own one-shot migration rather than
+    anything beacon writes to the profile list — so the flag re-arms it
+    (CLI-19), at the cost of an iTerm2 restart. It is opt-in because the restart
+    closes every window and pane."""
     if not _is_iterm_installed():
         sys.exit("iTerm2 not detected — the dynamic profile is the iTerm2 "
                  "render adapter's surface, and there is nothing to render here")
@@ -5718,9 +5733,15 @@ def cmd_refresh_iterm_profiles(_args):
     if not ok:
         sys.exit(msg)
     print(f"✓ {msg}")
-    warning = _render_shadowed_warning()
-    if warning:
-        sys.exit(f"! {warning}")
+    shadowed = _shadowed_profiles(_iterm_profiles_dir(), _iterm_profile_names())
+    if not shadowed:
+        return
+    if not args.remigrate:
+        sys.exit(f"! {_shadowed_remedy(shadowed)}")
+    # Inherits stdio: the CLI confirms the restart on the tty, and its exit
+    # status is this command's answer too.
+    r = subprocess.run(["python3", str(BEACON_ITERM), "remigrate-profiles"])
+    sys.exit(r.returncode)
 
 
 # The name the CLI should advertise in the advice it prints. `beacon` is the
@@ -5933,22 +5954,22 @@ def _shadowed_profiles(profiles_dir: Path, want: set) -> list[str] | None:
         if profile.get("Guid"):
             mine[profile["Guid"]] = stem
     return sorted(
-        mine[saved.get("Guid")]
+        mine[saved["Guid"]]
         for saved in prefs.get("New Bookmarks") or []
         if isinstance(saved, dict) and saved.get("Guid") in mine
         and not saved.get(_ITERM_PROFILE_IS_DYNAMIC)
     )
 
 
-def _shadowed_remedy(shadowed: list[str], profiles_dir: Path, retry: str) -> str:
-    """What to do about profiles iTerm2 has stopped loading. The copies have to
-    go before a re-render has anywhere to land, so the delete leads and `retry`
-    names the command that reloads them."""
+def _shadowed_remedy(shadowed: list[str]) -> str:
+    """What to do about profiles iTerm2 has stopped loading. Re-rendering is
+    inert while a saved copy holds the Guid, and iTerm2 is the one that clears
+    that, so the whole advice is the command that lets it."""
     return (f"iTerm2 reads {', '.join(shadowed)} as saved profiles rather than "
             f"dynamic ones, so it skips the file each is written from and every "
-            f"edit to them is inert. Delete them under iTerm2 → Settings → "
-            f"Profiles, then {retry} to have iTerm2 load them back from "
-            f"{profiles_dir}")
+            f"edit to them is inert. `{REMIGRATE_COMMAND}` re-arms the migration "
+            f"iTerm2 fixes these with — it quits and relaunches iTerm2, so run "
+            f"it when idle.")
 
 
 def _render_shadowed_warning() -> str | None:
@@ -5958,7 +5979,7 @@ def _render_shadowed_warning() -> str | None:
     shadowed = _shadowed_profiles(_iterm_profiles_dir(), _iterm_profile_names())
     if not shadowed:
         return None
-    return _shadowed_remedy(shadowed, _iterm_profiles_dir(), "run this again")
+    return _shadowed_remedy(shadowed)
 
 
 def _doctor_profiles_shadowed(profiles_dir: Path, want: set) -> tuple[str, str] | None:
@@ -5970,8 +5991,7 @@ def _doctor_profiles_shadowed(profiles_dir: Path, want: set) -> tuple[str, str] 
         return None
     if not shadowed:
         return _DOCTOR_OK, f"iTerm2 loads all {len(want)} from {profiles_dir}"
-    return _DOCTOR_BAD, _shadowed_remedy(
-        shadowed, profiles_dir, "run `beacon refresh-iterm-profiles`")
+    return _DOCTOR_BAD, _shadowed_remedy(shadowed)
 
 
 def _doctor_checks() -> list[dict]:
@@ -6654,8 +6674,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--dir", default=None,
                     help="directory to install the wrapper into (default: ~/.local/bin)")
 
-    sub.add_parser("refresh-iterm-profiles",
-                   help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
+    sp = sub.add_parser("refresh-iterm-profiles",
+                        help="re-render the iTerm2 dynamic profiles (applies a changed button label)")
+    sp.add_argument("--remigrate", action="store_true",
+                    help="re-arm iTerm2's dynamic-profile migration where it "
+                         "left a profile behind (quits + relaunches iTerm2)")
 
     sp = sub.add_parser("layout",
                         help="audit the app-wide iTerm2 fleet layout, or --write it")
