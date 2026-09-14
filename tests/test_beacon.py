@@ -7313,3 +7313,312 @@ class AnnouncedTackRoute(BeaconTest):
              mock.patch("subprocess.run", side_effect=fake_run):
             self.beacon._route_doc()
         self.assertEqual(asked, [["tack", "tree", "cart", "--json"]])
+
+
+class InstallFreshness(unittest.TestCase):
+    """HOOK-14: Claude Code updates the plugin in the background, so the new
+    code lands with no action from the user while the wrapper on $PATH, the
+    `.zshrc` source line, and the profiles' status-bar buttons all keep the
+    path they baked at install time. Reaping the old version turns that from
+    stale into dead.
+
+    The check compares paths, not versions. `beacon --version` cannot see
+    either failure: the hook environment sets `CLAUDE_PLUGIN_ROOT` and the
+    script prefers it over its own location, so a stale wrapper reads the
+    current manifest and reports the version it is being compared against; and
+    a reaped root prints no version at all, leaving nothing to compare."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.beacon = _load_beacon(Path(tmp.name))
+
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        self.home = Path(home.name)
+        patcher = mock.patch("pathlib.Path.home", return_value=self.home)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        roots = tempfile.TemporaryDirectory()
+        self.addCleanup(roots.cleanup)
+        self.roots = Path(roots.name)
+
+        self.this_root = self.beacon.PLUGIN_ROOT
+        self.profiles = (self.home / "Library" / "Application Support"
+                         / "iTerm2" / "DynamicProfiles")
+
+    def _make_root(self, name, *, version="1.0.0", git=False):
+        """A plugin root laid out the way a marketplace cache entry is."""
+        root = self.roots / name
+        (root / "scripts").mkdir(parents=True)
+        (root / "scripts" / "beacon").write_text("#!/usr/bin/env python3\n")
+        (root / "shell").mkdir()
+        (root / "shell" / "beacon.zsh").write_text("# snippet\n")
+        (root / ".claude-plugin").mkdir()
+        (root / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps({"name": "beacon", "version": version}))
+        if git:
+            (root / ".git").mkdir()
+        return root
+
+    def _install_wrapper(self, root):
+        target = self.home / ".local" / "bin" / "beacon"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text('#!/usr/bin/env bash\n'
+                          f'exec python3 "{root / "scripts" / "beacon"}" "$@"\n')
+
+    def _install_rc_line(self, root):
+        (self.home / ".zshrc").write_text(
+            f'source "{root / "shell" / "beacon.zsh"}"  '
+            f'{self.beacon._SHELL_SENTINEL}\n')
+
+    def _install_profiles(self, root):
+        """Render the real profiles, then rewrite the baked script path — the
+        renderer always bakes PLUGIN_ROOT, which is this install by
+        construction."""
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        old = json.dumps(str(self.this_root / "scripts" / "beacon"))[1:-1]
+        new = json.dumps(str(root / "scripts" / "beacon"))[1:-1]
+        for path in self.profiles.glob("beacon-*.json"):
+            body = path.read_text()
+            self.assertIn(old, body, f"{path.name} does not carry {old}")
+            path.write_text(body.replace(old, new))
+
+    def _message(self):
+        gone, stale = self.beacon._freshness_drift()
+        if not gone and not stale:
+            return ""
+        return self.beacon._freshness_message(gone, stale)
+
+    def test_nothing_installed_says_nothing(self):
+        # Absent is not stale: beacon without the shell integration, or off
+        # iTerm2, must not be nagged about either.
+        self.assertEqual(self._message(), "")
+
+    def test_surfaces_pointing_at_this_install_say_nothing(self):
+        self._install_wrapper(self.this_root)
+        self._install_rc_line(self.this_root)
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        self.assertEqual(self._message(), "")
+
+    def test_an_older_root_that_still_exists_is_reported_as_stale(self):
+        old = self._make_root("2.11.0")
+        self._install_wrapper(old)
+        self._install_rc_line(old)
+        self._install_profiles(old)
+
+        message = self._message()
+        self.assertIn("still there, so these run its older code", message)
+        self.assertIn(str(old / "scripts" / "beacon"), message)
+        self.assertIn("the `beacon` command on $PATH", message)
+        self.assertIn("the .zshrc shell integration", message)
+        self.assertIn("status-bar buttons", message)
+        # One `install` writes every surface from one root, so they drift
+        # together — the path is named once, not once per surface.
+        self.assertEqual(message.count(str(old / "scripts" / "beacon")), 1)
+
+    def test_a_reaped_root_is_reported_as_gone(self):
+        # The case the version comparison went quietest on, because a wrapper
+        # whose target is gone prints no version to compare.
+        reaped = self.roots / "2.9.0"
+        self._install_wrapper(reaped)
+        self._install_rc_line(reaped)
+
+        message = self._message()
+        self.assertIn("gone, so these do nothing at all", message)
+        self.assertIn(str(reaped / "scripts" / "beacon"), message)
+        self.assertNotIn("still there", message)
+
+    def test_a_matching_version_at_another_path_is_still_drift(self):
+        # The regression that made the old check blind: the hook environment
+        # sets CLAUDE_PLUGIN_ROOT and the script prefers it over its own
+        # location, so the stale wrapper reported the *current* manifest's
+        # version and the two sides came out equal at every amount of drift.
+        same_version = self._make_root("twin", version=self.beacon._plugin_version())
+        self._install_wrapper(same_version)
+
+        self.assertIn(str(same_version / "scripts" / "beacon"), self._message())
+
+    def test_a_git_checkout_is_how_beacon_is_developed_and_stays_silent(self):
+        self._install_wrapper(self._make_root("checkout", git=True))
+        self.assertEqual(self._message(), "")
+
+    def test_a_deleted_git_checkout_is_still_gone(self):
+        # The dev exemption covers a checkout that is there, not the absence
+        # of one — nothing runs either way.
+        checkout = self._make_root("checkout", git=True)
+        self._install_wrapper(checkout)
+        shutil.rmtree(checkout)
+        self.assertIn("gone, so these do nothing at all", self._message())
+
+    def test_the_advice_names_the_slash_command_and_the_new_root(self):
+        self._install_wrapper(self._make_root("2.11.0"))
+        message = self._message()
+        self.assertIn("/beacon:install-beacon", message)
+        self.assertIn(str(self.this_root), message)
+        # Naming the shell's own `install` here is the one wrong answer: run
+        # through the stale wrapper it re-points every surface at the path it
+        # already names.
+        self.assertIn("cannot fix it", message)
+
+    def test_the_subcommand_prints_the_sessionstart_context_envelope(self):
+        self._install_wrapper(self._make_root("2.11.0"))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.beacon.cmd_freshness(types.SimpleNamespace())
+        payload = json.loads(out.getvalue())["hookSpecificOutput"]
+        self.assertEqual(payload["hookEventName"], "SessionStart")
+        self.assertIn("/beacon:install-beacon", payload["additionalContext"])
+
+    def test_a_clean_install_prints_no_envelope_at_all(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.beacon.cmd_freshness(types.SimpleNamespace())
+        self.assertEqual(out.getvalue(), "")
+
+
+class ResetLayoutToStock(unittest.TestCase):
+    """CLI-20: clearing the app-wide prefs beacon's surfaces render through, so
+    a machine reads the way a first install does.
+
+    A recommendation cannot be audited for gaps from a machine already holding
+    the gaps shut — which is the whole reason this exists. What keeps it from
+    being a bad trade is the bound: it clears render inputs, never the user's
+    own profiles, bindings, presets or arrangements."""
+
+    # Keys that are the user's configuration rather than a beacon render input.
+    # Clearing any of these loses work the backup is the only route back from,
+    # so the family list is asserted against them rather than reviewed by eye.
+    # Spelled as iTerm2 spells them: several carry spaces ("New Bookmarks",
+    # not "NewBookmarks"), and a guard written in the wrong spelling passes
+    # against a key that does not exist, which is no guard at all.
+    OFF_LIMITS = {
+        "New Bookmarks", "Default Bookmark Guid",     # every saved profile
+        "GlobalKeyMap", "Actions", "PointerActions",  # key + mouse bindings
+        "Custom Color Presets", "Window Arrangements", "Default Arrangement Name",
+        "Workgroups", "ToolbeltTools", "Coprocess MRU", "findMode",
+        "HotkeyMigratedFromSingleToMulti", "Secure Input",
+    }
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    def _args(self, **kw):
+        return types.SimpleNamespace(**{"write": True, "yes": True, **kw})
+
+    def _keys(self):
+        return [k for f in self.iterm.RESET_FAMILIES for k in f["keys"]]
+
+    @staticmethod
+    def _fake_run(calls, running, set_keys):
+        """`subprocess.run` answering the running-check, reporting `set_keys` as
+        the only ones with a value, and succeeding at everything else."""
+        def run(cmd, *a, **k):
+            calls.append(cmd)
+            out = ""
+            if cmd[:1] == ["osascript"] and "is running" in cmd[-1]:
+                out = "true" if running else "false"
+            elif cmd[:2] == ["defaults", "read"]:
+                if cmd[3] not in set_keys:
+                    return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+                out = "1"
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+        return run
+
+    def test_no_family_names_a_key_that_is_the_users_own(self):
+        self.assertEqual(self.OFF_LIMITS.intersection(self._keys()), set())
+
+    def test_every_key_is_listed_once(self):
+        keys = self._keys()
+        self.assertEqual(sorted(keys), sorted(set(keys)))
+
+    def test_the_layout_beacon_recommends_is_inside_what_reset_clears(self):
+        # Anything `configure` writes has to be something `reset` can take back
+        # out, or a reset leaves the machine holding beacon's own settings and
+        # reports a clean baseline it does not have.
+        recommended = {s["key"] for s in self.iterm.RECOMMENDED_LAYOUT}
+        self.assertTrue(recommended.issubset(set(self._keys())),
+                        recommended - set(self._keys()))
+
+    def test_only_keys_with_a_value_are_cleared(self):
+        calls = []
+        set_keys = {"TabViewType", "StatusBarHeight"}
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, False, set_keys)), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_reset_layout(self._args())
+        deleted = {c[3] for c in calls if c[:2] == ["defaults", "delete"]}
+        self.assertEqual(deleted, set_keys)
+
+    def test_the_domain_is_exported_before_anything_is_deleted(self):
+        calls = []
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, False, {"TabViewType"})), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_reset_layout(self._args())
+        verbs = [c[1] for c in calls if c[:1] == ["defaults"]]
+        self.assertIn("export", verbs)
+        self.assertIn("delete", verbs)
+        self.assertLess(verbs.index("export"), verbs.index("delete"),
+                        "the backup has to land before the first delete")
+
+    def test_a_running_iterm_defers_instead_of_deleting_in_process(self):
+        # Same trap as `configure --write`: iTerm2 rewrites the plist from
+        # memory on quit, so a delete now is undone — and the backup taken now
+        # would miss whatever it still holds.
+        calls = []
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, True, {"TabViewType"})), \
+                mock.patch.object(self.iterm, "_run_after_quit") as deferred, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.iterm.cmd_reset_layout(self._args())
+        self.assertFalse([c for c in calls if c[:2] == ["defaults", "delete"]],
+                         "deleted while iTerm2 was up")
+        self.assertFalse([c for c in calls if c[:2] == ["defaults", "export"]],
+                         "backed up the plist iTerm2 is about to overwrite")
+        deferred.assert_called_once()
+        self.assertEqual(deferred.call_args[0][0],
+                         ["reset-layout", "--write", "--yes"])
+
+    def test_nothing_set_makes_the_write_a_no_op(self):
+        calls = []
+        out = io.StringIO()
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, False, set())), \
+                contextlib.redirect_stdout(out):
+            self.iterm.cmd_reset_layout(self._args())
+        self.assertNotIn("export", [c[1] for c in calls if c[:1] == ["defaults"]])
+        self.assertIn("already at iTerm2's default", out.getvalue())
+
+    def test_a_multiline_array_value_stays_on_its_row(self):
+        value = '(\n    "",\n    "/a/very/long/path/that/keeps/going/and/going.png"\n)'
+        shown = self.iterm._one_line(value)
+        self.assertNotIn("\n", shown)
+        self.assertLessEqual(len(shown), 60)
+
+    def test_an_empty_value_reads_as_empty_not_as_missing(self):
+        self.assertEqual(self.iterm._one_line(""), "(empty)")
+
+    def test_the_audit_exits_non_zero_while_anything_is_set(self):
+        calls = []
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, False, {"TabViewType"})), \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit) as raised:
+                self.iterm.cmd_reset_layout(self._args(write=False))
+        self.assertEqual(raised.exception.code, 1)
+        self.assertFalse([c for c in calls if c[:2] == ["defaults", "delete"]],
+                         "the audit is read-only")
+
+    def test_the_audit_names_the_flag_that_clears(self):
+        calls = []
+        out = io.StringIO()
+        with mock.patch("subprocess.run",
+                        side_effect=self._fake_run(calls, False, {"TabViewType"})), \
+                contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                self.iterm.cmd_reset_layout(self._args(write=False))
+        self.assertIn("--write", out.getvalue())

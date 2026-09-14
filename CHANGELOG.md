@@ -1,5 +1,41 @@
 # Changelog
 
+## Unreleased
+
+### The freshness check sees an upgrade it used to sleep through
+
+Claude Code updates the plugin in the background, so new code lands with no action from you. What does not follow it is every path baked at install time: the `beacon` wrapper on `$PATH`, the `source` line in `.zshrc`, and the status-bar buttons inside each dynamic profile. They go on running the superseded version, and once its directory is reaped they reach nothing at all.
+
+The SessionStart check that was meant to catch this compared `beacon --version` against the plugin manifest, and could not see either state. The hook environment sets `CLAUDE_PLUGIN_ROOT`, and the CLI prefers it over its own location, so the old wrapper read the *new* manifest and reported the version it was being compared against. The two sides came out equal at every amount of drift. A reaped root was quieter still: `--version` printed nothing, so there was nothing to compare.
+
+It now compares paths, which is also what lets it reach the `.zshrc` line and the profile buttons that a version number never could:
+
+```
+  ~/.claude/plugins/cache/getty-claude-marketplace/beacon/2.11.0/scripts/beacon — still there, so these run its older code:
+      the `beacon` command on $PATH
+      the .zshrc shell integration
+      the beacon-dev status-bar buttons
+```
+
+A path that is gone is reported separately, as surfaces that now do nothing. Surfaces you never installed stay silent, and a wrapper pointing into a git checkout is how beacon is developed, so it is reported only once the checkout is gone.
+
+### `reset-layout` puts a machine back to iTerm2's defaults
+
+The layout beacon recommends (`beacon layout`) is a hand-curated list of app-wide prefs, and its gaps do not show up on a machine that already has the missing ones set for unrelated reasons. Every surface reads correctly there and wrongly on a colleague's stock install, which is the worst place to meet the difference.
+
+`just reset-iterm-layout` reads which of them this machine has set, grouped by the surface each one reaches:
+
+```
+  Tab color rendering  (7 of 7 set)
+       └ how Minimal paints the state hue, which TAB-04's area weights are tuned against
+      ✗  MinimalDeslectedColoredTabAlpha = 0.6
+      ✗  ColoredUnselectedTabTextProminence = 0.5
+```
+
+`just reset-iterm-layout --write` clears them, after exporting the whole preferences domain to `~/.local/state/beacon/` and naming the file. The set is bounded to render inputs: the tab strip, the Minimal color knobs, the status bar, the pane background a mode watermark draws on, and the escape-sequence permissions that can refuse a profile swap. Saved profiles, key and mouse bindings, color presets and window arrangements are not in it.
+
+Re-applying `beacon layout --write` afterwards is what makes a gap visible: whatever still reads wrong is something the recommendation does not cover.
+
 ## 2.12.0
 
 ### `doctor` names the dashboard `serve` is refusing

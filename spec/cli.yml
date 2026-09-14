@@ -233,3 +233,6 @@ commands:
 - name: shell-init
   usages:
   - summary: (internal) print shell/beacon.zsh's source-time values as zsh
+- name: freshness
+  usages:
+  - summary: (internal) report entry points a plugin update left behind

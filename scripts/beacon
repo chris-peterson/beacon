@@ -5683,6 +5683,142 @@ def _install_shell_source() -> None:
     print(f"  ✓ appended source line to {zshrc}")
 
 
+# --- install freshness (HOOK-14) ---
+
+# The one line `_install_cli_wrapper` writes that names a path.
+_WRAPPER_TARGET_RE = re.compile(r'^exec python3 "([^"]+)"', re.M)
+# The path in the `.zshrc` line `_install_shell_source` writes.
+_SOURCE_LINE_TARGET_RE = re.compile(r'"([^"]+)"')
+
+
+def _pinned_surfaces() -> list[tuple[str, Path]]:
+    """Every entry point that bakes a plugin-root path at install time, paired
+    with the `scripts/beacon` it currently reaches.
+
+    A surface that was never installed contributes nothing — absent is not
+    stale, and a user running beacon without the shell integration or without
+    iTerm2 should hear about neither. Each is normalized to the script path so
+    one comparison covers all three."""
+    surfaces: list[tuple[str, Path]] = []
+
+    try:
+        match = _WRAPPER_TARGET_RE.search(_wrapper_path().read_text(encoding="utf-8"))
+    except OSError:
+        match = None
+    if match:
+        surfaces.append(("the `beacon` command on $PATH", Path(match.group(1))))
+
+    try:
+        rc_lines = (Path.home() / ".zshrc").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        rc_lines = []
+    for line in rc_lines:
+        if _SHELL_SENTINEL not in line or not _is_active(line):
+            continue
+        match = _SOURCE_LINE_TARGET_RE.search(line)
+        if match:
+            snippet = Path(match.group(1))
+            surfaces.append(("the .zshrc shell integration",
+                             snippet.parent.parent / "scripts" / "beacon"))
+        break
+
+    profiles_dir = _iterm_profiles_dir()
+    for stem in sorted(_iterm_profile_names()):
+        try:
+            profile = json.loads(
+                (profiles_dir / f"{stem}.json").read_text(encoding="utf-8")
+            )["Profiles"][0]
+        except (OSError, ValueError, KeyError, IndexError):
+            continue
+        baked = _profile_baked_paths(profile)
+        if baked:
+            surfaces.append((f"the {stem} status-bar buttons", Path(baked["script"])))
+
+    return surfaces
+
+
+def _freshness_drift() -> tuple[dict, dict]:
+    """The pinned surfaces that no longer reach this install, as
+    `({target: [surface, …]}, …)` for the gone and the merely stale.
+
+    Grouped by target because one `install` writes every surface from the same
+    root, so they drift together and naming each separately would report the
+    same path up to seven times.
+
+    A target under a git checkout is how beacon is developed, so pointing there
+    from a marketplace root is deliberate and stays silent — but only while the
+    checkout is there. Gone is gone whoever installed it."""
+    this_script = (PLUGIN_ROOT / "scripts" / "beacon").resolve()
+    gone: dict[Path, list[str]] = {}
+    stale: dict[Path, list[str]] = {}
+    for label, target in _pinned_surfaces():
+        try:
+            resolved = target.resolve()
+        except OSError:
+            resolved = target
+        if resolved == this_script:
+            continue
+        if not target.is_file():
+            gone.setdefault(target, []).append(label)
+        elif not (target.parent.parent / ".git").exists():
+            stale.setdefault(target, []).append(label)
+    return gone, stale
+
+
+# Named once so the hook's advice and the reason it can't be the shell's own
+# `install` stay on one string (CMD-26).
+_FRESHNESS_COMMAND = "/beacon:install-beacon"
+
+
+def _freshness_message(gone: dict, stale: dict) -> str:
+    lines = [
+        "PLEASE TELL THE USER (do not skip): beacon's installed entry points "
+        "still reach a previous plugin version. Claude Code updates the plugin "
+        "in the background, and these paths are baked at install time, so they "
+        "stay behind it.",
+        "",
+    ]
+    for target, labels in sorted(gone.items()):
+        lines.append(f"  {target} — gone, so these do nothing at all:")
+        lines.extend(f"      {label}" for label in labels)
+    for target, labels in sorted(stale.items()):
+        lines.append(f"  {target} — still there, so these run its older code:")
+        lines.extend(f"      {label}" for label in labels)
+    lines += [
+        "",
+        f"Ask the user to run {_FRESHNESS_COMMAND}, which is the only door to "
+        f"the newly installed root ({PLUGIN_ROOT}). `beacon install` from the "
+        "shell cannot fix it: the stale wrapper runs the old version's script, "
+        "which re-points every surface at the path it already names.",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_freshness(args):
+    """HOOK-14: report, as SessionStart context, any entry point left behind by
+    a background plugin update.
+
+    Comparing *paths* rather than `beacon --version` is what makes this visible
+    at all. The hook environment sets `CLAUDE_PLUGIN_ROOT`, and the script
+    prefers it over its own location, so a stale wrapper reads the current
+    manifest and reports the version it is being compared against — equal at
+    every amount of drift. A reaped root is worse: `--version` then prints
+    nothing and the comparison has nothing to fail on, so the check went
+    quietest exactly where the CLI was most broken."""
+    try:
+        gone, stale = _freshness_drift()
+        if not gone and not stale:
+            return
+        print(json.dumps({"hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": _freshness_message(gone, stale),
+        }}, separators=(",", ":")))
+    except Exception as exc:
+        # A SessionStart hook must never disturb the session (NFR-06); the log
+        # is what keeps the swallow from being silent (`doctor` reads it).
+        log_error("freshness", f"{type(exc).__name__}: {exc}")
+
+
 def cmd_completions(args):
     if args.shell != "zsh":
         sys.exit(f"only zsh is supported (got: {args.shell})")
@@ -6798,6 +6934,9 @@ def _build_parser() -> "argparse.ArgumentParser":
     sub.add_parser("shell-init",
                    help="(internal) print shell/beacon.zsh's source-time values as zsh")
 
+    sub.add_parser("freshness",
+                   help="(internal) report entry points a plugin update left behind")
+
     return parser
 
 
@@ -6805,7 +6944,8 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init", "statusline"}
+_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init", "statusline",
+                         "freshness"}
 
 
 def main(argv=None):
@@ -6838,6 +6978,7 @@ def main(argv=None):
         "data-dir": cmd_data_dir,
         "doctor": cmd_doctor,
         "shell-init": cmd_shell_init,
+        "freshness": cmd_freshness,
     }
     if not args.cmd:
         parser.print_help(sys.stderr)

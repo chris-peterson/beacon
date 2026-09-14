@@ -621,6 +621,205 @@ def cmd_remigrate_profiles(args):
                     "Quitting iTerm2 — its migration runs as it relaunches")
 
 
+# --- reset to stock (CLI-20) ---
+
+# The app-wide preferences that decide how beacon's surfaces render, grouped by
+# the surface each reaches. Clearing one returns it to iTerm2's built-in
+# default, which is what someone installing beacon for the first time gets — so
+# a machine reset to these is the baseline `configure` (CLI-18) has to be
+# complete against. A recommendation can only be audited for gaps from a
+# machine that isn't already holding the gaps shut.
+#
+# Deliberately absent is everything that is the user's own rather than a render
+# input: `NewBookmarks` and `DefaultBookmarkGuid` (every saved profile),
+# `GlobalKeyMap` / `Actions` / `PointerActions` (key and mouse bindings),
+# `CustomColorPresets`, `WindowArrangements`, the hotkey windows, and the
+# updater's state. This finds gaps in beacon's recommendation; it does not take
+# iTerm2 back to the box.
+RESET_FAMILIES = (
+    {"surface": "Tab bar shape",
+     "why": "the strip the tab color and the two-line label are read in "
+            "(TAB-04, TITLE-05)",
+     "keys": ("HideTab", "TabStyleWithAutomaticOption", "TabViewType",
+              "UseCustomTabBarFontSize", "CustomTabBarFontSize",
+              "DefaultTabBarHeight", "CompactMinimalTabBarHeight",
+              "LeftTabBarWidth", "HTMLTabTitles", "StretchTabsToFillBar",
+              "UseUnevenTabs", "UseSequoiaStyleTabs",
+              "TabTitlesUseSmartTruncation", "ShowFullScreenTabBar",
+              "PreserveWindowSizeWhenTabBarVisibilityChanges",
+              "DrawBottomLineForHorizontalTabBar", "DisableTabBarTooltips")},
+    {"surface": "Tab furniture",
+     "why": "competes with the two-line label for the width the strip has",
+     "keys": ("HideTabNumber", "HideActivityIndicator", "TabsHaveCloseButton",
+              "TabCloseButtonsAlwaysVisible", "RemoveAddTabButton",
+              "AddNewTabAtEndOfTabs", "MiddleClickClosesTab",
+              "MoveLeftAfterClosingTab", "TabColorMenuOptions")},
+    {"surface": "Tab color rendering",
+     "why": "how Minimal paints the state hue, which TAB-04's area weights are "
+            "tuned against",
+     # `MinimalDeslected…` is iTerm2's own spelling; the key does not exist
+     # under the corrected one.
+     "keys": ("MinimalDeslectedColoredTabAlpha",
+              "NonMinimalDeselectedColoredTabAlpha",
+              "MinimalSelectedTabUnderlineProminence",
+              "MinimalTextLegibilityAdjustment",
+              "ColoredSelectedTabOutlineStrength",
+              "ColoredUnselectedTabTextProminence",
+              "DarkModeInactiveTabDarkness")},
+    {"surface": "Status bar",
+     "why": "the strip beacon fills with the project chip and the two action "
+            "buttons (STATUS-BAR-02)",
+     "keys": ("StatusBarPosition", "StatusBarHeight",
+              "SeparateStatusBarsPerPane", "AlwaysUseStatusBarComposer")},
+    {"surface": "Pane background",
+     "why": "where a declared mode's watermark is drawn (RENDER-05); clearing "
+            "the approval list means iTerm2 asks about each watermark again, "
+            "which is what a first install does",
+     "keys": ("PerPaneBackgroundImage", "AlwaysAllowBackgroundImage",
+              "DimInactiveSplitPanes", "DimBackgroundWindows", "DimOnlyText",
+              "SplitPaneDimmingAmount", "ShowPaneTitles",
+              "ShowPaneTitlesEvenIfOnlyOnePane")},
+    {"surface": "Escape-sequence permissions",
+     "why": "beacon swaps a pane into a mode profile by OSC, which these can "
+            "refuse (CLI-14)",
+     "keys": ("PreventEscapeSequenceFromChangingProfile",
+              "PreventEscapeSequenceFromClearingHistory")},
+)
+
+
+def _reset_targets() -> list:
+    """Each `(family, key, current value)` the reset would clear.
+
+    A key with no value is already at iTerm2's default, so it is left out and
+    the count is what would actually change."""
+    targets = []
+    for family in RESET_FAMILIES:
+        for key in family["keys"]:
+            current = _read_default(key)
+            if current is not None:
+                targets.append((family, key, current))
+    return targets
+
+
+def _reset_audit() -> None:
+    targets = _reset_targets()
+    total = sum(len(f["keys"]) for f in RESET_FAMILIES)
+    print("iTerm2 prefs beacon's surfaces render through — reset returns each "
+          "to iTerm2's\nbuilt-in default, which is what a first install of "
+          "beacon meets:\n")
+    for family in RESET_FAMILIES:
+        set_here = [(k, v) for f, k, v in targets if f is family]
+        print(f"  {family['surface']}  ({len(set_here)} of "
+              f"{len(family['keys'])} set)")
+        print(f"       └ {family['why']}")
+        for key, value in set_here:
+            print(f"      ✗  {key} = {_one_line(value)}")
+        print()
+    if not targets:
+        print("Every one is already at iTerm2's default — nothing to reset.")
+        sys.exit(0)
+    print(f"{len(targets)} of {total} are set on this machine. Re-run with "
+          "--write to clear them\n(backs the whole domain up first, then quits "
+          "+ relaunches iTerm2 — run it when idle).")
+    print("\nProfiles, key and mouse bindings, color presets and window "
+          "arrangements are\nnot touched.")
+    sys.exit(1)
+
+
+def _one_line(value: str) -> str:
+    """A plist value flattened for a one-line audit row. `defaults read` prints
+    an array over many lines, and `AlwaysAllowBackgroundImage` is a long one."""
+    flat = " ".join(value.split())
+    if not flat:
+        return "(empty)"
+    return flat if len(flat) <= 60 else flat[:57] + "..."
+
+
+def _export_prefs() -> str:
+    """Back the whole iTerm2 domain up, and return where. Everything the reset
+    clears is recoverable from this file, and so is everything it doesn't."""
+    import subprocess
+    import time
+
+    directory = os.path.expanduser("~/.local/state/beacon")
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    path = os.path.join(
+        directory, f"iterm2-prefs-{time.strftime('%Y%m%d-%H%M%S')}.plist")
+    r = subprocess.run(["defaults", "export", "com.googlecode.iterm2", path],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        sys.exit(f"could not back up iTerm2's preferences: {r.stderr.strip()}")
+    return path
+
+
+def _reset_write(args) -> None:
+    import subprocess
+
+    running = _is_iterm_running()
+    targets = _reset_targets()
+    if not targets:
+        print("Every one is already at iTerm2's default — nothing to reset.")
+        if running:
+            print()
+            print(_running_caveat())
+        return
+
+    # iTerm2 up: the delete would be clobbered on quit, exactly as a write is
+    # (CLI-18), and the backup taken now would miss whatever it still holds in
+    # memory. Both belong on the other side of the quit, so the helper re-runs
+    # this command rather than doing half of it here.
+    if running:
+        if not args.yes:
+            print(f"This clears {len(targets)} iTerm2 preference(s), which "
+                  "needs iTerm2 to quit — closing\nevery window and pane, "
+                  "including this session. The whole preferences domain is\n"
+                  "backed up first, and profiles, bindings, color presets and "
+                  "window arrangements\nare not touched.\n")
+            print("Re-run without --write to read the full list first.\n")
+            ok = _prompt_tty("Quit iTerm2, back up, reset, and relaunch now?", False)
+            if ok is None:
+                sys.exit("reset needs a terminal to confirm on; re-run with "
+                         "--yes to accept.")
+            if not ok:
+                print("Aborted — no changes made.")
+                return
+        _run_after_quit(["reset-layout", "--write", "--yes"], "beacon-reset.",
+                        "Quitting iTerm2 — it relaunches at iTerm2's own defaults")
+        return
+
+    backup = _export_prefs()
+    print(f"Backed the iTerm2 preferences domain up to {backup}")
+    cleared = 0
+    for _family, key, _value in targets:
+        r = subprocess.run(["defaults", "delete", "com.googlecode.iterm2", key],
+                           capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            cleared += 1
+        else:
+            print(f"  ! {key}: {r.stderr.strip()}")
+    print(f"Cleared {cleared} preference(s); relaunching iTerm2.")
+    print("\nRestore everything with:\n"
+          f"  defaults import com.googlecode.iterm2 {backup}\n"
+          "(with iTerm2 not running).")
+    print("\nbeacon's own recommendation is not applied by this — run "
+          "`beacon layout --write`\nto put back the settings beacon asks for, "
+          "and whatever still reads wrong\nafterwards is a gap in that list.")
+    subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
+
+
+def cmd_reset_layout(args):
+    """CLI-20: clear the app-wide prefs beacon's surfaces render through, so the
+    machine reads the way a first install does.
+
+    The audit half is the useful half day to day: it names what this machine has
+    set that a colleague's does not, which is the difference that makes a
+    surface render differently in two places."""
+    if args.write:
+        _reset_write(args)
+    else:
+        _reset_audit()
+
+
 def cmd_configure(args):
     if args.write:
         _configure_write(args)
@@ -694,6 +893,17 @@ def main(argv=None):
     sp.add_argument("--yes", action="store_true",
                     help="skip the confirmation (also the restart helper's handoff)")
     sp.set_defaults(func=cmd_remigrate_profiles)
+
+    sp = sub.add_parser("reset-layout",
+                        help="audit (read-only; exits non-zero when any is set) "
+                             "or --write to clear the app-wide iTerm2 prefs "
+                             "beacon's surfaces render through, back to iTerm2's "
+                             "own defaults (quits + relaunches iTerm2)")
+    sp.add_argument("--write", action="store_true",
+                    help="back the domain up, then clear them (quits + relaunches iTerm2)")
+    sp.add_argument("--yes", action="store_true",
+                    help="skip the confirmation (also the restart helper's handoff)")
+    sp.set_defaults(func=cmd_reset_layout)
 
     argv = sys.argv[1:] if argv is None else argv
     if not argv:

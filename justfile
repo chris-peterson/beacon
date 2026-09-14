@@ -38,3 +38,9 @@ demo *args:
 # run the python test suite (stdlib unittest, no external deps)
 test:
     python3 -m unittest discover -s tests -v
+
+# The audit exits non-zero while anything is set, which `just` would report as a
+# failed recipe; `-` keeps the listing clean for what is a read.
+# read which iTerm2 prefs beacon's surfaces render through are set here; --write clears them
+reset-iterm-layout *args:
+    -@python3 bin/beacon-iterm reset-layout {{args}}
