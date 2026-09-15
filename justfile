@@ -44,3 +44,8 @@ test:
 # read which iTerm2 prefs beacon's surfaces render through are set here; --write clears them
 reset-iterm-layout *args:
     -@python3 bin/beacon-iterm reset-layout {{args}}
+
+# Non-zero while a release is unread, same as the audit above, so `-` again.
+# update the iTerm2 clone to its latest release and report what beacon must read; --ack records it
+iterm-release *args:
+    -@python3 dev/iterm-release.py {{args}}
