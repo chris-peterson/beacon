@@ -673,9 +673,9 @@ RESET_FAMILIES = (
               "TabTitlesUseSmartTruncation", "ShowFullScreenTabBar",
               "PreserveWindowSizeWhenTabBarVisibilityChanges",
               "DrawBottomLineForHorizontalTabBar", "DisableTabBarTooltips")},
-    {"surface": "Tab furniture",
-     "why": "competes with the two-line label for the strip's width and the "
-            "user's attention",
+    {"surface": "Tab controls",
+     "why": "what each tab draws besides the two-line label, and what an "
+            "errant click on one does",
      "keys": ("HideTabNumber", "HideActivityIndicator", "TabsHaveCloseButton",
               "TabCloseButtonsAlwaysVisible", "RemoveAddTabButton",
               "AddNewTabAtEndOfTabs", "MiddleClickClosesTab",
