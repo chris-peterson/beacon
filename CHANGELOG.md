@@ -6,12 +6,19 @@
 
 `beacon layout` audits `ShowPaneTitles` and recommends it off. Split a tab and
 iTerm2 draws a title bar above each pane, fed by the same session name the tab
-label uses but rendered in a plain single-line text field: the `<b>` project
-accent comes out as a literal tag and the task line is dropped, so the pane
-shows the markup and half the label.
+label is fed by but rendered in a plain single-line text field: the `<b>`
+project accent comes out as a literal tag and the task line is dropped, so the
+pane shows markup and half a label beside a tab carrying both in full.
+`beacon layout --write` applies it.
 
-The tab strip carries both lines in full and is the surface a session is
-scanned from. `beacon layout --write` applies the setting.
+### The out-of-date banner leads with the command
+
+```
+beacon: /beacon:install-beacon  # cli is outdated
+```
+
+Session banners stack, one line per plugin with something to say, so the
+command to type sits where the eye lands and the reason goes after the marker.
 
 ## 2.13.1
 
