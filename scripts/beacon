@@ -5788,8 +5788,10 @@ _FRESHNESS_COMMAND = "/beacon:install-beacon"
 # installs a CLI, a `.zshrc` line and a button in every profile. That breakdown
 # has two readers who asked for it: the model, via the context below, and
 # `doctor`, whose row adds the root each surface is pinned to.
-_FRESHNESS_BANNER = (f"beacon: this install is out of date · "
-                     f"{_FRESHNESS_COMMAND} to update")
+# `<source>: <resolution>  # <reasoning>`. Session banners stack, one line per
+# plugin with something to say, so the command to type sits where the eye lands
+# and the rest goes after the marker.
+_FRESHNESS_BANNER = f"beacon: {_FRESHNESS_COMMAND}  # cli is outdated"
 
 
 def _name_list(names: list[str]) -> str:

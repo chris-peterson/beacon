@@ -7549,9 +7549,13 @@ class InstallFreshness(unittest.TestCase):
             self.beacon.cmd_freshness(types.SimpleNamespace())
         banner = json.loads(out.getvalue())["systemMessage"]
         self.assertIn("/beacon:install-beacon", banner)
-        self.assertIn("out of date", banner)
+        self.assertIn("cli is outdated", banner)
         # One line: it is rendered as a banner, not a report.
         self.assertNotIn("\n", banner)
+        # `<source>: <resolution>  # <reasoning>`. These stack one per plugin,
+        # so the command to type sits where the eye lands rather than at the
+        # end of a sentence.
+        self.assertEqual(banner, "beacon: /beacon:install-beacon  # cli is outdated")
 
     def test_the_context_does_not_ask_to_be_relayed(self):
         """The plea it opened with was not a mechanism — it asked the model to
@@ -7574,7 +7578,7 @@ class InstallFreshness(unittest.TestCase):
         self._install_wrapper(self.roots / "2.9.0")           # reaped
         gone, stale = self.beacon._freshness_drift()
         banner = self.beacon._FRESHNESS_BANNER
-        self.assertIn("out of date", banner)
+        self.assertIn("cli is outdated", banner)
         self.assertIn("/beacon:install-beacon", banner)
         for absent in ("entry point", ".zshrc", "$PATH", "iTerm2",
                        "beacon-dev", "gone"):
