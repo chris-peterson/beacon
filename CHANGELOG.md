@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.13.1
 
 ### The freshness check reaches you, not just Claude
 
