@@ -6177,10 +6177,11 @@ class Doctor(unittest.TestCase):
         """The row `doctor` owes over the SessionStart banner: which path is
         pinned, not that one is."""
         old = Path("/nope/beacon/2.11.0/scripts/beacon")
-        self._drift(({}, {old: ["the .zshrc shell integration"]}))
+        self._drift(({}, {old: [("the .zshrc shell integration",
+                                 self.beacon._SHELL_SURFACE)]}))
         code, out = self._run()
         self.assertEqual(code, 1)
-        self.assertIn("1 entry point running an older plugin version", out)
+        self.assertIn("the .zshrc line runs an older install", out)
         self.assertIn(str(old), out)
         self.assertIn("/beacon:install-beacon", out)
 
@@ -7548,7 +7549,7 @@ class InstallFreshness(unittest.TestCase):
             self.beacon.cmd_freshness(types.SimpleNamespace())
         banner = json.loads(out.getvalue())["systemMessage"]
         self.assertIn("/beacon:install-beacon", banner)
-        self.assertIn("1 entry point", banner)
+        self.assertIn("out of date", banner)
         # One line: it is rendered as a banner, not a report.
         self.assertNotIn("\n", banner)
 
@@ -7562,14 +7563,30 @@ class InstallFreshness(unittest.TestCase):
         self.assertNotIn("PLEASE TELL THE USER", message)
         self.assertNotIn("do not skip", message)
 
-    def test_both_kinds_of_drift_are_counted_in_the_banner(self):
+    def test_the_banner_reads_the_same_whatever_drifted(self):
+        """One command repairs every entry point, so which of them are behind,
+        and how many, changes nothing the reader would do about it — and that
+        reader need not know beacon installs a CLI at all. The breakdown keeps
+        the two readers who ask for it: the context and `doctor`."""
+        root = self._make_root("2.11.0")
+        self._install_profiles(root)
+        self._install_rc_line(root)                           # stale
         self._install_wrapper(self.roots / "2.9.0")           # reaped
-        self._install_rc_line(self._make_root("2.11.0"))      # stale
         gone, stale = self.beacon._freshness_drift()
-        banner = self.beacon._freshness_banner(gone, stale)
-        self.assertIn("1 entry point reaching a plugin root that is gone",
-                      banner)
-        self.assertIn("1 entry point running an older plugin version", banner)
+        banner = self.beacon._FRESHNESS_BANNER
+        self.assertIn("out of date", banner)
+        self.assertIn("/beacon:install-beacon", banner)
+        for absent in ("entry point", ".zshrc", "$PATH", "iTerm2",
+                       "beacon-dev", "gone"):
+            self.assertNotIn(absent, banner)
+        message = self.beacon._freshness_message(gone, stale)
+        for stem in self.beacon._iterm_profile_names():
+            self.assertIn(f"the {stem} status-bar buttons", message)
+        summary = self.beacon._freshness_summary(gone, stale)
+        self.assertIn("the .zshrc line and the iTerm2 buttons "
+                      "run an older install", summary)
+        self.assertIn("the $PATH command reaches a plugin root that is gone",
+                      summary)
 
     def test_a_clean_install_prints_no_envelope_at_all(self):
         out = io.StringIO()

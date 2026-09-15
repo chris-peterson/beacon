@@ -14,11 +14,19 @@ It now goes out on `systemMessage` as well, the one hook output Claude Code
 renders to you:
 
 ```
-beacon: 1 entry point running an older plugin version · /beacon:install-beacon to repair
+beacon: this install is out of date · /beacon:install-beacon to update
 ```
 
+That is the whole line, whatever drifted. One command repairs every entry
+point, so which of them are behind changes nothing you would do about it, and a
+banner is read by whoever is at the keyboard rather than by someone who knows
+beacon installs a CLI, a `.zshrc` line and a button in every profile. A version
+can't carry it either: the marketplace copy and the checkout that supersedes it
+declare the same one.
+
 The context keeps the per-surface breakdown for the model and has dropped the
-plea, which was asking for what the second channel does.
+plea, which was asking for what the second channel does. `doctor`'s entry-point
+row names the surfaces that are behind and the root each is pinned to.
 
 ### Every requirement on the spec page has its own link
 

@@ -5691,22 +5691,33 @@ _WRAPPER_TARGET_RE = re.compile(r'^exec python3 "([^"]+)"', re.M)
 _SOURCE_LINE_TARGET_RE = re.compile(r'"([^"]+)"')
 
 
-def _pinned_surfaces() -> list[tuple[str, Path]]:
-    """Every entry point that bakes a plugin-root path at install time, paired
-    with the `scripts/beacon` it currently reaches.
+# The name each surface goes by in the one-line summary, in the order that
+# summary lists them. Several surfaces share one — five profiles are five
+# entry points but one thing a reader recognizes — so the summary names what
+# is behind where the breakdown names each of them (HOOK-14).
+_SHELL_SURFACE = "the .zshrc line"
+_WRAPPER_SURFACE = "the $PATH command"
+_ITERM_SURFACE = "the iTerm2 buttons"
+_SURFACE_ORDER = (_SHELL_SURFACE, _WRAPPER_SURFACE, _ITERM_SURFACE)
+
+
+def _pinned_surfaces() -> list[tuple[str, str, Path]]:
+    """Every entry point that bakes a plugin-root path at install time, as
+    `(label, summary name, the `scripts/beacon` it currently reaches)`.
 
     A surface that was never installed contributes nothing — absent is not
     stale, and a user running beacon without the shell integration or without
     iTerm2 should hear about neither. Each is normalized to the script path so
     one comparison covers all three."""
-    surfaces: list[tuple[str, Path]] = []
+    surfaces: list[tuple[str, str, Path]] = []
 
     try:
         match = _WRAPPER_TARGET_RE.search(_wrapper_path().read_text(encoding="utf-8"))
     except OSError:
         match = None
     if match:
-        surfaces.append(("the `beacon` command on $PATH", Path(match.group(1))))
+        surfaces.append(("the `beacon` command on $PATH", _WRAPPER_SURFACE,
+                         Path(match.group(1))))
 
     try:
         rc_lines = (Path.home() / ".zshrc").read_text(encoding="utf-8").splitlines()
@@ -5718,7 +5729,7 @@ def _pinned_surfaces() -> list[tuple[str, Path]]:
         match = _SOURCE_LINE_TARGET_RE.search(line)
         if match:
             snippet = Path(match.group(1))
-            surfaces.append(("the .zshrc shell integration",
+            surfaces.append(("the .zshrc shell integration", _SHELL_SURFACE,
                              snippet.parent.parent / "scripts" / "beacon"))
         break
 
@@ -5732,7 +5743,8 @@ def _pinned_surfaces() -> list[tuple[str, Path]]:
             continue
         baked = _profile_baked_paths(profile)
         if baked:
-            surfaces.append((f"the {stem} status-bar buttons", Path(baked["script"])))
+            surfaces.append((f"the {stem} status-bar buttons", _ITERM_SURFACE,
+                             Path(baked["script"])))
 
     return surfaces
 
@@ -5749,9 +5761,9 @@ def _freshness_drift() -> tuple[dict, dict]:
     from a marketplace root is deliberate and stays silent — but only while the
     checkout is there. Gone is gone whoever installed it."""
     this_script = (PLUGIN_ROOT / "scripts" / "beacon").resolve()
-    gone: dict[Path, list[str]] = {}
-    stale: dict[Path, list[str]] = {}
-    for label, target in _pinned_surfaces():
+    gone: dict[Path, list[tuple[str, str]]] = {}
+    stale: dict[Path, list[tuple[str, str]]] = {}
+    for label, short, target in _pinned_surfaces():
         try:
             resolved = target.resolve()
         except OSError:
@@ -5759,9 +5771,9 @@ def _freshness_drift() -> tuple[dict, dict]:
         if resolved == this_script:
             continue
         if not target.is_file():
-            gone.setdefault(target, []).append(label)
+            gone.setdefault(target, []).append((label, short))
         elif not (target.parent.parent / ".git").exists():
-            stale.setdefault(target, []).append(label)
+            stale.setdefault(target, []).append((label, short))
     return gone, stale
 
 
@@ -5769,29 +5781,47 @@ def _freshness_drift() -> tuple[dict, dict]:
 # `install` stay on one string (CMD-26).
 _FRESHNESS_COMMAND = "/beacon:install-beacon"
 
+# The line Claude Code shows the user, and the whole of what they can act on:
+# something they installed is behind, and the command that repairs it. Which
+# entry points drifted is left out because one command repairs all of them, and
+# because the reader is whoever is at the keyboard, who need not know beacon
+# installs a CLI, a `.zshrc` line and a button in every profile. That breakdown
+# has two readers who asked for it: the model, via the context below, and
+# `doctor`, whose row adds the root each surface is pinned to.
+_FRESHNESS_BANNER = (f"beacon: this install is out of date · "
+                     f"{_FRESHNESS_COMMAND} to update")
+
+
+def _name_list(names: list[str]) -> str:
+    """`a`, `a and b`, `a, b and c` — the summary reads as a sentence, and a
+    trailing comma before `and` reads as a fourth item in a list of three."""
+    if len(names) < 3:
+        return " and ".join(names)
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
 
 def _freshness_summary(gone: dict, stale: dict) -> str:
-    """The drift as one clause, shared by the SessionStart banner and the
-    `doctor` row so the two cannot describe the same state differently."""
+    """The drift as one clause, for `doctor`'s entry-point row — someone who
+    asked which surfaces are behind, where the banner's reader only needs that
+    something is.
+
+    It names *what* is behind, not how many: one `install` writes five profiles
+    from one root, so a count reports the shape of beacon's own install rather
+    than anything the reader can act on — `7 entry points` reads as seven
+    problems when it is one command's worth of drift. The row adds the root
+    each surface is pinned to; a version cannot carry it, since a marketplace
+    copy and the checkout that supersedes it declare the same one."""
     parts = []
-    for group, phrase in ((gone, "reaching a plugin root that is gone"),
-                          (stale, "running an older plugin version")):
-        n = sum(len(labels) for labels in group.values())
-        if n:
-            parts.append(f"{n} entry point{'' if n == 1 else 's'} {phrase}")
+    for group, singular, plural in (
+            (gone, "reaches a plugin root that is gone",
+             "reach a plugin root that is gone"),
+            (stale, "runs an older install", "run an older install")):
+        names = {short for entries in group.values() for _, short in entries}
+        ordered = [n for n in _SURFACE_ORDER if n in names]
+        if ordered:
+            verb = singular if len(ordered) == 1 else plural
+            parts.append(f"{_name_list(ordered)} {verb}")
     return ", ".join(parts)
-
-
-def _freshness_banner(gone: dict, stale: dict) -> str:
-    """The line Claude Code shows the user.
-
-    `systemMessage` is the only hook output that reaches the user directly;
-    `additionalContext` reaches the model, which decides for itself whether to
-    pass it on. So the banner carries the whole actionable claim — something is
-    behind, and what to type — and leaves the per-surface breakdown to the
-    context and to `doctor`."""
-    return (f"beacon: {_freshness_summary(gone, stale)} · "
-            f"{_FRESHNESS_COMMAND} to repair")
 
 
 def _freshness_message(gone: dict, stale: dict) -> str:
@@ -5801,12 +5831,12 @@ def _freshness_message(gone: dict, stale: dict) -> str:
         "paths are baked at install time, so they stay behind it.",
         "",
     ]
-    for target, labels in sorted(gone.items()):
+    for target, entries in sorted(gone.items()):
         lines.append(f"  {target} — gone, so these do nothing at all:")
-        lines.extend(f"      {label}" for label in labels)
-    for target, labels in sorted(stale.items()):
+        lines.extend(f"      {label}" for label, _ in entries)
+    for target, entries in sorted(stale.items()):
         lines.append(f"  {target} — still there, so these run its older code:")
-        lines.extend(f"      {label}" for label in labels)
+        lines.extend(f"      {label}" for label, _ in entries)
     lines += [
         "",
         f"The remedy is {_FRESHNESS_COMMAND}, the only door to the newly "
@@ -5842,7 +5872,7 @@ def cmd_freshness(args):
         if not gone and not stale:
             return
         print(json.dumps({
-            "systemMessage": _freshness_banner(gone, stale),
+            "systemMessage": _FRESHNESS_BANNER,
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
                 "additionalContext": _freshness_message(gone, stale),
@@ -6255,7 +6285,7 @@ def _doctor_checks() -> list[dict]:
     else:
         pinned = ", ".join(sorted(str(t) for t in (*gone, *stale)))
         add("Data", "entry points", _DOCTOR_BAD,
-            f"{_freshness_summary(gone, stale)}: {pinned} "
+            f"{_freshness_summary(gone, stale)}: pinned to {pinned} "
             f"· run {_FRESHNESS_COMMAND}")
 
     # iTerm2 adapter — optional by design (NFR-06), so absence is not a fault.
