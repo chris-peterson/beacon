@@ -7369,9 +7369,13 @@ class InstallFreshness(unittest.TestCase):
                           f'exec python3 "{root / "scripts" / "beacon"}" "$@"\n')
 
     def _install_rc_line(self, root):
+        # The sentinel carries a `·` and `_pinned_surfaces` reads the file as
+        # UTF-8, so the write pins UTF-8 too: the locale default is cp1252 on
+        # Windows, which encodes that character as a byte the read rejects.
         (self.home / ".zshrc").write_text(
             f'source "{root / "shell" / "beacon.zsh"}"  '
-            f'{self.beacon._SHELL_SENTINEL}\n')
+            f'{self.beacon._SHELL_SENTINEL}\n',
+            encoding="utf-8")
 
     def _install_profiles(self, root):
         """Render the real profiles, then rewrite the baked script path — the
