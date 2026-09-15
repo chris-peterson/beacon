@@ -36,6 +36,19 @@ The layout beacon recommends (`beacon layout`) is a hand-curated list of app-wid
 
 Re-applying `beacon layout --write` afterwards is what makes a gap visible: whatever still reads wrong is something the recommendation does not cover.
 
+### Four more settings in the recommended layout
+
+The first reset found four gaps. `beacon layout` now recommends all of them:
+
+| Setting | Want | Why |
+|:---|:---|:---|
+| `LeftTabBarWidth` | 300 | a wider start than iTerm2's 150pt, which leaves line 2 of the label — the task — almost no width to be read in |
+| `StatusBarHeight` | 32 | at iTerm2's 21pt the project chip and the two action buttons crowd each other |
+| `TabsHaveCloseButton` | off | the strip is clicked all day to focus a session, and an errant click on a close button ends one; ending a session is something you do deliberately |
+| `DisableTabBarTooltips` | on | the tooltip repeats the project and task the label already shows, over the neighbouring tabs you were scanning |
+
+`LeftTabBarWidth` is a starting width, not a final one — dragging the strip's inner edge is the only thing that writes the key, so drag it to taste and the audit will report the difference. `StatusBarHeight` is read at launch, which the `--write` restart already provides.
+
 ## 2.12.0
 
 ### `doctor` names the dashboard `serve` is refusing

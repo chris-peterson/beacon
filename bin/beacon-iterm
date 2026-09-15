@@ -322,6 +322,15 @@ RECOMMENDED_LAYOUT = (
      "why": "a tall left strip is the natural home for a fleet of sessions; "
             "the tab color reads as a scannable column",
      "where": "Appearance → Tabs"},
+    # A starting width, not a final one: dragging the strip's inner edge is the
+    # only thing that writes this key (`iTermRootTerminalView`), so the audit
+    # reports whatever the user settles on as drift.
+    {"key": "LeftTabBarWidth", "want": "300", "type": "float",
+     "label": "Left strip width",
+     "why": "a wider start than iTerm2's 150pt, which leaves line 2 of the "
+            "label — the task — almost no width to be read in; drag the strip "
+            "from there to taste",
+     "where": "drag the tab strip's inner edge"},
     {"key": "UseCustomTabBarFontSize", "want": "1", "type": "bool",
      "label": "Custom tab font size (on)",
      "why": "the switch that lets the size below take effect",
@@ -342,11 +351,27 @@ RECOMMENDED_LAYOUT = (
      "why": "the height each tab gets in a Minimal left strip from iTerm2 3.7.0 "
             "on; at its 38pt default the second label line is clipped",
      "where": "Advanced → Tabs"},
+    {"key": "TabsHaveCloseButton", "want": "0", "type": "bool",
+     "label": "No close button on a tab",
+     "why": "the strip is clicked all day to focus a session, and an errant "
+            "click on a close button ends one; ending a session is something "
+            "the user does deliberately",
+     "where": "Appearance → Tabs"},
+    {"key": "DisableTabBarTooltips", "want": "1", "type": "bool",
+     "label": "No tab tooltips",
+     "why": "the tooltip repeats the project and task the label already shows, "
+            "and pops over the neighbouring tabs being scanned",
+     "where": "Advanced → Tabs"},
     {"key": "StatusBarPosition", "want": "0", "type": "int",
      "label": "Status bar at the top",
      "why": "reads as a header for the pane; the bottom is where Claude Code "
             "renders beacon's own status line, and the two stack there",
      "where": "Appearance → General"},
+    {"key": "StatusBarHeight", "want": "32", "type": "float",
+     "label": "Status-bar height",
+     "why": "the strip pairs each action button with the data it acts on "
+            "(STATUS-BAR-02); at iTerm2's 21pt the two halves crowd each other",
+     "where": "Advanced → General"},
     {"key": "HTMLTabTitles", "want": "1", "type": "bool",
      "label": "HTML tab titles (on)",
      "why": "renders the <b> project accent in the two-line tab label",
@@ -649,7 +674,8 @@ RESET_FAMILIES = (
               "PreserveWindowSizeWhenTabBarVisibilityChanges",
               "DrawBottomLineForHorizontalTabBar", "DisableTabBarTooltips")},
     {"surface": "Tab furniture",
-     "why": "competes with the two-line label for the width the strip has",
+     "why": "competes with the two-line label for the strip's width and the "
+            "user's attention",
      "keys": ("HideTabNumber", "HideActivityIndicator", "TabsHaveCloseButton",
               "TabCloseButtonsAlwaysVisible", "RemoveAddTabButton",
               "AddNewTabAtEndOfTabs", "MiddleClickClosesTab",
