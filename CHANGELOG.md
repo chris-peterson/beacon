@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.13.0
 
 ### The freshness check sees an upgrade it used to sleep through
 
