@@ -376,6 +376,12 @@ RECOMMENDED_LAYOUT = (
      "label": "HTML tab titles (on)",
      "why": "renders the <b> project accent in the two-line tab label",
      "where": "Appearance → Tabs"},
+    {"key": "ShowPaneTitles", "want": "0", "type": "bool",
+     "label": "No per-pane title bars",
+     "why": "a split pane's title bar is a plain single-line text field fed by "
+            "the same session name, so it renders the <b> accent as a literal "
+            "tag and drops line 2 (TITLE-05); the tab label carries both",
+     "where": "Appearance → Panes"},
 )
 
 

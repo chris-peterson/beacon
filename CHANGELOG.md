@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### The recommended layout turns per-pane title bars off
+
+`beacon layout` audits `ShowPaneTitles` and recommends it off. Split a tab and
+iTerm2 draws a title bar above each pane, fed by the same session name the tab
+label uses but rendered in a plain single-line text field: the `<b>` project
+accent comes out as a literal tag and the task line is dropped, so the pane
+shows the markup and half the label.
+
+The tab strip carries both lines in full and is the surface a session is
+scanned from. `beacon layout --write` applies the setting.
+
 ## 2.13.1
 
 ### The freshness check reaches you, not just Claude

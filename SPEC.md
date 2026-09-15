@@ -927,6 +927,7 @@ When invoked as `beacon-iterm configure`, the CLI shall audit the app-wide iTerm
 | Status bar at the top | `StatusBarPosition` | integer | `0` | reads as a header for the pane; the bottom is where Claude Code renders the status line (STATUSLINE-01) |
 | Status-bar height | `StatusBarHeight` | float | `32` | the strip pairs each action button with the data it acts on (STATUS-BAR-02); at iTerm2's 21pt default the two halves crowd each other. iTerm2 reads it at launch, which the `--write` orchestration's restart already provides |
 | HTML tab titles | `HTMLTabTitles` | boolean | `1` | renders the `<b>` project accent in the two-line tab label (TITLE-05) |
+| No per-pane title bars | `ShowPaneTitles` | boolean | `0` | a split pane's title bar draws the session name in a plain single-line text field, with none of the tab label's rendering: the `<b>` accent comes out as a literal tag and line 2 is dropped (TITLE-05). The tab label carries the same name in full, and the tab is the surface a session is scanned from |
 
 These are global keys in `com.googlecode.iterm2`, not per-profile keys a dynamic profile can carry, so beacon cannot express them in `beacon-dev`. The bare form is **read-only** — the one CLI action that reads iTerm2 preferences rather than writing a surface — and names each drifted setting for the user. `install` (CMD-08) invokes it as a closing advisory step; its non-zero drift exit does not fail the install.
 
