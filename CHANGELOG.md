@@ -42,6 +42,13 @@ addressable:
 The anchor is the requirement ID lowercased, so it can be written without
 opening the page. Section numbers are unchanged.
 
+The page also says what beacon does again. Seven places where it disagreed
+with the running code are corrected — the branch chip's colours
+worst among them, wrong at two of the three places they were described — and
+four behaviours it never documented are written down: the CORS preflight, the
+dashboard's pop-out panel, the Markdown an expanded turn renders, and the
+task/project shorthand.
+
 ### `doctor` reports which entry point is behind
 
 `beacon doctor` gains an `entry points` row running the same check on demand.
@@ -49,11 +56,14 @@ The banner is seen once per session and says that something is pinned; the row
 says what:
 
 ```
-  ✗ entry points 1 entry point running an older plugin version:
-                 …/beacon/2.12.0/scripts/beacon · run /beacon:install-beacon
+  ✗ entry points the .zshrc line, the $PATH command and the iTerm2 buttons run an older install: pinned to …/beacon/2.13.0/scripts/beacon · run /beacon:install-beacon
 ```
 
-It fails the check, so `doctor`'s exit status catches drift too.
+It names the surfaces rather than counting them: one `install` writes five
+profiles from one root, so `7 entry points` reads as seven problems where it is
+one command's worth of drift. It fails the check, so `doctor`'s exit status
+catches drift too.
+
 
 ## 2.13.0
 
