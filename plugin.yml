@@ -1,7 +1,7 @@
 # Canonical descriptor for the beacon plugin — edit here, never plugin.json.
 # shipyard projects this into .claude-plugin/plugin.json and the marketplace
 # catalog (the suite: block). suite.describe is generated from the
-# skills/rules/hooks sources — run `just build`, don't hand-edit it.
+# skills/rules/hooks sources — don't hand-edit it.
 
 name: beacon
 version: 2.13.0
