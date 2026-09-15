@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+### The freshness check reaches you, not just Claude
+
+The SessionStart check knows when an entry point has been left behind by a
+plugin update. Until now it emitted that finding as `additionalContext`, which
+only ever reaches the model, and opened with `PLEASE TELL THE USER (do not
+skip)` in the hope of being passed along. A model answering the question in
+front of it skipped the line, and the drift stayed invisible.
+
+It now goes out on `systemMessage` as well, the one hook output Claude Code
+renders to you:
+
+```
+beacon: 1 entry point running an older plugin version · /beacon:install-beacon to repair
+```
+
+The context keeps the per-surface breakdown for the model and has dropped the
+plea, which was asking for what the second channel does.
+
+### Every requirement on the spec page has its own link
+
+`/spec` is a 1400-line page, so pointing someone at a requirement meant naming
+it and letting them search. Each one is now a heading, which makes it
+addressable:
+
+```
+/spec#wip-14        the turn-text payload
+/spec#status-bar-03 the branch chip's colour model
+```
+
+The anchor is the requirement ID lowercased, so it can be written without
+opening the page. Section numbers are unchanged.
+
+### `doctor` reports which entry point is behind
+
+`beacon doctor` gains an `entry points` row running the same check on demand.
+The banner is seen once per session and says that something is pinned; the row
+says what:
+
+```
+  ✗ entry points 1 entry point running an older plugin version:
+                 …/beacon/2.12.0/scripts/beacon · run /beacon:install-beacon
+```
+
+It fails the check, so `doctor`'s exit status catches drift too.
+
 ## 2.13.0
 
 ### The freshness check sees an upgrade it used to sleep through

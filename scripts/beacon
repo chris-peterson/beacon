@@ -5770,12 +5770,35 @@ def _freshness_drift() -> tuple[dict, dict]:
 _FRESHNESS_COMMAND = "/beacon:install-beacon"
 
 
+def _freshness_summary(gone: dict, stale: dict) -> str:
+    """The drift as one clause, shared by the SessionStart banner and the
+    `doctor` row so the two cannot describe the same state differently."""
+    parts = []
+    for group, phrase in ((gone, "reaching a plugin root that is gone"),
+                          (stale, "running an older plugin version")):
+        n = sum(len(labels) for labels in group.values())
+        if n:
+            parts.append(f"{n} entry point{'' if n == 1 else 's'} {phrase}")
+    return ", ".join(parts)
+
+
+def _freshness_banner(gone: dict, stale: dict) -> str:
+    """The line Claude Code shows the user.
+
+    `systemMessage` is the only hook output that reaches the user directly;
+    `additionalContext` reaches the model, which decides for itself whether to
+    pass it on. So the banner carries the whole actionable claim — something is
+    behind, and what to type — and leaves the per-surface breakdown to the
+    context and to `doctor`."""
+    return (f"beacon: {_freshness_summary(gone, stale)} · "
+            f"{_FRESHNESS_COMMAND} to repair")
+
+
 def _freshness_message(gone: dict, stale: dict) -> str:
     lines = [
-        "PLEASE TELL THE USER (do not skip): beacon's installed entry points "
-        "still reach a previous plugin version. Claude Code updates the plugin "
-        "in the background, and these paths are baked at install time, so they "
-        "stay behind it.",
+        "beacon's installed entry points no longer reach the loaded plugin "
+        "root. Claude Code updates the plugin in the background, and these "
+        "paths are baked at install time, so they stay behind it.",
         "",
     ]
     for target, labels in sorted(gone.items()):
@@ -5786,10 +5809,12 @@ def _freshness_message(gone: dict, stale: dict) -> str:
         lines.extend(f"      {label}" for label in labels)
     lines += [
         "",
-        f"Ask the user to run {_FRESHNESS_COMMAND}, which is the only door to "
-        f"the newly installed root ({PLUGIN_ROOT}). `beacon install` from the "
-        "shell cannot fix it: the stale wrapper runs the old version's script, "
-        "which re-points every surface at the path it already names.",
+        f"The remedy is {_FRESHNESS_COMMAND}, the only door to the newly "
+        f"installed root ({PLUGIN_ROOT}); the banner the user was shown names "
+        "it too. `beacon install` from the shell cannot fix it: the stale "
+        "wrapper runs the old version's script, which re-points every surface "
+        "at the path it already names. The command is user-invocable only, so "
+        "running it is the user's to do.",
     ]
     return "\n".join(lines)
 
@@ -5804,15 +5829,25 @@ def cmd_freshness(args):
     manifest and reports the version it is being compared against — equal at
     every amount of drift. A reaped root is worse: `--version` then prints
     nothing and the comparison has nothing to fail on, so the check went
-    quietest exactly where the CLI was most broken."""
+    quietest exactly where the CLI was most broken.
+
+    Both channels carry it. `additionalContext` reaches only the model, which
+    is free to answer the prompt in front of it and never mention what it read
+    — the reason the context used to open by begging to be relayed, which is
+    not a mechanism. `systemMessage` is the one hook output Claude Code renders
+    to the user, so the banner is what actually delivers the finding and the
+    context is what tells the model why."""
     try:
         gone, stale = _freshness_drift()
         if not gone and not stale:
             return
-        print(json.dumps({"hookSpecificOutput": {
-            "hookEventName": "SessionStart",
-            "additionalContext": _freshness_message(gone, stale),
-        }}, separators=(",", ":")))
+        print(json.dumps({
+            "systemMessage": _freshness_banner(gone, stale),
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": _freshness_message(gone, stale),
+            },
+        }, separators=(",", ":")))
     except Exception as exc:
         # A SessionStart hook must never disturb the session (NFR-06); the log
         # is what keeps the swallow from being silent (`doctor` reads it).
@@ -6209,6 +6244,19 @@ def _doctor_checks() -> list[dict]:
     wrapper = _wrapper_path()
     add("Data", "wrapper", _DOCTOR_OK if wrapper.exists() else _DOCTOR_WARN,
         str(wrapper) if wrapper.exists() else f"{wrapper} absent — run `beacon install`")
+
+    # The same drift HOOK-14 announces at SessionStart, asked on demand. The
+    # banner is seen once per session and by whoever is at the keyboard; a
+    # health check is read deliberately, and is where someone lands who wants
+    # to know which path is pinned rather than that one is.
+    gone, stale = _freshness_drift()
+    if not gone and not stale:
+        add("Data", "entry points", _DOCTOR_OK, f"all reach {PLUGIN_ROOT}")
+    else:
+        pinned = ", ".join(sorted(str(t) for t in (*gone, *stale)))
+        add("Data", "entry points", _DOCTOR_BAD,
+            f"{_freshness_summary(gone, stale)}: {pinned} "
+            f"· run {_FRESHNESS_COMMAND}")
 
     # iTerm2 adapter — optional by design (NFR-06), so absence is not a fault.
     if not _is_iterm_installed():

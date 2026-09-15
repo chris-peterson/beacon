@@ -5536,6 +5536,39 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
                     f"#{hex6}" in doc,
                     f"docs/palette.md does not show #{hex6} for {state}")
 
+    def test_the_spec_chip_table_matches_the_profile_it_documents(self):
+        """THEME-03 calls its hexes authoritative and the template derived from
+        them, so nothing caught the table going stale: the branch rows named
+        green/orange/comment for a whole revision while the profile rendered
+        cyan/yellow/orange. Reading both and comparing is what the claim of
+        authority was resting on."""
+        documented = dict(re.findall(
+            r"\| `(beacon_branch_\w+)`\s*\| `#([0-9a-f]{6})`",
+            (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")))
+        self.assertTrue(documented, "SPEC.md documents no branch chips")
+
+        seen = 0
+        for comp in _render_profile_template()["Status Bar Layout"]["components"]:
+            knobs = comp["configuration"].get("knobs", {})
+            expr = str(knobs.get("expression", ""))
+            color = knobs.get("shared text color")
+            if "beacon_branch" not in expr or not color:
+                continue
+            seen += 1
+            slot = expr.split("user.")[-1].rstrip(")")
+            with self.subTest(slot=slot):
+                hex6 = documented.get(slot)
+                self.assertIsNotNone(hex6, f"SPEC.md documents no {slot}")
+                want = self.beacon._hex_to_color_components(hex6)
+                for channel in ("Red Component", "Green Component",
+                                "Blue Component"):
+                    self.assertAlmostEqual(
+                        color[channel], want[channel], places=3,
+                        msg=f"SPEC.md documents {slot} as #{hex6}, but the "
+                            f"profile's {channel} is {color[channel]}")
+        self.assertEqual(seen, len(documented),
+                         "the profile and SPEC.md carry different branch chips")
+
 
 def _load_beacon_iterm():
     path = REPO_ROOT / "bin" / "beacon-iterm"
@@ -6107,6 +6140,16 @@ class Doctor(unittest.TestCase):
             pt = mock.patch.object(self.beacon, name, return_value=False)
             pt.start()
             self.addCleanup(pt.stop)
+        # The entry-point row reads $HOME, which these tests do not own — on a
+        # developer box with real drift every unrelated assertion here would
+        # fail on a true finding. The tests that are about the row set it.
+        self._drift(({}, {}))
+
+    def _drift(self, value):
+        pt = mock.patch.object(self.beacon, "_freshness_drift",
+                               return_value=value)
+        pt.start()
+        self.addCleanup(pt.stop)
 
     def _run(self, **kw):
         args = types.SimpleNamespace(**{"since": "7d", "json": False, **kw})
@@ -6123,6 +6166,23 @@ class Doctor(unittest.TestCase):
         code, out = self._run()
         self.assertEqual(code, 0)
         self.assertIn("none recorded", out)
+
+    def test_entry_points_reaching_this_install_pass(self):
+        code, out = self._run()
+        self.assertEqual(code, 0)
+        self.assertIn("entry points", out)
+        self.assertIn(f"all reach {self.beacon.PLUGIN_ROOT}", out)
+
+    def test_drifted_entry_points_fail_the_check_and_name_the_path(self):
+        """The row `doctor` owes over the SessionStart banner: which path is
+        pinned, not that one is."""
+        old = Path("/nope/beacon/2.11.0/scripts/beacon")
+        self._drift(({}, {old: ["the .zshrc shell integration"]}))
+        code, out = self._run()
+        self.assertEqual(code, 1)
+        self.assertIn("1 entry point running an older plugin version", out)
+        self.assertIn(str(old), out)
+        self.assertIn("/beacon:install-beacon", out)
 
     def test_recorded_errors_are_grouped_with_a_count(self):
         for _ in range(3):
@@ -7476,6 +7536,40 @@ class InstallFreshness(unittest.TestCase):
         payload = json.loads(out.getvalue())["hookSpecificOutput"]
         self.assertEqual(payload["hookEventName"], "SessionStart")
         self.assertIn("/beacon:install-beacon", payload["additionalContext"])
+
+    def test_the_finding_goes_out_on_the_channel_the_user_sees(self):
+        """`additionalContext` reaches the model, which is free to answer the
+        prompt in front of it and never mention what it read. `systemMessage`
+        is the one hook output Claude Code renders to the user, so the finding
+        is not delivered unless it goes there too."""
+        self._install_wrapper(self._make_root("2.11.0"))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.beacon.cmd_freshness(types.SimpleNamespace())
+        banner = json.loads(out.getvalue())["systemMessage"]
+        self.assertIn("/beacon:install-beacon", banner)
+        self.assertIn("1 entry point", banner)
+        # One line: it is rendered as a banner, not a report.
+        self.assertNotIn("\n", banner)
+
+    def test_the_context_does_not_ask_to_be_relayed(self):
+        """The plea it opened with was not a mechanism — it asked the model to
+        do what `systemMessage` now does, and a model answering the question in
+        front of it skipped it. Naming both channels one instruction is how the
+        two drift apart again."""
+        self._install_wrapper(self._make_root("2.11.0"))
+        message = self._message()
+        self.assertNotIn("PLEASE TELL THE USER", message)
+        self.assertNotIn("do not skip", message)
+
+    def test_both_kinds_of_drift_are_counted_in_the_banner(self):
+        self._install_wrapper(self.roots / "2.9.0")           # reaped
+        self._install_rc_line(self._make_root("2.11.0"))      # stale
+        gone, stale = self.beacon._freshness_drift()
+        banner = self.beacon._freshness_banner(gone, stale)
+        self.assertIn("1 entry point reaching a plugin root that is gone",
+                      banner)
+        self.assertIn("1 entry point running an older plugin version", banner)
 
     def test_a_clean_install_prints_no_envelope_at_all(self):
         out = io.StringIO()
