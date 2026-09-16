@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.13.2
 
 ### The recommended layout turns per-pane title bars off
 
