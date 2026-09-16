@@ -4165,10 +4165,11 @@ class InstallGating(unittest.TestCase):
             self.mocks[name] = p.start()
             self.addCleanup(p.stop)
 
-    def _run_install(self, dir=None):
+    def _run_install(self, dir=None, skip_layout=False):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            self.beacon.cmd_install(self.beacon.argparse.Namespace(dir=dir))
+            self.beacon.cmd_install(
+                self.beacon.argparse.Namespace(dir=dir, skip_layout=skip_layout))
         return buf.getvalue()
 
     _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile")
@@ -4219,6 +4220,31 @@ class InstallGating(unittest.TestCase):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
             self._run_install()
         self.assertEqual(self.mocks["_install_cli_wrapper"].call_args, mock.call(None))
+
+    def test_skip_layout_lands_every_beacon_step_and_leaves_the_prefs(self):
+        # CMD-08a: `just trial-on` / `just trial-off` flip the pinned surfaces
+        # often, and the layout step is the one that can quit iTerm2 — while
+        # saying nothing about which copy those surfaces reach.
+        real_run = self.beacon.subprocess.run
+        layout_calls = []
+
+        def fake_run(cmd, *a, **k):
+            if "configure" in cmd:
+                layout_calls.append(cmd[cmd.index("configure"):])
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="")
+            return real_run(cmd, *a, **k)
+
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon.subprocess, "run", side_effect=fake_run):
+            out = self._run_install(skip_layout=True)
+
+        for name in (*self._ALWAYS_STEPS, *self._ITERM_STEPS):
+            self.assertTrue(self.mocks[name].called, f"{name} should still run")
+        self.assertEqual(layout_calls, [], "the layout prefs must be left alone")
+        self.assertIn("[5/5]", out)
+        self.assertNotIn("[6/", out)
+        self.assertIn(self.beacon.LAYOUT_COMMAND, out,
+                      "the skipped step should still name the command that runs it")
 
     def _run_install_with_layout(self, audit_rc: int, write_rc: int = 0):
         """Install with the layout audit and write stubbed, returning the output

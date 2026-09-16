@@ -159,4 +159,18 @@ what picks the level.
 | Re-record the CLI grammar + reference page | `just generate` (writes `spec/cli.yml`, renders `docs/cli.md`) |
 | Read a new iTerm2 release against the surfaces beacon renders through | `just iterm-release` (`--ack` records it) |
 
+### Running your changes
+
+`just trial-on` points every installed entry point at this working copy, and
+`just trial-off` points them back at the installed build. beacon pins three of
+them to a plugin root at install time — the `beacon` on PATH, the `.zshrc`
+source line, and the script path baked into each iTerm2 profile's buttons — and
+`install` is what rewrites all three from its own root, so both recipes run it
+rather than moving surfaces by hand (CMD-08a). Run `exec zsh` after either.
+
+`beacon --version` tells you which is in force: a trial answers
+`<version>-dev+<ref>`, an installed copy answers the bare version (CMD-30).
+The freshness check already reads a target under a checkout as deliberate, so a
+trial draws no out-of-date banner (HOOK-14).
+
 The test suite under `tests/` covers plugin-side behavior (apply/render emit decisions, override propagation, focus handle + `/focus` route). Surface verification (the actual badge / status bar / tab color rendering, and the focus action, in iTerm2) still requires sourcing the shell snippet and looking.

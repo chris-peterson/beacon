@@ -127,6 +127,7 @@ commands:
     flags:
     - name: --dir
       arg: DIR
+    - name: --skip-layout
 - name: refresh-iterm-profiles
   usages:
   - summary: re-render the iTerm2 dynamic profiles (applies a changed button label)
