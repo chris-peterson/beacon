@@ -6612,13 +6612,24 @@ class DevInstallMarker(unittest.TestCase):
             self.assertFalse(self.beacon._is_dev_install())
             self.assertEqual(self.beacon._version_display(), "9.9.9")
 
-    def test_a_dev_version_carries_the_marker_and_the_ref(self):
+    def _fake_git(self, sha="da64585", porcelain=""):
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, stdout="da64585-dirty\n", stderr="")
+            out = sha if "rev-parse" in cmd else porcelain
+            return subprocess.CompletedProcess(cmd, 0, stdout=f"{out}\n", stderr="")
+        return fake_run
+
+    def test_a_dev_version_carries_the_marker_and_the_ref(self):
         with mock.patch.object(self.beacon, "_is_dev_install", return_value=True), \
                 mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
-                mock.patch("subprocess.run", side_effect=fake_run):
-            self.assertEqual(self.beacon._version_display(), "2.6.1-dev+da64585-dirty")
+                mock.patch("subprocess.run", side_effect=self._fake_git()):
+            self.assertEqual(self.beacon._version_display(), "2.6.1-dev.gda64585")
+
+    def test_a_modified_tree_is_marked_dirty(self):
+        with mock.patch.object(self.beacon, "_is_dev_install", return_value=True), \
+                mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
+                mock.patch("subprocess.run",
+                           side_effect=self._fake_git(porcelain=" M scripts/beacon")):
+            self.assertEqual(self.beacon._version_display(), "2.6.1-dev.gda64585.dirty")
 
     def test_the_status_line_carries_no_marker(self):
         """The row is per-session work that varies; an install's version is
@@ -6639,7 +6650,7 @@ class DevInstallMarker(unittest.TestCase):
                 mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
                 mock.patch("subprocess.run", side_effect=fake_run):
             self.assertEqual(self.beacon._version_display(), "2.6.1-dev")
-        self.assertEqual(self.beacon.read_error_log()[0]["op"], "git.describe")
+        self.assertEqual(self.beacon.read_error_log()[0]["op"], "git.rev-parse")
 
 
 class SubscribedSkillEntersItsMode(BeaconTest):

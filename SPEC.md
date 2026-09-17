@@ -558,7 +558,9 @@ When the user invokes `doctor [--since <when>] [--json]`, the plugin shall apply
 
 #### `CMD-30`
 
-When the user invokes `--version` (or its alias `-v`), the plugin shall print its manifest version, suffixed `-dev+<ref>` where this copy is a working tree rather than an installed plugin. Both copies otherwise report the same manifest version, so nothing distinguishes an unreleased beacon from the released one of the same number — which is the question `--version` is asked to settle. Where the ref cannot be read the suffix shall remain `-dev`: the marker is the answer, the ref is the detail.
+When the user invokes `--version` (or its alias `-v`), the plugin shall print its manifest version, suffixed `-dev.g<short-sha>` where this copy is a working tree rather than an installed plugin, and shall append `.dirty` where the tree differs from that commit. Both copies otherwise report the same manifest version, so nothing distinguishes an unreleased beacon from the released one of the same number — which is the question `--version` is asked to settle. Where the sha cannot be read the suffix shall remain `-dev`: the marker is the answer, the ref is the detail.
+
+The ref is a semver **prerelease** identifier, not `+build` metadata: build metadata is ignored for precedence by every comparer that follows the spec, so a dev build carrying it compares equal to the release it shadows. The `g` prefix — git-describe's own, for the sha that follows — is what keeps the identifier valid, since a short sha of all digits would read as a numeric identifier, which may not carry leading zeros. tack ([CLI-29b]) and git-fi (`BUILD-02`) report the same shape, so one reading answers all three.
 
 #### `CMD-31`
 

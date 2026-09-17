@@ -49,27 +49,42 @@ def _is_dev_install() -> bool:
     return (PLUGIN_ROOT / ".git").exists()
 
 
+def _git_read(args: list[str], op: str) -> str:
+    """One git read against the plugin root, empty where it could not be made.
+    The caller decides what an empty answer means; every failure is logged, so a
+    marker that comes back short has a recorded reason."""
+    try:
+        r = subprocess.run(["git", "-C", str(PLUGIN_ROOT), *args],
+                           capture_output=True, text=True, timeout=2, check=False)
+    except Exception as exc:
+        log_error(op, f"{type(exc).__name__}: {exc}")
+        return ""
+    if r.returncode != 0:
+        log_error(op, r.stderr.strip() or "no stderr", exit_code=r.returncode)
+        return ""
+    return r.stdout.strip()
+
+
 def _version_display() -> str:
     """The version with a dev marker when this copy is a working tree. Both
     copies otherwise report the same manifest version, which is what makes a
     released `beacon` indistinguishable from an unreleased one — and the whole
-    reason to look."""
+    reason to look.
+
+    The marker is a semver *prerelease* identifier rather than build metadata,
+    so two dev builds order against each other and against the release; a `+ref`
+    is ignored for precedence by every comparer that follows the spec. The `g`
+    is what keeps it valid: a short sha of all digits would read as a numeric
+    identifier, which may not carry leading zeros. tack and git-fi report the
+    same shape."""
     version = _plugin_version()
     if not _is_dev_install():
         return version
-    try:
-        r = subprocess.run(["git", "-C", str(PLUGIN_ROOT), "describe",
-                            "--always", "--dirty", "--abbrev=7"],
-                           capture_output=True, text=True, timeout=2, check=False)
-    except Exception as exc:
-        log_error("git.describe", f"{type(exc).__name__}: {exc}")
+    sha = _git_read(["rev-parse", "--short=7", "HEAD"], "git.rev-parse")
+    if not sha:
         return f"{version}-dev"
-    if r.returncode != 0:
-        log_error("git.describe", r.stderr.strip() or "no stderr",
-                  exit_code=r.returncode)
-        return f"{version}-dev"
-    ref = r.stdout.strip()
-    return f"{version}-dev+{ref}" if ref else f"{version}-dev"
+    dirty = ".dirty" if _git_read(["status", "--porcelain"], "git.status") else ""
+    return f"{version}-dev.g{sha}{dirty}"
 
 
 def _data_dir_pointer() -> Path:
