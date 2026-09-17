@@ -367,7 +367,7 @@ Third-party Claude Code marketplaces have auto-update **off by default**. Either
 - **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
 - **Or update manually** with `claude plugin update beacon@chris-peterson`.
 
-After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell — the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares `beacon --version` against the installed plugin version on every session start and nudges you when they differ.
+After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell — the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares the path each installed entry point reaches against the current plugin root on every session start, and nudges you when one no longer reaches it.
 
 Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md) for release notes.
 
