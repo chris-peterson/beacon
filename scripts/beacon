@@ -462,7 +462,7 @@ _beacon() {
       compadd -- --print
       ;;
     install)
-      (( CURRENT == 3 )) && compadd -- --dir
+      compadd -- --dir --skip-layout
       ;;
     layout)
       compadd -- --write --yes --keys
@@ -6468,7 +6468,13 @@ def cmd_install(_args):
     print()
     ensure_initialized()
     iterm = _is_iterm_installed()
-    total = 6 if iterm else 3
+    # The layout step is the one that can quit iTerm2, and the one a re-run has
+    # no reason to repeat: the app-wide prefs it audits say nothing about which
+    # copy of beacon the surfaces reach. `just trial-on` / `just trial-off` flip
+    # that often enough that a quit prompt per flip would be the whole cost of
+    # trialling (CMD-08a).
+    layout_step = iterm and not _args.skip_layout
+    total = (6 if layout_step else 5) if iterm else 3
     n = 0
 
     def step(title: str) -> None:
@@ -6515,12 +6521,16 @@ def cmd_install(_args):
     if warning:
         print(_color("33", f"  ! {warning}"))
     print()
+    layout_drifted = False
+    if not layout_step:
+        print("Next: exec zsh, then open a fresh iTerm2 tab.")
+        print(f"The fleet layout was left alone; `{LAYOUT_COMMAND}` audits it.")
+        return
     step("iTerm2 fleet layout (recommended, user-set)")
     # The tab-strip layout beacon's tab color is tuned for lives in app-wide
     # Appearance prefs beacon deliberately never writes (the no-`defaults write`
     # boundary). Surface any drift so the user can set it in the GUI; advisory
     # only, so its non-zero drift exit never fails the install.
-    layout_drifted = False
     try:
         # Audited captured-and-indented first so the table and the reason for
         # each setting are on screen before anything asks to change them.
@@ -6925,6 +6935,9 @@ def _build_parser() -> "argparse.ArgumentParser":
                         help="run all install steps (wrapper, completions, + iTerm2 adapter if present)")
     sp.add_argument("--dir", default=None,
                     help="directory to install the wrapper into (default: ~/.local/bin)")
+    sp.add_argument("--skip-layout", action="store_true",
+                    help="stop after the steps that land in place, leaving the "
+                         "app-wide iTerm2 layout prefs alone")
 
     sp = sub.add_parser("refresh-iterm-profiles",
                         help="re-render the iTerm2 dynamic profiles (applies a changed button label)")

@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Trial a working copy with `just trial-on`
+
+```
+just trial-on     # every entry point reaches this clone
+just trial-off    # every entry point reaches the installed build
+```
+
+beacon pins three surfaces to a plugin root at install time: the `beacon` on
+your PATH, the `.zshrc` source line, and the script path baked into each
+iTerm2 profile's buttons. Moving them by hand meant moving all three, and
+`--version` marking a checkout `-dev` only helps once you have looked. Both
+recipes run `install` from the root they are pointing at, so a trial exercises
+the shipped install path and ending one lands exactly what a user has.
+
+### `install --skip-layout` stops before the app-wide prefs
+
+The closing layout audit is the one step that can quit iTerm2, and the prefs it
+settles say nothing about which copy of beacon the surfaces reach. The trial
+recipes pass it; `beacon layout` is where that audit lives when you want it.
+
 ## 2.13.2
 
 ### The recommended layout turns per-pane title bars off

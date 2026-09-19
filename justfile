@@ -14,7 +14,7 @@ default:
     @echo ""
     @just --list --unsorted --list-prefix '    ' --list-heading ''
     @echo ""
-    @echo "  Every recipe runs against this clone, never an installed beacon."
+    @echo "  Recipes run against this clone; trial-off is the one that reaches the install."
     @echo "  generate / check / docs fetch shipyard through uvx; the rest need only python3."
     @echo ""
 
@@ -27,6 +27,19 @@ demo *args:
 [group('start here')]
 try:
     claude --plugin-dir .
+
+# point the `beacon` on your PATH at this working copy, until `just trial-off`
+[group('start here')]
+trial-on:
+    @python3 scripts/beacon install --skip-layout
+    @echo
+    @echo "Trialling $(python3 scripts/beacon --version) from $(pwd)."
+    @echo "Run \`exec zsh\` to pick it up; \`just trial-off\` to revert."
+
+# put the installed plugin build back on your PATH
+[group('start here')]
+trial-off:
+    @bash scripts/trial-off.sh
 
 # preview the docsify docs site locally
 [group('start here')]
