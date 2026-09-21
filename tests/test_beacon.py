@@ -1179,6 +1179,20 @@ class ModeProfileDerivation(unittest.TestCase):
             self.assertTrue(spec["image"], f"{mode} should carry a watermark image")
             self.assertIsNotNone(spec["blend"], f"{mode} should carry a blend")
 
+    def test_mode_background_luma_ladder(self):
+        # Brightness is Rec. 709 luma, not HSV value: value weights the channels
+        # alike where the eye weights green .72 against blue .07, so hues picked
+        # at one value are not panes at one brightness (THEME-02a).
+        tiers = {"release": 43.0, "retro": 43.0, "pause": 34.0, "done": 22.0}
+        self.assertEqual(set(tiers), set(self.beacon.MODES))
+        for mode, target in tiers.items():
+            hexstr = self.beacon.MODE_SPECS[mode]["background"]
+            r, g, b = (int(hexstr[i:i + 2], 16) for i in (0, 2, 4))
+            luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            self.assertAlmostEqual(
+                luma, target, delta=3.0,
+                msg=f"{mode} #{hexstr} sits at luma {luma:.1f}, off its {target} tier")
+
     def test_every_mode_carries_a_glyph(self):
         # The glyph is the mode's *only* cross-tab surface, so a mode without one
         # is invisible from any tab the user isn't looking at.

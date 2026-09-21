@@ -583,7 +583,8 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 #   glyph      — tab glyph leading line 1 of the session name (TITLE-06)
 #   profile    — the dynamic-profile name switched into via set-profile (CLI-14)
 #   guid       — fixed Guid so re-installs replace the profile in place
-#   background — distinct pane background hex (no leading #)
+#   background — distinct pane background hex (no leading #). Hue is the mode's
+#                own; brightness sits on a shared luma ladder (THEME-02a).
 #   image      — faint background-image watermark (file under iterm/resources)
 #   blend      — iTerm2 Blend for that image (lower = fainter)
 #
@@ -612,7 +613,7 @@ MODE_SPECS = {
         "glyph": "⏸",
         "profile": f"{PROFILE_NAMESPACE}-pause",
         "guid": "7f3d8a1c-2b6e-4c5a-9f01-3e8d4a2b6c5f",
-        "background": "3c3357",
+        "background": "251f35",
         "image": "pause-bg.png",
         "blend": 0.35,
         "stood_down": True,
@@ -638,7 +639,7 @@ MODE_SPECS = {
         "glyph": "📋",
         "profile": f"{PROFILE_NAMESPACE}-retro",
         "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
-        "background": "2c4636",
+        "background": "1e3025",
         "image": "retro-bg.png",
         "blend": 0.25,
     },

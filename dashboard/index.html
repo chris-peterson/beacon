@@ -284,10 +284,15 @@
        streamed by serve at /mode-bg/<mode> — so the card and pane can never
        drift. It rides a ::before below the card content (z-index -1; the card
        isolates a stacking context) at a low opacity, the sessions analog of the
-       pane's Blend. */
-    .card.mode-pause   { background-color: color-mix(in srgb, #3c3357 26%, var(--panel)); }
-    .card.mode-release { background-color: color-mix(in srgb, #212c45 34%, var(--panel)); }
-    .card.mode-retro   { background-color: color-mix(in srgb, #2c4636 20%, var(--panel)); }
+       pane's Blend. One mix fraction serves all three: the pane hexes sit on a
+       shared luma ladder (THEME-02a), so a card inherits the tier its pane has
+       and needs no per-mode compensation of its own. */
+    .card.mode-pause   { --mode-tint: #251f35; }
+    .card.mode-release { --mode-tint: #212c45; }
+    .card.mode-retro   { --mode-tint: #1e3025; }
+    .card.mode-pause,
+    .card.mode-release,
+    .card.mode-retro   { background-color: color-mix(in srgb, var(--mode-tint) 34%, var(--panel)); }
     .card.mode-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
 
     .card.mode-pause::before,

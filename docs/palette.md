@@ -109,14 +109,14 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
 <div class="pal pal-grid">
 
   <div class="pal-card">
-    <div class="pal-pane" style="background: #3c3357">
+    <div class="pal-pane" style="background: #251f35">
       <img class="wm" src="images/wm-pause.png" alt="pause bars watermark">
       <span class="tab" style="color: #8b8fa0">⏸ checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>pause <span class="cmd">/beacon:pause</span></h4>
       <p>You've parked the session. The one mode that can happen anytime — and the one that lifts on its own, the next prompt you send.</p>
-      <div class="hexrow"><span>glyph ⏸</span><span><span class="sw" style="background:#3c3357"></span>pane #3c3357</span></div>
+      <div class="hexrow"><span>glyph ⏸</span><span><span class="sw" style="background:#251f35"></span>pane #251f35</span></div>
     </div>
   </div>
 
@@ -133,14 +133,14 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
   </div>
 
   <div class="pal-card">
-    <div class="pal-pane" style="background: #2c4636">
+    <div class="pal-pane" style="background: #1e3025">
       <img class="wm" src="images/wm-retro.png" alt="checklist clipboard watermark">
       <span class="tab" style="color: #8b8fa0">📋 checkout-api</span>
     </div>
     <div class="pal-meta">
       <h4>retro <span class="cmd">beacon retro</span></h4>
       <p>A post-work follow-up or retro phase. A calm green pane under a ticked clipboard — work looked back over.</p>
-      <div class="hexrow"><span>glyph 📋</span><span><span class="sw" style="background:#2c4636"></span>pane #2c4636</span></div>
+      <div class="hexrow"><span>glyph 📋</span><span><span class="sw" style="background:#1e3025"></span>pane #1e3025</span></div>
     </div>
   </div>
 

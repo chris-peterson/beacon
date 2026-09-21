@@ -1289,14 +1289,18 @@ No mode among them. A mode is signalled by **shape** — its tab glyph (TITLE-06
 
 The plugin shall give each mode the pane background and watermark named for it below, and shall deliver both through that mode's dynamic profile (RENDER-05) rather than any OSC:
 
-| Mode | Background | Watermark | Blend | Reads as |
-|:---|:---|:---|:---|:---|
-| `pause` | `#3c3357` muted purple | `\|\|` bars | 0.35 | set aside |
-| `release` | `#212c45` "launch-sky" navy (a darkened Dracula `comment`, so it stays on-palette) | rocket | 0.30 | a launch in flight |
-| `retro` | `#2c4636` muted green | ticked clipboard | 0.25 | work looked back over |
-| `done` | `#1a1622` near-black "powered off" | checkered finish-flag | 0.15 | lights out |
+| Mode | Background | Luma | Watermark | Blend | Reads as |
+|:---|:---|---:|:---|:---|:---|
+| `pause` | `#251f35` muted purple | 34 | `\|\|` bars | 0.35 | set aside |
+| `release` | `#212c45` "launch-sky" navy (a darkened Dracula `comment`, so it stays on-palette) | 43 | rocket | 0.30 | a launch in flight |
+| `retro` | `#1e3025` muted green | 43 | ticked clipboard | 0.25 | work looked back over |
+| `done` | `#1a1622` near-black "powered off" | 24 | checkered finish-flag | 0.15 | lights out |
 
-All are tunable in one place, the `MODE_SPECS` table. `done` is the dimmest at half the blend of the others, so a finished pane recedes. `retro`'s 0.25 is higher than the illustration it replaced needed: flat geometry carries far less ink, so the 0.15 that kept a detailed drawing from reading as noise left the simpler mark invisible.
+All are tunable in one place, the `MODE_SPECS` table.
+
+The hue is each mode's own; the **light behind it comes off a shared ladder**, measured in Rec. 709 luma rather than HSV value. Value weights every channel alike, and the eye weights green `.72` against blue `.07` — so four hues at one value are four panes at four brightnesses, which is how `retro`'s green came to sit 45% above `release`'s navy and read as the loud one of the set. The tiers are the column above: an active phase at ~43, `pause` at ~34 because a halt recedes, `done` at ~22, about half an active phase, so a finished pane reads as lights out. `done` holds that a second way, at half the others' blend.
+
+`retro`'s 0.25 blend is higher than the illustration it replaced needed: flat geometry carries far less ink, so the 0.15 that kept a detailed drawing from reading as noise left the simpler mark invisible.
 
 #### `THEME-03`
 
