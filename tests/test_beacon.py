@@ -4325,6 +4325,10 @@ class StatuslineWiring(unittest.TestCase):
         self._install()
         self.assertEqual(self._written()["statusLine"]["command"], "beacon statusline")
 
+    def test_writes_only_the_keys_naming_the_command(self):
+        self._install()
+        self.assertEqual(set(self._written()["statusLine"]), {"type", "command"})
+
     def test_an_existing_statusline_is_left_alone(self):
         mine = {"type": "command", "command": "my-own-prompt"}
         self.settings.write_text(json.dumps({"statusLine": mine}))

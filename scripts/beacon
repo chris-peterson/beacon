@@ -6410,8 +6410,10 @@ CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 
 def _statusline_settings_value() -> dict:
     """Claude Code's `statusLine` value pointing at beacon. `beacon` is the PATH
-    wrapper the install just placed."""
-    return {"type": "command", "command": "beacon statusline", "padding": 0}
+    wrapper the install just placed. Only the two keys that name the command:
+    presentation keys like `padding` are Claude Code's defaults to set, and the
+    user's to change."""
+    return {"type": "command", "command": "beacon statusline"}
 
 
 def _statusline_settings_block() -> str:
