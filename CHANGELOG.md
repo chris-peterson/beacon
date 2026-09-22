@@ -14,6 +14,17 @@ project accent, and to SGR on the status line. An identifier like
 Line 2 is now HTML-escaped as well, so a task reading `fix <3 handling` keeps
 everything after the `<`, which iTerm2 had been swallowing as an unclosed tag.
 
+### Mode panes sit on one brightness ladder
+
+The four mode backgrounds are now tuned in
+[Rec. 709](https://en.wikipedia.org/wiki/Rec._709#Luma_coefficients) luma rather
+than HSV value, so the pane behind `retro` no longer reads as the loud one of
+the set. An active phase sits at the top of the ladder, `pause` below it, `done`
+at about half an active phase. The dashboard's mode cards tint by a single
+fraction now that the hexes agree, and
+[The beacon palette](https://chris-peterson.github.io/beacon/#/palette) carries
+the values.
+
 ### Trial a working copy with `just trial-on`
 
 ```
@@ -33,6 +44,13 @@ the shipped install path and ending one lands exactly what a user has.
 The closing layout audit is the one step that can quit iTerm2, and the prefs it
 settles say nothing about which copy of beacon the surfaces reach. The trial
 recipes pass it; `beacon layout` is where that audit lives when you want it.
+
+### The status-line padding stays yours
+
+`install` writes the `statusLine` block that points Claude Code at `beacon
+statusline`, and now writes only the two keys naming that command. Padding is
+Claude Code's default and your preference; a value you set survives the next
+install.
 
 ## 2.13.2
 
