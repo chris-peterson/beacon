@@ -1,19 +1,19 @@
-# <img src="favicon.svg" alt="beacon" width="64" height="64" style="vertical-align: middle"> beacon
+<div class="ph-hero" style="--accent: color-mix(in srgb, var(--color-purple) 54%, light-dark(black, white))">
 
-<!--
-  The marks row — the cli badge, which links to the command reference, and the
-  version, which links to the release. shipyard renders it from plugin.yml, the
-  same source the release bumps, so the version here can't fall behind. Same row
-  the catalog card carries.
--->
+<h1 class="ph-lede"><span class="ph-name">beacon</span> what every session is doing.</h1>
+
+<div class="ph-badge"><img class="ph-mark" src="favicon.svg" alt="beacon" width="26" height="26">
+
 [](_tags.md ':include')
 
-At-a-glance awareness across concurrent Claude Code sessions.
+</div>
 
-beacon surfaces what every session is doing — which project, what task, and what's happening right now — so you can scan every session without focusing each one. It does this two ways:
+</div>
 
-- a **sessions view** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`) — click a live session to focus its iTerm2 window
-- **per-pane painting in iTerm2** — a labeled tab, colored by what Claude is doing and marked by the phase you declared, plus a status bar on each pane
+It surfaces which project, what task, and what's happening right now, so you can scan every session without focusing each one. It does this two ways:
+
+- a **sessions view** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`): click a live session to focus its iTerm2 window
+- **per-pane painting in iTerm2**: a labeled tab, colored by what Claude is doing and marked by the phase you declared, plus a status bar on each pane
 
 A glance across the windows tells you which session needs you:
 
@@ -21,8 +21,8 @@ A glance across the windows tells you which session needs you:
   Bespoke sessions figure drawn in HTML from the spec palette (COLOR_PALETTE,
   THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
   no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm and the
-  .pal- ones on /palette
-  — keep the hexes in sync with scripts/beacon. The play-by-play narrative it
+  .pal- ones on /palette.
+  Keep the hexes in sync with scripts/beacon. The play-by-play narrative it
   replaces still lives in plugin.yml's suite.session (read by the marketplace hub).
 -->
 <style>
@@ -112,20 +112,20 @@ A glance across the windows tells you which session needs you:
     </div>
     <div class="fl-card ready">
       <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">auth-svc</span><span class="fl-win">win 2</span></div>
-      <div class="fl-task"><b>idle — waiting for a prompt</b></div>
+      <div class="fl-task"><b>idle, waiting for a prompt</b></div>
       <div class="fl-foot"><span class="fl-branch">main</span><span class="fl-state">at rest</span></div>
     </div>
     <div class="fl-card blocked">
       <div class="fl-top"><span class="fl-dot"></span><span class="fl-proj">checkout-api</span><span class="fl-win">win 3</span></div>
-      <div class="fl-task">rebase on main — <b>merge conflict in the refund handler</b></div>
+      <div class="fl-task">rebase on main: <b>merge conflict in the refund handler</b></div>
       <div class="fl-foot"><span class="fl-branch">fix/refunds</span><span class="fl-state">needs you</span></div>
     </div>
   </div>
-  <p class="fl-cap">You're heads-down in <b>widgets-web</b>. Meanwhile <b>checkout-api</b> went <span class="red">red</span> and has been waiting the whole time — the color pulls your eye before you think to check.</p>
+  <p class="fl-cap">You're heads-down in <b>widgets-web</b>. Meanwhile <b>checkout-api</b> went <span class="red">red</span> and has been waiting the whole time. The color pulls your eye before you think to check.</p>
 </div>
 
 > [!TIP]
-> Want to see it first? [Try the demo](/demo) — one command seeds fictional sessions and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
+> Want to see it first? [Try the demo](/demo): one command seeds fictional sessions and serves the real dashboard, no setup and no real sessions. Read the full behavioral spec on the [Specification](/spec) page.
 
 Weighing this against tmux, Zellij, a worktree orchestrator, or a terminal built for agents? [Why beacon?](/why) lays out who else is in the space and what each one asks you to give up.
 
@@ -135,33 +135,33 @@ The sessions view reads session state and paints no pane, so it runs anywhere Py
 
 | Capability | Where it works |
 |:---|:---|
-| Sessions view — `wip`, `watch`, `serve`, and the browser dashboard | Any OS, any terminal (needs Python 3) |
-| Per-pane painting — tab label and color, status bar | macOS + iTerm2 |
+| Sessions view (`wip`, `watch`, `serve`, and the browser dashboard) | Any OS, any terminal (needs Python 3) |
+| Per-pane painting (tab label and color, status bar) | macOS + iTerm2 |
 | Click a dashboard card to raise its window | macOS + iTerm2 |
 | Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
 
 ### On Windows or a non-iTerm terminal
 
-1. Install the plugin (see [Install](#install)) — the hooks populate session state on any platform.
+1. Install the plugin (see [Install](#install)). The hooks populate session state on any platform.
 2. Run `beacon serve` and open `http://127.0.0.1:8787/` in a browser.
 
 That's the full sessions view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The tab and status-bar painting needs iTerm2 and is skipped automatically.
 
 ## Sessions view (any terminal)
 
-`wip` / `watch` / `serve` read every beacon session's state and paint no pane, so they need no iTerm2 — anywhere Python 3 runs.
+`wip` / `watch` / `serve` read every beacon session's state and paint no pane, so they need no iTerm2 and run anywhere Python 3 does.
 
-- **`beacon wip`** — a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
-- **`beacon watch`** — a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own sessions.
-- **`beacon serve`** — serves a bundled reference dashboard at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your sessions — the page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
+- **`beacon wip`**: a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
+- **`beacon watch`**: a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own sessions.
+- **`beacon serve`**: a bundled reference dashboard served at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your sessions. The page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
-  The bundled dashboard (`dashboard/index.html`) is a self-contained starting point — no build, no dependencies. Clone and restyle it, or point your own dashboard at the same `/wip.json` + `/focus` + `/forget` contract; both work from any browser regardless of the session's terminal.
+  The bundled dashboard (`dashboard/index.html`) is a self-contained starting point: no build, no dependencies. Clone and restyle it, or point your own dashboard at the same `/wip.json` + `/focus` + `/forget` contract; both work from any browser regardless of the session's terminal.
 
 Each session record carries an `icon` field so a dashboard can show the project's favicon and tell work streams apart at a glance. beacon finds the icon from the project's own files (`docs/favicon.svg`, a root `favicon.*`, the web-framework `public/` / `static/` roots, …). A local icon is served alongside the payload at `/icon/<hash>` (so it needs the live `serve` endpoint); an `http(s)` icon URL is passed through and loads from any origin. The field is `null` when a project ships no icon.
 
 ## Always-on serve service (optional)
 
-If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash — this is opt-in and not part of `/beacon:install-beacon`:
+If an external dashboard polls `serve`, run it under your init system so it survives reboots and restarts on crash. This is opt-in and not part of `/beacon:install-beacon`:
 
 ```bash
 beacon serve install      # launchd agent (macOS) / systemd user unit (Linux)
@@ -173,7 +173,7 @@ The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin 
 
 ### Running a dashboard on another origin
 
-`serve` answers loopback origins and the built-in public dashboard (`https://chris-peterson.github.io`). A dashboard served from anywhere else — your own GitLab Pages or Cloudflare Pages host, say — is refused until you add its origin to `~/.config/beacon/config.json`:
+`serve` answers loopback origins and the built-in public dashboard (`https://chris-peterson.github.io`). A dashboard served from anywhere else (your own GitLab Pages or Cloudflare Pages host, say) is refused until you add its origin to `~/.config/beacon/config.json`:
 
 ```json
 {
@@ -183,11 +183,11 @@ The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin 
 
 That one list covers the whole service: polling `/wip.json`, expanding a card (`/turn/<hash>`), the project icons, and the focus and dismiss buttons. `serve` reads the config at startup, so restart it after editing (`beacon serve status` to check, then re-run, or restart the always-on unit). The config persists across reinstalls.
 
-The default is closed because the payload carries each session's most recent turn — your prompts and Claude's replies, across every session on the machine — and `serve install` keeps the listener up all day. An unlisted page gets a `403`, and so does a request naming a non-loopback host in its `Host` header, whatever origin it claims. The bundled dashboard at `http://127.0.0.1:8787/` is same-origin and needs none of this.
+The default is closed because the payload carries each session's most recent turn (your prompts and Claude's replies, across every session on the machine), and `serve install` keeps the listener up all day. An unlisted page gets a `403`, and so does a request naming a non-loopback host in its `Host` header, whatever origin it claims. The bundled dashboard at `http://127.0.0.1:8787/` is same-origin and needs none of this.
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane — the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, and what the status-bar chips mean.
 
@@ -208,11 +208,11 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 /beacon:install-beacon
 ```
 
-The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts) — these populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
+The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
 
-On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place — no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
+On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place: no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
 
-To keep `serve` running for an external dashboard, install the always-on service separately — see [Always-on serve service](#always-on-serve-service-optional).
+To keep `serve` running for an external dashboard, install the always-on service separately (see [Always-on serve service](#always-on-serve-service-optional)).
 
 ## Verify
 
@@ -284,7 +284,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab ready">ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">labeled — neutral gray while idle</span>
+      <span class="cf-cap">labeled, neutral gray while idle</span>
     </span>
   </div>
   <div class="cf-row">
@@ -292,7 +292,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab blocked">ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">the tab goes red — Claude needs you</span>
+      <span class="cf-cap">the tab goes red: Claude needs you</span>
     </span>
   </div>
   <div class="cf-row">
@@ -300,7 +300,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab ready">⏸ ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">parked — a ⏸ on the tab, the pane dims to purple</span>
+      <span class="cf-cap">parked: a ⏸ on the tab, the pane dims to purple</span>
     </span>
   </div>
   <div class="cf-row">
@@ -308,7 +308,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab blocked">🚀 ai-sdlc<span class="t">perms</span></span>
-      <span class="cf-cap">shipping <em>and</em> blocked on you — both, at once</span>
+      <span class="cf-cap">shipping <em>and</em> blocked on you: both, at once</span>
     </span>
   </div>
 </div>
@@ -329,16 +329,16 @@ beacon resume                                # drop the overrides and leave the 
 beacon clear task                            # clear just the task override
 ```
 
-The modes are mostly entered *for* you — a release flow sets `beacon release`, and a retro sets `beacon retro` and then `beacon done` — so you rarely type them yourself.
+The modes are mostly entered *for* you (a release flow sets `beacon release`, and a retro sets `beacon retro` and then `beacon done`), so you rarely type them yourself.
 
-Every command, with its flags and what each one is for, is on the [CLI reference](/cli) — recorded from `beacon --help` itself, so it says what the binary you have installed accepts.
+Every command, with its flags and what each one is for, is on the [CLI reference](/cli), recorded from `beacon --help` itself, so it says what the binary you have installed accepts.
 
 ### Claude Code's own `/rename` and `/color`
 
 If reaching for beacon's own commands feels heavier than the built-ins, beacon also picks up Claude Code's native slash commands:
 
-- **`/rename <label>`** becomes the session's `task` — it's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the sessions view. beacon reads the name from the session transcript, which Claude Code writes ahead of the session registry, so the label lands even where Claude Code reports that the registry update didn't — the case where it warns that *other* sessions may keep showing the old name. Where the label you typed is already held by another live session, Claude Code settles on a different one and beacon folds the settled name.
-- **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab — that color stays the ready/busy/blocked status light.
+- **`/rename <label>`** becomes the session's `task`. It's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the sessions view. beacon reads the name from the session transcript, which Claude Code writes ahead of the session registry, so the label lands even where Claude Code reports that the registry update didn't, the case where it warns that *other* sessions may keep showing the old name. Where the label you typed is already held by another live session, Claude Code settles on a different one and beacon folds the settled name.
+- **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab: that color stays the ready/busy/blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
 Between `beacon task` and `/rename`, the most recent one wins.
@@ -350,15 +350,15 @@ beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), 
 - The status-line link points at it instead of the bare project URL.
 - The `↖ web` button opens it instead of the repo's front page.
 
-The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly — `gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts — and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
+The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly (`gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts) and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-Prefer Linear, Jira, GitHub Issues, or a custom provider? There's no hook for that today — the `_beacon_resolve_url()` shell override retired along with the URL the status bar used to need (see [BADGE-08](/spec)). What you can still repoint is the `↖ web` button, at any command you like.
+Prefer Linear, Jira, GitHub Issues, or a custom provider? There's no hook for that today: the `_beacon_resolve_url()` shell override retired along with the URL the status bar used to need (see [BADGE-08](/spec)). What you can still repoint is the `↖ web` button, at any command you like.
 
 ## Standalone (no tack, no recipes)
 
-beacon works on its own. The hooks set the fields they can observe — project, branch, and the ready / busy / blocked status color — without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
+beacon works on its own. The hooks set the fields they can observe (project, branch, and the ready / busy / blocked status color) without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
 
-To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the sessions view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it — tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
+To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the sessions view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it: tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
 
 ## Upgrade
 
@@ -367,7 +367,7 @@ Third-party Claude Code marketplaces have auto-update **off by default**. Either
 - **Enable auto-update once** via `/plugin` → Marketplaces → `chris-peterson` → Enable auto-update. Future releases install on the next session start.
 - **Or update manually** with `claude plugin update beacon@chris-peterson`.
 
-After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell — the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares `beacon --version` against the installed plugin version on every session start and nudges you when they differ.
+After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell: the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares `beacon --version` against the installed plugin version on every session start and nudges you when they differ.
 
 Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md) for release notes.
 
@@ -398,7 +398,7 @@ beacon ships as three deliverables with a hard boundary between them:
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
 | D3 | `beacon` Claude Code plugin | Hooks, slash commands, ambient rule, COR resolver, shell integration |
 
-D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness — it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, etc.) or driver plugins.
+D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness: it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, etc.) or driver plugins.
 
 ## License
 
