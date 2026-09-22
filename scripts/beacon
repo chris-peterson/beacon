@@ -223,6 +223,50 @@ def _color(code: str, s: str) -> str:
     return f"\x1b[{code}m{s}\x1b[0m" if _color_enabled() else s
 
 
+# Markdown emphasis, for the two beacon surfaces that can render it. A task and
+# a mode note are prose a person wrote, so `**anchor**` arrives with its markers
+# intact — and the tab's line 2 (TITLE-05b) and the status line's note
+# (STATUSLINE-01a) are the two places with a way to say what those markers meant.
+# Bold runs first: the single-delimiter rule would otherwise take one asterisk
+# off each end of a bold run and italicize what was left. The `_` forms need a
+# non-word character on both sides, so an identifier (`beacon_task_nl`) is not
+# three-quarters italic, and every form must open on a non-space, so `2 * 3 * 4`
+# stays arithmetic.
+_EMPHASIS_RULES = (
+    ("b", re.compile(r"\*\*([^\s*](?:.*?[^\s*])??)\*\*")),
+    ("b", re.compile(r"(?<![\w_])__([^\s_](?:.*?[^\s_])??)__(?![\w_])")),
+    ("i", re.compile(r"(?<![\w*])\*([^\s*](?:.*?[^\s*])??)\*(?![\w*])")),
+    ("i", re.compile(r"(?<![\w_])_([^\s_](?:.*?[^\s_])??)_(?![\w_])")),
+)
+
+_EMPHASIS_HTML = {"b": ("<b>", "</b>"), "i": ("<i>", "</i>")}
+
+# SGR 22 / 23 close one attribute each. A blanket \033[0m would also close the
+# color its caller opened around the whole segment, leaving everything after a
+# note's first bold word uncolored.
+_EMPHASIS_SGR = {"b": ("\033[1m", "\033[22m"), "i": ("\033[3m", "\033[23m")}
+
+
+def _emphasize(text: str, wrappers: dict) -> str:
+    """`text` with its markdown emphasis swapped for `wrappers`' markup."""
+    for kind, pattern in _EMPHASIS_RULES:
+        open_tag, close_tag = wrappers[kind]
+        text = pattern.sub(lambda m: f"{open_tag}{m.group(1)}{close_tag}", text)
+    return text
+
+
+def _title_markup(text: str) -> str:
+    """Line 2 of the session name, as the HTML iTerm2 reads it (TITLE-05b).
+
+    The escape earns its place twice over: it leaves the emphasis below as the
+    only markup in the line, and it keeps a task reading `fix <3 handling` from
+    losing everything after the `<` to a tag that never closes."""
+    escaped = (text.replace("&", "&amp;")
+                   .replace("<", "&lt;")
+                   .replace(">", "&gt;"))
+    return _emphasize(escaped, _EMPHASIS_HTML)
+
+
 DEFAULT_BRANCHES = {"main", "master", "develop", "trunk", "HEAD"}
 
 PROJECT_MARKERS = [".git", "package.json", "Cargo.toml", "pyproject.toml",
@@ -4856,10 +4900,13 @@ def apply(state: dict):
 
     # TITLE-05: the tab/window-title Name puts the task on a second line,
     # indented two spaces under the project. Same collapse-when-empty contract
-    # as beacon_task.
+    # as beacon_task. The published form is markup (TITLE-05b) while the
+    # snapshot below keeps the source text, so the diff turns on what resolved
+    # rather than on how it renders.
     nl_text = state.get("task_nl", state["task"])
     if nl_text != prev.get("task_nl") or (switched and nl_text):
-        _cli("uservar", "beacon_task_nl", f"\n  {nl_text}" if nl_text else "")
+        marked = _title_markup(nl_text) if nl_text else ""
+        _cli("uservar", "beacon_task_nl", f"\n  {marked}" if marked else "")
 
     # PROV-02a: the location joins the project on line 1 — "beacon @ ai-sdlc" —
     # rather than the task line, where a bare " @ ai-sdlc" has no antecedent to
@@ -5472,7 +5519,8 @@ def _statusline_mode_segment() -> str:
     if mode == DEV_MODE or not note:
         return ""
     glyph = _mode_glyph(mode)
-    return f"\033[{_MODE_NOTE_COLOR}m{glyph} {note}\033[0m"
+    return (f"\033[{_MODE_NOTE_COLOR}m{glyph} "
+            f"{_emphasize(note, _EMPHASIS_SGR)}\033[0m")
 
 
 def _statusline_link_segment() -> str:

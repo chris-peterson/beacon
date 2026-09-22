@@ -1356,6 +1356,14 @@ Rationale: the note's other home is the Claude Code status line (STATUSLINE-01),
 
 This does not reopen line 1 or the badge. The note stays off line 1, which the tab shares with the single-line window title (TITLE-06), and off the badge, which overlays terminal output and carries no free text (BADGE-11).
 
+#### `TITLE-05b`
+
+Line 2 of the session name shall render **markdown emphasis** — `**bold**` / `__bold__` bold, `*italic*` / `_italic_` italic — and shall HTML-escape everything else it carries, so that emphasis is the only markup in the line. A delimiter opens and closes on a non-space, and the `_` forms need a non-word character on either side as well, so `beacon_task_nl` is not three-quarters italic and `2 * 3 * 4` is arithmetic.
+
+Rationale: iTerm2 parses the whole session name as HTML (`HTMLTabTitles`, CLI-18) — that is what renders TITLE-05's `<b>` project accent — while what lands on line 2 is prose a person wrote: a task they typed, or the mode note TITLE-05a puts there. Both are written in the markdown everything else a Claude Code user types is written in, so the markers reached the tab as literal characters bracketing the word they meant to stress. The escape does a second job on its own account: an unclosed `<` in a task takes the rest of the label with it. Like the `<b>` accent it joins, this renders as intended only with HTML tab titles on; without them the tags and the escapes both show literally.
+
+The translation belongs to the render, not to the state. `task` and `note` are stored, reported by `wip` and `show`, and diffed against the resolved snapshot as the text their author typed, so the markup exists only in the user var. Line 1 is untouched: a project is a directory name rather than prose, and `beacon_project` is also read by the status-bar chip (STATUS-BAR-02), which is not an HTML surface.
+
 #### `TITLE-06`
 
 Line 1 of the session name shall always lead with the `beacon_title_prefix` user var, which carries the declared **mode's glyph** — `pause` → `⏸`, `release` → `🚀`, `retro` → `📋`, `done` → `🏁` (`MODE_SPECS`) — and, when no mode is declared, a **space**. Each glyph matches its mode's pane watermark (RENDER-05), so the tab and the pane say the same thing.
@@ -1392,6 +1400,12 @@ Claude Code renders multi-line status-line output, so a line per class beats pac
 `project`, `task`, and the mode's own name are not repeated here — the first two are the tab's label and the third is its glyph (TITLE-05, TITLE-06). This row carries what the tab has no room for: the mode's free-text note, which is why the note lives here and nowhere painted. The subcommand shall read only per-session state (no network, no `gh`/`glab`) so it stays cheap enough for Claude Code's frequent status-line invocations.
 
 **Wiring.** `beacon install` shall write the `statusLine` block into the user's `~/.claude/settings.json`, since that key is the only thing that makes the row exist. Left as a block to paste, the step was skipped or applied to a single project's `.claude/settings.local.json`, and the surface was then absent in every other repo — indistinguishable, to the user, from a row that renders nothing. The write shall touch `statusLine` and no other key, and shall **never replace an existing one**: a status line the user already chose outranks beacon's, so that case prints the block and says what it declined to do. An unreadable or non-object `settings.json` is the same case.
+
+#### `STATUSLINE-01a`
+
+The mode note shall render the same markdown emphasis as TITLE-05b, here as SGR bold and italic, each closed by its own attribute reset (`22` / `23`) rather than by `0` — which would also end the de-emphasized color the row opens around the whole segment, leaving everything after the first emphasized word at the terminal's default.
+
+Rationale: one note, written once, reaches two surfaces — this row always, and line 2 of the tab while the mode is stood down (TITLE-05a). Rendering its emphasis on one and not the other makes the same text read differently depending on where it was read.
 
 #### `STATUSLINE-02`
 

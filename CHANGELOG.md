@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Markdown emphasis renders on the tab and the status line
+
+A task or a mode note written as `pick this up with **anchor**` now reads with
+*anchor* in bold on line 2 of the tab and in the status-line note, instead of
+showing the asterisks. `**bold**`, `__bold__`, `*italic*` and `_italic_` all
+translate — to HTML on the tab, which iTerm2 already parses to render the
+project accent, and to SGR on the status line. An identifier like
+`beacon_task_nl` and an expression like `2 * 3 * 4` are left alone.
+
+Line 2 is now HTML-escaped as well, so a task reading `fix <3 handling` keeps
+everything after the `<`, which iTerm2 had been swallowing as an unclosed tag.
+
 ### Trial a working copy with `just trial-on`
 
 ```

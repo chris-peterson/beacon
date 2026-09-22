@@ -2409,6 +2409,42 @@ class TwoLineTitle(BeaconTest):
         self.assertIn(("uservar", "beacon_task_nl", ""), self.cli_calls)
 
 
+class MarkdownEmphasis(BeaconTest):
+    """TITLE-05b / STATUSLINE-01a: the emphasis a person writes into a task or a
+    mode note becomes markup on the two surfaces that have any — HTML on the
+    tab's line 2, SGR on the status line — and stays literal text everywhere
+    else."""
+
+    def test_bold_and_italic_become_tags(self):
+        self.assertEqual(
+            self.beacon._title_markup("pick this up with **anchor**, then *push*"),
+            "pick this up with <b>anchor</b>, then <i>push</i>")
+
+    def test_underscore_forms_need_word_boundaries(self):
+        self.assertEqual(self.beacon._title_markup("__loud__ and _quiet_"),
+                         "<b>loud</b> and <i>quiet</i>")
+        for plain in ("rename beacon_task_nl", "_publish_chips_ok", "2 * 3 * 4"):
+            self.assertEqual(self.beacon._title_markup(plain), plain)
+
+    def test_adjacent_runs_do_not_merge(self):
+        self.assertEqual(self.beacon._title_markup("**a** then **b**"),
+                         "<b>a</b> then <b>b</b>")
+
+    def test_the_rest_of_the_line_is_escaped(self):
+        self.assertEqual(self.beacon._title_markup("fix <3 handling & more"),
+                         "fix &lt;3 handling &amp; more")
+
+    def test_apply_publishes_the_marked_up_task(self):
+        self.beacon.apply({**_base_state(), "task": "ship **it**"})
+        self.assertIn(("uservar", "beacon_task_nl", "\n  ship <b>it</b>"),
+                      self.cli_calls)
+
+    def test_the_snapshot_keeps_the_source_text(self):
+        self.beacon.apply({**_base_state(), "task": "ship **it**"})
+        snapshot = json.loads(self.beacon.read_state("resolved"))
+        self.assertEqual(snapshot["task_nl"], "ship **it**")
+
+
 class HybridBranchSlots(BeaconTest):
     """STATUS-BAR-03 (#20): _publish_chips routes the branch to exactly one
     slot — the de-emphasized default slot for the repo's default branch, else
@@ -4790,6 +4826,14 @@ class StatusLineProvider(BeaconTest):
              contextlib.redirect_stdout(buf):
             self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
         return buf.getvalue()
+
+    def test_a_note_renders_its_markdown_emphasis(self):
+        # STATUSLINE-01a: the same note reaches line 2 of the tab (TITLE-05a),
+        # so the two surfaces must not disagree about what its markers meant.
+        self.beacon.write_mode("pause", "pick this up with **anchor**")
+        out = self._run()
+        self.assertIn("\033[1manchor\033[22m", out)
+        self.assertNotIn("**", out)
 
     def test_paused_with_reason_prints_glyph_and_reason(self):
         self.beacon.write_mode("pause", "waiting on CI")
