@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.14.0
 
 ### Markdown emphasis renders on the tab and the status line
 
