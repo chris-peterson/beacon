@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### The dev marker sorts like a version
+
+```
+2.13.2-dev.gfe87a6a          was  2.13.2-dev+fe87a6a
+2.13.2-dev.gfe87a6a.dirty    was  2.13.2-dev+fe87a6a-dirty
+```
+
+The ref moves from semver build metadata to a prerelease identifier. Build
+metadata is ignored for precedence by every comparer that follows the spec, so
+a dev build carrying it compared equal to the release it shadows. The `g` is
+git-describe's own prefix for the sha that follows, and it is what keeps the
+identifier valid: a short sha of all digits would read as a numeric identifier,
+which may not carry leading zeros.
+
+tack and git-fi already report this shape, so one reading now answers all three.
+
 ## 2.14.0
 
 ### Markdown emphasis renders on the tab and the status line
