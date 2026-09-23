@@ -208,7 +208,7 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 /beacon:install-beacon
 ```
 
-The first two commands install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
+The commands above install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
 
 On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place: no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
 
