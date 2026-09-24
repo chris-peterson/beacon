@@ -15,7 +15,7 @@ default:
     @just --list --unsorted --list-prefix '    ' --list-heading ''
     @echo ""
     @echo "  Recipes run against this clone; trial-off is the one that reaches the install."
-    @echo "  generate / check / docs fetch shipyard through uvx; the rest need only python3."
+    @echo "  generate / check-generated / docs fetch shipyard through uvx; the rest need only python3."
     @echo ""
 
 # seed an isolated demo fleet, serve the dashboard, and live-simulate state changes
@@ -54,7 +54,7 @@ test:
 
 # read what the projection job would commit, without keeping it; `git restore .` discards
 [group('check your work')]
-check:
+check-generated:
     {{shipyard}} generate
     git --no-pager diff --stat
 

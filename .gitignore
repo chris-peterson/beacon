@@ -17,4 +17,5 @@ docs/*
 .claude/*
 !.claude/hooks/
 !.claude/settings.json
+!.claude/skills/
 .preview/

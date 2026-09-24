@@ -98,7 +98,7 @@ No hook or render ever runs `defaults write com.googlecode.iterm2 ...`, and beac
 
 Every surface beacon paints goes through something iTerm2 owns and versions nowhere: an app-wide preference key, a dynamic profile key, an OSC control, the AppleScript dictionary. A release that renames one or moves a default breaks the surface silently — `CompactMinimalTabBarHeight` clipped line 2 of every tab for a whole version because 3.7.0 gave a Minimal side strip its own height key.
 
-`just iterm-release` is the read. It fetches the iTerm2 clone (`$ITERM2_SRC`, else `~/src/github/gnachman/iTerm2`), lands it on the newest release tag, and reports every release since the one recorded in `dev/iterm-reviewed.json` together with a scan of the diff for the symbols beacon depends on. `--ack` records the version once the release has actually been read; the exit is non-zero until then.
+`just iterm-release` is the read. It fetches the iTerm2 clone (`$ITERM2_SRC`, else `~/src/github/gnachman/iTerm2`), lands it on the newest release tag, and reports every release since the one recorded in `dev/iterm-reviewed.json` together with a scan of the diff for the symbols beacon depends on. `--ack` records the version once the release has actually been read; the exit is non-zero until then. The `iterm-release` project skill (`.claude/skills/iterm-release/`) runs the recipe and does the read that follows it.
 
 The scan derives its symbols from beacon's own sources — `RECOMMENDED_LAYOUT` and `RESET_FAMILIES` in `bin/beacon-iterm`, the keys in `iterm/profile.json.template` — so dropping a key from a table drops it from the watch in the same edit. What a hit means depends on how iTerm2 spells the thing: a preference is a string literal in `iTermPreferences.m` *or* a `DEFINE_FLOAT(compactMinimalTabBarHeight, 38, …)` in `iTermAdvancedSettingsModel.m`, where the second argument is the default a recommendation is tuned against and the literal form never appears. The scan is a filter that says which releases are worth reading, not a verdict — the release notes in the clone's `docs/notes-<version>.txt` are the read.
 
@@ -120,7 +120,7 @@ The generator refuses any disagreement between the two halves: a group naming a
 command the help doesn't document fails, and so does a documented command no group
 lists. So **a new subcommand needs a `cli: groups:` entry in the same change** —
 that check is what keeps the page from silently omitting one. Read the projection
-before pushing with `just check`.
+before pushing with `just check-generated`.
 
 ## Releasing
 
