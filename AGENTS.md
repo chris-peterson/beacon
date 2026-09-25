@@ -169,7 +169,7 @@ source line, and the script path baked into each iTerm2 profile's buttons — an
 rather than moving surfaces by hand (CMD-08a). Run `exec zsh` after either.
 
 `beacon --version` tells you which is in force: a trial answers
-`<version>-dev+<ref>`, an installed copy answers the bare version (CMD-30).
+`<version>-dev.g<short-sha>`, an installed copy answers the bare version (CMD-30).
 The freshness check already reads a target under a checkout as deliberate, so a
 trial draws no out-of-date banner (HOOK-14).
 
