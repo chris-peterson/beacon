@@ -24,6 +24,7 @@ import tempfile
 import time
 import types
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -8120,6 +8121,7 @@ class ResetLayoutToStock(unittest.TestCase):
         self.assertIn("--write", out.getvalue())
 
 
+@unittest.skipIf(sys.platform == "win32", "terminal devices are POSIX-only")
 class IdleSweep(BeaconTest):
     """STATE-16 / WIP-21: `serve`'s idle sweep parks a dev-cycle session that
     has sat idle or waiting past the auto-pause window, rendering it to its own
@@ -8163,7 +8165,9 @@ class IdleSweep(BeaconTest):
     def test_parks_a_waiting_session_past_the_window(self):
         self._session(**{"pending-attention": "1"})
         self.assertEqual(self.beacon.idle_sweep(), [self.HASH])
-        self.assertEqual(self._mode(), {"name": "pause", "note": "", "by": "sweep"})
+        mode = self._mode()
+        self.assertEqual((mode["name"], mode["by"]), ("pause", "sweep"))
+        self.assertRegex(mode["note"], r"^waiting since \d\d:\d\d$")
         self.assertIsNone(self._read("pending-attention"))
         self.assertEqual(self._read("activity"), "idle")
 
@@ -8199,6 +8203,20 @@ class IdleSweep(BeaconTest):
                 after = {p.name: p.read_text()
                          for p in self.beacon.STATE_DIR.glob(f"{sh}.*")}
                 self.assertEqual(before, after, "an excluded session's state is left as it was")
+
+    def test_line_two_says_since_when(self):
+        self._session(activity="idle")
+        seen = []
+        self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
+        self.beacon.idle_sweep()
+        line2 = [a for a in seen if a[:2] == ("uservar", "beacon_task_nl")]
+        self.assertTrue(line2 and line2[-1][2].strip().startswith("idle since "), line2)
+
+    def test_note_dates_an_earlier_day(self):
+        now = datetime(2026, 10, 1, 9, 0).timestamp()
+        self.assertEqual(self.beacon._park_note("idle", now - 3600, now), "idle since 08:00")
+        self.assertEqual(self.beacon._park_note("waiting", now - 86400, now),
+                         "waiting since Sep 30 09:00")
 
     def test_waits_for_the_window(self):
         self._session(age=30 * 60)
@@ -8308,6 +8326,7 @@ class CliTtyRouting(unittest.TestCase):
         self.assertEqual(runs[1][2:], ["set-name", "GUID", "x"])
 
 
+@unittest.skipIf(sys.platform == "win32", "terminal devices are POSIX-only")
 class CliTtyFlag(unittest.TestCase):
     """CLI-21: `--tty` writes to the named device and refuses anything that
     isn't a character device the invoking user owns."""

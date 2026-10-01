@@ -88,7 +88,8 @@ def owned_char_device(path: str) -> bool:
         st = os.stat(path)
     except OSError:
         return False
-    return stat.S_ISCHR(st.st_mode) and st.st_uid == os.getuid()
+    getuid = getattr(os, "getuid", None)  # POSIX-only; no owner to compare on Windows
+    return bool(getuid) and stat.S_ISCHR(st.st_mode) and st.st_uid == getuid()
 
 
 def _use_tty(path: str) -> None:

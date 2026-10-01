@@ -2695,13 +2695,22 @@ def _park_target(sh: str, age: float, window: int) -> tuple[str, str] | None:
     return tty, guid
 
 
-def _park(sh: str, tty: str, guid: str) -> None:
+def _park_note(activity: str, since: float, now: float) -> str:
+    """The note a park leaves on line 2 of the tab (TITLE-05a): what the session
+    was doing and since when. It names `waiting` because parking clears the
+    attention color, and the note is all that's left saying it had asked."""
+    then = datetime.fromtimestamp(since)
+    same_day = then.date() == datetime.fromtimestamp(now).date()
+    return f"{activity} since {then.strftime('%H:%M' if same_day else '%b %d %H:%M')}"
+
+
+def _park(sh: str, tty: str, guid: str, note: str) -> None:
     """Pause `sh` as the sweep, retract its wait, and render it to its own pane.
     The retraction writes the default a Stop would; the next hook restates the
     real activity."""
     _PANE.hash, _PANE.tty, _PANE.guid = sh, tty, guid
     try:
-        write_mode("pause", by=PARKED_BY)
+        write_mode("pause", note, by=PARKED_BY)
         remove_state("pending-attention")
         write_state("activity", DEFAULT_ACTIVITY)
         render()
@@ -2721,7 +2730,8 @@ def idle_sweep(now: float | None = None) -> list[str]:
         try:
             target = _park_target(sh, now - epoch, window)
             if target:
-                _park(sh, *target)
+                activity = _normalize_activity(_read_state_for(sh, "activity"))
+                _park(sh, *target, _park_note(activity, epoch, now))
                 parked.append(sh)
         except Exception as exc:
             log_error("serve.park", f"{sh}: {type(exc).__name__}: {exc}")

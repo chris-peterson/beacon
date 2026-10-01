@@ -29,8 +29,9 @@ with a path is refused, and a config file that doesn't parse is left alone.
 
 `beacon config auto-pause 1h` turns on parking. While `beacon serve` runs, a
 session that has been idle or waiting on you for longer than that window is
-paused: its tab gets ⏸ and drops the attention color, so red stays on the
-sessions you're actually working. The session resumes on its own the moment
+paused: its tab gets ⏸, drops the attention color, and reads `idle since
+09:45` (or `waiting since`) on its second line, so red stays on the sessions
+you're actually working. The session resumes on its own the moment
 you answer it or send a prompt. Sessions that are working, or that carry a mode
 you set (`pause` included), are left alone. Auto-pause is off by default and
 needs `serve` running (`beacon serve install` keeps it running). Sessions
