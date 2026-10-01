@@ -25,6 +25,18 @@ The two settings you'd otherwise hand-edit in `~/.config/beacon/config.json`
 now have a command. Origins are stored the way a browser sends them, a value
 with a path is refused, and a config file that doesn't parse is left alone.
 
+### Auto-pause for idle sessions
+
+`beacon config auto-pause 1h` turns on parking. While `beacon serve` runs, a
+session that has been idle or waiting on you for longer than that window is
+paused: its tab gets ⏸ and drops the attention color, so red stays on the
+sessions you're actually working. The session resumes on its own the moment
+you answer it or send a prompt. Sessions that are working, or that carry a mode
+you set (`pause` included), are left alone. Auto-pause is off by default and
+needs `serve` running (`beacon serve install` keeps it running). Sessions
+started before this release are not parked until they're restarted, since the
+pane's terminal is recorded at session start.
+
 ### No progress bar on the tab
 
 The beacon profiles turn off iTerm2's progress bars. Claude Code reports turn

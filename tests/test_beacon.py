@@ -8118,3 +8118,213 @@ class ResetLayoutToStock(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 self.iterm.cmd_reset_layout(self._args(write=False))
         self.assertIn("--write", out.getvalue())
+
+
+class IdleSweep(BeaconTest):
+    """STATE-16 / WIP-21: `serve`'s idle sweep parks a dev-cycle session that
+    has sat idle or waiting past the auto-pause window, rendering it to its own
+    pane through the terminal it recorded at SessionStart (HOOK-15)."""
+
+    HASH = "a1b2c3d4e5f60718"
+    GUID = "PANE-GUID-1"
+
+    def setUp(self):
+        super().setUp()
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        self.tty = os.ttyname(slave)
+        self._configure("1h")
+
+    def _configure(self, window):
+        path = self.beacon._config_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"auto_pause": window}))
+
+    def _session(self, sh=HASH, age=2 * 3600, **fields):
+        state = {"activity": "waiting", "tty": self.tty,
+                 "iterm_session_id": self.GUID, **fields}
+        self.beacon.STATE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = time.time() - age
+        for field, value in state.items():
+            if value is None:
+                continue
+            p = self.beacon.STATE_DIR / f"{sh}.{field}"
+            p.write_text(value)
+            os.utime(p, (stamp, stamp))
+
+    def _read(self, field, sh=HASH):
+        return self.beacon._read_state_for(sh, field)
+
+    def _mode(self, sh=HASH):
+        raw = self._read("mode", sh)
+        return json.loads(raw) if raw else None
+
+    def test_parks_a_waiting_session_past_the_window(self):
+        self._session(**{"pending-attention": "1"})
+        self.assertEqual(self.beacon.idle_sweep(), [self.HASH])
+        self.assertEqual(self._mode(), {"name": "pause", "note": "", "by": "sweep"})
+        self.assertIsNone(self._read("pending-attention"))
+        self.assertEqual(self._read("activity"), "idle")
+
+    def test_renders_to_the_recorded_pane(self):
+        seen = []
+        self.beacon._cli.side_effect = lambda *a, **k: seen.append(
+            (a, self.beacon.session_hash(), self.beacon._PANE.tty))
+        self._session()
+        self.beacon.idle_sweep()
+        self.assertIn((("set-profile", "beacon-pause"), self.HASH, self.tty), seen)
+        self.assertIn((("set-name", self.GUID, self.beacon.TITLE_FORMAT),
+                       self.HASH, self.tty), seen)
+        self.assertTrue((self.beacon.CACHE_DIR / f"engaged-{self.GUID}").exists())
+        self.assertIsNone(self.beacon._PANE.hash, "the render target outlives the park")
+
+    def test_leaves_alone_what_state_16_excludes(self):
+        cases = {
+            "working": {"activity": "working"},
+            "declared mode": {"mode": json.dumps({"name": "release", "note": ""})},
+            "declared pause": {"mode": json.dumps({"name": "pause", "note": "lunch"})},
+            "no terminal": {"tty": None},
+            "terminal gone": {"tty": "/dev/ttys-gone"},
+            "not a terminal": {"tty": str(self.beacon.CACHE_DIR)},
+            "no pane handle": {"iterm_session_id": None},
+        }
+        for i, (name, fields) in enumerate(cases.items()):
+            sh = f"{i:016x}"
+            self._session(sh=sh, **fields)
+            before = {p.name: p.read_text()
+                      for p in self.beacon.STATE_DIR.glob(f"{sh}.*")}
+            with self.subTest(name):
+                self.assertNotIn(sh, self.beacon.idle_sweep())
+                after = {p.name: p.read_text()
+                         for p in self.beacon.STATE_DIR.glob(f"{sh}.*")}
+                self.assertEqual(before, after, "an excluded session's state is left as it was")
+
+    def test_waits_for_the_window(self):
+        self._session(age=30 * 60)
+        self.assertEqual(self.beacon.idle_sweep(), [])
+
+    def test_off_unless_configured(self):
+        self._session()
+        for window in ("off", None):
+            path = self.beacon._config_file()
+            path.write_text(json.dumps({} if window is None else {"auto_pause": window}))
+            self.assertEqual(self.beacon.idle_sweep(), [])
+        self.assertIsNone(self._mode())
+
+    def test_one_failure_does_not_stop_the_sweep(self):
+        self._session(sh="0" * 16)
+        self._session(sh="f" * 16)
+        real = self.beacon.render
+
+        def flaky():
+            if self.beacon.session_hash() == "0" * 16:
+                raise RuntimeError("boom")
+            real()
+
+        with mock.patch.object(self.beacon, "render", side_effect=flaky):
+            self.assertEqual(self.beacon.idle_sweep(), ["f" * 16])
+        ops = [e["op"] for e in self.beacon.read_error_log()]
+        self.assertIn("serve.park", ops)
+
+
+class ParkExit(BeaconTest):
+    """STATE-16: a park ends on the first hook that isn't the session asking;
+    a pause the user declared keeps STATE-04's rule."""
+
+    def _hook(self, event, payload=None):
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload or {}))):
+            self.beacon.cmd_hook(mock.Mock(event=event))
+
+    def test_tool_result_ends_a_park(self):
+        self.beacon.write_mode("pause", by="sweep")
+        self._hook("PostToolUse")
+        self.assertEqual(self.beacon.read_mode()[0], "dev")
+
+    def test_asking_hooks_keep_a_park(self):
+        for event, payload in (("Notification", {"notification_type": "idle_prompt"}),
+                               ("PermissionRequest", {})):
+            self.beacon.write_mode("pause", by="sweep")
+            with self.subTest(event):
+                self._hook(event, payload)
+                self.assertEqual(self.beacon.read_mode()[0], "pause")
+
+    def test_declared_pause_survives_tool_hooks(self):
+        self.beacon.write_mode("pause", "lunch")
+        self._hook("PostToolUse")
+        self.assertEqual(self.beacon.read_mode(), ("pause", "lunch"))
+
+    def test_declaring_a_pause_takes_it_from_the_sweep(self):
+        self.beacon.write_mode("pause", by="sweep")
+        self.beacon.cmd_pause(mock.Mock(note=["lunch"], clear_screen=False))
+        self._hook("PostToolUse")
+        self.assertEqual(self.beacon.read_mode(), ("pause", "lunch"))
+
+
+class PaneTtyRecord(BeaconTest):
+    """HOOK-15: SessionStart records the pane's terminal; disengaging drops it,
+    so an ended session has no pane for the sweep to render to."""
+
+    def _iterm(self, path):
+        fake = types.SimpleNamespace(_ancestor_tty=lambda: path)
+        return mock.patch.object(self.beacon, "_iterm_module", return_value=fake)
+
+    def test_records_and_clears(self):
+        with self._iterm("/dev/ttys042"):
+            self.beacon._record_pane_tty()
+        self.assertEqual(self.beacon.read_state("tty"), "/dev/ttys042")
+        with self._iterm(None):
+            self.beacon._record_pane_tty()
+        self.assertIsNone(self.beacon.read_state("tty"))
+
+    def test_disengage_drops_it(self):
+        self.beacon.write_state("tty", "/dev/ttys042")
+        self.beacon._disengage()
+        self.assertIsNone(self.beacon.read_state("tty"))
+
+
+class CliTtyRouting(unittest.TestCase):
+    """CLI-21: while the sweep renders a pane, escape-writing verbs carry
+    `--tty`; Apple Events verbs don't take it."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+
+    def test_osc_verbs_get_the_pane_tty(self):
+        runs = []
+
+        def fake_run(cmd, *a, **k):
+            runs.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+
+        self.beacon._PANE.tty = "/dev/ttys042"
+        self.addCleanup(setattr, self.beacon._PANE, "tty", None)
+        with mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._cli("tab-color", "abcdef")
+            self.beacon._cli("set-name", "GUID", "x")
+        self.assertEqual(runs[0][2:], ["tab-color", "--tty", "/dev/ttys042", "abcdef"])
+        self.assertEqual(runs[1][2:], ["set-name", "GUID", "x"])
+
+
+class CliTtyFlag(unittest.TestCase):
+    """CLI-21: `--tty` writes to the named device and refuses anything that
+    isn't a character device the invoking user owns."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+        self.addCleanup(setattr, self.iterm, "_TTY", None)
+
+    def test_writes_to_the_named_terminal(self):
+        master, slave = os.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        self.iterm.main(["tab-color", "--tty", os.ttyname(slave), "abcdef"])
+        self.assertEqual(os.read(master, 256), b"\x1b]1337;SetColors=tab=abcdef\x07")
+
+    def test_refuses_a_regular_file(self):
+        with tempfile.NamedTemporaryFile() as f:
+            with self.assertRaises(SystemExit) as cm:
+                self.iterm.main(["tab-color", "--tty", f.name, "abcdef"])
+        self.assertIn("not a terminal device", str(cm.exception))

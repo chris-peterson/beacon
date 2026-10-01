@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import unicodedata
 from datetime import datetime, timezone
@@ -865,7 +866,16 @@ def _first_line(text: str) -> str:
     return text.splitlines()[0] if text else ""
 
 
+# WIP-21: the pane the idle sweep is rendering, set only for the length of one
+# park. Thread-local because the sweep runs beside `serve`'s request handlers,
+# which resolve sessions by hash and must keep reading their own.
+_PANE = threading.local()
+
+
 def session_hash() -> str:
+    target = getattr(_PANE, "hash", None)
+    if target:
+        return target
     return _hash_seed(_session_seed() or "default")
 
 
@@ -940,6 +950,9 @@ def _iterm_cache_key() -> str | None:
     on (FOCUS-02). None when no pane id is set. The synthesized non-iTerm form
     `claude-session:<id>` has no positional prefix, so the same strip leaves it
     intact — a stable key there too."""
+    target = getattr(_PANE, "guid", None)
+    if target:
+        return target
     iterm_id = os.environ.get("ITERM_SESSION_ID")
     if not iterm_id:
         return None
@@ -1116,14 +1129,25 @@ def _mode_tuple(raw: object) -> tuple[str, str]:
     return name, str(raw.get("note") or "")
 
 
-def write_mode(name: str, note: str = "") -> None:
+def write_mode(name: str, note: str = "", by: str = "") -> None:
     """Enter `name` (a MODES member) with an optional note, or return to the dev
     cycle when `name` is DEV_MODE — which removes the file rather than storing a
-    sentinel, so "no mode" has exactly one representation on disk."""
+    sentinel, so "no mode" has exactly one representation on disk. `by` names a
+    writer other than the user (`sweep`, STATE-16), stored with the mode so it
+    is dropped with it."""
     if name == DEV_MODE:
         remove_state("mode")
         return
-    write_state("mode", json.dumps({"name": name, "note": note}, indent=2))
+    mode = {"name": name, "note": note}
+    if by:
+        mode["by"] = by
+    write_state("mode", json.dumps(mode, indent=2))
+
+
+def _parked_by_sweep() -> bool:
+    raw = read_state_json("mode", {})
+    return (isinstance(raw, dict) and raw.get("by") == PARKED_BY
+            and _mode_tuple(raw)[0] == "pause")
 
 
 def _invoked_skill(payload: dict) -> str:
@@ -2623,6 +2647,12 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 # idle sweep parks it. Unset, or `off`, parks nothing: it is opt-in, and it
 # only runs where `beacon serve` does.
 AUTO_PAUSE_OFF = "off"
+PARKED_BY = "sweep"
+IDLE_SWEEP_SECONDS = 60
+PARKABLE_ACTIVITIES = ("idle", "waiting")
+# Hooks that report the session asking rather than the user answering, so they
+# leave a park in place (STATE-16).
+PARK_KEEPING_HOOKS = ("Notification", "PermissionRequest")
 
 
 def _duration_seconds(s: str) -> int | None:
@@ -2647,6 +2677,63 @@ def _auto_pause_seconds() -> int | None:
     if seconds is None:
         log_error("config.auto_pause", f"auto_pause {raw!r} is not a duration like 30m or 2h")
     return seconds
+
+
+def _park_target(sh: str, age: float, window: int) -> tuple[str, str] | None:
+    """STATE-16's selection: the `(tty, guid)` to render a parked `sh` through,
+    or None when the sweep leaves it alone."""
+    if age <= window:
+        return None
+    if _read_mode_for(sh)[0] != DEV_MODE:
+        return None
+    if _normalize_activity(_read_state_for(sh, "activity")) not in PARKABLE_ACTIVITIES:
+        return None
+    tty = _read_state_for(sh, "tty")
+    guid = _read_iterm_handle(sh)
+    if not (tty and guid and _iterm_module().owned_char_device(tty)):
+        return None
+    return tty, guid
+
+
+def _park(sh: str, tty: str, guid: str) -> None:
+    """Pause `sh` as the sweep, retract its wait, and render it to its own pane.
+    The retraction writes the default a Stop would; the next hook restates the
+    real activity."""
+    _PANE.hash, _PANE.tty, _PANE.guid = sh, tty, guid
+    try:
+        write_mode("pause", by=PARKED_BY)
+        remove_state("pending-attention")
+        write_state("activity", DEFAULT_ACTIVITY)
+        render()
+    finally:
+        _PANE.hash = _PANE.tty = _PANE.guid = None
+
+
+def idle_sweep(now: float | None = None) -> list[str]:
+    """WIP-21: park every session STATE-16 selects. Returns the parked hashes.
+    One session's failure is logged and skipped, so the sweep never stops."""
+    window = _auto_pause_seconds()
+    if window is None:
+        return []
+    now = time.time() if now is None else now
+    parked = []
+    for sh, epoch in _session_mtimes().items():
+        try:
+            target = _park_target(sh, now - epoch, window)
+            if target:
+                _park(sh, *target)
+                parked.append(sh)
+        except Exception as exc:
+            log_error("serve.park", f"{sh}: {type(exc).__name__}: {exc}")
+    return parked
+
+
+def _run_idle_sweep(stop: threading.Event, interval: float = IDLE_SWEEP_SECONDS) -> None:
+    while not stop.wait(interval):
+        try:
+            idle_sweep()
+        except Exception as exc:
+            log_error("serve.park", f"{type(exc).__name__}: {exc}")
 
 
 def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> dict:
@@ -3715,12 +3802,16 @@ def cmd_serve(args):
 
 def _serve_foreground(port: int):
     server = wip_http_server(port)
+    stop = threading.Event()
+    threading.Thread(target=_run_idle_sweep, args=(stop,), daemon=True,
+                     name="idle-sweep").start()
     try:
         print(f"beacon serve → http://127.0.0.1:{port}/  dashboard, /wip.json data  (Ctrl-C to stop)")
         server.serve_forever()
     except KeyboardInterrupt:
         print()
     finally:
+        stop.set()
         server.server_close()
 
 
@@ -4007,10 +4098,18 @@ def _task_display(location: str, task: str) -> str:
 
 # --- CLI bridge ---
 
+# The beacon-iterm verbs that write an escape sequence, and so take `--tty`
+# (CLI-21) when the sweep renders a pane it isn't running in.
+OSC_VERBS = frozenset({"badge-color", "tab-color", "uservar", "uservar-batch",
+                       "badge-format", "set-profile", "clear", "clear-screen"})
+
 def _cli(*args, timeout: float = 5.0) -> None:
     """Invoke beacon-iterm. Failures are swallowed so the plugin never crashes
     a hook on display issues."""
     cmd = ["python3", str(BEACON_ITERM), *map(str, args)]
+    tty = getattr(_PANE, "tty", None)
+    if tty and args and args[0] in OSC_VERBS:
+        cmd[2:3] = [str(args[0]), "--tty", tty]
     op = f"cli.{args[0]}" if args else "cli"
     try:
         r = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
@@ -4020,6 +4119,39 @@ def _cli(*args, timeout: float = 5.0) -> None:
     if r.returncode != 0:
         log_error(op, (r.stderr or b"").decode("utf-8", "replace") or "no stderr",
                   exit_code=r.returncode)
+
+
+_ITERM_MODULE = None
+
+
+def _iterm_module():
+    """beacon-iterm loaded as a module, so the plugin finds and checks a pane's
+    terminal with the CLI's own code (HOOK-15, CLI-21) rather than a copy."""
+    global _ITERM_MODULE
+    if _ITERM_MODULE is None:
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("beacon_iterm", str(BEACON_ITERM))
+        module = importlib.util.module_from_spec(
+            importlib.util.spec_from_loader("beacon_iterm", loader))
+        loader.exec_module(module)
+        _ITERM_MODULE = module
+    return _ITERM_MODULE
+
+
+def _record_pane_tty() -> None:
+    """HOOK-15: record the pane's terminal device, the one channel the idle
+    sweep (WIP-21) has into a pane it isn't running in. A pane's device is fixed
+    for its life, so SessionStart is the one write."""
+    try:
+        path = _iterm_module()._ancestor_tty()
+    except Exception as exc:
+        log_error("tty.find", f"{type(exc).__name__}: {exc}")
+        path = None
+    if path:
+        write_state("tty", path)
+    else:
+        remove_state("tty")
 
 
 # --- session anchor (mirrors shell/beacon.zsh _beacon_precmd) ---
@@ -4956,6 +5088,10 @@ def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
     hook. Real iTerm sessions only; the synthesized `claude-session:` id has no
     addressable surface. `fmt` is the managed template by default and
     INTERACTIVE_TITLE_FORMAT when disengaging, so the sid guard has one home."""
+    target = getattr(_PANE, "guid", None)
+    if target:
+        _cli("set-name", target, fmt)
+        return
     sid = os.environ.get("ITERM_SESSION_ID") or ""
     if ":" in sid and not sid.startswith("claude-session:"):
         _cli("set-name", sid, fmt)
@@ -5230,6 +5366,7 @@ def _disengage() -> None:
     remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
+    remove_state("tty")
     # A mode swapped the pane into a mode profile whose background the color-only
     # `clear` below cannot undo (RENDER-05). apply() swaps back to the base
     # profile when *leaving* a mode, but disengagement bypasses apply(), so a
@@ -7091,6 +7228,11 @@ def cmd_hook(args):
             if guest:
                 os.environ["ITERM_SESSION_ID"] = guest
         write_state("claude_session_id", claude_sid)
+    # STATE-16: a park ends on the first hook that isn't the session asking,
+    # because answering a question or a permission prompt is a tool result and
+    # fires no UserPromptSubmit for STATE-04 to catch.
+    if event not in PARK_KEEPING_HOOKS and _parked_by_sweep():
+        write_mode(DEV_MODE)
     # PERM-01: every hook payload names the permission mode in force, so the
     # third axis needs no cooperation and no transcript read. Entering or
     # leaving plan mode fires no hook of its own (it is a keystroke between
@@ -7133,6 +7275,7 @@ def cmd_hook(args):
         if source not in CONTINUING_SESSION_SOURCES:
             _wipe_session_for_fresh_start()
         _record_focus_handle()
+        _record_pane_tty()
         anchored = read_state("anchor.cwd") if source in MID_SESSION_START_SOURCES else ""
         if anchored:
             # HOOK-08: the anchor is the cwd Claude was *invoked* with, and a

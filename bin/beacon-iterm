@@ -78,6 +78,29 @@ def _ancestor_tty() -> str | None:
     return None
 
 
+def owned_char_device(path: str) -> bool:
+    """CLI-21: whether `path` is a character device the invoking user owns —
+    the only kind of `--tty` target the CLI writes to, so a recorded value can't
+    send escape sequences into another user's terminal or a regular file."""
+    import stat
+
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    return stat.S_ISCHR(st.st_mode) and st.st_uid == os.getuid()
+
+
+def _use_tty(path: str) -> None:
+    global _TTY
+    if not owned_char_device(path):
+        sys.exit(f"--tty: not a terminal device you own: {path}")
+    try:
+        _TTY = open(path, "w")
+    except OSError as exc:
+        sys.exit(f"--tty: {path}: {exc.strerror}")
+
+
 def _tty():
     global _TTY
     if _TTY is None:
@@ -1023,36 +1046,41 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="beacon-iterm")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sp = sub.add_parser("badge-color", help="set badge color (6-hex or 'default')")
+    osc = argparse.ArgumentParser(add_help=False)
+    osc.add_argument("--tty", metavar="PATH",
+                     help="write to this terminal device instead of the "
+                          "controlling terminal")
+
+    sp = sub.add_parser("badge-color", parents=[osc], help="set badge color (6-hex or 'default')")
     sp.add_argument("value")
     sp.set_defaults(func=cmd_badge_color)
 
-    sp = sub.add_parser("tab-color", help="set tab color (6-hex or 'default')")
+    sp = sub.add_parser("tab-color", parents=[osc], help="set tab color (6-hex or 'default')")
     sp.add_argument("value")
     sp.set_defaults(func=cmd_tab_color)
 
-    sp = sub.add_parser("uservar", help="publish user.<name>=<value>")
+    sp = sub.add_parser("uservar", parents=[osc], help="publish user.<name>=<value>")
     sp.add_argument("name")
     sp.add_argument("value", nargs="?", default="")
     sp.set_defaults(func=cmd_uservar)
 
-    sp = sub.add_parser("uservar-batch",
+    sp = sub.add_parser("uservar-batch", parents=[osc],
                         help="publish multiple user.<name>=<value> pairs in one invocation")
     sp.add_argument("pairs", nargs="+")
     sp.set_defaults(func=cmd_uservar_batch)
 
-    sp = sub.add_parser("badge-format", help="set the per-session badge format template")
+    sp = sub.add_parser("badge-format", parents=[osc], help="set the per-session badge format template")
     sp.add_argument("template")
     sp.set_defaults(func=cmd_badge_format)
 
-    sp = sub.add_parser("set-profile", help="switch session profile (SetProfile=)")
+    sp = sub.add_parser("set-profile", parents=[osc], help="switch session profile (SetProfile=)")
     sp.add_argument("name")
     sp.set_defaults(func=cmd_set_profile)
 
-    sp = sub.add_parser("clear", help="restore badge + tab color to profile defaults")
+    sp = sub.add_parser("clear", parents=[osc], help="restore badge + tab color to profile defaults")
     sp.set_defaults(func=cmd_clear)
 
-    sp = sub.add_parser("clear-screen", help="clear the session's screen + scrollback (Cmd+K equivalent)")
+    sp = sub.add_parser("clear-screen", parents=[osc], help="clear the session's screen + scrollback (Cmd+K equivalent)")
     sp.set_defaults(func=cmd_clear_screen)
 
     sp = sub.add_parser("set-name", help="set a session's name by its session id (interpolated title)")
@@ -1110,6 +1138,8 @@ def main(argv=None):
         argv = ["--help"]
 
     args = p.parse_args(argv)
+    if getattr(args, "tty", None):
+        _use_tty(args.tty)
     args.func(args)
 
 

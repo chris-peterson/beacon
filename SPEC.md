@@ -284,7 +284,7 @@ When the user submits a prompt that begins with a fresh-start slash command (cur
 
 #### `HOOK-15`
 
-At SessionStart the plugin shall record the terminal device of the pane the session runs in (on macOS a `/dev/ttys*` path), found the way the CLI finds it (CLI-21), and remove the record when it can find none. Rationale: every other writer of a pane's surfaces runs inside that pane and reaches it through its own controlling terminal. The idle sweep (WIP-21) runs in `serve`, which has none, so it needs the pane's terminal named. SessionStart is enough because a pane's terminal device does not change for the life of the pane.
+At SessionStart the plugin shall record the terminal device of the pane the session runs in (on macOS a `/dev/ttys*` path), found the way the CLI finds it (CLI-21), and remove the record when it can find none. Disengagement (BADGE-14) shall remove it too, so a session that has ended leaves no pane for the sweep to render to. Rationale: every other writer of a pane's surfaces runs inside that pane and reaches it through its own controlling terminal. The idle sweep (WIP-21) runs in `serve`, which has none, so it needs the pane's terminal named. SessionStart is enough because a pane's terminal device does not change for the life of the pane.
 
 #### `HOOK-03c`
 
