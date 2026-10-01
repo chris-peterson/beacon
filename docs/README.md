@@ -173,15 +173,13 @@ The unit runs `beacon serve` via the `~/.local/bin/beacon` wrapper, so a plugin 
 
 ### Running a dashboard on another origin
 
-`serve` answers loopback origins and the built-in public dashboard (`https://chris-peterson.github.io`). A dashboard served from anywhere else (your own GitLab Pages or Cloudflare Pages host, say) is refused until you add its origin to `~/.config/beacon/config.json`:
+`serve` answers loopback origins and the built-in public dashboard (`https://chris-peterson.github.io`). A dashboard served from anywhere else (your own GitLab Pages or Cloudflare Pages host, say) is refused until you allow its origin:
 
-```json
-{
-  "focus_origins": ["https://your-dashboard.example"]
-}
+```
+beacon config origins add https://your-dashboard.example
 ```
 
-That one list covers the whole service: polling `/wip.json`, expanding a card (`/turn/<hash>`), the project icons, and the focus and dismiss buttons. `serve` reads the config at startup, so restart it after editing (`beacon serve status` to check, then re-run, or restart the always-on unit). The config persists across reinstalls.
+`beacon config origins` lists what's allowed, and `remove` takes one off. The list lives under `focus_origins` in `~/.config/beacon/config.json`, and it covers the whole service: polling `/wip.json`, expanding a card (`/turn/<hash>`), the project icons, and the focus and dismiss buttons. `serve` reads it at startup, so restart it after a change (`beacon serve install` restarts the always-on unit). The config persists across reinstalls.
 
 The default is closed because the payload carries each session's most recent turn (your prompts and Claude's replies, across every session on the machine), and `serve install` keeps the listener up all day. An unlisted page gets a `403`, and so does a request naming a non-loopback host in its `Host` header, whatever origin it claims. The bundled dashboard at `http://127.0.0.1:8787/` is same-origin and needs none of this.
 

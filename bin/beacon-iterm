@@ -323,9 +323,9 @@ RECOMMENDED_LAYOUT = (
             "the tab color reads as a scannable column",
      "where": "Appearance → Tabs"},
     # A starting width, not a final one: dragging the strip's inner edge is the
-    # only thing that writes this key (`iTermRootTerminalView`), so the audit
-    # reports whatever the user settles on as drift.
-    {"key": "LeftTabBarWidth", "want": "300", "type": "float",
+    # only thing that writes this key (`iTermRootTerminalView`), so it is written
+    # only while unset and whatever width the user settles on stands (CLI-22).
+    {"key": "LeftTabBarWidth", "want": "300", "type": "float", "initial": True,
      "label": "Left strip width",
      "why": "a wider start than iTerm2's 150pt, which leaves line 2 of the "
             "label — the task — almost no width to be read in; drag the strip "
@@ -351,6 +351,15 @@ RECOMMENDED_LAYOUT = (
      "why": "the height each tab gets in a Minimal left strip from iTerm2 3.7.0 "
             "on; at its 38pt default the second label line is clipped",
      "where": "Advanced → Tabs"},
+    # Minimal draws a white-and-black double underline under the selected tab
+    # whenever any tab has a color, which with beacon is always; its strength is
+    # 0.75 × this value (PSMMinimalTabStyle). Compact outlines the tab instead.
+    {"key": "MinimalSelectedTabUnderlineProminence", "want": "0.4", "type": "float",
+     "label": "Softer selected-tab underline",
+     "why": "at full strength the underline is the brightest mark in the strip, "
+            "brighter than the tab colors it sits under; softened it still "
+            "marks the selected tab",
+     "where": "Advanced → Tabs"},
     {"key": "TabsHaveCloseButton", "want": "0", "type": "bool",
      "label": "No close button on a tab",
      "why": "the strip is clicked all day to focus a session, and an errant "
@@ -362,6 +371,12 @@ RECOMMENDED_LAYOUT = (
      "why": "the tooltip repeats the project and task the label already shows, "
             "and pops over the neighbouring tabs being scanned",
      "where": "Advanced → Tabs"},
+    {"key": "HideActivityIndicator", "want": "1", "type": "bool",
+     "label": "No tab activity spinner",
+     "why": "iTerm2 spins it on a background tab while the session prints, and "
+            "Claude's screen redraws the whole time it works, so it repeats "
+            "what the working tab color already says",
+     "where": "Appearance → Tabs"},
     {"key": "StatusBarPosition", "want": "0", "type": "int",
      "label": "Status bar at the top",
      "why": "reads as a header for the pane; the bottom is where Claude Code "
@@ -399,8 +414,58 @@ def _read_default(key: str) -> str | None:
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def _layout_drift():
-    return [s for s in RECOMMENDED_LAYOUT if _read_default(s["key"]) != s["want"]]
+# The tab styles beacon's tab weights are tuned for (TAB-04). RECOMMENDED_LAYOUT is
+# written for Minimal; `_recommended_layout` derives the Compact table from it.
+TAB_STYLES = ("minimal", "compact", "regular")
+DEFAULT_TAB_STYLE = "minimal"
+
+# TAB_STYLE_COMPACT = 6 in `iTermPreferencesTabStyle` ("automatic + compact
+# windows"). Its left strip takes DefaultTabBarHeight, so the Minimal-only
+# per-tab height key has nothing to act on there.
+_COMPACT_TAB_STYLE = {
+    "key": "TabStyleWithAutomaticOption", "want": "6", "type": "int",
+    "label": "Compact tab style",
+    "why": "Compact outlines the selected tab and blends the rest toward gray, "
+           "so the selected tab leads and the others stay readable; beacon's "
+           "compact tab weights are tuned for that blend (TAB-04)",
+    "where": "Appearance → General → Theme",
+}
+# TAB_STYLE_AUTOMATIC = 4, the Regular theme. On macOS 26 it draws Tahoe pills,
+# and its left strip takes DefaultTabBarHeight as Compact's does.
+# `UseSequoiaStyleTabs` (Advanced → Tabs) is left to the user: it trades the
+# pills for flat tabs drawn by PSMYosemiteTabStyle, Compact's class (iTermTheme.m),
+# and with them Compact's gray-blended unselected tabs, which read worse.
+_REGULAR_TAB_STYLE = {
+    "key": "TabStyleWithAutomaticOption", "want": "4", "type": "int",
+    "label": "Regular tab style",
+    "why": "Regular fills the selected tab and outlines the rest in their color; "
+           "beacon's regular tab weights are tuned for its blend (TAB-04)",
+    "where": "Appearance → General → Theme",
+}
+_STYLE_SPECS = {"compact": _COMPACT_TAB_STYLE, "regular": _REGULAR_TAB_STYLE}
+_MINIMAL_ONLY_KEYS = {"CompactMinimalTabBarHeight", "MinimalSelectedTabUnderlineProminence"}
+
+
+def _recommended_layout(style: str = DEFAULT_TAB_STYLE) -> tuple:
+    if style not in TAB_STYLES:
+        raise ValueError(f"unknown tab style {style!r}; expected one of {', '.join(TAB_STYLES)}")
+    if style == "minimal":
+        return RECOMMENDED_LAYOUT
+    style_spec = _STYLE_SPECS[style]
+    return tuple(style_spec if spec["key"] == style_spec["key"] else spec
+                 for spec in RECOMMENDED_LAYOUT if spec["key"] not in _MINIMAL_ONLY_KEYS)
+
+
+def _aligned(spec, current) -> bool:
+    """Whether a setting's current value satisfies the recommendation. An
+    `initial` setting is only a starting value, so any value the user set counts."""
+    if spec.get("initial"):
+        return current is not None
+    return current == spec["want"]
+
+
+def _layout_drift(style: str = DEFAULT_TAB_STYLE):
+    return [s for s in _recommended_layout(style) if not _aligned(s, _read_default(s["key"]))]
 
 
 def _is_iterm_running() -> bool:
@@ -441,11 +506,12 @@ def _defaults_write_args(spec) -> list[str]:
     return [f"-{spec['type']}", spec["want"]]  # -int / -float, typed per the plist
 
 
-def _apply_layout(specs) -> None:
-    """Write the selected app-wide prefs, then relaunch iTerm2. Only ever runs
-    with iTerm2 not running, so the writes survive — iTerm2 rewrites the plist
-    from its in-memory copy on quit, which is exactly the clobber the whole
-    quit-write-relaunch dance exists to avoid (CLI-18)."""
+def _apply_layout(specs, relaunch: bool = True) -> None:
+    """Write the selected app-wide prefs, then relaunch iTerm2 unless the user
+    quit it themselves (CLI-22). Only ever runs with iTerm2 not running, so the
+    writes survive — iTerm2 rewrites the plist from its in-memory copy on quit,
+    which is exactly the clobber the whole quit-write-relaunch dance exists to
+    avoid (CLI-18)."""
     import subprocess
 
     for s in specs:
@@ -454,7 +520,8 @@ def _apply_layout(specs) -> None:
                            capture_output=True, text=True, timeout=10)
         ok = "wrote" if r.returncode == 0 else f"FAILED: {r.stderr.strip()}"
         print(f"  {ok}: {s['key']} = {s['want']}")
-    subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
+    if relaunch:
+        subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
 
 
 def _advertised_command() -> str:
@@ -475,14 +542,15 @@ def _running_caveat() -> str:
             "  strip may differ until then.")
 
 
-def _configure_audit():
+def _configure_audit(style: str = DEFAULT_TAB_STYLE):
     aligned = "\x1b[32m✓\x1b[0m"
     differs = "\x1b[33m✗\x1b[0m"
-    print("Recommended iTerm2 fleet layout — app-wide prefs:\n")
+    layout = _recommended_layout(style)
+    print(f"Recommended iTerm2 fleet layout ({style} tabs) — app-wide prefs:\n")
     drift = []
-    for s in RECOMMENDED_LAYOUT:
+    for s in layout:
         cur = _read_default(s["key"])
-        ok = cur == s["want"]
+        ok = _aligned(s, cur)
         mark = aligned if ok else differs
         shown = cur if cur is not None else "unset"
         print(f"  {mark}  {s['label']:<34} {s['key']} = {s['want']}"
@@ -497,7 +565,7 @@ def _configure_audit():
             print()
             print(_running_caveat())
         sys.exit(0)
-    print(f"{len(drift)} of {len(RECOMMENDED_LAYOUT)} settings differ. "
+    print(f"{len(drift)} of {len(layout)} settings differ. "
           "Apply them without opening Preferences:\n"
           f"  {_advertised_command()} --write\n"
           "(quits + relaunches iTerm2 — run it when idle).")
@@ -536,14 +604,116 @@ def _run_after_quit(argv: list, log_prefix: str, banner: str) -> None:
                    capture_output=True, timeout=10)
 
 
+# The pid of a queued deferred write (CLI-22), so a second `install` finds it
+# instead of queuing another. Per user: macOS gives each user their own TMPDIR.
+def _deferred_pidfile() -> Path:
+    import tempfile
+    from pathlib import Path
+    return Path(tempfile.gettempdir()) / "beacon-layout-deferred.pid"
+
+
+def _pid_alive(pid: int) -> bool:
+    # On Windows signal 0 is CTRL_C_EVENT: os.kill(pid, 0) interrupts the
+    # caller's whole console group instead of probing. There's no iTerm2 there
+    # to defer to, so nothing is ever queued.
+    if os.name == "nt":
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _queued_pid() -> int | None:
+    try:
+        pid = int(_deferred_pidfile().read_text().strip())
+    except (OSError, ValueError):
+        return None
+    return pid if _pid_alive(pid) else None
+
+
+def _iterm_pid() -> int | None:
+    """iTerm2's process id, read once from the process table. Matched on the
+    executable path's tail because `pgrep -x iTerm2` never matches the running
+    app (macOS matches -x against the full path)."""
+    import subprocess
+
+    r = subprocess.run(["ps", "-axo", "pid=,comm="], capture_output=True, text=True, timeout=5)
+    for line in r.stdout.splitlines():
+        pid, _, comm = line.strip().partition(" ")
+        if comm.strip().endswith("iTerm.app/Contents/MacOS/iTerm2"):
+            return int(pid)
+    return None
+
+
+# How often a deferred write checks whether iTerm2 has exited. It may wait for
+# days, so the check is a signal-0 probe rather than an osascript spawn.
+DEFER_POLL_SECONDS = 5
+
+
+def _wait_for_iterm_to_exit() -> None:
+    import time
+
+    pid = _iterm_pid()
+    while pid is not None and _pid_alive(pid):
+        time.sleep(DEFER_POLL_SECONDS)
+    # A relaunch between two probes is a new pid; wait on it too rather than
+    # writing behind a live iTerm2.
+    while _is_iterm_running():
+        pid = _iterm_pid()
+        while pid is not None and _pid_alive(pid):
+            time.sleep(DEFER_POLL_SECONDS)
+
+
+def _configure_defer(args):
+    """CLI-22: converge the recommended layout without closing anything: write
+    the drifted settings now if iTerm2 is closed, else the next time it quits."""
+    selected = _layout_drift(args.tab_style)
+    if not selected:
+        print("Nothing to queue: the layout already matches the recommendation.")
+        return
+    _queue_after_quit(selected, args.tab_style)
+
+
+def _queue_after_quit(selected, style: str) -> None:
+    import subprocess
+    import tempfile
+
+    keys_csv = ",".join(s["key"] for s in selected)
+    labels = ", ".join(s["label"].lower() for s in selected)
+    apply_now = f"{_advertised_command()} --write --yes --keys {keys_csv}"
+    if not _is_iterm_running():
+        _apply_layout(selected, relaunch=False)
+        print(f"Applied {len(selected)} setting(s) while iTerm2 is closed.")
+        return
+    pid = _queued_pid()
+    if pid is None:
+        log_fd, log_path = tempfile.mkstemp(prefix="beacon-configure-deferred.", suffix=".log")
+        with os.fdopen(log_fd, "w") as log:
+            proc = subprocess.Popen(
+                ["python3", os.path.realpath(__file__), "configure", "--write", "--yes",
+                 "--after-quit", "--tab-style", style, "--keys", keys_csv],
+                stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                start_new_session=True)
+        _deferred_pidfile().write_text(f"{proc.pid}\n")
+    print(f"Queued: {labels}. They apply the next time you quit iTerm2.")
+    print(f"To apply them now (restarts iTerm2): {apply_now}")
+
+
 def _configure_write(args):
+    if getattr(args, "after_quit", False):
+        _wait_for_iterm_to_exit()
     running = _is_iterm_running()
+    style = args.tab_style
 
     if args.keys is not None:
         wanted = set(args.keys.split(","))
-        selected = [s for s in RECOMMENDED_LAYOUT if s["key"] in wanted]
+        selected = [s for s in _recommended_layout(style) if s["key"] in wanted]
     else:
-        drift = _layout_drift()
+        drift = _layout_drift(style)
         if not drift:
             print("Layout already matches the recommendation — nothing to write.")
             if running:
@@ -555,44 +725,30 @@ def _configure_write(args):
                 print("  To apply a setting anyway, name it:\n"
                       f"    {_advertised_command()} --write --keys <Key>")
             return
-        if args.yes:
-            selected = drift
-        else:
-            print("Apply the recommended fleet layout — beacon writes each for "
-                  "you, no Preferences window:\n")
-            selected = []
-            for s in drift:
-                ans = _prompt_tty(f"  {s['label']}  ({s['key']} = {s['want']})", True)
-                if ans is None:
-                    sys.exit("configure --write needs a terminal to confirm on; "
-                             "re-run with --yes to accept every recommendation.")
-                if ans:
-                    selected.append(s)
-
-    if not selected:
-        print("Nothing selected — no changes made.")
-        return
+        selected = drift
 
     # iTerm2 down: safe to write directly (nothing will clobber the plist).
     if not running:
-        _apply_layout(selected)
-        print(f"Applied {len(selected)} setting(s); relaunching iTerm2.")
+        relaunch = not getattr(args, "after_quit", False)
+        _apply_layout(selected, relaunch=relaunch)
+        print(f"Applied {len(selected)} setting(s)" + ("; relaunching iTerm2." if relaunch else "."))
         return
 
-    # iTerm2 up: a direct write is clobbered on quit, so a detached helper waits
-    # for iTerm2 to exit, writes, and relaunches. Confirm first — quitting closes
-    # every window and pane, including this session.
+    # iTerm2 up: a direct write is clobbered on quit. Restarting now closes every
+    # window and pane, so the default is to wait for the user's own next quit
+    # (CLI-22); either way the settings land, and no answer leaves them drifted.
     if not args.yes:
-        print("\nApplying this needs iTerm2 to quit, which closes every window "
-              "and pane — including this session.\nRun it when idle, not with "
-              "active work open.")
-        ok = _prompt_tty("Quit iTerm2, apply, and relaunch now?", False)
-        if not ok:
-            print("Aborted — no changes made.")
+        print("Applying these needs iTerm2 to quit:")
+        for s in selected:
+            print(f"  {s['label']}  ({s['key']} = {s['want']})")
+        now = _prompt_tty("Quit and relaunch iTerm2 now? No applies them the next "
+                          "time you quit, with nothing closed.", False)
+        if not now:
+            _queue_after_quit(selected, style)
             return
 
     keys_csv = ",".join(s["key"] for s in selected)
-    _run_after_quit(["configure", "--write", "--yes", "--keys", keys_csv],
+    _run_after_quit(["configure", "--write", "--yes", "--tab-style", style, "--keys", keys_csv],
                     "beacon-configure.",
                     "Quitting iTerm2 — it relaunches with the new layout")
 
@@ -853,10 +1009,12 @@ def cmd_reset_layout(args):
 
 
 def cmd_configure(args):
-    if args.write:
+    if getattr(args, "defer", False):
+        _configure_defer(args)
+    elif args.write:
         _configure_write(args)
     else:
-        _configure_audit()
+        _configure_audit(args.tab_style)
 
 
 # --- entry ---
@@ -916,6 +1074,13 @@ def main(argv=None):
     sp.add_argument("--keys",
                     help="comma-separated setting keys to write, skipping the "
                          "drift check (also the restart helper's handoff)")
+    sp.add_argument("--tab-style", choices=TAB_STYLES, default=DEFAULT_TAB_STYLE,
+                    help="the tab style to recommend (default: minimal)")
+    sp.add_argument("--defer", action="store_true",
+                    help="write the drifted settings the next time iTerm2 quits "
+                         "(or now, if it is closed) instead of restarting it")
+    sp.add_argument("--after-quit", action="store_true",
+                    help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_configure)
 
     sp = sub.add_parser("remigrate-profiles",

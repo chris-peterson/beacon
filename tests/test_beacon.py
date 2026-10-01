@@ -606,31 +606,95 @@ class DoneMode(BeaconTest):
 
 class TabAreaWeighting(BeaconTest):
     """TAB-04 — the tab paints the canonical hue under a per-state area weight,
-    because Minimal (CLI-18) fills the whole tab with it. Every other surface
-    takes the hue at full strength."""
+    one table per iTerm2 tab style, because Minimal fills the whole tab with it and
+    Compact blends it toward gray. Every other surface takes the hue at full
+    strength."""
 
-    def test_every_color_state_has_a_weight(self):
-        self.assertEqual(set(self.beacon.TAB_MUTE), set(self.beacon.COLOR_PALETTE),
-                         "a state with no weight would paint the tab at full strength")
+    def test_every_tab_style_weights_every_color_state(self):
+        for style, weights in self.beacon.TAB_MUTE.items():
+            with self.subTest(style=style):
+                self.assertEqual(set(weights), set(self.beacon.COLOR_PALETTE),
+                                 "a state with no weight would paint the tab at full strength")
+
+    def test_the_tab_styles_match_the_layouts_the_cli_recommends(self):
+        iterm = _load_beacon_iterm()
+        self.assertEqual(self.beacon.TAB_STYLES, iterm.TAB_STYLES)
+        self.assertEqual(self.beacon.DEFAULT_TAB_STYLE, iterm.DEFAULT_TAB_STYLE)
 
     def test_the_weight_ladder_follows_urgency(self):
         # The point is contrast *between* states, so the order is the contract —
         # uniform dimming is what flattened the signal.
-        w = self.beacon.TAB_MUTE
-        self.assertGreater(w["blocked"], w["busy"])
-        self.assertGreater(w["busy"], w["ready"])
+        for style, w in self.beacon.TAB_MUTE.items():
+            with self.subTest(style=style):
+                self.assertGreater(w["blocked"], w["busy"])
+                self.assertGreater(w["busy"], w["ready"])
 
     def test_weighting_preserves_hue_and_saturation(self):
         # Scaling every channel by the same factor moves only HSV value. If a
         # weight ever reached hue, `blocked` would stop meaning red.
-        for state, weight in self.beacon.TAB_MUTE.items():
-            with self.subTest(state=state):
-                base = self.beacon.COLOR_PALETTE[state]
-                tab = self.beacon._tab_hex(state)
-                src = [int(base[i:i+2], 16) for i in (0, 2, 4)]
-                got = [int(tab[i:i+2], 16) for i in (0, 2, 4)]
-                for a, b in zip(src, got):
-                    self.assertAlmostEqual(b, a * weight, delta=1)
+        for style, weights in self.beacon.TAB_MUTE.items():
+            for state, weight in weights.items():
+                with self.subTest(style=style, state=state), \
+                        mock.patch.object(self.beacon, "_tab_style", return_value=style):
+                    base = self.beacon.COLOR_PALETTE[state]
+                    tab = self.beacon._tab_hex(state)
+                    src = [int(base[i:i+2], 16) for i in (0, 2, 4)]
+                    got = [int(tab[i:i+2], 16) for i in (0, 2, 4)]
+                    for a, b in zip(src, got):
+                        self.assertAlmostEqual(b, a * weight, delta=1)
+
+    def test_regular_indents_both_label_lines_to_clear_the_pill_curve(self):
+        # TITLE-06a: Regular's pill has a radius of half the tab's height, so
+        # the label starts inside the curve without an extra indent.
+        with mock.patch.object(self.beacon, "_tab_style", return_value="regular"), \
+                mock.patch.object(self.beacon, "_load_config", return_value={}):
+            self.beacon.apply({**_base_state(), "task": "ship it"})
+        self.assertIn(("uservar", "beacon_title_prefix", "   " + self.beacon.DEV_TITLE_LEAD),
+                      self.cli_calls)
+        self.assertIn(("uservar", "beacon_task_nl", "\n     ship it"), self.cli_calls)
+
+    def test_minimal_and_compact_keep_the_shipped_indents(self):
+        self.assertEqual(self.beacon.TAB_LABEL_INDENT["minimal"], (0, 2))
+        self.assertEqual(self.beacon.TAB_LABEL_INDENT["compact"], (0, 2))
+
+    def test_the_config_overrides_each_line(self):
+        with mock.patch.object(self.beacon, "_load_config",
+                               return_value={"tab_indent": {"line-1": 1, "line-2": 4}}):
+            self.assertEqual(self.beacon._tab_indent(), (1, 4))
+            self.beacon.apply({**_base_state(), "task": "ship it"})
+        self.assertIn(("uservar", "beacon_task_nl", "\n    ship it"), self.cli_calls)
+
+    def test_a_line_left_out_keeps_the_style_default(self):
+        with mock.patch.object(self.beacon, "_load_config", return_value={"tab_indent": {"line-2": 4}}):
+            self.assertEqual(self.beacon._tab_indent(), (0, 4))
+
+    def test_a_malformed_indent_is_logged_and_reads_as_the_default(self):
+        for raw in ([0, 2], {"line-3": 1}, "3"):
+            with self.subTest(raw=raw), \
+                    mock.patch.object(self.beacon, "_load_config", return_value={"tab_indent": raw}), \
+                    mock.patch.object(self.beacon, "log_error") as logged:
+                self.assertEqual(self.beacon._tab_indent(), self.beacon.TAB_LABEL_INDENT["minimal"])
+                self.assertEqual(logged.call_args.args[0], "config.tab_indent")
+        for n in ("1", 99, True):
+            with self.subTest(n=n), \
+                    mock.patch.object(self.beacon, "_load_config",
+                                      return_value={"tab_indent": {"line-1": 1, "line-2": n}}), \
+                    mock.patch.object(self.beacon, "log_error") as logged:
+                self.assertEqual(self.beacon._tab_indent(), (1, 2))
+                self.assertEqual(logged.call_args.args[0], "config.tab_indent")
+
+    def test_the_tab_style_comes_from_the_user_config(self):
+        with mock.patch.object(self.beacon, "_load_config", return_value={"tab_style": "Compact"}):
+            self.assertEqual(self.beacon._tab_style(), "compact")
+        with mock.patch.object(self.beacon, "_load_config", return_value={}):
+            self.assertEqual(self.beacon._tab_style(), "minimal")
+
+    def test_an_unknown_tab_style_is_logged_and_paints_the_default(self):
+        with mock.patch.object(self.beacon, "_load_config", return_value={"tab_style": "tahoe"}), \
+                mock.patch.object(self.beacon, "log_error") as logged:
+            self.assertEqual(self.beacon._tab_style(), "minimal")
+        self.assertEqual(logged.call_args.args[0], "config.tab_style")
+        self.assertIn(("config.tab_style"), self.beacon._DOCTOR_ADVICE)
 
     def test_the_tab_takes_the_weighted_hue(self):
         self.beacon.apply({**_base_state(), "activity": "waiting"})
@@ -650,6 +714,107 @@ class TabAreaWeighting(BeaconTest):
     def test_an_unknown_state_falls_back_without_weighting(self):
         self.assertEqual(self.beacon._tab_hex("nonesuch"),
                          self.beacon._mute_hex(self.beacon.COLOR_PALETTE["ready"], 1.0))
+
+
+class ConfigCommand(BeaconTest):
+    """CMD-32 — `beacon config` reads and changes the user config's settings, so
+    switching tab style or allowing a dashboard origin needs no hand-edited JSON."""
+
+    def setUp(self):
+        super().setUp()
+        self.config = self.data_dir / "cfg" / "config.json"
+        patcher = mock.patch.object(self.beacon, "_config_file", return_value=self.config)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _run(self, *argv):
+        args = self.beacon.argparse.Namespace(setting=argv[0] if argv else None,
+                                              values=list(argv[1:]))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon.cmd_config(args)
+        return buf.getvalue()
+
+    def _saved(self):
+        return json.loads(self.config.read_text())
+
+    def test_tab_style_is_written_and_other_keys_kept(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text(json.dumps({"badge": "on"}))
+        out = self._run("tab-style", "Compact")
+        self.assertEqual(self._saved(), {"badge": "on", "tab_style": "compact"})
+        self.assertIn("layout --write", out)
+        self.assertEqual(self._run("tab-style").strip(), "compact")
+
+    def test_an_unknown_tab_style_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self._run("tab-style", "tahoe")
+        self.assertFalse(self.config.exists())
+
+    def test_origins_are_normalized_and_deduplicated(self):
+        self._run("origins", "add", "https://Dash.Example.com/")
+        self._run("origins", "add", "https://dash.example.com")
+        self.assertEqual(self._saved()["focus_origins"], ["https://dash.example.com"])
+        self.assertIn("https://dash.example.com", self.beacon._allowed_origins())
+        self._run("origins", "remove", "https://dash.example.com")
+        self.assertEqual(self._saved()["focus_origins"], [])
+
+    def test_an_origin_with_a_path_is_refused(self):
+        # A browser's Origin header never carries a path, so a stored one would
+        # match nothing.
+        with self.assertRaises(SystemExit):
+            self._run("origins", "add", "https://dash.example.com/app")
+
+    def test_the_built_in_origin_cannot_be_removed(self):
+        with self.assertRaises(SystemExit):
+            self._run("origins", "remove", sorted(self.beacon.BROWSER_ORIGIN_ALLOWLIST)[0])
+
+    def test_each_tab_indent_line_is_set_and_reset(self):
+        self._run("tab-indent.1", "3")
+        self._run("tab-indent.2", "5")
+        self.assertEqual(self._saved()["tab_indent"], {"line-1": 3, "line-2": 5})
+        self._run("tab-indent.1", "reset")
+        self.assertEqual(self._saved()["tab_indent"], {"line-2": 5})
+        self._run("tab-indent", "reset")
+        self.assertNotIn("tab_indent", self._saved())
+        for bad in (("tab-indent.1", "x"), ("tab-indent.1", "13"), ("tab-indent", "3"),
+                    ("tab-indent.2", "3", "5")):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                self._run(*bad)
+
+    def test_auto_pause_is_off_until_set(self):
+        self.assertIsNone(self.beacon._auto_pause_seconds())
+        with mock.patch.object(self.beacon, "_serve_answering", return_value=True):
+            self._run("auto-pause", "30m")
+        self.assertEqual(self._saved()["auto_pause"], "30m")
+        self.assertEqual(self.beacon._auto_pause_seconds(), 1800)
+        self._run("auto-pause", "off")
+        self.assertNotIn("auto_pause", self._saved())
+        self.assertIsNone(self.beacon._auto_pause_seconds())
+        with self.assertRaises(SystemExit):
+            self._run("auto-pause", "soon")
+
+    def test_setting_auto_pause_says_when_serve_is_not_running(self):
+        with mock.patch.object(self.beacon, "_serve_answering", return_value=False):
+            out = self._run("auto-pause", "1h")
+        self.assertIn("beacon serve install", out)
+        with mock.patch.object(self.beacon, "_serve_answering", return_value=True):
+            out = self._run("auto-pause", "1h")
+        self.assertNotIn("beacon serve install", out)
+
+    def test_a_malformed_auto_pause_is_logged_and_reads_as_off(self):
+        self.config.parent.mkdir(parents=True, exist_ok=True)
+        self.config.write_text(json.dumps({"auto_pause": "0m"}))
+        with mock.patch.object(self.beacon, "log_error") as logged:
+            self.assertIsNone(self.beacon._auto_pause_seconds())
+        self.assertEqual(logged.call_args.args[0], "config.auto_pause")
+
+    def test_a_malformed_config_is_not_overwritten(self):
+        self.config.parent.mkdir(parents=True)
+        self.config.write_text("{not json")
+        with self.assertRaises(SystemExit):
+            self._run("tab-style", "compact")
+        self.assertEqual(self.config.read_text(), "{not json")
 
 
 class PlanModeAwareness(BeaconTest):
@@ -1548,13 +1713,14 @@ class CustomizableStatusBarButtons(unittest.TestCase):
 
     def test_layout_audits_by_default(self):
         seen = self._layout()
-        self.assertEqual(seen["cmd"][-1], "configure")
+        self.assertEqual(seen["cmd"][-3:], ["configure", "--tab-style", "minimal"])
         self.assertNotIn("--write", seen["cmd"])
 
     def test_layout_passes_its_flags_through(self):
         seen = self._layout(write=True, yes=True, keys="HideTab,TabViewType")
-        self.assertEqual(seen["cmd"][-5:],
-                         ["configure", "--write", "--yes", "--keys", "HideTab,TabViewType"])
+        self.assertEqual(seen["cmd"][-7:],
+                         ["configure", "--tab-style", "minimal",
+                          "--write", "--yes", "--keys", "HideTab,TabViewType"])
 
     def test_layout_tells_the_cli_which_command_to_advertise(self):
         # Otherwise the advice names beacon-iterm, which is the whole reason a
@@ -4214,6 +4380,18 @@ class InstallGating(unittest.TestCase):
             p = mock.patch.object(self.beacon, name, return_value=val)
             self.mocks[name] = p.start()
             self.addCleanup(p.stop)
+        # The layout step shells out to the real CLI, which reads this machine's
+        # iTerm2 prefs and, with no terminal, queues a real write for the next
+        # quit (CLI-22). Tests that exercise it stub it themselves.
+        real_run = self.beacon.subprocess.run
+
+        def no_real_layout(cmd, *a, **k):
+            if "configure" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return real_run(cmd, *a, **k)
+        p = mock.patch.object(self.beacon.subprocess, "run", side_effect=no_real_layout)
+        p.start()
+        self.addCleanup(p.stop)
 
     def _run_install(self, dir=None, skip_layout=False):
         buf = io.StringIO()
@@ -4296,7 +4474,7 @@ class InstallGating(unittest.TestCase):
         self.assertIn(self.beacon.LAYOUT_COMMAND, out,
                       "the skipped step should still name the command that runs it")
 
-    def _run_install_with_layout(self, audit_rc: int, write_rc: int = 0):
+    def _run_install_with_layout(self, audit_rc: int, write_rc: int = 0, tty: bool = True):
         """Install with the layout audit and write stubbed, returning the output
         and the CLI argv install used. The real audit shells out to `defaults
         read`, so without this the closing line — and these tests — turn on
@@ -4311,14 +4489,24 @@ class InstallGating(unittest.TestCase):
                 return subprocess.CompletedProcess(cmd, rc, stdout="", stderr="")
             return real_run(cmd, *a, **k)
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
+                mock.patch.object(self.beacon, "_has_tty", return_value=tty), \
                 mock.patch.object(self.beacon.subprocess, "run", side_effect=fake_run):
             return self._run_install(), layout_calls
+
+    def test_with_no_terminal_the_cosmetic_settings_are_queued(self):
+        # CLI-22: the freshness nudge runs install from a slash command, where
+        # nothing can confirm a restart, so the layout is queued for the next
+        # time iTerm2 quits rather than skipped.
+        out, calls = self._run_install_with_layout(audit_rc=1, tty=False)
+        self.assertIn(["configure", "--defer", "--tab-style", "minimal"], calls)
+        self.assertFalse(any("--write" in c for c in calls),
+                         "a write needs a terminal to confirm the restart on")
 
     def test_install_completes_in_place(self):
         out, calls = self._run_install_with_layout(audit_rc=0)
         self.assertIn("no iTerm2 restart required", out)
         self.assertNotIn("DEFERRED", out)
-        self.assertEqual(calls, [["configure"]],
+        self.assertEqual(calls, [["configure", "--tab-style", "minimal"]],
                          "An aligned layout must not be written again")
 
     def test_a_drifted_layout_is_applied_not_just_reported(self):
@@ -4326,7 +4514,8 @@ class InstallGating(unittest.TestCase):
         # as advice they stayed drifted — the closing line read as "nothing left
         # to do" beneath a report saying otherwise.
         out, calls = self._run_install_with_layout(audit_rc=1, write_rc=0)
-        self.assertEqual(calls, [["configure"], ["configure", "--write"]],
+        self.assertEqual(calls, [["configure", "--tab-style", "minimal"],
+                                 ["configure", "--write", "--tab-style", "minimal"]],
                          "Drift must be offered for writing, after the audit table")
         self.assertIn("no iTerm2 restart required", out)
 
@@ -4335,7 +4524,7 @@ class InstallGating(unittest.TestCase):
         # already landed, so declining is a complete answer — install reports the
         # layout as outstanding and names the command, rather than erroring.
         out, calls = self._run_install_with_layout(audit_rc=1, write_rc=1)
-        self.assertIn(["configure", "--write"], calls)
+        self.assertIn(["configure", "--write", "--tab-style", "minimal"], calls)
         self.assertNotIn("no iTerm2 restart required", out)
         self.assertIn("need an iTerm2 restart", out)
         self.assertIn("beacon layout --write", out)
@@ -5687,7 +5876,7 @@ class ConfigureLayoutAudit(unittest.TestCase):
         with mock.patch("subprocess.run", side_effect=fake_run), \
                 contextlib.redirect_stdout(buf), \
                 self.assertRaises(SystemExit) as cm:
-            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None))
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal"))
         return cm.exception.code, buf.getvalue()
 
     def _aligned(self):
@@ -5726,6 +5915,20 @@ class ConfigureLayoutAudit(unittest.TestCase):
         self.assertEqual(side["want"], self._spec("DefaultTabBarHeight")["want"])
         self.assertEqual(self.iterm._defaults_write_args(side), ["-float", "90"])
 
+    def test_compact_recommends_its_own_style_and_drops_the_minimal_height(self):
+        # Compact's left strip takes DefaultTabBarHeight, so the Minimal-only
+        # per-tab height would be drift the user can't see any effect from.
+        layout = {s["key"]: s for s in self.iterm._recommended_layout("compact")}
+        self.assertEqual(layout["TabStyleWithAutomaticOption"]["want"], "6")
+        self.assertNotIn("CompactMinimalTabBarHeight", layout)
+        self.assertNotIn("MinimalSelectedTabUnderlineProminence", layout)
+        self.assertEqual(self.iterm._recommended_layout("minimal"), self.iterm.RECOMMENDED_LAYOUT)
+        regular = {s["key"]: s for s in self.iterm._recommended_layout("regular")}
+        self.assertEqual(regular["TabStyleWithAutomaticOption"]["want"], "4")
+        self.assertNotIn("MinimalSelectedTabUnderlineProminence", regular)
+        with self.assertRaises(ValueError):
+            self.iterm._recommended_layout("tahoe")
+
     def test_status_bar_sits_at_the_top(self):
         # The bottom of the pane is Claude Code's, where beacon renders its own
         # status line.
@@ -5752,6 +5955,73 @@ class ConfigureLayoutAudit(unittest.TestCase):
             self.assertNotIn("quit", cmd[-1], f"the audit must not act on iTerm2: {cmd}")
 
 
+class ConfigureLayoutDefer(unittest.TestCase):
+    """CLI-22 — `configure --defer` converges the layout without closing
+    anything: now if iTerm2 is closed, else at the user's next quit."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        pidfile = Path(self._tmp.name) / "deferred.pid"
+        patcher = mock.patch.object(self.iterm, "_deferred_pidfile", return_value=pidfile)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.pidfile = pidfile
+
+    def _args(self):
+        return types.SimpleNamespace(tab_style="minimal", defer=True, write=False)
+
+    def _drift(self):
+        return list(self.iterm.RECOMMENDED_LAYOUT)
+
+    def _run(self, running):
+        buf = io.StringIO()
+        with mock.patch.object(self.iterm, "_layout_drift", return_value=self._drift()), \
+                mock.patch.object(self.iterm, "_is_iterm_running", return_value=running), \
+                mock.patch.object(self.iterm, "_apply_layout") as applied, \
+                mock.patch("subprocess.Popen") as popen, \
+                contextlib.redirect_stdout(buf):
+            popen.return_value.pid = os.getpid()
+            self.iterm.cmd_configure(self._args())
+        return applied, popen, buf.getvalue()
+
+    def test_the_strip_width_is_only_a_starting_value(self):
+        # Dragging the strip is the one way a user sets this, so any width they
+        # chose satisfies the recommendation and a converging write never resets it.
+        spec = next(s for s in self.iterm.RECOMMENDED_LAYOUT if s["key"] == "LeftTabBarWidth")
+        self.assertTrue(self.iterm._aligned(spec, "390"))
+        self.assertFalse(self.iterm._aligned(spec, None))
+
+    def test_with_iterm_closed_they_are_written_now_without_a_relaunch(self):
+        applied, popen, _ = self._run(running=False)
+        keys = {s["key"] for s in applied.call_args.args[0]}
+        self.assertEqual(keys, {s["key"] for s in self.iterm.RECOMMENDED_LAYOUT})
+        self.assertEqual(applied.call_args.kwargs, {"relaunch": False})
+        popen.assert_not_called()
+
+    def test_with_iterm_running_a_helper_is_queued(self):
+        _, popen, out = self._run(running=True)
+        argv = popen.call_args.args[0]
+        self.assertIn("--after-quit", argv)
+        keys = set(argv[argv.index("--keys") + 1].split(","))
+        self.assertEqual(keys, {s["key"] for s in self.iterm.RECOMMENDED_LAYOUT})
+        self.assertIn("apply the next time you quit iTerm2", out)
+        self.assertIn("--write --yes --keys", out)
+
+    @unittest.skipIf(os.name == "nt", "no liveness probe on Windows: signal 0 is CTRL_C_EVENT")
+    def test_a_queued_helper_is_reused(self):
+        self._run(running=True)
+        _, popen_again, _ = self._run(running=True)
+        popen_again.assert_not_called()
+
+    def test_the_liveness_probe_never_signals_on_windows(self):
+        with mock.patch.object(self.iterm.os, "name", "nt"), \
+                mock.patch.object(self.iterm.os, "kill") as kill:
+            self.assertFalse(self.iterm._pid_alive(os.getpid()))
+        kill.assert_not_called()
+
+
 class ConfigureLayoutWrite(unittest.TestCase):
     """`configure --write` applies the layout without the Preferences GUI: it
     writes typed defaults only while iTerm2 is down, and when iTerm2 is up it
@@ -5760,9 +6030,15 @@ class ConfigureLayoutWrite(unittest.TestCase):
 
     def setUp(self):
         self.iterm = _load_beacon_iterm()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.object(self.iterm, "_deferred_pidfile",
+                                    return_value=Path(self._tmp.name) / "deferred.pid")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _args(self, **kw):
-        return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, **kw})
+        return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, "tab_style": "minimal", **kw})
 
     @staticmethod
     def _fake_run(calls, running: bool):
@@ -5815,7 +6091,7 @@ class ConfigureLayoutWrite(unittest.TestCase):
             self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
         self.assertEqual(len(popen), 1)
         helper = popen[0][-1]
-        self.assertIn("configure --write --yes --keys", helper)
+        self.assertIn("configure --write --yes --tab-style minimal --keys", helper)
         self.assertIn("StatusBarPosition", helper)
         self.assertNotIn("pgrep", helper,
                          "the helper would fall through before iTerm2 finished quitting")
@@ -5846,15 +6122,17 @@ class ConfigureLayoutWrite(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(logs[0].stat().st_mode), 0o600)
         self.assertIn(str(logs[0]), buf.getvalue())
 
-    def test_running_declined_makes_no_changes(self):
-        calls, popen = [], []
+    def test_running_declined_queues_for_the_next_quit(self):
+        # CLI-22: no answer leaves the layout drifted. Declining the restart
+        # queues the settings for the user's own next quit, closing nothing.
+        calls = []
         with mock.patch("subprocess.run", side_effect=self._fake_run(calls, True)), \
-                mock.patch("subprocess.Popen",
-                                  side_effect=lambda *a, **k: popen.append(a)), \
+                mock.patch("subprocess.Popen") as popen, \
                 mock.patch.object(self.iterm, "_prompt_tty", return_value=False), \
                 contextlib.redirect_stdout(io.StringIO()):
+            popen.return_value.pid = os.getpid()
             self.iterm.cmd_configure(self._args(yes=False, keys="StatusBarPosition"))
-        self.assertEqual(popen, [])
+        self.assertIn("--after-quit", popen.call_args.args[0])
         self.assertFalse(self._quit_requested(calls))
         self.assertFalse(any(c[:2] == ["defaults", "write"] for c in calls))
 
@@ -5988,7 +6266,7 @@ class LayoutAdviceNamesTheFrontDoor(unittest.TestCase):
                 mock.patch.dict(os.environ, {"BEACON_LAYOUT_COMMAND": "beacon layout"}), \
                 contextlib.redirect_stdout(buf), \
                 self.assertRaises(SystemExit):
-            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None))
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal"))
         self.assertIn("beacon layout --write", buf.getvalue())
         self.assertNotIn("beacon-iterm", buf.getvalue())
 

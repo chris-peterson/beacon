@@ -447,6 +447,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
+    'config:show or change the user config (tab-style, tab-indent, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -526,6 +527,16 @@ _beacon() {
     layout)
       compadd -- --write --yes --keys
       ;;
+    config)
+      case "$CURRENT" in
+        3) compadd tab-style tab-indent tab-indent.1 tab-indent.2 auto-pause origins ;;
+        4) [[ "${words[3]}" == tab-style ]] && compadd minimal compact regular
+           [[ "${words[3]}" == tab-indent* ]] && compadd reset
+           [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
+           [[ "${words[3]}" == origins ]] && compadd add remove ;;
+        5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
+      esac
+      ;;
     refresh-iterm-profiles)
       compadd -- --remigrate
       ;;
@@ -558,12 +569,15 @@ COLOR_PALETTE = {
     "blocked":  "ff5555",
 }
 
-# How much of each state's hue the *tab* actually paints (TAB-04). The tab is the
-# one surface that fills a large area with a state color — iTerm2's Minimal style
-# (pinned by CLI-18) uses the color as the tab's whole background, not as a tint —
-# and a hue that reads right in a 10px dashboard dot is an assault across 90px of
-# left-strip tab. So the hues stay canonical in COLOR_PALETTE and the tab weights
-# them down.
+# How much of each state's hue the *tab* actually paints (TAB-04), per iTerm2 tab
+# style (`tab_style` in the user config; CLI-18 recommends the matching layout).
+# The tab is the one surface that fills a large area with a state color — Minimal
+# uses the color as the tab's whole background, not as a tint — and a hue that
+# reads right in a 10px dashboard dot is an assault across 90px of left-strip tab.
+# So the hues stay canonical in COLOR_PALETTE and the tab weights them down.
+# Compact blends every unselected tab 60% of the way to mid-gray before drawing it
+# (PSMYosemiteTabStyle), which already recedes most of the strip, so its weights
+# sit higher: the Minimal ones stacked on that blend read as washed out.
 #
 # Weighted per state rather than by one global factor, because the fix is not
 # "quieter" — it is *contrast between* states. Uniform dimming calmed the strip
@@ -579,10 +593,38 @@ COLOR_PALETTE = {
 # `NonMinimalDeselectedColoredTabAlpha` default. Tunable here; nothing else
 # reads them.
 TAB_MUTE = {
-    "blocked":  0.90,
-    "busy":     0.52,
-    "ready":    0.46,
+    "minimal": {
+        "blocked":  0.90,
+        "busy":     0.52,
+        "ready":    0.46,
+    },
+    "compact": {
+        "blocked":  0.80,
+        "busy":     0.65,
+        "ready":    0.55,
+    },
+    # Regular draws on macOS 26 as a pill whose color goes through the same
+    # 60%-toward-gray blend as Compact (PSMTahoeTabStyle cellBackgroundColor).
+    "regular": {
+        "blocked":  0.80,
+        "busy":     0.65,
+        "ready":    0.55,
+    },
 }
+TAB_STYLES = tuple(TAB_MUTE)
+
+# Spaces ahead of each tab-label line, per tab style (TITLE-06a): line 1 before
+# its mode lead, line 2 before the task. `tab_indent` in the user config
+# (`{"line-1": n, "line-2": n}`) overrides either. Regular's pill has a corner radius of half the tab's height,
+# so a label at the usual inset starts inside the curve.
+TAB_LABEL_INDENT = {
+    "minimal": (0, 2),
+    "compact": (0, 2),
+    "regular": (3, 5),
+}
+MAX_TAB_INDENT = 12
+TAB_INDENT_LINES = ("line-1", "line-2")
+DEFAULT_TAB_STYLE = "minimal"
 
 ACTIVITY_TO_COLOR_STATE = {
     "idle":     "ready",
@@ -744,12 +786,56 @@ def _mute_hex(hexstr: str, weight: float) -> str:
     return "".join(f"{min(255, round(int(c, 16) * weight)):02x}" for c in channels)
 
 
+def _tab_style() -> str:
+    """The iTerm2 tab style the user runs (`tab_style` in the user config), which
+    picks the tab weights (TAB-04) and the layout `beacon layout` recommends
+    (CLI-18). An unknown value is logged for `doctor` and reads as the default,
+    as every other malformed config value does."""
+    raw = _load_config().get("tab_style")
+    if raw is None:
+        return DEFAULT_TAB_STYLE
+    style = str(raw).strip().lower()
+    if style in TAB_STYLES:
+        return style
+    log_error("config.tab_style", f"unknown tab_style {raw!r}")
+    return DEFAULT_TAB_STYLE
+
+
+def _valid_tab_indent(n) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= MAX_TAB_INDENT
+
+
+def _tab_indent() -> tuple[int, int]:
+    """The spaces ahead of tab-label lines 1 and 2 (TITLE-06a): each line's
+    entry in `tab_indent` from the user config, else the tab style's default
+    for that line. A malformed value is logged for `doctor` and reads as the
+    default."""
+    default = TAB_LABEL_INDENT[_tab_style()]
+    raw = _load_config().get("tab_indent")
+    if raw is None:
+        return default
+    if not isinstance(raw, dict) or set(raw) - set(TAB_INDENT_LINES):
+        log_error("config.tab_indent", f"tab_indent {raw!r} is not an object of "
+                                       f"{' and '.join(TAB_INDENT_LINES)}")
+        return default
+    indent = []
+    for line, fallback in zip(TAB_INDENT_LINES, default):
+        n = raw.get(line, fallback)
+        if not _valid_tab_indent(n):
+            log_error("config.tab_indent", f"tab_indent {line} {n!r} is not a whole number "
+                                           f"0..{MAX_TAB_INDENT}")
+            n = fallback
+        indent.append(n)
+    return indent[0], indent[1]
+
+
 def _tab_hex(color_state: str) -> str:
     """The hex the *tab* paints for a color state (TAB-04) — the canonical hue
-    under its area weight. Every other surface takes COLOR_PALETTE directly: a
-    weight tuned for a full-bleed tab erases a 10px dashboard dot."""
+    under its area weight for the user's tab style. Every other surface takes
+    COLOR_PALETTE directly: a weight tuned for a full-bleed tab erases a 10px
+    dashboard dot."""
     base = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
-    return _mute_hex(base, TAB_MUTE.get(color_state, 1.0))
+    return _mute_hex(base, TAB_MUTE[_tab_style()].get(color_state, 1.0))
 
 
 def _mode_glyph(mode: str | None) -> str:
@@ -2531,6 +2617,36 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.timestamp()
+
+
+# Auto-pause (STATE-16): how long a session goes without activity before the
+# idle sweep parks it. Unset, or `off`, parks nothing: it is opt-in, and it
+# only runs where `beacon serve` does.
+AUTO_PAUSE_OFF = "off"
+
+
+def _duration_seconds(s: str) -> int | None:
+    m = _DURATION_RE.match(s or "")
+    if not m:
+        return None
+    seconds = int(m.group(1)) * _DURATION_UNITS[m.group(2).lower()]
+    return seconds if seconds > 0 else None
+
+
+def _auto_pause_seconds() -> int | None:
+    """The auto-pause window in seconds, or None when auto-pause is off.
+    `auto_pause` from the user config; unset or `off` is off, and a malformed
+    value is logged for `doctor` and reads as off."""
+    raw = _load_config().get("auto_pause")
+    if raw is None:
+        return None
+    text = str(raw).strip().lower()
+    if text == AUTO_PAUSE_OFF:
+        return None
+    seconds = _duration_seconds(text)
+    if seconds is None:
+        log_error("config.auto_pause", f"auto_pause {raw!r} is not a duration like 30m or 2h")
+    return seconds
 
 
 def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> dict:
@@ -4857,7 +4973,9 @@ def apply(state: dict):
     # `release` + `waiting` therefore paints a red tab over the release pane —
     # a state the merged field could not represent at all.
     color_state = _color_state_for(state)
-    glyph = _mode_glyph_for(state)
+    indent1, indent2 = _tab_indent()
+    label_lead = f"{indent1},{indent2}"
+    glyph = " " * indent1 + _mode_glyph_for(state)
     target_profile = _profile_for(state)
 
     # RENDER-05: switch profiles when the target changes — which also covers
@@ -4919,9 +5037,10 @@ def apply(state: dict):
     # snapshot below keeps the source text, so the diff turns on what resolved
     # rather than on how it renders.
     nl_text = state.get("task_nl", state["task"])
-    if nl_text != prev.get("task_nl") or (switched and nl_text):
+    relead = label_lead != prev.get("label_lead", "0,2")
+    if nl_text != prev.get("task_nl") or ((switched or relead) and nl_text):
         marked = _title_markup(nl_text) if nl_text else ""
-        _cli("uservar", "beacon_task_nl", f"\n  {marked}" if marked else "")
+        _cli("uservar", "beacon_task_nl", f"\n{' ' * indent2}{marked}" if marked else "")
 
     # PROV-02a: the location joins the project on line 1 — "beacon @ ai-sdlc" —
     # rather than the task line, where a bare " @ ai-sdlc" has no antecedent to
@@ -4954,6 +5073,7 @@ def apply(state: dict):
         "pending_attention": state.get("pending_attention", False),
         "color_state": color_state,
         "title_prefix": glyph,
+        "label_lead": label_lead,
         "profile": target_profile,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
@@ -6044,6 +6164,17 @@ def cmd_refresh_iterm_profiles(args):
 LAYOUT_COMMAND = "beacon layout"
 
 
+def _has_tty() -> bool:
+    """Whether a terminal is reachable to confirm on. Only an open attempt
+    tells: under Claude Code's Bash tool the device node exists but opening it
+    fails with ENXIO."""
+    try:
+        with open("/dev/tty"):
+            return True
+    except OSError:
+        return False
+
+
 def _layout_env() -> dict:
     return {**os.environ, "BEACON_LAYOUT_COMMAND": LAYOUT_COMMAND}
 
@@ -6057,7 +6188,7 @@ def cmd_layout(args):
     if not _is_iterm_installed():
         sys.exit("iTerm2 not detected — the fleet layout is the iTerm2 render "
                  "adapter's surface, and there is nothing to configure here")
-    argv = ["configure"]
+    argv = ["configure", "--tab-style", _tab_style()]
     if args.write:
         argv.append("--write")
     if args.yes:
@@ -6068,6 +6199,204 @@ def cmd_layout(args):
     # non-zero drift exit is the caller's answer too.
     r = subprocess.run(["python3", str(BEACON_ITERM), *argv], env=_layout_env())
     sys.exit(r.returncode)
+
+
+# An origin is scheme + host (+ port): what a browser sends in `Origin`, and so
+# the only shape the allowlist can ever match (WIP-18). A path or a trailing slash
+# would be stored and never match anything.
+ORIGIN_RE = re.compile(r"^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$")
+
+
+def _config_for_edit() -> dict:
+    """The user config as a dict to modify, refusing a file that doesn't parse:
+    rewriting it would drop whatever the user had in it."""
+    path = _config_file()
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return {}
+    except ValueError as e:
+        sys.exit(f"{path} is not valid JSON ({e}); fix it before beacon edits it")
+    if not isinstance(data, dict):
+        sys.exit(f"{path} holds a JSON {type(data).__name__}, not an object; fix it "
+                 "before beacon edits it")
+    return data
+
+
+def _save_config(data: dict) -> None:
+    path = _config_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    os.replace(tmp, path)
+
+
+def _configured_origins(data: dict) -> list[str]:
+    extra = data.get("focus_origins") or []
+    if isinstance(extra, str):
+        extra = [extra]
+    return [o.strip() for o in extra if isinstance(o, str) and o.strip()]
+
+
+def _normalize_origin(raw: str) -> str:
+    origin = raw.strip().rstrip("/").lower()
+    if not ORIGIN_RE.match(origin):
+        sys.exit(f"{raw!r} is not an origin; expected scheme://host[:port], e.g. "
+                 "https://dashboard.example.com")
+    return origin
+
+
+def _config_tab_style(values: list[str]) -> None:
+    if not values:
+        print(_tab_style())
+        return
+    if len(values) > 1:
+        sys.exit(f"usage: beacon config tab-style [{'|'.join(TAB_STYLES)}]")
+    style = values[0].strip().lower()
+    if style not in TAB_STYLES:
+        sys.exit(f"unknown tab style {values[0]!r}; expected one of {', '.join(TAB_STYLES)}")
+    data = _config_for_edit()
+    data["tab_style"] = style
+    _save_config(data)
+    print(f"tab style: {style} (in {_config_file()})")
+    print(f"Tabs repaint with the {style} weights on their next hook. "
+          f"Switch iTerm2's theme to match with `{LAYOUT_COMMAND} --write`.")
+
+
+def _config_origins(values: list[str]) -> None:
+    data = _config_for_edit()
+    configured = _configured_origins(data)
+    if not values:
+        for o in sorted(BROWSER_ORIGIN_ALLOWLIST):
+            print(f"{o}  (built in)")
+        for o in configured:
+            print(o)
+        return
+    action, rest = values[0], values[1:]
+    if action not in ("add", "remove") or len(rest) != 1:
+        sys.exit("usage: beacon config origins [add|remove <origin>]")
+    origin = _normalize_origin(rest[0])
+    if action == "add":
+        if origin in BROWSER_ORIGIN_ALLOWLIST or origin in configured:
+            print(f"{origin} is already allowed")
+            return
+        configured.append(origin)
+    else:
+        if origin in BROWSER_ORIGIN_ALLOWLIST:
+            sys.exit(f"{origin} is built in and can't be removed")
+        if origin not in configured:
+            sys.exit(f"{origin} is not in the configured origins")
+        configured.remove(origin)
+    data["focus_origins"] = configured
+    _save_config(data)
+    print(f"{'added' if action == 'add' else 'removed'} {origin} (in {_config_file()})")
+    print("serve reads the origins at startup: restart it to apply "
+          "(`beacon serve install` restarts the always-on service).")
+
+
+def _config_tab_indent(line: int | None, values: list[str]) -> None:
+    """`tab-indent` reads or resets both lines; `tab-indent.<1|2>` reads, sets
+    or resets one."""
+    usage = (f"usage: beacon config tab-indent.<1|2> [<spaces> | reset], "
+             f"0..{MAX_TAB_INDENT} spaces; beacon config tab-indent [reset]")
+    if not values:
+        indent = _tab_indent()
+        if line is None:
+            for n, key in enumerate(TAB_INDENT_LINES):
+                print(f"{key} {indent[n]}")
+        else:
+            print(indent[line - 1])
+        return
+    if len(values) != 1:
+        sys.exit(usage)
+    data = _config_for_edit()
+    current = data.get("tab_indent")
+    entries = dict(current) if isinstance(current, dict) else {}
+    value = values[0].strip().lower()
+    keys = TAB_INDENT_LINES if line is None else (TAB_INDENT_LINES[line - 1],)
+    if value == "reset":
+        for key in keys:
+            entries.pop(key, None)
+    elif line is None:
+        sys.exit(usage)
+    else:
+        try:
+            n = int(value)
+        except ValueError:
+            sys.exit(usage)
+        if not _valid_tab_indent(n):
+            sys.exit(usage)
+        entries[keys[0]] = n
+    if entries:
+        data["tab_indent"] = entries
+    else:
+        data.pop("tab_indent", None)
+    _save_config(data)
+    indent = _tab_indent()
+    print("tab indent: " + ", ".join(f"{key} {indent[n]}" for n, key in enumerate(TAB_INDENT_LINES))
+          + f" (in {_config_file()})")
+    print("Tabs repaint with it on their next hook.")
+
+
+def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
+    """Whether a `beacon serve` answers on its loopback port: the one process
+    auto-pause runs in (WIP-21)."""
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/wip.json", timeout=1) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
+def _config_auto_pause(values: list[str]) -> None:
+    if not values:
+        raw = _load_config().get("auto_pause")
+        print(str(raw).strip().lower() if raw is not None else AUTO_PAUSE_OFF)
+        return
+    if len(values) != 1:
+        sys.exit("usage: beacon config auto-pause [<duration> | off]")
+    value = values[0].strip().lower()
+    data = _config_for_edit()
+    if value == AUTO_PAUSE_OFF:
+        data.pop("auto_pause", None)
+        _save_config(data)
+        print("auto-pause: off")
+        return
+    if _duration_seconds(value) is None:
+        sys.exit(f"{values[0]!r} is not a duration like 30m or 2h, or `off`")
+    data["auto_pause"] = value
+    _save_config(data)
+    print(f"auto-pause: after {value} with no activity (in {_config_file()})")
+    if not _serve_answering():
+        print(_color("33", "Auto-pause runs in `beacon serve`, which isn't running. "
+                           "Start it with `beacon serve install`."))
+
+
+def cmd_config(args):
+    """CMD-32: read and change the user config's settings without editing the
+    JSON by hand."""
+    if args.setting == "tab-style":
+        _config_tab_style(args.values)
+    elif args.setting == "tab-indent":
+        _config_tab_indent(None, args.values)
+    elif args.setting in ("tab-indent.1", "tab-indent.2"):
+        _config_tab_indent(int(args.setting[-1]), args.values)
+    elif args.setting == "auto-pause":
+        _config_auto_pause(args.values)
+    elif args.setting == "origins":
+        _config_origins(args.values)
+    else:
+        data = _config_for_edit()
+        print(f"config: {_config_file()}")
+        print(f"  tab-style     {_tab_style()}")
+        for n, indent in enumerate(_tab_indent(), start=1):
+            print(f"  tab-indent.{n}  {indent}")
+        pause = _load_config().get("auto_pause")
+        print(f"  auto-pause    {str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
+        origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
+        print(f"  origins       {', '.join(origins)}")
 
 
 # --- doctor ---
@@ -6087,6 +6416,15 @@ _DOCTOR_ADVICE = {
                 "tier — the project, task, or URL it feeds may be stale or blank.",
     "git": "A git probe failed, so the branch chip and its sync state may be blank.",
     "layout.audit": "The layout audit could not run — see docs/iterm.md.",
+    "config.auto_pause": f"`auto_pause` in {_config_file()} isn't a duration like 30m "
+                         "or 2h, so auto-pause is off. `beacon config auto-pause <duration>` "
+                         "sets it.",
+    "config.tab_indent": f"`tab_indent` in {_config_file()} isn't `line-1` / `line-2` "
+                         f"whole numbers 0..{MAX_TAB_INDENT}, so the tab label uses the tab style's "
+                         "default indent. `beacon config tab-indent reset` clears it.",
+    "config.tab_style": f"`tab_style` in {_config_file()} names no tab style beacon "
+                        f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
+                        f"{DEFAULT_TAB_STYLE} weights.",
     "serve.origin": "serve refused the origin above, so a dashboard on it reads as a "
                     "dead feed. If it is yours, add it to the `focus_origins` list in "
                     f"{_config_file()} and restart serve: the allowlist is read at "
@@ -6600,7 +6938,8 @@ def cmd_install(_args):
     try:
         # Audited captured-and-indented first so the table and the reason for
         # each setting are on screen before anything asks to change them.
-        r = subprocess.run(["python3", str(BEACON_ITERM), "configure"],
+        r = subprocess.run(["python3", str(BEACON_ITERM), "configure",
+                            "--tab-style", _tab_style()],
                            capture_output=True, text=True, timeout=10,
                            env=_layout_env())
         print(textwrap.indent(r.stdout.rstrip(), "  "))
@@ -6618,13 +6957,19 @@ def cmd_install(_args):
         # "nothing left to do" and the layout stayed drifted indefinitely.
         # Declining is a complete answer: the beacon steps are already done.
         #
-        # stdio is inherited so it can prompt, and a non-zero exit (no tty to
-        # confirm on, or the user said no) never fails the install.
+        # stdio is inherited so it can ask whether to restart now; the default
+        # applies the settings at the user's next quit instead (CLI-22). With no
+        # terminal to ask on (the /beacon:install-beacon path the freshness
+        # nudge sends users down) that default is taken without asking.
+        argv = ["configure", "--write"] if _has_tty() else ["configure", "--defer"]
         layout_drifted = subprocess.run(
-            ["python3", str(BEACON_ITERM), "configure", "--write"],
+            ["python3", str(BEACON_ITERM), *argv, "--tab-style", _tab_style()],
             env=_layout_env()).returncode != 0
         print()
 
+    if _tab_style() == DEFAULT_TAB_STYLE:
+        print("Prefer iTerm2's Compact tabs? `beacon config tab-style compact`, "
+              f"then `{LAYOUT_COMMAND} --write`.")
     # After a relaunch this is a fresh shell in a fresh window, so the `exec zsh`
     # below is already satisfied — it only matters on the path that didn't quit.
     print("Next: exec zsh, then open a fresh iTerm2 tab.")
@@ -7020,6 +7365,18 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--keys", default=None, metavar="KEYS",
                     help="comma-separated setting keys to write, skipping the drift check")
 
+    sp = sub.add_parser("config",
+                        help="show or change the user config: tab-style, tab-indent, "
+                             "auto-pause, origins")
+    sp.add_argument("setting", nargs="?",
+                    choices=("tab-style", "tab-indent", "tab-indent.1", "tab-indent.2",
+                             "auto-pause", "origins"),
+                    help="the setting to read or change (default: show them all)")
+    sp.add_argument("values", nargs="*", metavar="VALUE",
+                    help="tab-style: minimal|compact|regular; tab-indent: reset; tab-indent.1, "
+                         "tab-indent.2: <spaces> | reset; auto-pause: <duration> | off; "
+                         "origins: add|remove <origin>")
+
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
     sp = sub.add_parser("open-url",
@@ -7129,6 +7486,7 @@ def main(argv=None):
         "completions": cmd_completions, "install": cmd_install,
         "refresh-iterm-profiles": cmd_refresh_iterm_profiles,
         "layout": cmd_layout,
+        "config": cmd_config,
         "copy-url": cmd_copy_url,
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,

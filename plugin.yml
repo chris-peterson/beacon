@@ -159,7 +159,7 @@ cli:
         useful by hand.
       commands: [open-url, open-code, copy-url]
     - name: Installation
-      commands: [install, completions, refresh-iterm-profiles, layout]
+      commands: [install, completions, refresh-iterm-profiles, layout, config]
     - name: Backup
       commands: [export, import]
     - name: Diagnostics

@@ -141,6 +141,22 @@ commands:
     - name: --yes
     - name: --keys
       arg: KEYS
+- name: config
+  usages:
+  - summary: 'show or change the user config: tab-style, tab-indent, auto-pause, origins'
+    args:
+    - name: tab-style|tab-indent|tab-indent.1|tab-indent.2|auto-pause|origins
+      choices:
+      - tab-style
+      - tab-indent
+      - tab-indent.1
+      - tab-indent.2
+      - auto-pause
+      - origins
+      optional: true
+    - name: VALUE
+      optional: true
+      repeatable: true
 - name: copy-url
   usages:
   - summary: copy the resolved URL to the clipboard via pbcopy
