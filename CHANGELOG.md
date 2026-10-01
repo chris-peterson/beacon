@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+### Compact and Regular tabs
+
+beacon can be tuned for iTerm2's Compact and Regular tab styles as well as
+Minimal. `beacon config tab-style compact` (or `regular`) gives the tab colors
+weights tuned for that style's gray blend, and `beacon layout` recommends the
+matching theme. Regular's macOS 26 pills get extra padding so the label clears
+the rounded ends, and `beacon config tab-indent.1` / `tab-indent.2` set how
+many spaces lead each line of the label in any style. Minimal stays the default.
+
+### `beacon config`
+
+```
+beacon config                                      show the settings and the file
+beacon config tab-style <minimal|compact|regular>  default: minimal
+beacon config tab-indent.<1|2> <spaces|reset>      override the tab style's indent
+beacon config auto-pause <duration|off>            pause idle sessions; default: off
+beacon config origins <add|remove> <origin>        allow a dashboard origin
+```
+
+The two settings you'd otherwise hand-edit in `~/.config/beacon/config.json`
+now have a command. Origins are stored the way a browser sends them, a value
+with a path is refused, and a config file that doesn't parse is left alone.
+
+### No progress bar on the tab
+
+The beacon profiles turn off iTerm2's progress bars. Claude Code reports turn
+progress by OSC 9;4, and iTerm2 animated a bar along each tab's edge, every tab
+at its own period, which kept the strip in constant motion. Re-run
+`beacon refresh-iterm-profiles` to pick it up.
+
+`beacon layout` also recommends hiding iTerm2's tab activity spinner, which
+spins on every working tab and repeats what its color already says, and a
+softer underline under the selected tab in the Minimal style.
+`beacon layout --write` applies both.
+
+The recommended layout now converges. `beacon layout --write` asks one
+question, restart now or apply at your next quit, and the next quit is the
+default, so nothing closes unless you say so. `/beacon:install-beacon`, the
+command an update nudges you to, takes that default without asking, so every
+update lands the layout. The strip width is only a starting value: once you've
+dragged the strip, your width stays.
+
 ### The dev marker sorts like a version
 
 ```

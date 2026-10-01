@@ -43,7 +43,7 @@ A mode's **note** is not a fifth field. It is an argument of the mode, stored wi
 
 | Value | Meaning | Written by |
 |:---|:---|:---|
-| `idle` | Not actively engaged (turn just ended, just opened, freshly resumed) | Default; Hook Stop (turn finished, calm) |
+| `idle` | Not actively engaged (turn just ended, just opened, freshly resumed) | Default; Hook Stop (turn finished, calm); the idle sweep's park (STATE-16) |
 | `working` | Claude is processing a turn | Hook UserPromptSubmit; Hook PreToolUse / PostToolUse (any tool) |
 | `waiting` | Something is blocked on the user (a permission ask, an MCP elicitation, an unanswered prompt — highest user-attention priority) | Hook PermissionRequest (HOOK-03e); Hook Notification, attention kinds (HOOK-03) |
 
@@ -54,7 +54,7 @@ Activity has no declared tier: it cannot be set by hand. A pinned activity outra
 | Value | Meaning | Declared by | Leaves on |
 |:---|:---|:---|:---|
 | `dev` | Everyday development — no declaration | (the absence of a mode) | — |
-| `pause` | User has parked the session | `/beacon:pause` (CMD-25), `beacon pause`, `beacon status pause` | the next prompt (STATE-04) |
+| `pause` | The session is parked | `/beacon:pause` (CMD-25), `beacon pause`, `beacon status pause`; the idle sweep (STATE-16) | the next prompt (STATE-04) |
 | `release` | A release / ship-it flow is in progress | `beacon release` or `beacon status release` | `resume` / `status dev` / session end |
 | `retro` | A post-work follow-up / retro phase | `beacon retro` or `beacon status retro` | `resume` / `status dev` / session end |
 | `done` | Session is complete and ready to hand off | `beacon done` or `beacon status done` | `resume` / `status dev` / session end |
@@ -282,6 +282,10 @@ Rationale: Claude Code updates the plugin in the background, so new code arrives
 
 When the user submits a prompt that begins with a fresh-start slash command (currently `/recipe`), the plugin shall apply the same wipe as HOOK-08a before processing the prompt's `activity = working` (HOOK-01). Rationale: in-session commands that re-bootstrap context are not surfaced to hooks as a SessionStart event, so without this, signals from the prior task would contaminate the new context. The set of fresh-start commands is a tunable list maintained alongside the hook handler.
 
+#### `HOOK-15`
+
+At SessionStart the plugin shall record the terminal device of the pane the session runs in (on macOS a `/dev/ttys*` path), found the way the CLI finds it (CLI-21), and remove the record when it can find none. Rationale: every other writer of a pane's surfaces runs inside that pane and reaches it through its own controlling terminal. The idle sweep (WIP-21) runs in `serve`, which has none, so it needs the pane's terminal named. SessionStart is enough because a pane's terminal device does not change for the life of the pane.
+
 #### `HOOK-03c`
 
 When the resolved color state would be `blocked` because of `pending-attention` or `activity = waiting`, the plugin shall consult the session's transcript (path captured from any hook payload's `transcript_path`). If the most recent assistant message text matches an idle pattern (currently `^\s*ready\b`, case-insensitive), the plugin shall clear the stale markers and re-resolve. Rationale: HOOK-03b's natural clears (Stop / PreToolUse / UserPromptSubmit) are not always reachable — a session killed mid-permission-prompt leaves the markers behind with no hook firing to clear them. The transcript is the ground truth for whether Claude actually finished a turn; the heuristic forgives the missing Stop without requiring it. When the heuristic doesn't apply (no transcript, non-matching text), the user can fall back to `clear` (no field, OVR-04) for an unconditional reset to calm defaults.
@@ -412,6 +416,24 @@ Each mode shall declare whether it means the session is **stood down** — at a 
 
 The attribute lives on the canonical table for the same reason the glyph and the profile do: no call site shall name the stood-down modes by hand, so a mode added later answers the question for itself instead of being forgotten at each reader. Two behaviors read it — the note on line 2 (TITLE-05a) and the dropped idle prompt (HOOK-03d) — and they arrived at the same two modes from unrelated directions, which is what makes this one attribute rather than two coincidences. `pause` is a user halt and `done` is a completed session; both describe a session nothing is expected of. `release` and `retro` describe work in progress in a particular phase.
 
+#### `STATE-16`
+
+While the idle sweep runs (WIP-21) and auto-pause is on, a session shall be **parked** when all of the following hold: it declares no mode (the `dev` cycle), its activity is `idle` or `waiting`, and it has recorded no state for longer than the park window. Parking shall pause the session with no note (STATE-01), recording with the mode that the sweep set it (RES-07), clear its `pending-attention` marker, return its activity to the default `idle`, and render the result to its pane (WIP-21). Auto-pause is off by default. It is turned on by `auto_pause` in the user config file, which holds the window in the `--since` duration grammar (WIP-05); unset or `off` parks nothing, and a malformed value shall be recorded to the error log (`config.auto_pause`) and read as off.
+
+A parked session shall leave its pause on the first hook it records other than Notification or PermissionRequest, before that hook's own writes, as STATE-04 orders them. A pause the user declared keeps STATE-04's rule.
+
+Rationale for the wider exit: a session parked while blocked on a question or a permission prompt resumes when the user answers, and answering is a tool result, not a prompt, so it fires no UserPromptSubmit. The next hook is the tool's PostToolUse, which Claude Code documents as firing after a tool call succeeds. A hook probe on this path recorded PreToolUse and PermissionRequest arriving with the prompt, AskUserQuestion included, the `permission_prompt` notification six seconds later, and nothing more until the user answered. Under STATE-04 alone the session would keep ⏸ while working and then, being paused, drop its next idle prompt (HOOK-03d), hiding a session the user had just taken back up. The two excluded hooks are the session asking rather than the user answering. A declared pause can't take the wider exit: the tool hooks of the turn that runs `/beacon:pause` would end it at once.
+
+The sweep shall leave three kinds of session alone:
+
+- A session whose activity is `working`. One long tool call fires no hook for its whole run, so an hour of silence there is a session at work.
+- A session that declares any mode, `pause` included. `release`, `retro` and `done` are declarations the user made, and replacing a pause would drop the note the user gave it (RES-07).
+- A session with no pane to render to (no recorded terminal, HOOK-15, or one that no longer exists). Its state is left as it was, so the sessions view and the pane never disagree.
+
+Rationale: a user works two or three sessions at a time. Painting every waiting session in the attention color regardless gave the strip a uniform urgency the tab order already contradicts, since the order is where the user keeps priority. Parking takes a session the user has set aside out of the attention channel without asking them to do it. A window of an hour matches the long prompt-cache lifetime: past it, the cache is cold, so answering the session sooner saves nothing.
+
+Clearing the wait is a retraction, not a pinned activity (RES-06): it writes the default a Stop would write, the same step HOOK-03c takes for markers no hook will clear, and the next hook restates the real activity. The retraction covers a pending permission prompt or question too. A parked session is one the user chose not to attend to within the window, and a wait that paints the attention color is exactly what parking removes. The prompt is still there when the user returns to the pane. HOOK-03d keeps the parked session from turning back to `waiting` on its idle timer.
+
 ### 3.6 Skill responsibilities (SKILL)
 
 **SKILL-01, SKILL-02, SKILL-03 — retired.** The plugin ships no skill. The two conventions the skill carried — don't set what the hooks own, and don't narrate a beacon invocation — are stated in the `keep-session-labeled` ambient rule (HOOK-10), which is in context from SessionStart rather than waiting on a skill the model had to decide to load. The freshness check (SKILL-03) was already the hook's job: `hooks/cli-freshness.sh` runs it at SessionStart on every session (CMD-13, Architecture Rule 11), where the skill's version ran at most once and only if invoked.
@@ -448,7 +470,7 @@ When the user invokes `render`, the plugin shall force a re-render with the curr
 
 #### `CMD-08`
 
-When the user invokes `install [--dir <path>]`, the plugin shall perform the terminal-agnostic bootstrap steps (CLI wrapper on `$PATH` — in `<path>`, default `~/.local/bin` — tab completion, and the Claude Code status line), then write the beacon dynamic profiles (STATUS-BAR-01 / RENDER-05), printing one line per step. Every step is idempotent, so re-running `install` is the supported way to recover from drift. iTerm2 reloads its `DynamicProfiles` directory without a restart, so every *beacon-owned* step completes in place. It shall close by running the read-only layout audit (CLI-18), printing the table so each drifted setting and its reason are on screen, and then — when anything differs — invoking `configure --write` to apply them, with that command's own per-setting and pre-quit confirmations intact. The app-wide Appearance settings are the one part of the recommended layout no dynamic profile can carry, so leaving them as advice left them drifted: the step read as *nothing left to do*, beneath a report saying otherwise. Declining is a complete answer — the beacon-owned steps have already landed — and a non-zero exit from the write (no tty to confirm on, or a declined prompt) shall not fail the install, which shall then close by naming `layout --write` (CMD-28). When no render adapter is applicable — iTerm2 absent (not macOS, or iTerm.app not installed) — the plugin shall perform only the terminal-agnostic steps and point the user at the sessions view (`wip` / `watch` / `serve`). `install` shall not start the serve service (WIP-07) — it is opt-in — but shall point the user at it.
+When the user invokes `install [--dir <path>]`, the plugin shall perform the terminal-agnostic bootstrap steps (CLI wrapper on `$PATH` — in `<path>`, default `~/.local/bin` — tab completion, and the Claude Code status line), then write the beacon dynamic profiles (STATUS-BAR-01 / RENDER-05), printing one line per step. Every step is idempotent, so re-running `install` is the supported way to recover from drift. iTerm2 reloads its `DynamicProfiles` directory without a restart, so every *beacon-owned* step completes in place. It shall close by running the read-only layout audit (CLI-18), printing the table so each drifted setting and its reason are on screen, and then — when anything differs — invoking `configure --write` to apply them, which asks only whether to restart iTerm2 now or apply at the next quit (CLI-22). The app-wide Appearance settings are the one part of the recommended layout no dynamic profile can carry, so leaving them as advice left them drifted: the step read as *nothing left to do*, beneath a report saying otherwise. A non-zero exit from the write shall not fail the install, which shall then close by naming `layout --write` (CMD-28). When no terminal is reachable, which is the case for `/beacon:install-beacon`, the command the freshness nudge (HOOK-14) sends users to, the plugin shall invoke `configure --defer` (CLI-22) in place of the write, so the layout still converges after an update. While the tab style is the default, `install` shall also name `config tab-style compact` (CMD-32) as the way to switch. When no render adapter is applicable — iTerm2 absent (not macOS, or iTerm.app not installed) — the plugin shall perform only the terminal-agnostic steps and point the user at the sessions view (`wip` / `watch` / `serve`). `install` shall not start the serve service (WIP-07) — it is opt-in — but shall point the user at it.
 
 #### `CMD-08a`
 
@@ -572,6 +594,12 @@ The ref is a semver **prerelease** identifier, not `+build` metadata: build meta
 
 The plugin shall accept `task <value>` and `project <value>` as top-level subcommands, each equivalent to the corresponding `set` invocation (CMD-02). These two fields are what a session relabels while it works, and they are typed from an ambient rule on almost every session, so they carry a shorthand the other override fields do not.
 
+#### `CMD-32`
+
+When the user invokes `config`, the plugin shall print the user config file's path and the effective value of each setting it manages: the tab style (TAB-04) and the allowed browser origins (WIP-18), the built-in ones included. `config tab-style [minimal|compact|regular]` shall print the tab style, or set `tab_style` and say how to switch iTerm2's theme to match (CMD-28). `config tab-indent.1 [<spaces> | reset]` and `config tab-indent.2` shall print that line's indent (TITLE-06a), or set its entry in `tab_indent`, or remove the entry so the style's default applies; `config tab-indent [reset]` shall print both, or remove both. `config auto-pause [<duration> | off]` shall print the auto-pause window (STATE-16), or set `auto_pause`, or remove it, which turns auto-pause off. Setting a window shall then check that a `beacon serve` answers on its loopback port and, when none does, say that auto-pause runs in it and name `serve install` (WIP-07). `config origins [add|remove <origin>]` shall list the allowed origins, or add one to `focus_origins` or remove one from it, and say that `serve` reads them at startup.
+
+An origin shall be stored in the form a browser sends it (`scheme://host[:port]`, lowercased, no trailing slash). A value with a path shall be refused, because it could never match an `Origin` header, and a built-in origin cannot be removed. Every write shall keep the config's other keys, and a config file that does not parse as a JSON object shall be left untouched with an error naming it. Rationale: both settings are ones a user reaches for more than once (switching tab style while trying the two, adding a dashboard host), and hand-editing the JSON is where a stray comma silently reverts every setting to its default (`_load_config` reads a malformed file as empty).
+
 ---
 
 ### 3.8 Cross-session introspection / export (WIP)
@@ -637,6 +665,14 @@ The plugin shall bundle a self-contained reference dashboard (`dashboard/index.h
 #### `WIP-07`
 
 The serve service is opt-in — the user enables it explicitly, and `install` does not (CMD-08). When the user invokes `serve <install|uninstall|status>` — the lifecycle actions of the same `serve` verb whose bare form runs in the foreground (WIP-04) — the plugin shall manage a platform-native supervised process that keeps `serve` always running, so an external dashboard has a stable endpoint to poll. `serve install` shall write and load a launchd user agent (macOS) or systemd user unit (Linux) that restarts the process on failure; `serve uninstall` shall unload and remove it; `serve status` shall report whether the unit is installed and running. On a platform with no supported supervisor, the command shall print the manual `serve` invocation rather than fail. The unit shall invoke the stable CLI wrapper (`~/.local/bin/beacon`, CMD-13), not a version-pinned path, so a plugin upgrade that refreshes the wrapper keeps the service working without rewriting the unit. The service changes no contract: the state files remain the source of record and the server stays a stateless projection (WIP-04); the per-pane render path (§4) is never routed through it.
+
+#### `WIP-21`
+
+While `serve` runs, it shall run the **idle sweep** once a minute: enumerate the recorded sessions, park each that STATE-16 selects, and render each parked session to its own pane through the terminal that session recorded (HOOK-15, CLI-21), with the session name set through Apple Events as the hooks set it (TITLE-04). A session's age is the newest mtime among its state files, the measure the activity window already uses (WIP-03); the sweep's own writes make a parked session look fresh, which is harmless because STATE-16 skips paused sessions.
+
+The sweep shall fail no request and never stop `serve`: an error parking or rendering one session is recorded to the error log (as `serve.park`) and the sweep moves on to the next.
+
+Rationale: a parked session is one where no hook fires, so parking can't ride a hook. `serve` is the one beacon process that outlives any session, and it already enumerates every session for `/wip.json`. Keeping the sweep there means a user who never installs the service (WIP-07) loses only this behavior, and nothing they have today.
 
 #### `WIP-09`
 
@@ -925,17 +961,21 @@ When invoked as `beacon-iterm configure`, the CLI shall audit the app-wide iTerm
 | Tab bar always visible | `HideTab` | boolean | `0` | iTerm2 hides the bar at one tab per window — where a single-pane session lives — taking the tab color and two-line label with it |
 | Minimal tab style | `TabStyleWithAutomaticOption` | integer | `5` | Minimal paints the state color as the tab's whole background rather than a tint, which is the most legible the signal gets in a left strip; beacon's tab weights (TAB-04) are tuned for that area. `5` is `TAB_STYLE_MINIMAL` in iTerm2's own enum — the Theme popup's item order is *not* the enum, so the value comes from the enum |
 | Tabs on the left | `TabViewType` | integer | `2` | a tall left strip is the natural home for many tabs; the tab color reads as a scannable column |
-| Left strip width | `LeftTabBarWidth` | float | `300` | a wider start than iTerm2's 150pt default, which leaves line 2 of the label — the task (TITLE-05) — almost no width to be read in. It is a starting width, not a final one: dragging the strip's inner edge is the only thing that writes this key, so the audit reports whatever the user settles on as drift |
+| Left strip width | `LeftTabBarWidth` | float | `300` | a wider start than iTerm2's 150pt default, which leaves line 2 of the label — the task (TITLE-05) — almost no width to be read in. It is a starting width, not a final one: dragging the strip's inner edge is the only thing that writes this key, so it is written only while unset and any width the user settles on counts as aligned (`initial`, CLI-22) |
 | Custom tab font size | `UseCustomTabBarFontSize` | boolean | `1` | the switch that lets the size below take effect |
 | Tab-label font size | `CustomTabBarFontSize` | float | `22` | default labels are unreadably small in a left strip |
 | Taller tabs | `DefaultTabBarHeight` | float | `90` | gives the two-line label room to show both lines (TITLE-05) |
 | Taller tabs (Minimal side strip) | `CompactMinimalTabBarHeight` | float | `90` | the per-tab height iTerm2 3.7.0 on gives a Minimal left/right strip — the layout the rows above recommend — in place of `DefaultTabBarHeight`; at its 38pt default line 2 of the label is clipped. Both keys are audited because which one iTerm2 reads depends on its version |
+| Softer selected-tab underline | `MinimalSelectedTabUnderlineProminence` | float | `0.4` | Minimal draws a double underline under the selected tab whenever any tab carries a color, which under beacon is always, at 0.75 × this value; at iTerm2's default of `1` it is the brightest mark in the strip. Softened, it still marks the selected tab |
 | No close button on a tab | `TabsHaveCloseButton` | boolean | `0` | the strip is clicked all day to focus a session, and an errant click on a close button ends one; ending a session is something the user does deliberately |
 | No tab tooltips | `DisableTabBarTooltips` | boolean | `1` | the tooltip repeats the project and task the two-line label already shows, and pops over the neighbouring tabs being scanned |
+| No tab activity spinner | `HideActivityIndicator` | boolean | `1` | iTerm2 spins it on a background tab while the session prints output, and Claude Code's screen redraws for as long as a turn runs, so it repeats what the working tab color (BADGE-09) already says |
 | Status bar at the top | `StatusBarPosition` | integer | `0` | reads as a header for the pane; the bottom is where Claude Code renders the status line (STATUSLINE-01) |
 | Status-bar height | `StatusBarHeight` | float | `32` | the strip pairs each action button with the data it acts on (STATUS-BAR-02); at iTerm2's 21pt default the two halves crowd each other. iTerm2 reads it at launch, which the `--write` orchestration's restart already provides |
 | HTML tab titles | `HTMLTabTitles` | boolean | `1` | renders the `<b>` project accent in the two-line tab label (TITLE-05) |
 | No per-pane title bars | `ShowPaneTitles` | boolean | `0` | a split pane's title bar draws the session name in a plain single-line text field, with none of the tab label's rendering: the `<b>` accent comes out as a literal tag and line 2 is dropped (TITLE-05). The tab label carries the same name in full, and the tab is the surface a session is scanned from |
+
+The table is the recommendation for the default tab style. Given `--tab-style compact` or `--tab-style regular`, the CLI shall recommend `TabStyleWithAutomaticOption` = `6` (`TAB_STYLE_COMPACT`, "automatic + compact windows") or `4` (`TAB_STYLE_AUTOMATIC`, the Regular theme) in place of `5`, and shall drop `CompactMinimalTabBarHeight` and `MinimalSelectedTabUnderlineProminence`, which only the Minimal style reads; every other row is unchanged. The plugin passes the style the user configured (TAB-04), so `beacon layout` and `install` recommend the layout the tab weights are tuned for. The CLI keeps no record of it: the style is an argument, like everything else the CLI is told.
 
 These are global keys in `com.googlecode.iterm2`, not per-profile keys a dynamic profile can carry, so beacon cannot express them in `beacon-dev`. The bare form is **read-only** — the one CLI action that reads iTerm2 preferences rather than writing a surface — and names each drifted setting for the user. `install` (CMD-08) invokes it as a closing advisory step; its non-zero drift exit does not fail the install.
 
@@ -945,7 +985,7 @@ Whether the running check succeeds is the premise the whole `--write` orchestrat
 
 The advice the CLI prints shall name the command the reader is expected to type. `beacon layout` (CMD-28) is that command; the CLI substitutes it when the plugin sets `BEACON_LAYOUT_COMMAND`, and otherwise names its own invocation for a standalone caller.
 
-When invoked as `beacon-iterm configure --write`, the CLI shall apply the recommended values via `defaults write` (typed per the plist: `-int` / `-bool` / `-float`), after confirming each drifted setting (unless `--yes`). Because iTerm2 rewrites the plist from memory on quit — clobbering any write made while it runs — the write shall happen only with iTerm2 **not running**: when iTerm2 is up, the CLI shall confirm the restart (the quit closes every window and pane, including the invoking session — the interactive flow steers the user to run it when idle), then spawn a **detached** helper (`start_new_session`, surviving the SIGHUP iTerm2 sends its children) that polls until iTerm2 exits, re-invokes `configure --write --yes --keys <csv>` — which, finding iTerm2 down, performs the writes and relaunches — logging for debuggability to a temp file the CLI creates itself, exclusively and readable only by the owner, whose path it prints (a fixed name in the temp dir is one another local user can pre-create as a symlink for the truncating open to follow); and finally request the quit via Apple Events (`osascript`). beacon writes an iTerm2 preference by this path and by the migration re-arm (CLI-19), and both are **never automatic and never reached from a hook or render** (§6.6); `install` (CMD-08) invokes it as its closing step, which is user-invoked by construction and keeps every confirmation this requirement specifies. The `--keys` handoff (internal) carries exactly the confirmed subset across the restart so per-setting acknowledgement is preserved. This is the deliberate, resurrected form of the retired quit-write-relaunch orchestration (once `exclusive-configuration`, CMD-12).
+When invoked as `beacon-iterm configure --write`, the CLI shall apply the recommended values via `defaults write` (typed per the plist: `-int` / `-bool` / `-float`), after asking whether to restart iTerm2 now or apply at the next quit (CLI-22; `--yes` restarts now). Because iTerm2 rewrites the plist from memory on quit — clobbering any write made while it runs — the write shall happen only with iTerm2 **not running**: when iTerm2 is up, and the user chose to restart now, the CLI shall spawn a **detached** helper (`start_new_session`, surviving the SIGHUP iTerm2 sends its children) that polls until iTerm2 exits, re-invokes `configure --write --yes --keys <csv>` — which, finding iTerm2 down, performs the writes and relaunches — logging for debuggability to a temp file the CLI creates itself, exclusively and readable only by the owner, whose path it prints (a fixed name in the temp dir is one another local user can pre-create as a symlink for the truncating open to follow); and finally request the quit via Apple Events (`osascript`). beacon writes an iTerm2 preference by this path, by the deferred write (CLI-22), and by the migration re-arm (CLI-19), and none is **ever reached from a hook or render** (§6.6); `install` (CMD-08) invokes the layout write as its closing step. The `--keys` handoff (internal) carries exactly the selected settings across the restart. This is the deliberate, resurrected form of the retired quit-write-relaunch orchestration (once `exclusive-configuration`, CMD-12).
 
 #### `CLI-19`
 
@@ -966,6 +1006,24 @@ The set is **bounded to render inputs**: the tab strip's shape and controls, how
 The CLI shall **export the whole preferences domain before clearing anything**, and name the file it wrote — the backup covers what the reset does not touch as well as what it does, so one restore returns the machine whatever went wrong. The write shall land only with iTerm2 **not running**, by CLI-18's orchestration and for its reason; the backup rides the same deferral, since a plist exported while iTerm2 is up omits whatever it still holds in memory and is overwritten on quit. It shall never be reached from a hook or a render (§6.6).
 
 Rationale: CLI-18's recommendation is a hand-curated list, and its gaps are invisible from a machine that has the missing settings set for unrelated reasons — every surface reads correctly there and wrongly on a colleague's stock install, which is where the gap is first met and hardest to diagnose. Resetting to iTerm2's defaults and re-applying CLI-18 is what makes a gap visible as a surface that still reads wrong. The audit half answers the same question without changing anything, which is what a user comparing two machines actually needs.
+
+#### `CLI-21`
+
+Every CLI subcommand that writes an escape sequence shall accept `--tty <path>` and write there instead of to its own controlling terminal. The CLI shall refuse a path that is not a character device the invoking user owns. Without the flag the CLI keeps its default: its controlling terminal, then the nearest ancestor process that has one, then stdout.
+
+Rationale: this is how a process outside the pane (the idle sweep, WIP-21) renders to it. The ownership check keeps a recorded value from sending escape sequences to another user's terminal or into a regular file.
+
+#### `CLI-22`
+
+The recommended layout shall converge: every drifted setting is written, and no answer to any prompt leaves one drifted. What the user controls is *when* it lands, never *whether*.
+
+- When invoked as `beacon-iterm configure --defer [--tab-style <style>]`, the CLI shall write every drifted setting without a restart: at once when iTerm2 is not running, otherwise through a detached helper that waits for iTerm2 to quit on its own and then writes them, relaunching nothing. It shall print which settings it queued and the `layout --write --yes --keys …` command that applies them now.
+- `configure --write` without `--yes` shall list the drifted settings and ask one question: restart iTerm2 now, or apply them at the next quit. The next quit is the default, and it is also what an unreachable terminal gets.
+- A helper already queued shall be reused rather than a second one started, and it shall write only once iTerm2 is no longer running, whatever pid it first waited on.
+
+A setting marked `initial` is a starting value rather than a recommendation to hold: it shall count as aligned once it carries any value, so it is written only while unset. `LeftTabBarWidth` is the one such setting, because dragging the strip's edge is the only way a user sets it, and a converging write would otherwise reset their width on every update. Settings the recommendation doesn't name are never written.
+
+Rationale: users take updates through the freshness nudge, which runs `install` from a slash command with no terminal, so the confirmed write (CLI-18) could not ask and nothing was written. A per-setting yes/no let every user's layout drift somewhere different, which is the opposite of a recommendation. Waiting for a quit the user makes is the one way to write an app-wide preference without closing their sessions: iTerm2 rewrites its preferences from memory on quit, so a write while it runs is lost. The helper checks iTerm2's pid every few seconds rather than asking iTerm2 over Apple Events, because it may wait for days. It lives only as long as the login session, so a logout before the quit drops it and the next `install` queues it again.
 
 ### 4.3 Badge area (BADGE)
 
@@ -1237,6 +1295,8 @@ Because `SetProfile=` wipes the session's OSC overrides for the keys it sets (§
 
 The beacon dynamic profile shall disable iTerm2's own alerting for the panes it manages — notification-center delivery and terminal-generated alerts — so the permission-prompt and idle-prompt events Claude Code raises, which beacon already surfaces through the badge / tab traffic-light color (BADGE-09), do not also fire duplicate iTerm2 notifications. Rationale: beacon's color state is the intended signal for those events; a second, redundant notification adds no information and can transiently overlay the badge.
 
+The profile shall likewise disable iTerm2's progress bars (`Enable Progress Bars: false`). Claude Code reports its turn progress by OSC 9;4, which iTerm2 draws as an animated bar along the tab's edge. Each tab's bar moves at its own period, independent of the activity spinner, so a strip of them is in constant uneven motion that says nothing the tab color doesn't.
+
 ### 4.6 Tab color (TAB)
 
 The tab color is beacon's primary signal-coloring surface, and with the badge off by default (BADGE-15) usually its only one. It matters more than its size suggests: with many tabs open only one pane is on screen, so the strip is where a session reaches a user who is looking somewhere else.
@@ -1254,6 +1314,8 @@ When the resolved session is cleared (CMD-06 reset, or `beacon-iterm clear`), th
 #### `TAB-04`
 
 The tab shall paint each color state's canonical hue (THEME-02) under a **per-state area weight**, because it is the one surface that fills a large area with a state color: iTerm2's Minimal style — pinned by CLI-18 — uses the color as the tab's entire background rather than a tint, and a left strip makes each tab tall. Every other surface takes the hue at full strength; a weight tuned for a full-bleed tab erases a 10px dashboard dot. The weight preserves hue and saturation and scales only value, so a weighted state is the same color with less light behind it. The `state → weight` table lives in implementation (`TAB_MUTE`), like the palette itself.
+
+The weights are kept **per iTerm2 tab style**, chosen by `tab_style` in the user config (`minimal`, the default, `compact`, or `regular`), because the styles composite a tab color differently. Regular on macOS 26 draws each tab as a pill and blends its color the way Compact does, so the two share weights. Minimal draws an unselected tab's color over the strip at partial strength. Compact blends it 60% of the way to mid-gray, a fixed amount with no setting (`PSMYosemiteTabStyle`), so the strip already recedes before beacon weights anything, and the Minimal weights stacked on that blend read as washed out. An unknown `tab_style` shall be recorded to the error log (`config.tab_style`) and paint the default style's weights.
 
 The weight is **per state, not one global factor**, and tracks how often a state is on screen: `busy` and `ready` are most of every strip and recede furthest; `blocked` is rare and is the whole reason the channel exists, so it keeps nearly all of its voice.
 
@@ -1377,6 +1439,12 @@ This is the mode's **only cross-tab surface**, which is what makes it load-beari
 The mode's *note* is not on line 1, and for a stood-down mode it is on line 2 (TITLE-05a); otherwise its home is the status line (STATUSLINE-01), which has room for prose.
 
 A glyph rather than the word, because line 1 is a single string shared by the tab and the single-line OS window title (§4.8): the two cannot differ (a separate window title would need the iTerm2 Python API over a websocket, which beacon does not use), so a compact mark serves both without a word crowding the tab. The trade is that the window title is not string-searchable by mode name. The glyph is set on entering a mode (a profile swap that re-sets the name, RENDER-05) and cleared on leaving it.
+
+#### `TITLE-06a`
+
+Each line of the tab label shall be indented by its own number of spaces: line 1 ahead of its mode lead (TITLE-06), line 2 ahead of the task. The tab style sets the default: `0` and `2` for `minimal` and `compact`, which is the label as it has always rendered, and `3` and `5` for `regular`. `tab_indent` in the user config (`{"line-1": <spaces>, "line-2": <spaces>}`, each 0 to 12, either optional) overrides it line by line, and a malformed value shall be recorded to the error log (`config.tab_indent`) and read as the style's default. A change of indent shall republish both lines, not only a change of their text.
+
+Rationale: Regular on macOS 26 draws each tab as a pill whose corner radius is half the tab's height (`PSMTahoeTabStyle`), so a label at the usual inset starts inside the curve, and iTerm2 has no setting for the inset. How much clears it depends on the tab height and the font, so it is the user's to tune.
 
 **TITLE-07 — retired.** A planning session blocked on its user led line 1 with a `?` ahead of the mode's glyph. It existed only to carry the attention signal the retired BADGE-09b displaced from the colour channel; with colour answering urgency again, it repeats what the always-painted channel already says. The glyph slot holds one value, and it is the declared mode's (TITLE-06).
 
@@ -1572,12 +1640,13 @@ The CLI shall be usable independently of the plugin — e.g., from a shell scrip
 ```
 state/<session-hash>.override.{project,task}  # OVR-01: only where a provider chain sits below
 state/<session-hash>.anchor.icon            # PROV-08: discovered project icon path
-state/<session-hash>.mode                   # RES-06/-07: {"name","note"} — declared; absent = dev
+state/<session-hash>.mode                   # RES-06/-07: {"name","note","by"} — declared; absent = dev; by = "sweep" for a park (STATE-16)
 state/<session-hash>.activity               # RES-06: idle|working|waiting — hooks only, no override tier
 state/<session-hash>.permission_mode        # PERM-01: the mode Claude Code reported — `plan` is the one beacon reads
 state/<session-hash>.pending-attention
 state/<session-hash>.latest_turn        # WIP-11: most recent turn {role,text,at} for the sessions view
 state/<session-hash>.iterm_session_id   # FOCUS-02: iTerm2 session GUID (focus handle)
+state/<session-hash>.tty                # HOOK-15: the pane's terminal device, for the idle sweep's render (WIP-21)
 state/<session-hash>.resolved           # last-rendered snapshot {project,task,mode,activity,planning,color_state,title_prefix,profile}
 state/<session-hash>.resolved.url       # STATUSLINE-02: PROV-07's URL (its location tiers when the answer shipped pre-session), persisted so the row never re-resolves
 state/<session-hash>.resolved.url_label # STATUSLINE-02: its display label (the link text)

@@ -153,6 +153,25 @@ beacon can also paint an iTerm2 **badge** — the large project/task overlay in 
 
 Re-run `beacon refresh-iterm-profiles` to pick it up; the color follows the same states as the tab.
 
+### Compact and Regular tabs
+
+beacon is tuned for iTerm2's **Minimal** tab style by default, which fills each tab with its state color. It also supports **Compact**, which outlines the selected tab and fades the rest toward gray, and **Regular**, which on macOS 26 draws each tab as a pill: filled when selected, outlined in its color otherwise. Tell beacon which you use, so it weights the colors for that style, pads the label clear of Regular's rounded ends, and recommends the matching layout:
+
+```
+beacon config tab-style regular
+```
+
+Then run `beacon layout --write` to switch iTerm2's theme. `beacon config tab-style minimal` switches back.
+
+If the label sits too close to the tab's edge, set how many spaces lead each line (project, then task):
+
+```
+beacon config tab-indent.1 <spaces>
+beacon config tab-indent.2 <spaces>
+```
+
+`reset` in place of a number returns that line to the style's default, and `beacon config tab-indent reset` returns both. Tabs repaint with the Compact weights on their next hook.
+
 ## The status bar
 
 The status bar carries a fixed-layout strip the tab has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).
@@ -239,13 +258,15 @@ Audit your current setup at any time — it reports only what differs and writes
 beacon layout
 ```
 
+beacon applies all of these; what you choose is when. The strip width is the exception: it's only a starting value, so once you've dragged the strip, your width stays.
+
 Rather than hunt through the Preferences window, let beacon apply them for you:
 
 ```
 beacon layout --write
 ```
 
-It confirms each setting, then quits and relaunches iTerm2 with the new values. The quit is unavoidable: iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered — the only way to make one stick is to write it while iTerm2 is down. **`--write` closes every window and pane, including running sessions, so run it when idle — not with a lot of work open.** (Prefer the GUI? Most are under Appearance → Tabs; the status bar is under Appearance → General, and the Minimal side strip's tab height under Advanced → Tabs.)
+It lists what differs and asks one question: restart iTerm2 now, or apply the settings the next time you quit it. The default is the next quit, so nothing closes unless you say so; `/beacon:install-beacon`, which has no terminal to ask on, takes that default. A restart is needed either way because iTerm2 holds its preferences in memory and rewrites the plist when it quits, so a write made while it's running is silently clobbered. **Restarting now closes every window and pane, including running sessions.** (Prefer the GUI? Most are under Appearance → Tabs; the status bar is under Appearance → General, and the Minimal side strip's tab height under Advanced → Tabs.)
 
 That same in-memory copy is why the audit adds a caveat while iTerm2 is running: it reads the plist on disk, which is the effective value only once iTerm2 is down. When the audit reports every setting aligned but the tab strip disagrees, a write landed behind the running app and will be discarded on quit. Name the setting to write it regardless of what the plist says:
 

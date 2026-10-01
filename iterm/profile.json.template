@@ -11,6 +11,7 @@
       "Blend": 1.0,
       "BM Growl": false,
       "Send Terminal Generated Alerts": false,
+      "Enable Progress Bars": false,
       "Badge Font": "Futura",
       "Badge Text": "",
       "Allow Title Setting": false,
