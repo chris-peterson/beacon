@@ -306,7 +306,7 @@ When Claude Code raises a permission request (PermissionRequest hook, unmatched 
 
 Rationale: HOOK-03's Notification does not accompany the prompt. Claude Code arms a timer when the ask opens and reports it only once the prompt has gone unanswered — measured at six seconds for a plan card and a question card alike — by which point HOOK-03a's PreToolUse has already written `working`. The tab therefore reads busy for the whole window a session is in fact blocked, which is the state a glance across panes most needs to see. PermissionRequest fires in-band with the ask and closes that window.
 
-The two do not make each other redundant. The Notification is the only signal for `idle_prompt`, which no permission request precedes; PermissionRequest is the only one that arrives when the block does. Only asks reach this hook — a tool an allow rule covers is decided without one — so it does not repaint the tab on ordinary tool calls. HOOK-03d does not apply here: it drops an `idle_prompt` observation, and a permission request is the case it exempts in every mode.
+The two do not make each other redundant. The Notification is the only signal for `idle_prompt`, which no permission request precedes; PermissionRequest is the only one that arrives when the block does. Only a call that opens an ask reaches this hook, so it does not repaint the tab on calls an allow rule decides outright. HOOK-03d does not apply here: it drops an `idle_prompt` observation, and a permission request is the case it exempts in every mode.
 
 ### 3.3a Observed permission mode (PERM)
 

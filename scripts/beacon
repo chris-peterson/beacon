@@ -7384,8 +7384,8 @@ def cmd_hook(args):
         # `working` by then, so the tab reads busy through the whole window the
         # session is in fact blocked. This fires in-band with the ask.
         #
-        # Ask path only: a tool an allow rule covers never reaches here, so
-        # this does not repaint on ordinary tool calls.
+        # Ask path only: a call an allow rule decides outright never reaches
+        # here, so this does not repaint on ordinary tool calls.
         write_state("activity", "waiting")
         write_state("pending-attention", "1")
 
