@@ -4,10 +4,9 @@
 
 ### Auto-pause says how long, not since when
 
-A parked session's tab reads `waiting for >30 min` (the park window),
-`for >1 hr`, `idle since yesterday`, `for >1 day`, or `for >1 week` in place of
-a clock time, and the sweep moves the
-note to the next bucket as the park ages. A park made by 2.15.0 keeps its clock
+A parked session's tab reads `inactive for >30 min` (the park window),
+`for >1 hr`, `since yesterday`, `for >1 day`, or `for >1 week` in place of a
+clock time, and the sweep moves the note to the next bucket as the park ages. A park made by 2.15.0 keeps its clock
 time until the session resumes.
 
 ## 2.15.0

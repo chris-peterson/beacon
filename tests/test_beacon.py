@@ -8168,8 +8168,7 @@ class IdleSweep(BeaconTest):
         self.assertEqual(self.beacon.idle_sweep(now=self.NOON), [self.HASH])
         mode = self._mode()
         self.assertEqual((mode["name"], mode["by"]), ("pause", "sweep"))
-        self.assertEqual(mode["note"], "waiting for >1 hr")
-        self.assertEqual(mode["parked"]["activity"], "waiting")
+        self.assertEqual(mode["note"], "inactive for >1 hr")
         self.assertIsNone(self._read("pending-attention"))
         self.assertEqual(self._read("activity"), "idle")
 
@@ -8212,7 +8211,7 @@ class IdleSweep(BeaconTest):
         self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
         self.beacon.idle_sweep(now=self.NOON)
         line2 = [a for a in seen if a[:2] == ("uservar", "beacon_task_nl")]
-        self.assertTrue(line2 and line2[-1][2].strip() == "idle for &gt;1 hr", line2)
+        self.assertTrue(line2 and line2[-1][2].strip() == "inactive for &gt;1 hr", line2)
 
     def test_note_buckets_the_elapsed_time(self):
         now = datetime(2026, 10, 1, 9, 0).timestamp()
@@ -8225,8 +8224,8 @@ class IdleSweep(BeaconTest):
         }
         for ago, span in cases.items():
             with self.subTest(ago=ago):
-                self.assertEqual(self.beacon._park_note("idle", now - ago, now, 30 * 60),
-                                 f"idle {span}")
+                self.assertEqual(self.beacon._park_note(now - ago, now, 30 * 60),
+                                 f"inactive {span}")
 
     def test_first_bucket_is_the_park_window(self):
         now = datetime(2026, 10, 1, 9, 0).timestamp()
@@ -8239,15 +8238,15 @@ class IdleSweep(BeaconTest):
         }
         for (window, ago), span in cases.items():
             with self.subTest(window=window, ago=ago):
-                self.assertEqual(self.beacon._park_note("idle", now - ago, now, window),
-                                 f"idle {span}")
+                self.assertEqual(self.beacon._park_note(now - ago, now, window),
+                                 f"inactive {span}")
 
     def test_yesterday_waits_for_the_first_hour(self):
         now = datetime(2026, 10, 1, 0, 30).timestamp()
-        self.assertEqual(self.beacon._park_note("idle", now - 40 * 60, now, 30 * 60),
-                         "idle for >30 min")
-        self.assertEqual(self.beacon._park_note("idle", now - 2 * 3600, now, 30 * 60),
-                         "idle since yesterday")
+        self.assertEqual(self.beacon._park_note(now - 40 * 60, now, 30 * 60),
+                         "inactive for >30 min")
+        self.assertEqual(self.beacon._park_note(now - 2 * 3600, now, 30 * 60),
+                         "inactive since yesterday")
 
     def test_sweep_moves_a_park_to_its_next_bucket(self):
         self._session(now=self.NOON)
@@ -8260,7 +8259,7 @@ class IdleSweep(BeaconTest):
         self.beacon.idle_sweep(now=self.NOON + 8 * 86400)
         mode = self._mode()
         self.assertEqual((mode["name"], mode["by"], mode["note"]),
-                         ("pause", "sweep", "waiting for >1 week"))
+                         ("pause", "sweep", "inactive for >1 week"))
         self.assertEqual(mode["parked"]["since"], since, "relabeling keeps the original time")
         self.assertTrue(seen, "the new note is rendered to the pane")
 

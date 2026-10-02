@@ -2712,13 +2712,11 @@ def _span_label(seconds: int) -> str:
     return f"{seconds // 60} min" if seconds >= 60 else f"{seconds} sec"
 
 
-def _park_note(activity: str, since: float, now: float, window: int) -> str:
-    """The note a park leaves on line 2 of the tab (TITLE-05a): what the session
-    was doing and for how long, in buckets coarse enough to read at a glance
-    and to change only a few times over a park. The first bucket is the park
-    window itself, since that is what a fresh park has been idle for. It names
-    `waiting` because parking clears the attention color, and the note is all
-    that's left saying it had asked."""
+def _park_note(since: float, now: float, window: int) -> str:
+    """The note a park leaves on line 2 of the tab (TITLE-05a): how long the
+    session has been inactive, in buckets coarse enough to read at a glance and
+    to change only a few times over a park. The first bucket is the park window
+    itself, since that is what a fresh park has been inactive for."""
     elapsed = now - since
     days = (datetime.fromtimestamp(now).date() - datetime.fromtimestamp(since).date()).days
     hour = max(window, 3600)
@@ -2732,7 +2730,7 @@ def _park_note(activity: str, since: float, now: float, window: int) -> str:
         span = "for >1 day"
     else:
         span = "for >1 week"
-    return f"{activity} {span}"
+    return f"inactive {span}"
 
 
 def _on_pane(sh: str, tty: str, guid: str, step) -> None:
@@ -2744,15 +2742,14 @@ def _on_pane(sh: str, tty: str, guid: str, step) -> None:
         _PANE.hash = _PANE.tty = _PANE.guid = None
 
 
-def _park(sh: str, tty: str, guid: str, activity: str, since: float, now: float,
-          window: int) -> None:
+def _park(sh: str, tty: str, guid: str, since: float, now: float, window: int) -> None:
     """Pause `sh` as the sweep, retract its wait, and render it to its own pane.
     The retraction writes the default a Stop would; the next hook restates the
     real activity."""
-    parked = {"activity": activity, "since": since}
+    parked = {"since": since}
 
     def step():
-        write_mode("pause", _park_note(activity, since, now, window), by=PARKED_BY, parked=parked)
+        write_mode("pause", _park_note(since, now, window), by=PARKED_BY, parked=parked)
         remove_state("pending-attention")
         write_state("activity", DEFAULT_ACTIVITY)
 
@@ -2778,7 +2775,7 @@ def _sweep_parked(sh: str) -> dict | None:
 def _relabel_park(sh: str, mode: dict, now: float, window: int) -> bool:
     """Rewrite a park's note when its bucket has moved on, and render it."""
     parked = mode["parked"]
-    note = _park_note(str(parked.get("activity") or DEFAULT_ACTIVITY), parked["since"], now, window)
+    note = _park_note(parked["since"], now, window)
     if note == mode.get("note"):
         return False
     pane = _pane_of(sh)
@@ -2805,8 +2802,7 @@ def idle_sweep(now: float | None = None) -> list[str]:
                 continue
             target = _park_target(sh, now - epoch, window)
             if target:
-                activity = _normalize_activity(_read_state_for(sh, "activity"))
-                _park(sh, *target, activity, epoch, now, window)
+                _park(sh, *target, epoch, now, window)
                 parked.append(sh)
         except Exception as exc:
             log_error("serve.park", f"{sh}: {type(exc).__name__}: {exc}")
