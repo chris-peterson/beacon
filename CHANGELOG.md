@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.15.1
 
 ### Auto-pause says how long, not since when
 
