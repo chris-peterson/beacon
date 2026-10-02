@@ -1129,18 +1129,22 @@ def _mode_tuple(raw: object) -> tuple[str, str]:
     return name, str(raw.get("note") or "")
 
 
-def write_mode(name: str, note: str = "", by: str = "") -> None:
+def write_mode(name: str, note: str = "", by: str = "",
+               parked: dict | None = None) -> None:
     """Enter `name` (a MODES member) with an optional note, or return to the dev
     cycle when `name` is DEV_MODE — which removes the file rather than storing a
     sentinel, so "no mode" has exactly one representation on disk. `by` names a
-    writer other than the user (`sweep`, STATE-16), stored with the mode so it
-    is dropped with it."""
+    writer other than the user (`sweep`, STATE-16), and `parked` the facts the
+    sweep's note is rebuilt from; both are stored with the mode so they are
+    dropped with it."""
     if name == DEV_MODE:
         remove_state("mode")
         return
     mode = {"name": name, "note": note}
     if by:
         mode["by"] = by
+    if parked:
+        mode["parked"] = parked
     write_state("mode", json.dumps(mode, indent=2))
 
 
@@ -2688,6 +2692,12 @@ def _park_target(sh: str, age: float, window: int) -> tuple[str, str] | None:
         return None
     if _normalize_activity(_read_state_for(sh, "activity")) not in PARKABLE_ACTIVITIES:
         return None
+    return _pane_of(sh)
+
+
+def _pane_of(sh: str) -> tuple[str, str] | None:
+    """The `(tty, guid)` a process outside the pane renders `sh` through, or
+    None when the recorded terminal isn't one this user owns (CLI-21)."""
     tty = _read_state_for(sh, "tty")
     guid = _read_iterm_handle(sh)
     if not (tty and guid and _iterm_module().owned_char_device(tty)):
@@ -2695,31 +2705,92 @@ def _park_target(sh: str, age: float, window: int) -> tuple[str, str] | None:
     return tty, guid
 
 
-def _park_note(activity: str, since: float, now: float) -> str:
+def _span_label(seconds: int) -> str:
+    for unit, name in ((86400, "day"), (3600, "hr"), (60, "min")):
+        if seconds >= unit and seconds % unit == 0:
+            return f"{seconds // unit} {name}"
+    return f"{seconds // 60} min" if seconds >= 60 else f"{seconds} sec"
+
+
+def _park_note(activity: str, since: float, now: float, window: int) -> str:
     """The note a park leaves on line 2 of the tab (TITLE-05a): what the session
-    was doing and since when. It names `waiting` because parking clears the
-    attention color, and the note is all that's left saying it had asked."""
-    then = datetime.fromtimestamp(since)
-    same_day = then.date() == datetime.fromtimestamp(now).date()
-    return f"{activity} since {then.strftime('%H:%M' if same_day else '%b %d %H:%M')}"
+    was doing and for how long, in buckets coarse enough to read at a glance
+    and to change only a few times over a park. The first bucket is the park
+    window itself, since that is what a fresh park has been idle for. It names
+    `waiting` because parking clears the attention color, and the note is all
+    that's left saying it had asked."""
+    elapsed = now - since
+    days = (datetime.fromtimestamp(now).date() - datetime.fromtimestamp(since).date()).days
+    hour = max(window, 3600)
+    if elapsed < hour:
+        span = f"for >{_span_label(window)}"
+    elif days == 0:
+        span = f"for >{_span_label(hour)}"
+    elif days == 1:
+        span = "since yesterday"
+    elif elapsed < 7 * 86400:
+        span = "for >1 day"
+    else:
+        span = "for >1 week"
+    return f"{activity} {span}"
 
 
-def _park(sh: str, tty: str, guid: str, note: str) -> None:
-    """Pause `sh` as the sweep, retract its wait, and render it to its own pane.
-    The retraction writes the default a Stop would; the next hook restates the
-    real activity."""
+def _on_pane(sh: str, tty: str, guid: str, step) -> None:
     _PANE.hash, _PANE.tty, _PANE.guid = sh, tty, guid
     try:
-        write_mode("pause", note, by=PARKED_BY)
-        remove_state("pending-attention")
-        write_state("activity", DEFAULT_ACTIVITY)
+        step()
         render()
     finally:
         _PANE.hash = _PANE.tty = _PANE.guid = None
 
 
+def _park(sh: str, tty: str, guid: str, activity: str, since: float, now: float,
+          window: int) -> None:
+    """Pause `sh` as the sweep, retract its wait, and render it to its own pane.
+    The retraction writes the default a Stop would; the next hook restates the
+    real activity."""
+    parked = {"activity": activity, "since": since}
+
+    def step():
+        write_mode("pause", _park_note(activity, since, now, window), by=PARKED_BY, parked=parked)
+        remove_state("pending-attention")
+        write_state("activity", DEFAULT_ACTIVITY)
+
+    _on_pane(sh, tty, guid, step)
+
+
+def _sweep_parked(sh: str) -> dict | None:
+    """The mode record of a park the sweep made and can rebuild the note of."""
+    raw = _read_state_for(sh, "mode")
+    try:
+        mode = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    if not (isinstance(mode, dict) and mode.get("by") == PARKED_BY
+            and _mode_tuple(mode)[0] == "pause"):
+        return None
+    parked = mode.get("parked")
+    if not (isinstance(parked, dict) and isinstance(parked.get("since"), (int, float))):
+        return None
+    return mode
+
+
+def _relabel_park(sh: str, mode: dict, now: float, window: int) -> bool:
+    """Rewrite a park's note when its bucket has moved on, and render it."""
+    parked = mode["parked"]
+    note = _park_note(str(parked.get("activity") or DEFAULT_ACTIVITY), parked["since"], now, window)
+    if note == mode.get("note"):
+        return False
+    pane = _pane_of(sh)
+    if not pane:
+        return False
+    _on_pane(sh, *pane, lambda: write_mode("pause", note, by=PARKED_BY, parked=parked))
+    return True
+
+
 def idle_sweep(now: float | None = None) -> list[str]:
-    """WIP-21: park every session STATE-16 selects. Returns the parked hashes.
+    """WIP-21: park every session STATE-16 selects, and move each earlier park's
+    note on to its current bucket. Returns the newly parked hashes.
     One session's failure is logged and skipped, so the sweep never stops."""
     window = _auto_pause_seconds()
     if window is None:
@@ -2728,10 +2799,14 @@ def idle_sweep(now: float | None = None) -> list[str]:
     parked = []
     for sh, epoch in _session_mtimes().items():
         try:
+            mode = _sweep_parked(sh)
+            if mode:
+                _relabel_park(sh, mode, now, window)
+                continue
             target = _park_target(sh, now - epoch, window)
             if target:
                 activity = _normalize_activity(_read_state_for(sh, "activity"))
-                _park(sh, *target, _park_note(activity, epoch, now))
+                _park(sh, *target, activity, epoch, now, window)
                 parked.append(sh)
         except Exception as exc:
             log_error("serve.park", f"{sh}: {type(exc).__name__}: {exc}")

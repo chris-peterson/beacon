@@ -8129,6 +8129,7 @@ class IdleSweep(BeaconTest):
 
     HASH = "a1b2c3d4e5f60718"
     GUID = "PANE-GUID-1"
+    NOON = datetime(2026, 10, 1, 12, 0).timestamp()
 
     def setUp(self):
         super().setUp()
@@ -8143,11 +8144,11 @@ class IdleSweep(BeaconTest):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({"auto_pause": window}))
 
-    def _session(self, sh=HASH, age=2 * 3600, **fields):
+    def _session(self, sh=HASH, age=2 * 3600, now=None, **fields):
         state = {"activity": "waiting", "tty": self.tty,
                  "iterm_session_id": self.GUID, **fields}
         self.beacon.STATE_DIR.mkdir(parents=True, exist_ok=True)
-        stamp = time.time() - age
+        stamp = (time.time() if now is None else now) - age
         for field, value in state.items():
             if value is None:
                 continue
@@ -8163,11 +8164,12 @@ class IdleSweep(BeaconTest):
         return json.loads(raw) if raw else None
 
     def test_parks_a_waiting_session_past_the_window(self):
-        self._session(**{"pending-attention": "1"})
-        self.assertEqual(self.beacon.idle_sweep(), [self.HASH])
+        self._session(now=self.NOON, **{"pending-attention": "1"})
+        self.assertEqual(self.beacon.idle_sweep(now=self.NOON), [self.HASH])
         mode = self._mode()
         self.assertEqual((mode["name"], mode["by"]), ("pause", "sweep"))
-        self.assertRegex(mode["note"], r"^waiting since \d\d:\d\d$")
+        self.assertEqual(mode["note"], "waiting for >1 hr")
+        self.assertEqual(mode["parked"]["activity"], "waiting")
         self.assertIsNone(self._read("pending-attention"))
         self.assertEqual(self._read("activity"), "idle")
 
@@ -8205,18 +8207,67 @@ class IdleSweep(BeaconTest):
                 self.assertEqual(before, after, "an excluded session's state is left as it was")
 
     def test_line_two_says_since_when(self):
-        self._session(activity="idle")
+        self._session(activity="idle", now=self.NOON)
         seen = []
         self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
-        self.beacon.idle_sweep()
+        self.beacon.idle_sweep(now=self.NOON)
         line2 = [a for a in seen if a[:2] == ("uservar", "beacon_task_nl")]
-        self.assertTrue(line2 and line2[-1][2].strip().startswith("idle since "), line2)
+        self.assertTrue(line2 and line2[-1][2].strip() == "idle for &gt;1 hr", line2)
 
-    def test_note_dates_an_earlier_day(self):
+    def test_note_buckets_the_elapsed_time(self):
         now = datetime(2026, 10, 1, 9, 0).timestamp()
-        self.assertEqual(self.beacon._park_note("idle", now - 3600, now), "idle since 08:00")
-        self.assertEqual(self.beacon._park_note("waiting", now - 86400, now),
-                         "waiting since Sep 30 09:00")
+        cases = {
+            31 * 60: "for >30 min",
+            2 * 3600: "for >1 hr",
+            86400: "since yesterday",
+            3 * 86400: "for >1 day",
+            8 * 86400: "for >1 week",
+        }
+        for ago, span in cases.items():
+            with self.subTest(ago=ago):
+                self.assertEqual(self.beacon._park_note("idle", now - ago, now, 30 * 60),
+                                 f"idle {span}")
+
+    def test_first_bucket_is_the_park_window(self):
+        now = datetime(2026, 10, 1, 9, 0).timestamp()
+        cases = {
+            (10 * 60, 11 * 60): "for >10 min",
+            (90 * 60, 91 * 60): "for >90 min",
+            (2 * 3600, 2 * 3600 + 60): "for >2 hr",
+            (2 * 3600, 3 * 3600): "for >2 hr",
+            (45, 60): "for >45 sec",
+        }
+        for (window, ago), span in cases.items():
+            with self.subTest(window=window, ago=ago):
+                self.assertEqual(self.beacon._park_note("idle", now - ago, now, window),
+                                 f"idle {span}")
+
+    def test_yesterday_waits_for_the_first_hour(self):
+        now = datetime(2026, 10, 1, 0, 30).timestamp()
+        self.assertEqual(self.beacon._park_note("idle", now - 40 * 60, now, 30 * 60),
+                         "idle for >30 min")
+        self.assertEqual(self.beacon._park_note("idle", now - 2 * 3600, now, 30 * 60),
+                         "idle since yesterday")
+
+    def test_sweep_moves_a_park_to_its_next_bucket(self):
+        self._session(now=self.NOON)
+        self.beacon.idle_sweep(now=self.NOON)
+        since = self._mode()["parked"]["since"]
+        seen = []
+        self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
+        self.beacon.idle_sweep(now=self.NOON + 3600)
+        self.assertFalse(seen, "a note still in its bucket is left alone")
+        self.beacon.idle_sweep(now=self.NOON + 8 * 86400)
+        mode = self._mode()
+        self.assertEqual((mode["name"], mode["by"], mode["note"]),
+                         ("pause", "sweep", "waiting for >1 week"))
+        self.assertEqual(mode["parked"]["since"], since, "relabeling keeps the original time")
+        self.assertTrue(seen, "the new note is rendered to the pane")
+
+    def test_sweep_leaves_a_declared_pause_note_alone(self):
+        self._session(mode=json.dumps({"name": "pause", "note": "lunch"}))
+        self.beacon.idle_sweep(now=time.time() + 8 * 86400)
+        self.assertEqual(self._mode()["note"], "lunch")
 
     def test_waits_for_the_window(self):
         self._session(age=30 * 60)
