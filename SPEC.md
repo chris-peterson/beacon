@@ -418,7 +418,7 @@ The attribute lives on the canonical table for the same reason the glyph and the
 
 #### `STATE-16`
 
-While the idle sweep runs (WIP-21) and auto-pause is on, a session shall be **parked** when all of the following hold: it declares no mode (the `dev` cycle), its activity is `idle` or `waiting`, and it has recorded no state for longer than the park window. Parking shall pause the session (STATE-01) with a note naming the activity it had and when the session last recorded state, as `<activity> since <time>` (`idle since 09:45`; a time on an earlier day carries its date), so line 2 of the tab says why the session is paused and since when (TITLE-05a), recording with the mode that the sweep set it (RES-07), clear its `pending-attention` marker, return its activity to the default `idle`, and render the result to its pane (WIP-21). Auto-pause is off by default. It is turned on by `auto_pause` in the user config file, which holds the window in the `--since` duration grammar (WIP-05); unset or `off` parks nothing, and a malformed value shall be recorded to the error log (`config.auto_pause`) and read as off.
+While the idle sweep runs (WIP-21) and auto-pause is on, a session shall be **parked** when all of the following hold: it declares no mode (the `dev` cycle), its activity is `idle` or `waiting`, and it has recorded no state for longer than the park window. Parking shall pause the session (STATE-01) with a note naming the activity it had and how long ago the session last recorded state, in coarse buckets: `for >` the park window until an hour has passed (`for >30 min`), `for >1 hr` later the same day (or `for >` the window, when the window is longer), `since yesterday` on the previous calendar day, `for >1 day` under a week, and `for >1 week` after that (`waiting for >1 hr`), so line 2 of the tab says why the session is paused and for how long (TITLE-05a). It shall record with the mode that the sweep set it and the activity and time the note is built from (RES-07), and on each later sweep rewrite and render the note of a park it made when its bucket has changed. It shall clear its `pending-attention` marker, return its activity to the default `idle`, and render the result to its pane (WIP-21). Auto-pause is off by default. It is turned on by `auto_pause` in the user config file, which holds the window in the `--since` duration grammar (WIP-05); unset or `off` parks nothing, and a malformed value shall be recorded to the error log (`config.auto_pause`) and read as off.
 
 A parked session shall leave its pause on the first hook it records other than Notification or PermissionRequest, before that hook's own writes, as STATE-04 orders them. A pause the user declared keeps STATE-04's rule.
 
@@ -668,7 +668,7 @@ The serve service is opt-in — the user enables it explicitly, and `install` do
 
 #### `WIP-21`
 
-While `serve` runs, it shall run the **idle sweep** once a minute: enumerate the recorded sessions, park each that STATE-16 selects, and render each parked session to its own pane through the terminal that session recorded (HOOK-15, CLI-21), with the session name set through Apple Events as the hooks set it (TITLE-04). A session's age is the newest mtime among its state files, the measure the activity window already uses (WIP-03); the sweep's own writes make a parked session look fresh, which is harmless because STATE-16 skips paused sessions.
+While `serve` runs, it shall run the **idle sweep** once a minute: enumerate the recorded sessions, park each that STATE-16 selects, move each earlier park's note on to its current bucket (STATE-16), and render each session it parks or relabels to its own pane through the terminal that session recorded (HOOK-15, CLI-21), with the session name set through Apple Events as the hooks set it (TITLE-04). A session's age is the newest mtime among its state files, the measure the activity window already uses (WIP-03); the sweep's own writes make a parked session look fresh, which is harmless because STATE-16 skips paused sessions and a relabel reads the time stored with the park.
 
 The sweep shall fail no request and never stop `serve`: an error parking or rendering one session is recorded to the error log (as `serve.park`) and the sweep moves on to the next.
 
@@ -1640,7 +1640,7 @@ The CLI shall be usable independently of the plugin — e.g., from a shell scrip
 ```
 state/<session-hash>.override.{project,task}  # OVR-01: only where a provider chain sits below
 state/<session-hash>.anchor.icon            # PROV-08: discovered project icon path
-state/<session-hash>.mode                   # RES-06/-07: {"name","note","by"} — declared; absent = dev; by = "sweep" for a park (STATE-16)
+state/<session-hash>.mode                   # RES-06/-07: {"name","note","by","parked"} — declared; absent = dev; by = "sweep" and parked = {activity, since} for a park (STATE-16)
 state/<session-hash>.activity               # RES-06: idle|working|waiting — hooks only, no override tier
 state/<session-hash>.permission_mode        # PERM-01: the mode Claude Code reported — `plan` is the one beacon reads
 state/<session-hash>.pending-attention
