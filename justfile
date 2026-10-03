@@ -52,7 +52,7 @@ docs:
 test:
     python3 -m unittest discover -s tests -v
 
-# read what the projection job would commit, without keeping it; `git restore .` discards
+# regenerate the artifacts and list what the projection job would commit
 [group('check your work')]
 check-generated:
     {{shipyard}} generate
