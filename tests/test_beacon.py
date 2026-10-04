@@ -4372,6 +4372,7 @@ class InstallGating(unittest.TestCase):
             "_install_shell_source": None,
             "_service_install": True,
             "install_dynamic_profile": (True, "profile written"),
+            "_install_progress_off": None,
             # None = iTerm2 has never run 3.7.0, so the shadowing check that
             # follows the render doesn't apply and reaches no real prefs.
             "_shadowed_profiles": None,
@@ -4401,7 +4402,7 @@ class InstallGating(unittest.TestCase):
                 self.beacon.argparse.Namespace(dir=dir, skip_layout=skip_layout))
         return buf.getvalue()
 
-    _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile")
+    _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile", "_install_progress_off")
     _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions", "_install_statusline")
 
     def test_dashboard_only_skips_iterm_steps(self):
@@ -4587,6 +4588,55 @@ class StatuslineWiring(unittest.TestCase):
         out = self._install()
         self.assertEqual(self.settings.read_text(), "{ not json")
         self.assertIn("unreadable", out)
+
+
+class ProgressReportsOff(unittest.TestCase):
+    """RENDER-06a: install turns off Claude Code's OSC 9;4 progress reports,
+    which spin a background tab's indicator through a path neither the profile
+    nor the layout prefs reach. A value the user set is left alone."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.tmp)
+        self.addCleanup(self._tmp.cleanup)
+        self.settings = self.tmp / "settings.json"
+
+    def _install(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon._install_progress_off(self.settings)
+        return buf.getvalue()
+
+    def _written(self):
+        return json.loads(self.settings.read_text())
+
+    def test_writes_false_when_absent(self):
+        self.settings.write_text(json.dumps({"model": "opus"}))
+        self._install()
+        self.assertEqual(self._written(),
+                         {"model": "opus", "terminalProgressBarEnabled": False})
+
+    def test_creates_the_file_when_missing(self):
+        self._install()
+        self.assertIs(self._written()["terminalProgressBarEnabled"], False)
+
+    def test_an_explicit_true_is_left_alone(self):
+        self.settings.write_text(json.dumps({"terminalProgressBarEnabled": True}))
+        out = self._install()
+        self.assertIs(self._written()["terminalProgressBarEnabled"], True)
+        self.assertIn("leaving it alone", out)
+
+    def test_rerun_is_a_no_op(self):
+        self._install()
+        out = self._install()
+        self.assertIn("already off", out)
+
+    def test_unparseable_settings_are_not_clobbered(self):
+        self.settings.write_text("{ not json")
+        out = self._install()
+        self.assertEqual(self.settings.read_text(), "{ not json")
+        self.assertIn("terminalProgressBarEnabled: false", out)
 
 
 @unittest.skipIf(sys.platform == "win32", "launchd/systemd service is POSIX-only")

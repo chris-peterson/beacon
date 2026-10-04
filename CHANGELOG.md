@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### No spinner on a working tab
+
+`beacon install` turns off Claude Code's terminal progress reports
+(`terminalProgressBarEnabled: false` in `~/.claude/settings.json`). iTerm2 spun
+the indicator on every background tab while Claude worked, and neither the
+profile's progress-bar setting nor the hidden activity spinner reaches that
+indicator. A value you already set is left alone. Re-run `beacon install` to
+pick it up; sessions already running keep sending progress until restarted.
+
 ## 2.15.1
 
 ### Auto-pause says how long, not since when
