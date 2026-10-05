@@ -3876,7 +3876,7 @@ def cmd_serve(args):
     if action == "uninstall":
         sys.exit(0 if _service_uninstall() else 1)
     if action == "status":
-        _service_status()
+        _service_status(port)
         return
     _serve_foreground(port)
 
@@ -3970,6 +3970,22 @@ def _launchctl(*args) -> subprocess.CompletedProcess:
     return _run_supervisor(["launchctl", *args])
 
 
+def _launchd_target() -> str:
+    return f"gui/{os.getuid()}/{SERVICE_LABEL}"
+
+
+SERVE_START_SECONDS = 5.0
+
+
+def _serve_answers_within(port: int, seconds: float) -> bool:
+    deadline = time.monotonic() + seconds
+    while not _serve_answering(port):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.25)
+    return True
+
+
 def _systemctl(*args) -> subprocess.CompletedProcess:
     return _run_supervisor(["systemctl", "--user", *args])
 
@@ -4012,8 +4028,18 @@ def _service_install(port: int, indent: str = "") -> bool:
                 err = r.stderr.strip() or legacy.stderr.strip()
                 print(f"{indent}! launchctl could not load {plist}: {err}")
                 return False
-        print(f"{indent}✓ launchd agent loaded → http://127.0.0.1:{port}/")
-        return True
+        # launchd can load a RunAtLoad job and defer its spawn indefinitely
+        # ("speculative"), so start it rather than wait on launchd (#56).
+        kick = _launchctl("kickstart", _launchd_target())
+        if _serve_answers_within(port, SERVE_START_SECONDS):
+            print(f"{indent}✓ launchd agent running → http://127.0.0.1:{port}/")
+            return True
+        if kick.returncode != 0:
+            reason = f"launchctl kickstart failed: {kick.stderr.strip()}"
+        else:
+            reason = f"see {LOGS_DIR / 'serve.err.log'}"
+        print(f"{indent}! launchd agent loaded, but nothing answers on port {port}; {reason}")
+        return False
 
     if sup == "systemd":
         unit = _systemd_unit_path()
@@ -4068,13 +4094,17 @@ def _service_uninstall() -> bool:
     return True
 
 
-def _service_status() -> None:
+def _service_status(port: int = DEFAULT_SERVE_PORT) -> None:
     sup = _service_supervisor()
     if sup == "launchd":
         plist = _launchd_plist_path()
         print(f"unit:  {plist} ({'present' if plist.exists() else 'absent'})")
-        r = _launchctl("list", SERVICE_LABEL)
-        print("state: loaded" if r.returncode == 0 else "state: not loaded")
+        r = _launchctl("print", _launchd_target())
+        pid = re.search(r"^\tpid = (\d+)$", r.stdout, re.MULTILINE) if r.returncode == 0 else None
+        if pid:
+            print(f"state: running (pid {pid.group(1)})")
+        else:
+            print("state: loaded, not running" if r.returncode == 0 else "state: not loaded")
     elif sup == "systemd":
         unit = _systemd_unit_path()
         print(f"unit:  {unit} ({'present' if unit.exists() else 'absent'})")
@@ -4083,6 +4113,9 @@ def _service_status() -> None:
     else:
         print("no supervised-process manager (launchd/systemd) here")
         print(f"run it yourself: beacon serve --port {DEFAULT_SERVE_PORT} &")
+        return
+    answers = "answers" if _serve_answering(port) else "does not answer"
+    print(f"port:  http://127.0.0.1:{port}/ {answers}")
 
 
 # --- resolver ---

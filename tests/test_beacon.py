@@ -4687,6 +4687,7 @@ class ServiceUnit(unittest.TestCase):
         with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
              mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
              mock.patch.object(self.beacon, "_launchctl", return_value=self._ok()), \
+             mock.patch.object(self.beacon, "_serve_answering", return_value=True), \
              mock.patch("sys.platform", "darwin"):
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(self.beacon._service_install(8800))
@@ -4694,6 +4695,75 @@ class ServiceUnit(unittest.TestCase):
         content = plist.read_text()
         self.assertIn(str(wrapper), content)
         self.assertIn("8800", content)
+
+    def _install_launchd(self, launchctl, answering):
+        wrapper = self._wrapper_file()
+        plist = self.tmp / "agent.plist"
+        with mock.patch.object(self.beacon, "_wrapper_path", return_value=wrapper), \
+             mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", side_effect=launchctl), \
+             mock.patch.object(self.beacon, "_serve_answering", return_value=answering), \
+             mock.patch.object(self.beacon, "SERVE_START_SECONDS", 0), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                ok = self.beacon._service_install(8800)
+        return ok, buf.getvalue()
+
+    def test_install_launchd_kickstarts_after_bootstrap(self):
+        # #56: launchd can load a RunAtLoad agent and defer its spawn, so
+        # install starts it explicitly once bootstrap has loaded it.
+        calls = []
+        def launchctl(*a):
+            calls.append(a)
+            return self._ok()
+        ok, out = self._install_launchd(launchctl, answering=True)
+        self.assertTrue(ok)
+        verbs = [c[0] for c in calls]
+        self.assertEqual(verbs, ["bootout", "bootstrap", "kickstart"])
+        self.assertEqual(calls[2][1], f"gui/{os.getuid()}/com.beacon.serve")
+        self.assertIn("✓ launchd agent running", out)
+
+    def test_install_launchd_not_answering_names_error_log(self):
+        ok, out = self._install_launchd(lambda *a: self._ok(), answering=False)
+        self.assertFalse(ok)
+        self.assertNotIn("✓", out)
+        self.assertIn("! launchd agent loaded, but nothing answers on port 8800", out)
+        self.assertIn("serve.err.log", out)
+
+    def test_install_launchd_kickstart_failure_surfaces_its_error(self):
+        def launchctl(*a):
+            return self._fail("Could not find service") if a[0] == "kickstart" else self._ok()
+        ok, out = self._install_launchd(launchctl, answering=False)
+        self.assertFalse(ok)
+        self.assertIn("launchctl kickstart failed: Could not find service", out)
+
+    def _status_launchd(self, printed):
+        plist = self.tmp / "agent.plist"
+        plist.write_text("x")
+        with mock.patch.object(self.beacon, "_launchd_plist_path", return_value=plist), \
+             mock.patch.object(self.beacon, "_launchctl", return_value=printed), \
+             mock.patch.object(self.beacon, "_serve_answering", return_value=False), \
+             mock.patch("sys.platform", "darwin"):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.beacon._service_status(8800)
+        return buf.getvalue()
+
+    def test_status_launchd_reports_running_pid(self):
+        printed = subprocess.CompletedProcess(
+            [], 0, "gui/502/com.beacon.serve = {\n\tstate = running\n\tpid = 1665\n}\n", "")
+        out = self._status_launchd(printed)
+        self.assertIn("state: running (pid 1665)", out)
+        self.assertIn("port:  http://127.0.0.1:8800/ does not answer", out)
+
+    def test_status_launchd_loaded_without_process_is_not_running(self):
+        printed = subprocess.CompletedProcess(
+            [], 0, "gui/502/com.beacon.serve = {\n\tstate = not running\n\truns = 0\n}\n", "")
+        self.assertIn("state: loaded, not running", self._status_launchd(printed))
+
+    def test_status_launchd_unloaded(self):
+        self.assertIn("state: not loaded", self._status_launchd(self._fail("Could not find service")))
 
     def test_install_systemd_writes_and_enables(self):
         wrapper = self._wrapper_file()

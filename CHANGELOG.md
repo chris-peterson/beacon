@@ -11,6 +11,14 @@ profile's progress-bar setting nor the hidden activity spinner reaches that
 indicator. A value you already set is left alone. Re-run `beacon install` to
 pick it up; sessions already running keep sending progress until restarted.
 
+### `serve install` starts the service
+
+On macOS, `beacon serve install` starts the launchd agent instead of leaving
+launchd to spawn it, which on macOS 26 it could defer indefinitely while the
+installer reported success. It prints `✓` only once the dashboard answers on
+its port, and otherwise names the error log. `beacon serve status` shows the
+running pid (or `loaded, not running`) and whether the port answers.
+
 ## 2.15.1
 
 ### Auto-pause says how long, not since when
