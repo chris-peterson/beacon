@@ -4576,20 +4576,37 @@ def cmd_drop(args):
     mentioned in passing, and the row is capped — so noise left in place evicts
     real work. The removal is remembered (`deliverables.dropped`) because the
     route is re-read every publish and would otherwise put the entry straight
-    back. Session-scoped like the list itself: a fresh session starts clean."""
+    back. Session-scoped like the list itself: a fresh session starts clean.
+
+    Dropping the announced CR also clears `announced.cr`, and `resolved.url` /
+    `resolved.url_label` where they name it: the link segment renders that URL
+    whenever the row is empty, so taking the entry off the row alone leaves the
+    footer linking it for the rest of the session. The announced URL is accepted
+    with no row entry left to match: the entry may already be dropped, and the
+    announcement would otherwise be unreachable."""
     target = (getattr(args, "ref", "") or "").strip()
     project_id = read_state("resolved.project") or ""
+    announced = read_state_json("announced.cr", None)
+    announced_uri = str(announced.get("uri") or "") if isinstance(announced, dict) else ""
     entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
     matched = [e for e in entries
                if target in (e.get("ref"), e.get("url"), _qualify_deliverable(e, project_id))]
-    if not matched:
+    urls = [e["url"] for e in matched if e.get("url")]
+    if announced_uri and target == announced_uri and target not in urls:
+        urls.append(target)
+    if not matched and not urls:
         print(f"no deliverable matching {target!r} on this session's row", file=sys.stderr)
         sys.exit(2)
     kept = [e for e in entries if e not in matched]
     write_state("deliverables", json.dumps(kept))
     dropped = read_state_json("deliverables.dropped", [])
-    dropped += [e["url"] for e in matched if e.get("url") and e["url"] not in dropped]
+    dropped += [u for u in urls if u not in dropped]
     write_state("deliverables.dropped", json.dumps(dropped))
+    if announced_uri and announced_uri in urls:
+        remove_state("announced.cr")
+        if read_state("resolved.url") == announced_uri:
+            remove_state("resolved.url")
+            remove_state("resolved.url_label")
     print(f"dropped {target} ({len(kept)} deliverable(s) remaining)")
 
 

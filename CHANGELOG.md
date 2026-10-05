@@ -19,6 +19,15 @@ installer reported success. It prints `✓` only once the dashboard answers on
 its port, and otherwise names the error log. `beacon serve status` shows the
 running pid (or `loaded, not running`) and whether the port answers.
 
+### `drop` clears an announced change request
+
+`beacon drop` on the change request a sibling plugin announced also clears the
+link the status line shows for it. Before, the entry left the row while the
+footer kept linking the CR until you started a new session, which mattered most
+when the announcement was a documentation example beacon should never have
+recorded. Pass the CR's ref or its URL; the URL works even after the row entry
+is gone. Dropping any other deliverable leaves the announced CR in place.
+
 ## 2.15.1
 
 ### Auto-pause says how long, not since when

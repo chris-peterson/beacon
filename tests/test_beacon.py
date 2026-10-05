@@ -3148,6 +3148,68 @@ class DropDeliverable(BeaconTest):
         self.assertEqual(self._refs(), ["#9"])
 
 
+class DropAnnouncedCR(BeaconTest):
+    """CMD-24 (#53): one announcement lands in `announced.cr`, `resolved.url` /
+    `resolved.url_label`, and the row. Dropping only the row entry left the
+    footer linking a CR the user had just removed, until a new session."""
+
+    CR = "https://github.com/o/r/pull/3533"
+    OTHER = "https://github.com/acme/widgets/pull/42"
+
+    def _announce(self, url=CR):
+        self.beacon.write_state("announced.cr", json.dumps(
+            {"uri": url, "title": "", "root": "/work/beacon"}))
+
+    def _resolve(self, url, label):
+        self.beacon.write_state("resolved.url", url)
+        self.beacon.write_state("resolved.url_label", label)
+
+    def _touch(self, ref, url, project="gh:o/r"):
+        with mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()):
+            self.beacon._record_deliverable(ref, url, project)
+
+    def _drop(self, ref):
+        self.beacon.cmd_drop(types.SimpleNamespace(ref=ref))
+
+    def test_dropping_the_announced_cr_clears_its_link(self):
+        self._announce()
+        self._resolve(self.CR, "#3533")
+        self._touch("#3533", self.CR)
+        self._drop("#3533")
+        self.assertIsNone(self.beacon.read_state("announced.cr"))
+        self.assertIsNone(self.beacon.read_state("resolved.url"))
+        self.assertIsNone(self.beacon.read_state("resolved.url_label"))
+        self.assertEqual(self.beacon._statusline_link_segment(), "")
+
+    def test_the_announced_url_drops_with_no_row_entry_left(self):
+        # A session whose row entry is already dropped has nothing left on
+        # the row to match, and the URL is the one handle it has.
+        self._announce()
+        self._resolve(self.CR, "#3533")
+        self._drop(self.CR)
+        self.assertIsNone(self.beacon.read_state("announced.cr"))
+        self.assertIsNone(self.beacon.read_state("resolved.url"))
+        self.assertIn(self.CR, self.beacon.read_state_json("deliverables.dropped", []))
+
+    def test_dropping_another_deliverable_leaves_the_announcement(self):
+        self._announce()
+        self._resolve(self.CR, "#3533")
+        self._touch("#42", self.OTHER, project="gh:acme/widgets")
+        self._drop(self.OTHER)
+        self.assertEqual(self.beacon.read_state_json("announced.cr", {})["uri"], self.CR)
+        self.assertEqual(self.beacon.read_state("resolved.url"), self.CR)
+        self.assertEqual(self.beacon.read_state("resolved.url_label"), "#3533")
+
+    def test_a_resolved_link_naming_something_else_stays(self):
+        self._announce()
+        self._resolve(self.OTHER, "#42")
+        self._touch("#3533", self.CR)
+        self._drop("#3533")
+        self.assertIsNone(self.beacon.read_state("announced.cr"))
+        self.assertEqual(self.beacon.read_state("resolved.url"), self.OTHER)
+        self.assertEqual(self.beacon.read_state("resolved.url_label"), "#42")
+
+
 class ConfigurableCodeButton(BeaconTest):
     """STATUS-BAR-07 (#25): the `↗ code` button's editor comes from the user
     config, read at click time so changing it needs no reinstall."""
