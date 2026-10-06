@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.16.0
 
 ### Smaller tab labels, and a setting for their size
 
