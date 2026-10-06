@@ -52,7 +52,7 @@ Reach for an orchestrator when you want agents running unattended in parallel on
 
 ## The built-in view: `claude agents`
 
-Worth knowing before you install anything: Claude Code ships a sessions view. `claude agents` lists the sessions it dispatched into the background, with per-row status — Working, Needs input, Done, Needs attention — plus `--json`, attach, and worktree-backed jobs.
+Worth knowing before you install anything: Claude Code ships a sessions view. `claude agents` lists the sessions it dispatched into the background, with per-row status — Working, Needs input, Done, Needs attention, and waiting on a message approval from another session, naming the sender — plus `--json`, attach, and worktree-backed jobs.
 
 An interactive session you started by typing `claude` in a pane doesn't get a row. Those are the sessions beacon is about, so the two don't overlap much — but if all your parallel work is backgrounded, the built-in view may be all you need.
 
