@@ -155,22 +155,37 @@ Re-run `beacon refresh-iterm-profiles` to pick it up; the color follows the same
 
 ### Compact and Regular tabs
 
+![The same five tabs under each style at 16pt: Minimal fills each tab with its color, Compact fades the unselected tabs toward gray, and Regular draws outlined pills with the label inset from their rounded ends.](images/tab-styles.png)
+
 beacon is tuned for iTerm2's **Minimal** tab style by default, which fills each tab with its state color. It also supports **Compact**, which outlines the selected tab and fades the rest toward gray, and **Regular**, which on macOS 26 draws each tab as a pill: filled when selected, outlined in its color otherwise. Tell beacon which you use, so it weights the colors for that style, pads the label clear of Regular's rounded ends, and recommends the matching layout:
 
 ```
-beacon config tab-style regular
+beacon config tab.style regular
 ```
 
-Then run `beacon layout --write` to switch iTerm2's theme. `beacon config tab-style minimal` switches back.
+Then run `beacon layout --write` to switch iTerm2's theme. `beacon config tab.style minimal` switches back.
 
 If the label sits too close to the tab's edge, set how many spaces lead each line (project, then task):
 
 ```
-beacon config tab-indent.1 <spaces>
-beacon config tab-indent.2 <spaces>
+beacon config tab.indent.1 <spaces>
+beacon config tab.indent.2 <spaces>
 ```
 
-`reset` in place of a number returns that line to the style's default, and `beacon config tab-indent reset` returns both. Tabs repaint with the Compact weights on their next hook.
+`reset` in place of a number returns that line to the style's default, and `beacon config tab.indent reset` returns both. Tabs repaint with the Compact weights on their next hook.
+
+### Tab text size
+
+![Minimal tabs at 12, 16, 20 and 24pt. Each tab grows with its text, and the larger the text, the further the two-line labels sit below the middle of the tab.](images/tab-sizes.png)
+
+beacon recommends 16pt tab labels. To change it:
+
+```
+beacon config tab.font-size 14
+beacon layout --write
+```
+
+The size is an app-wide iTerm2 setting, so `beacon layout --write` applies it, and the tab height changes with it. iTerm2 centers the project line on the tab and hangs the task line below it, so a two-line label sits a little below center, more so at larger sizes. A taller tab doesn't change that; a smaller size does. `beacon config tab.font-size reset` returns to 16pt. `beacon config tab` lists every tab setting, and `beacon config tab reset` returns them all to their defaults.
 
 ## The status bar
 

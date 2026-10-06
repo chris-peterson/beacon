@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Smaller tab labels, and a setting for their size
+
+`beacon layout` recommends 16pt tab labels instead of 22pt, and the tab height
+now follows the size: 52pt tabs at 16pt, against 90pt before. Pick your own
+with `beacon config tab.font-size <points>` (10 to 30), then
+`beacon layout --write` to apply the size and its height.
+
+iTerm2 centers the project line and hangs the task line below it, so a
+two-line label sits below the tab's center, more the larger the text. At 22pt
+it sat about 5pt low; at 16pt it is about 2pt. Run `beacon layout --write`
+after upgrading to pick up the new size.
+
+### Tab settings live under `tab`
+
+The tab settings are one `tab` object in `~/.config/beacon/config.json`, and
+their `config` names follow it:
+
+```
+beacon config tab                       list every tab setting
+beacon config tab.style <minimal|compact|regular>
+beacon config tab.indent.<1|2> <spaces|reset>
+beacon config tab.font-size <points|reset>
+beacon config tab reset                 every tab setting back to its default
+```
+
+The top-level `tab_style` and `tab_indent` keys are no longer read. If you set
+either, set it again with the command above.
+
 ### No spinner on a working tab
 
 `beacon install` turns off Claude Code's terminal progress reports

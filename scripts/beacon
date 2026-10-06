@@ -448,7 +448,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab-style, tab-indent, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.indent, tab.font-size, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -530,9 +530,11 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab-style tab-indent tab-indent.1 tab-indent.2 auto-pause origins ;;
-        4) [[ "${words[3]}" == tab-style ]] && compadd minimal compact regular
-           [[ "${words[3]}" == tab-indent* ]] && compadd reset
+        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size auto-pause origins ;;
+        4) [[ "${words[3]}" == tab ]] && compadd reset
+           [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
+           [[ "${words[3]}" == tab.indent* ]] && compadd reset
+           [[ "${words[3]}" == tab.font-size ]] && compadd 14 16 18 reset
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -571,7 +573,7 @@ COLOR_PALETTE = {
 }
 
 # How much of each state's hue the *tab* actually paints (TAB-04), per iTerm2 tab
-# style (`tab_style` in the user config; CLI-18 recommends the matching layout).
+# style (`tab.style` in the user config; CLI-18 recommends the matching layout).
 # The tab is the one surface that fills a large area with a state color — Minimal
 # uses the color as the tab's whole background, not as a tint — and a hue that
 # reads right in a 10px dashboard dot is an assault across 90px of left-strip tab.
@@ -615,7 +617,7 @@ TAB_MUTE = {
 TAB_STYLES = tuple(TAB_MUTE)
 
 # Spaces ahead of each tab-label line, per tab style (TITLE-06a): line 1 before
-# its mode lead, line 2 before the task. `tab_indent` in the user config
+# its mode lead, line 2 before the task. `tab.indent` in the user config
 # (`{"line-1": n, "line-2": n}`) overrides either. Regular's pill has a corner radius of half the tab's height,
 # so a label at the usual inset starts inside the curve.
 TAB_LABEL_INDENT = {
@@ -626,6 +628,12 @@ TAB_LABEL_INDENT = {
 MAX_TAB_INDENT = 12
 TAB_INDENT_LINES = ("line-1", "line-2")
 DEFAULT_TAB_STYLE = "minimal"
+
+# The tab-label font size `beacon layout` recommends (CLI-18a), and the sizes
+# `tab.font_size` accepts. bin/beacon-iterm holds the same pair: it derives the
+# tab height from the size, and validates what it is told.
+DEFAULT_TAB_FONT_SIZE = 16
+TAB_FONT_SIZES = range(10, 31)
 
 ACTIVITY_TO_COLOR_STATE = {
     "idle":     "ready",
@@ -787,19 +795,54 @@ def _mute_hex(hexstr: str, weight: float) -> str:
     return "".join(f"{min(255, round(int(c, 16) * weight)):02x}" for c in channels)
 
 
+def _tab_config() -> dict:
+    """The `tab` object of the user config, which holds every tab setting. Any
+    other shape is logged for `doctor` and reads as no settings."""
+    raw = _load_config().get("tab")
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    log_error("config.tab", f"tab {raw!r} is not an object")
+    return {}
+
+
 def _tab_style() -> str:
-    """The iTerm2 tab style the user runs (`tab_style` in the user config), which
+    """The iTerm2 tab style the user runs (`tab.style` in the user config), which
     picks the tab weights (TAB-04) and the layout `beacon layout` recommends
     (CLI-18). An unknown value is logged for `doctor` and reads as the default,
     as every other malformed config value does."""
-    raw = _load_config().get("tab_style")
+    raw = _tab_config().get("style")
     if raw is None:
         return DEFAULT_TAB_STYLE
     style = str(raw).strip().lower()
     if style in TAB_STYLES:
         return style
-    log_error("config.tab_style", f"unknown tab_style {raw!r}")
+    log_error("config.tab.style", f"unknown tab.style {raw!r}")
     return DEFAULT_TAB_STYLE
+
+
+def _valid_tab_font_size(n) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and n in TAB_FONT_SIZES
+
+
+def _tab_font_size() -> int:
+    """The tab-label font size `beacon layout` recommends (`tab.font_size` in
+    the user config), which also sets the tab height it recommends (CLI-18a).
+    A malformed value is logged for `doctor` and reads as the default."""
+    raw = _tab_config().get("font_size")
+    if raw is None:
+        return DEFAULT_TAB_FONT_SIZE
+    if _valid_tab_font_size(raw):
+        return raw
+    log_error("config.tab.font_size", f"tab.font_size {raw!r} is not a whole number "
+                                      f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}")
+    return DEFAULT_TAB_FONT_SIZE
+
+
+def _layout_args() -> list[str]:
+    """What every `beacon-iterm configure` call is told about the user's tabs."""
+    return ["--tab-style", _tab_style(), "--tab-font-size", str(_tab_font_size())]
 
 
 def _valid_tab_indent(n) -> bool:
@@ -808,22 +851,22 @@ def _valid_tab_indent(n) -> bool:
 
 def _tab_indent() -> tuple[int, int]:
     """The spaces ahead of tab-label lines 1 and 2 (TITLE-06a): each line's
-    entry in `tab_indent` from the user config, else the tab style's default
+    entry in `tab.indent` from the user config, else the tab style's default
     for that line. A malformed value is logged for `doctor` and reads as the
     default."""
     default = TAB_LABEL_INDENT[_tab_style()]
-    raw = _load_config().get("tab_indent")
+    raw = _tab_config().get("indent")
     if raw is None:
         return default
     if not isinstance(raw, dict) or set(raw) - set(TAB_INDENT_LINES):
-        log_error("config.tab_indent", f"tab_indent {raw!r} is not an object of "
+        log_error("config.tab.indent", f"tab.indent {raw!r} is not an object of "
                                        f"{' and '.join(TAB_INDENT_LINES)}")
         return default
     indent = []
     for line, fallback in zip(TAB_INDENT_LINES, default):
         n = raw.get(line, fallback)
         if not _valid_tab_indent(n):
-            log_error("config.tab_indent", f"tab_indent {line} {n!r} is not a whole number "
+            log_error("config.tab.indent", f"tab.indent {line} {n!r} is not a whole number "
                                            f"0..{MAX_TAB_INDENT}")
             n = fallback
         indent.append(n)
@@ -6457,7 +6500,7 @@ def cmd_layout(args):
     if not _is_iterm_installed():
         sys.exit("iTerm2 not detected — the fleet layout is the iTerm2 render "
                  "adapter's surface, and there is nothing to configure here")
-    argv = ["configure", "--tab-style", _tab_style()]
+    argv = ["configure", *_layout_args()]
     if args.write:
         argv.append("--write")
     if args.yes:
@@ -6515,19 +6558,58 @@ def _normalize_origin(raw: str) -> str:
     return origin
 
 
+def _tab_config_for_edit(data: dict) -> dict:
+    current = data.get("tab")
+    return dict(current) if isinstance(current, dict) else {}
+
+
+def _save_tab_config(data: dict, tab: dict) -> None:
+    """Write `tab` back into the config, dropping the object once it is empty."""
+    if tab:
+        data["tab"] = tab
+    else:
+        data.pop("tab", None)
+    _save_config(data)
+
+
+def _tab_settings() -> list[tuple[str, object]]:
+    """Each tab setting's `config` name and effective value, in listing order."""
+    indent = _tab_indent()
+    return [("tab.style", _tab_style()),
+            ("tab.indent.1", indent[0]),
+            ("tab.indent.2", indent[1]),
+            ("tab.font-size", _tab_font_size())]
+
+
+def _config_tab(values: list[str]) -> None:
+    """`tab` lists every tab setting, or resets them all."""
+    if not values:
+        for name, value in _tab_settings():
+            print(f"{name:<14}{value}")
+        return
+    if [v.strip().lower() for v in values] != ["reset"]:
+        sys.exit("usage: beacon config tab [reset]")
+    data = _config_for_edit()
+    _save_tab_config(data, {})
+    print(f"tab settings reset to their defaults (in {_config_file()})")
+    print(f"Tabs repaint on their next hook; `{LAYOUT_COMMAND} --write` applies the "
+          "default font size and tab height.")
+
+
 def _config_tab_style(values: list[str]) -> None:
     if not values:
         print(_tab_style())
         return
     if len(values) > 1:
-        sys.exit(f"usage: beacon config tab-style [{'|'.join(TAB_STYLES)}]")
+        sys.exit(f"usage: beacon config tab.style [{'|'.join(TAB_STYLES)}]")
     style = values[0].strip().lower()
     if style not in TAB_STYLES:
         sys.exit(f"unknown tab style {values[0]!r}; expected one of {', '.join(TAB_STYLES)}")
     data = _config_for_edit()
-    data["tab_style"] = style
-    _save_config(data)
-    print(f"tab style: {style} (in {_config_file()})")
+    tab = _tab_config_for_edit(data)
+    tab["style"] = style
+    _save_tab_config(data, tab)
+    print(f"tab.style: {style} (in {_config_file()})")
     print(f"Tabs repaint with the {style} weights on their next hook. "
           f"Switch iTerm2's theme to match with `{LAYOUT_COMMAND} --write`.")
 
@@ -6564,10 +6646,10 @@ def _config_origins(values: list[str]) -> None:
 
 
 def _config_tab_indent(line: int | None, values: list[str]) -> None:
-    """`tab-indent` reads or resets both lines; `tab-indent.<1|2>` reads, sets
+    """`tab.indent` reads or resets both lines; `tab.indent.<1|2>` reads, sets
     or resets one."""
-    usage = (f"usage: beacon config tab-indent.<1|2> [<spaces> | reset], "
-             f"0..{MAX_TAB_INDENT} spaces; beacon config tab-indent [reset]")
+    usage = (f"usage: beacon config tab.indent.<1|2> [<spaces> | reset], "
+             f"0..{MAX_TAB_INDENT} spaces; beacon config tab.indent [reset]")
     if not values:
         indent = _tab_indent()
         if line is None:
@@ -6579,7 +6661,8 @@ def _config_tab_indent(line: int | None, values: list[str]) -> None:
     if len(values) != 1:
         sys.exit(usage)
     data = _config_for_edit()
-    current = data.get("tab_indent")
+    tab = _tab_config_for_edit(data)
+    current = tab.get("indent")
     entries = dict(current) if isinstance(current, dict) else {}
     value = values[0].strip().lower()
     keys = TAB_INDENT_LINES if line is None else (TAB_INDENT_LINES[line - 1],)
@@ -6597,14 +6680,41 @@ def _config_tab_indent(line: int | None, values: list[str]) -> None:
             sys.exit(usage)
         entries[keys[0]] = n
     if entries:
-        data["tab_indent"] = entries
+        tab["indent"] = entries
     else:
-        data.pop("tab_indent", None)
-    _save_config(data)
+        tab.pop("indent", None)
+    _save_tab_config(data, tab)
     indent = _tab_indent()
-    print("tab indent: " + ", ".join(f"{key} {indent[n]}" for n, key in enumerate(TAB_INDENT_LINES))
+    print("tab.indent: " + ", ".join(f"{key} {indent[n]}" for n, key in enumerate(TAB_INDENT_LINES))
           + f" (in {_config_file()})")
     print("Tabs repaint with it on their next hook.")
+
+
+def _config_tab_font_size(values: list[str]) -> None:
+    usage = (f"usage: beacon config tab.font-size [<points> | reset], "
+             f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}")
+    if not values:
+        print(_tab_font_size())
+        return
+    if len(values) != 1:
+        sys.exit(usage)
+    value = values[0].strip().lower()
+    data = _config_for_edit()
+    tab = _tab_config_for_edit(data)
+    if value == "reset":
+        tab.pop("font_size", None)
+    else:
+        try:
+            n = int(value)
+        except ValueError:
+            sys.exit(usage)
+        if not _valid_tab_font_size(n):
+            sys.exit(usage)
+        tab["font_size"] = n
+    _save_tab_config(data, tab)
+    print(f"tab.font-size: {_tab_font_size()}pt (in {_config_file()})")
+    print("It is an app-wide iTerm2 setting, and the tab height follows it. "
+          f"Apply both with `{LAYOUT_COMMAND} --write`.")
 
 
 def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
@@ -6646,12 +6756,16 @@ def _config_auto_pause(values: list[str]) -> None:
 def cmd_config(args):
     """CMD-32: read and change the user config's settings without editing the
     JSON by hand."""
-    if args.setting == "tab-style":
+    if args.setting == "tab":
+        _config_tab(args.values)
+    elif args.setting == "tab.style":
         _config_tab_style(args.values)
-    elif args.setting == "tab-indent":
+    elif args.setting == "tab.indent":
         _config_tab_indent(None, args.values)
-    elif args.setting in ("tab-indent.1", "tab-indent.2"):
+    elif args.setting in ("tab.indent.1", "tab.indent.2"):
         _config_tab_indent(int(args.setting[-1]), args.values)
+    elif args.setting == "tab.font-size":
+        _config_tab_font_size(args.values)
     elif args.setting == "auto-pause":
         _config_auto_pause(args.values)
     elif args.setting == "origins":
@@ -6659,13 +6773,12 @@ def cmd_config(args):
     else:
         data = _config_for_edit()
         print(f"config: {_config_file()}")
-        print(f"  tab-style     {_tab_style()}")
-        for n, indent in enumerate(_tab_indent(), start=1):
-            print(f"  tab-indent.{n}  {indent}")
+        for name, value in _tab_settings():
+            print(f"  {name:<14}{value}")
         pause = _load_config().get("auto_pause")
-        print(f"  auto-pause    {str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
+        print(f"  {'auto-pause':<14}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
         origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
-        print(f"  origins       {', '.join(origins)}")
+        print(f"  {'origins':<14}{', '.join(origins)}")
 
 
 # --- doctor ---
@@ -6688,10 +6801,16 @@ _DOCTOR_ADVICE = {
     "config.auto_pause": f"`auto_pause` in {_config_file()} isn't a duration like 30m "
                          "or 2h, so auto-pause is off. `beacon config auto-pause <duration>` "
                          "sets it.",
-    "config.tab_indent": f"`tab_indent` in {_config_file()} isn't `line-1` / `line-2` "
+    "config.tab": f"`tab` in {_config_file()} isn't an object, so every tab setting "
+                  "reads as its default. `beacon config tab reset` clears it.",
+    "config.tab.indent": f"`tab.indent` in {_config_file()} isn't `line-1` / `line-2` "
                          f"whole numbers 0..{MAX_TAB_INDENT}, so the tab label uses the tab style's "
-                         "default indent. `beacon config tab-indent reset` clears it.",
-    "config.tab_style": f"`tab_style` in {_config_file()} names no tab style beacon "
+                         "default indent. `beacon config tab.indent reset` clears it.",
+    "config.tab.font_size": f"`tab.font_size` in {_config_file()} isn't a whole number "
+                            f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}, so `{LAYOUT_COMMAND}` "
+                            f"recommends {DEFAULT_TAB_FONT_SIZE}pt tab labels. "
+                            "`beacon config tab.font-size reset` clears it.",
+    "config.tab.style": f"`tab.style` in {_config_file()} names no tab style beacon "
                         f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
                         f"{DEFAULT_TAB_STYLE} weights.",
     "serve.origin": "serve refused the origin above, so a dashboard on it reads as a "
@@ -7245,8 +7364,7 @@ def cmd_install(_args):
     try:
         # Audited captured-and-indented first so the table and the reason for
         # each setting are on screen before anything asks to change them.
-        r = subprocess.run(["python3", str(BEACON_ITERM), "configure",
-                            "--tab-style", _tab_style()],
+        r = subprocess.run(["python3", str(BEACON_ITERM), "configure", *_layout_args()],
                            capture_output=True, text=True, timeout=10,
                            env=_layout_env())
         print(textwrap.indent(r.stdout.rstrip(), "  "))
@@ -7270,12 +7388,12 @@ def cmd_install(_args):
         # nudge sends users down) that default is taken without asking.
         argv = ["configure", "--write"] if _has_tty() else ["configure", "--defer"]
         layout_drifted = subprocess.run(
-            ["python3", str(BEACON_ITERM), *argv, "--tab-style", _tab_style()],
+            ["python3", str(BEACON_ITERM), *argv, *_layout_args()],
             env=_layout_env()).returncode != 0
         print()
 
     if _tab_style() == DEFAULT_TAB_STYLE:
-        print("Prefer iTerm2's Compact tabs? `beacon config tab-style compact`, "
+        print("Prefer iTerm2's Compact tabs? `beacon config tab.style compact`, "
               f"then `{LAYOUT_COMMAND} --write`.")
     # After a relaunch this is a fresh shell in a fresh window, so the `exec zsh`
     # below is already satisfied — it only matters on the path that didn't quit.
@@ -7680,15 +7798,17 @@ def _build_parser() -> "argparse.ArgumentParser":
                     help="comma-separated setting keys to write, skipping the drift check")
 
     sp = sub.add_parser("config",
-                        help="show or change the user config: tab-style, tab-indent, "
-                             "auto-pause, origins")
+                        help="show or change the user config: tab.style, tab.indent, "
+                             "tab.font-size, auto-pause, origins")
     sp.add_argument("setting", nargs="?",
-                    choices=("tab-style", "tab-indent", "tab-indent.1", "tab-indent.2",
-                             "auto-pause", "origins"),
+                    choices=("tab", "tab.style", "tab.indent", "tab.indent.1", "tab.indent.2",
+                             "tab.font-size", "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
-                    help="tab-style: minimal|compact|regular; tab-indent: reset; tab-indent.1, "
-                         "tab-indent.2: <spaces> | reset; auto-pause: <duration> | off; "
+                    help="tab: reset; tab.style: minimal|compact|regular; tab.indent: reset; "
+                         "tab.indent.1, tab.indent.2: <spaces> | reset; "
+                         "tab.font-size: <points> | reset; "
+                         "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")

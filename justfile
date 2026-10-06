@@ -91,3 +91,9 @@ reset-iterm-layout *args:
 [group('iterm2 upkeep')]
 iterm-release *args:
     -@python3 dev/iterm-release.py {{args}}
+
+# quits iTerm2 once per combination, so run it from another terminal
+# capture the tab strip under each tab style and font size (--out <dir>)
+[group('iterm2 upkeep')]
+tab-matrix *args:
+    @python3 dev/tab-matrix.py {{args}}
