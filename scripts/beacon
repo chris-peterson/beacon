@@ -5735,8 +5735,9 @@ def _last_assistant_text() -> str | None:
 
 # The Claude Code transcript records the user's own /color and /rename edits
 # (and Claude's auto-generated title) as dedicated single-line JSONL records.
-# beacon has no hook for those slash commands, so it harvests them from the
-# transcript tail at hook time — the same transport that feeds latest_turn.
+# Claude Code fires no command hook for those slash commands, so beacon
+# harvests them from the transcript tail at hook time — the same transport
+# that feeds latest_turn.
 # This is a soft dependency on a Claude-Code-internal format: if a record type
 # disappears the signal simply goes quiet, never crashing a hook.
 _CC_SIGNAL_FIELDS = {
@@ -7000,7 +7001,8 @@ def _doctor_checks() -> list[dict]:
                     f"{guid} reachable" if found
                     else f"{guid} not reachable via Apple Events ({why})")
 
-    # Claude Code — the status line exists only if this key is set.
+    # Claude Code — `statusLine` is the only settings key that makes the
+    # status line exist.
     wired = False
     if CLAUDE_SETTINGS.exists():
         try:
@@ -7109,7 +7111,8 @@ def _read_claude_settings(settings: Path) -> tuple[dict, str | None]:
 
 def _install_statusline(settings: Path | None = None) -> None:
     """STATUSLINE-01: wire `beacon statusline` into Claude Code's user
-    settings.json, which is the only thing that makes the footer row exist.
+    settings.json, whose `statusLine` is the only settings key that makes the
+    footer row exist.
 
     Left to a printed block, this step was skipped or applied to one project's
     `.claude/settings.local.json`, so the row was absent everywhere else and the
@@ -7415,7 +7418,8 @@ def cmd_hook(args):
         write_state("transcript_path", transcript_path)
         # Pick up any /color, /rename, or auto ai-title the user ran since the
         # last hook (PROV-02 task tiers + fleet-view color). Slash commands
-        # fire no hook of their own, so the next hook is the harvest point.
+        # fire no command hook of their own, so the next hook is the harvest
+        # point.
         _read_cc_signals()
 
     if event == "SessionEnd":
