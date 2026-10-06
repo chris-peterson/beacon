@@ -321,6 +321,10 @@ def cmd_set_name(args):
 # The tab-label size beacon recommends, and the sizes `--tab-font-size` accepts.
 DEFAULT_TAB_FONT_SIZE = 16
 TAB_FONT_SIZES = range(10, 31)
+# Points added above and below the label, so a tab can be a larger click target
+# without larger text (CLI-18b).
+DEFAULT_TAB_VERTICAL_PADDING = 0
+TAB_VERTICAL_PADDINGS = range(0, 21)
 
 # iTerm2 centers line 1 of a two-line label on the tab, nudges it up, and hangs
 # line 2 below it at 0.8x the size (PSMYosemiteTabStyle -5/-2, PSMMinimalTabStyle
@@ -335,12 +339,13 @@ _TAB_LABEL_MARGIN = 6
 _TAB_HEIGHT_KEYS = ("DefaultTabBarHeight", "CompactMinimalTabBarHeight")
 
 
-def _tab_height(font_size: int) -> int:
-    """The tab height a two-line label at `font_size` needs (CLI-18a)."""
+def _tab_height(font_size: int, padding: int = DEFAULT_TAB_VERTICAL_PADDING) -> int:
+    """The tab height a two-line label at `font_size` needs (CLI-18a), with
+    `padding` points more above and below it (CLI-18b)."""
     title = font_size * _LABEL_LINE_HEIGHT
     subtitle = round(font_size * _SUBTITLE_SCALE) * _LABEL_LINE_HEIGHT
     below_center = title + subtitle / 2 - _ITERM_LABEL_NUDGE
-    return round(2 * (below_center + _TAB_LABEL_MARGIN))
+    return round(2 * (below_center + _TAB_LABEL_MARGIN + padding))
 
 
 # The app-wide iTerm2 prefs beacon's tab-color signal is *tuned for*
@@ -391,7 +396,7 @@ RECOMMENDED_LAYOUT = (
     {"key": "DefaultTabBarHeight", "want": str(_tab_height(DEFAULT_TAB_FONT_SIZE)),
      "type": "float", "label": "Taller tabs",
      "why": "gives the two-line project/task label room to show both lines; "
-            "derived from the tab-label font size",
+            "derived from the tab-label font size and vertical padding",
      "where": "Appearance → Tabs"},
     # iTerm2 3.7.0 routes Minimal + side tabs — the layout the rest of this table
     # recommends — to this key instead of DefaultTabBarHeight, as the per-tab
@@ -401,7 +406,7 @@ RECOMMENDED_LAYOUT = (
      "type": "float", "label": "Taller tabs (Minimal side strip)",
      "why": "the height each tab gets in a Minimal left strip from iTerm2 3.7.0 "
             "on; at its 38pt default the second label line is clipped. Derived "
-            "from the tab-label font size",
+            "from the tab-label font size and vertical padding",
      "where": "Advanced → Tabs"},
     # Minimal draws a white-and-black double underline under the selected tab
     # whenever any tab has a color, which with beacon is always; its strength is
@@ -498,28 +503,32 @@ _STYLE_SPECS = {"compact": _COMPACT_TAB_STYLE, "regular": _REGULAR_TAB_STYLE}
 _MINIMAL_ONLY_KEYS = {"CompactMinimalTabBarHeight", "MinimalSelectedTabUnderlineProminence"}
 
 
-def _sized(spec, font_size: int):
+def _sized(spec, font_size: int, padding: int):
     if spec["key"] == "CustomTabBarFontSize":
         return {**spec, "want": str(font_size)}
     if spec["key"] in _TAB_HEIGHT_KEYS:
-        return {**spec, "want": str(_tab_height(font_size))}
+        return {**spec, "want": str(_tab_height(font_size, padding))}
     return spec
 
 
 def _recommended_layout(style: str = DEFAULT_TAB_STYLE,
-                        font_size: int = DEFAULT_TAB_FONT_SIZE) -> tuple:
+                        font_size: int = DEFAULT_TAB_FONT_SIZE,
+                        padding: int = DEFAULT_TAB_VERTICAL_PADDING) -> tuple:
     if style not in TAB_STYLES:
         raise ValueError(f"unknown tab style {style!r}; expected one of {', '.join(TAB_STYLES)}")
     if font_size not in TAB_FONT_SIZES:
         raise ValueError(f"tab font size {font_size!r} is outside "
                          f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}")
+    if padding not in TAB_VERTICAL_PADDINGS:
+        raise ValueError(f"tab vertical padding {padding!r} is outside "
+                         f"{TAB_VERTICAL_PADDINGS.start}..{TAB_VERTICAL_PADDINGS.stop - 1}")
     if style == "minimal":
         layout = RECOMMENDED_LAYOUT
     else:
         style_spec = _STYLE_SPECS[style]
         layout = tuple(style_spec if spec["key"] == style_spec["key"] else spec
                        for spec in RECOMMENDED_LAYOUT if spec["key"] not in _MINIMAL_ONLY_KEYS)
-    return tuple(_sized(spec, font_size) for spec in layout)
+    return tuple(_sized(spec, font_size, padding) for spec in layout)
 
 
 def _aligned(spec, current) -> bool:
@@ -530,8 +539,9 @@ def _aligned(spec, current) -> bool:
     return current == spec["want"]
 
 
-def _layout_drift(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE):
-    return [s for s in _recommended_layout(style, font_size)
+def _layout_drift(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE,
+                  padding: int = DEFAULT_TAB_VERTICAL_PADDING):
+    return [s for s in _recommended_layout(style, font_size, padding)
             if not _aligned(s, _read_default(s["key"]))]
 
 
@@ -609,11 +619,13 @@ def _running_caveat() -> str:
             "  strip may differ until then.")
 
 
-def _configure_audit(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE):
+def _configure_audit(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE,
+                     padding: int = DEFAULT_TAB_VERTICAL_PADDING):
     aligned = "\x1b[32m✓\x1b[0m"
     differs = "\x1b[33m✗\x1b[0m"
-    layout = _recommended_layout(style, font_size)
-    print(f"Recommended iTerm2 fleet layout ({style} tabs, {font_size}pt labels) "
+    layout = _recommended_layout(style, font_size, padding)
+    padded = f", {padding}pt vertical padding" if padding else ""
+    print(f"Recommended iTerm2 fleet layout ({style} tabs, {font_size}pt labels{padded}) "
           "— app-wide prefs:\n")
     drift = []
     for s in layout:
@@ -739,14 +751,21 @@ def _wait_for_iterm_to_exit() -> None:
 def _configure_defer(args):
     """CLI-22: converge the recommended layout without closing anything: write
     the drifted settings now if iTerm2 is closed, else the next time it quits."""
-    selected = _layout_drift(args.tab_style, args.tab_font_size)
+    tabs = _tab_flags(args)
+    selected = _layout_drift(args.tab_style, args.tab_font_size, args.tab_vertical_padding)
     if not selected:
         print("Nothing to queue: the layout already matches the recommendation.")
         return
-    _queue_after_quit(selected, args.tab_style, args.tab_font_size)
+    _queue_after_quit(selected, tabs)
 
 
-def _queue_after_quit(selected, style: str, font_size: int) -> None:
+def _tab_flags(args) -> list:
+    """The tab settings a restart or deferred-write helper is re-invoked with."""
+    return ["--tab-style", args.tab_style, "--tab-font-size", str(args.tab_font_size),
+            "--tab-vertical-padding", str(args.tab_vertical_padding)]
+
+
+def _queue_after_quit(selected, tabs: list) -> None:
     import subprocess
     import tempfile
 
@@ -763,8 +782,7 @@ def _queue_after_quit(selected, style: str, font_size: int) -> None:
         with os.fdopen(log_fd, "w") as log:
             proc = subprocess.Popen(
                 ["python3", os.path.realpath(__file__), "configure", "--write", "--yes",
-                 "--after-quit", "--tab-style", style, "--tab-font-size", str(font_size),
-                 "--keys", keys_csv],
+                 "--after-quit", *tabs, "--keys", keys_csv],
                 stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                 start_new_session=True)
         _deferred_pidfile().write_text(f"{proc.pid}\n")
@@ -776,14 +794,14 @@ def _configure_write(args):
     if getattr(args, "after_quit", False):
         _wait_for_iterm_to_exit()
     running = _is_iterm_running()
-    style = args.tab_style
-    font_size = args.tab_font_size
+    sizing = (args.tab_style, args.tab_font_size, args.tab_vertical_padding)
+    tabs = _tab_flags(args)
 
     if args.keys is not None:
         wanted = set(args.keys.split(","))
-        selected = [s for s in _recommended_layout(style, font_size) if s["key"] in wanted]
+        selected = [s for s in _recommended_layout(*sizing) if s["key"] in wanted]
     else:
-        drift = _layout_drift(style, font_size)
+        drift = _layout_drift(*sizing)
         if not drift:
             print("Layout already matches the recommendation — nothing to write.")
             if running:
@@ -814,12 +832,11 @@ def _configure_write(args):
         now = _prompt_tty("Quit and relaunch iTerm2 now? No applies them the next "
                           "time you quit, with nothing closed.", False)
         if not now:
-            _queue_after_quit(selected, style, font_size)
+            _queue_after_quit(selected, tabs)
             return
 
     keys_csv = ",".join(s["key"] for s in selected)
-    _run_after_quit(["configure", "--write", "--yes", "--tab-style", style,
-                     "--tab-font-size", str(font_size), "--keys", keys_csv],
+    _run_after_quit(["configure", "--write", "--yes", *tabs, "--keys", keys_csv],
                     "beacon-configure.",
                     "Quitting iTerm2 — it relaunches with the new layout")
 
@@ -1085,7 +1102,7 @@ def cmd_configure(args):
     elif args.write:
         _configure_write(args)
     else:
-        _configure_audit(args.tab_style, args.tab_font_size)
+        _configure_audit(args.tab_style, args.tab_font_size, args.tab_vertical_padding)
 
 
 # --- entry ---
@@ -1157,6 +1174,11 @@ def main(argv=None):
                     help=f"the tab-label font size to recommend, which also sets "
                          f"the tab height ({TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}, "
                          f"default: {DEFAULT_TAB_FONT_SIZE})")
+    sp.add_argument("--tab-vertical-padding", type=int, choices=TAB_VERTICAL_PADDINGS,
+                    default=DEFAULT_TAB_VERTICAL_PADDING, metavar="PT",
+                    help=f"points added above and below the tab label, making the tab "
+                         f"taller without larger text ({TAB_VERTICAL_PADDINGS.start}.."
+                         f"{TAB_VERTICAL_PADDINGS.stop - 1}, default: {DEFAULT_TAB_VERTICAL_PADDING})")
     sp.add_argument("--defer", action="store_true",
                     help="write the drifted settings the next time iTerm2 quits "
                          "(or now, if it is closed) instead of restarting it")

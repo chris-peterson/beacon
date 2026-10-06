@@ -11,6 +11,12 @@ so on the default branch line 2 stayed empty. A `/rename`, `beacon set task`,
 a PR title, a feature branch, and Claude Code's auto-title all take priority
 over it, and commands typed later in the session never replace it.
 
+### Larger tabs without larger text
+
+`beacon config tab.vertical-padding <points>` (0 to 20, default 0) adds that
+many points above and below the tab label, so you can keep small text and
+still get tabs that are easy to click. Apply it with `beacon layout --write`.
+
 ## 2.16.0
 
 ### Smaller tab labels, and a setting for their size
