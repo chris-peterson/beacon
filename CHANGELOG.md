@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### A session started with a slash command names its tab
+
+A session that opens with a skill or custom command, such as
+`/acme:fix #12`, shows that command on line 2 of its tab until something
+better names it. Claude Code often writes no auto-title for these sessions,
+so on the default branch line 2 stayed empty. A `/rename`, `beacon set task`,
+a PR title, a feature branch, and Claude Code's auto-title all take priority
+over it, and commands typed later in the session never replace it.
+
 ## 2.16.0
 
 ### Smaller tab labels, and a setting for their size

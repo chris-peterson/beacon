@@ -5000,6 +5000,75 @@ class TaskChainCcSignals(BeaconTest):
         self.assertEqual(state["task"], "Auto summary")
         self.assertEqual(state["task_provider"], "ai-title")
 
+    def test_ai_title_beats_opening_command(self):
+        self.beacon.write_state("cc.ai_title", "Auto summary")
+        self.beacon.write_state("opening_command", "/mate:fix #53")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=None), \
+             mock.patch.object(self.beacon, "p_branch", return_value=None):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task_provider"], "ai-title")
+
+    def test_rename_beats_opening_command(self):
+        self.beacon.write_state("override.task", "renamed")
+        self.beacon.write_state("opening_command", "/mate:fix #53")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=None), \
+             mock.patch.object(self.beacon, "p_branch", return_value=None):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "renamed")
+
+    def test_opening_command_fills_an_untitled_session(self):
+        self.beacon.write_state("opening_command", "/mate:fix #53")
+        with mock.patch.object(self.beacon, "p_pr_title", return_value=None), \
+             mock.patch.object(self.beacon, "p_branch", return_value=None):
+            state = self.beacon.resolve(Path("/tmp"))
+        self.assertEqual(state["task"], "/mate:fix #53")
+        self.assertEqual(state["task_provider"], "command")
+
+
+class OpeningCommand(BeaconTest):
+    """PROV-10: the command a session opened with, read off UserPromptExpansion,
+    which fires only when a typed skill or custom command expands into a prompt."""
+
+    def _expand(self, name, args="", expansion_type="slash_command"):
+        payload = {"hook_event_name": "UserPromptExpansion", "expansion_type": expansion_type,
+                   "command_name": name, "command_args": args,
+                   "prompt": f"/{name} {args}".strip()}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event="UserPromptExpansion"))
+
+    def test_records_the_first_prompt_when_it_is_a_command(self):
+        self._expand("mate:fix", "#53")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
+    def test_a_command_with_no_args_records_its_name(self):
+        self._expand("anchor:backlog")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/anchor:backlog")
+
+    def test_a_later_command_is_a_step_not_the_headline(self):
+        self.beacon._write_latest_turn("human", "fix the flaky test")
+        self._expand("anchor:commit")
+        self.assertIsNone(self.beacon.read_state("opening_command"))
+
+    def test_the_opener_stands_through_later_commands(self):
+        self._expand("mate:fix", "#53")
+        self.beacon._write_latest_turn("human", "/mate:fix #53")
+        self._expand("anchor:commit")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
+    def test_an_mcp_prompt_is_not_recorded(self):
+        self._expand("mcp__docs__summarize", "x", expansion_type="mcp_prompt")
+        self.assertIsNone(self.beacon.read_state("opening_command"))
+
+    def test_args_are_one_display_safe_line(self):
+        self._expand("mate:fix", "#53\n  and the\x1b[31m flaky   test")
+        self.assertEqual(self.beacon.read_state("opening_command"),
+                         "/mate:fix #53 and the[31m flaky test")
+
+    def test_fresh_start_wipes_it(self):
+        self.beacon.write_state("opening_command", "/mate:fix #53")
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertIsNone(self.beacon.read_state("opening_command"))
+
 
 class ReadCcSignals(BeaconTest):
     """Harvesting /color, /rename, ai-title from the transcript tail."""

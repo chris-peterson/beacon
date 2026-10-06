@@ -4189,6 +4189,10 @@ def resolve(cwd: Path | None = None) -> dict:
     if not project:
         project, p_proj = _local_path_at(cwd), "pwd"
 
+    # The opening command (PROV-10) sits below ai-title because Claude Code titles
+    # a session from its first prose prompt and often skips one that opens with a
+    # slash command; it names the session only when nothing else does.
+    #
     # A user's /rename does not appear here as its own tier: it is shorthand
     # for setting the task, so the harvest folds a new custom-title into
     # `override.task` (see _read_cc_signals) and it competes as an override —
@@ -4199,6 +4203,7 @@ def resolve(cwd: Path | None = None) -> dict:
         ("pr",       lambda: p_pr_title(cwd)),
         ("branch",   lambda: p_branch(cwd)),
         ("ai-title", lambda: read_state("cc.ai_title")),
+        ("command",  lambda: read_state("opening_command")),
     ])
 
     # The two state axes resolve independently — no chain between them, which is
@@ -5537,6 +5542,7 @@ def _disengage() -> None:
     if read_activity() == "waiting":
         remove_state("activity")
     _clear_cc_signals()
+    remove_state("opening_command")
     remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
@@ -5734,6 +5740,22 @@ def _write_latest_turn(role: str, text: str | None) -> None:
     write_state("latest_turn_full", _full_turn(text))
 
 
+def _record_opening_command(payload: dict) -> None:
+    """Record the skill or custom command a session opened with (PROV-10).
+
+    UserPromptExpansion fires before UserPromptSubmit writes `latest_turn`, so an
+    absent turn means this command is the session's first prompt. A command
+    typed later is a step in work the opener already named; a commit command
+    typed at the end would caption the session by its last chore."""
+    if payload.get("expansion_type") != "slash_command" or read_state("latest_turn"):
+        return
+    name = str(payload.get("command_name") or "").strip()
+    if not name:
+        return
+    label = " ".join(f"/{name} {payload.get('command_args') or ''}".split())
+    write_state("opening_command", _display_safe(label))
+
+
 def _last_assistant_text() -> str | None:
     """Tail of the most recent assistant message text in this session's
     transcript. Returns None when no transcript is known or no assistant
@@ -5874,6 +5896,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("pending-attention")
     remove_state("latest_turn")
     remove_state("latest_turn_full")
+    remove_state("opening_command")
     remove_state("title_reasserted")
     # STATUSLINE-03: the accumulated list is scoped to one Claude session, but
     # the state keys on the pane — without this, a fresh session inherits the
@@ -7576,6 +7599,9 @@ def cmd_hook(args):
         else:
             _publish_anchor(Path(payload.get("cwd") or os.getcwd()))
         _sweep_stale_state()
+
+    elif event == "UserPromptExpansion":
+        _record_opening_command(payload)
 
     elif event == "UserPromptSubmit":
         prompt_text = (payload.get("prompt") or "").strip()

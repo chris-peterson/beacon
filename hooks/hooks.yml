@@ -11,6 +11,9 @@ hooks:
   - event: SessionStart
     command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/emit-rules.sh"'
     description: Emits this plugin's ambient rules into context.
+  - event: UserPromptExpansion
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook UserPromptExpansion'
+    description: Reports a typed skill or custom command to the beacon CLI, which names an untitled session after the one it opened with.
   - event: UserPromptSubmit
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook UserPromptSubmit'
     description: Reports the UserPromptSubmit event to the beacon CLI for sessions-view tracking.
