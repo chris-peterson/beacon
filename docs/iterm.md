@@ -187,6 +187,17 @@ beacon layout --write
 
 The size is an app-wide iTerm2 setting, so `beacon layout --write` applies it, and the tab height changes with it. iTerm2 centers the project line on the tab and hangs the task line below it, so a two-line label sits a little below center, more so at larger sizes. A taller tab doesn't change that; a smaller size does. `beacon config tab.font-size reset` returns to 16pt. `beacon config tab` lists every tab setting, and `beacon config tab reset` returns them all to their defaults.
 
+### Larger tabs with small text
+
+Small labels fit more of the task on line 2, but the tab shrinks with them and gets harder to click. Vertical padding makes the tab taller without changing the text:
+
+```
+beacon config tab.vertical-padding <points>
+beacon layout --write
+```
+
+The padding (0 to 20 points, 0 by default) goes both above and below the label, so the tab grows by twice the value. `beacon config tab.vertical-padding reset` removes it.
+
 ## The status bar
 
 The status bar carries a fixed-layout strip the tab has no room for: `↖ web ⟷ project branch ↗ code`. It's part of a beacon-managed dynamic profile, so it appears once you're switched into the beacon profile (which `install` handles).

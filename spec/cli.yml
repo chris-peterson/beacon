@@ -143,9 +143,9 @@ commands:
       arg: KEYS
 - name: config
   usages:
-  - summary: 'show or change the user config: tab.style, tab.indent, tab.font-size, auto-pause, origins'
+  - summary: 'show or change the user config: tab.style, tab.indent, tab.font-size, tab.vertical-padding, auto-pause, origins'
     args:
-    - name: tab|tab.style|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|auto-pause|origins
+    - name: tab|tab.style|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|tab.vertical-padding|auto-pause|origins
       choices:
       - tab
       - tab.style
@@ -153,6 +153,7 @@ commands:
       - tab.indent.1
       - tab.indent.2
       - tab.font-size
+      - tab.vertical-padding
       - auto-pause
       - origins
       optional: true

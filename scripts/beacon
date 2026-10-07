@@ -448,7 +448,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab.style, tab.indent, tab.font-size, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.indent, tab.font-size, tab.vertical-padding, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -530,11 +530,12 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size auto-pause origins ;;
+        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding auto-pause origins ;;
         4) [[ "${words[3]}" == tab ]] && compadd reset
            [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
            [[ "${words[3]}" == tab.indent* ]] && compadd reset
            [[ "${words[3]}" == tab.font-size ]] && compadd 14 16 18 reset
+           [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -634,6 +635,10 @@ DEFAULT_TAB_STYLE = "minimal"
 # tab height from the size, and validates what it is told.
 DEFAULT_TAB_FONT_SIZE = 16
 TAB_FONT_SIZES = range(10, 31)
+# Points `beacon layout` adds above and below the tab label (CLI-18b), and the
+# values `tab.vertical_padding` accepts; bin/beacon-iterm holds the same pair.
+DEFAULT_TAB_VERTICAL_PADDING = 0
+TAB_VERTICAL_PADDINGS = range(0, 21)
 
 ACTIVITY_TO_COLOR_STATE = {
     "idle":     "ready",
@@ -822,27 +827,39 @@ def _tab_style() -> str:
     return DEFAULT_TAB_STYLE
 
 
-def _valid_tab_font_size(n) -> bool:
-    return isinstance(n, int) and not isinstance(n, bool) and n in TAB_FONT_SIZES
+def _valid_tab_number(n, allowed: range) -> bool:
+    return isinstance(n, int) and not isinstance(n, bool) and n in allowed
+
+
+def _tab_number(key: str, allowed: range, default: int) -> int:
+    """A whole-number tab setting from the user config. A malformed value is
+    logged for `doctor` and reads as the default."""
+    raw = _tab_config().get(key)
+    if raw is None:
+        return default
+    if _valid_tab_number(raw, allowed):
+        return raw
+    log_error(f"config.tab.{key}", f"tab.{key} {raw!r} is not a whole number "
+                                   f"{allowed.start}..{allowed.stop - 1}")
+    return default
 
 
 def _tab_font_size() -> int:
     """The tab-label font size `beacon layout` recommends (`tab.font_size` in
-    the user config), which also sets the tab height it recommends (CLI-18a).
-    A malformed value is logged for `doctor` and reads as the default."""
-    raw = _tab_config().get("font_size")
-    if raw is None:
-        return DEFAULT_TAB_FONT_SIZE
-    if _valid_tab_font_size(raw):
-        return raw
-    log_error("config.tab.font_size", f"tab.font_size {raw!r} is not a whole number "
-                                      f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}")
-    return DEFAULT_TAB_FONT_SIZE
+    the user config), which also sets the tab height it recommends (CLI-18a)."""
+    return _tab_number("font_size", TAB_FONT_SIZES, DEFAULT_TAB_FONT_SIZE)
+
+
+def _tab_vertical_padding() -> int:
+    """The points `beacon layout` adds above and below the tab label
+    (`tab.vertical_padding` in the user config, CLI-18b)."""
+    return _tab_number("vertical_padding", TAB_VERTICAL_PADDINGS, DEFAULT_TAB_VERTICAL_PADDING)
 
 
 def _layout_args() -> list[str]:
     """What every `beacon-iterm configure` call is told about the user's tabs."""
-    return ["--tab-style", _tab_style(), "--tab-font-size", str(_tab_font_size())]
+    return ["--tab-style", _tab_style(), "--tab-font-size", str(_tab_font_size()),
+            "--tab-vertical-padding", str(_tab_vertical_padding())]
 
 
 def _valid_tab_indent(n) -> bool:
@@ -6601,14 +6618,15 @@ def _tab_settings() -> list[tuple[str, object]]:
     return [("tab.style", _tab_style()),
             ("tab.indent.1", indent[0]),
             ("tab.indent.2", indent[1]),
-            ("tab.font-size", _tab_font_size())]
+            ("tab.font-size", _tab_font_size()),
+            ("tab.vertical-padding", _tab_vertical_padding())]
 
 
 def _config_tab(values: list[str]) -> None:
     """`tab` lists every tab setting, or resets them all."""
     if not values:
         for name, value in _tab_settings():
-            print(f"{name:<14}{value}")
+            print(f"{name:<22}{value}")
         return
     if [v.strip().lower() for v in values] != ["reset"]:
         sys.exit("usage: beacon config tab [reset]")
@@ -6616,7 +6634,7 @@ def _config_tab(values: list[str]) -> None:
     _save_tab_config(data, {})
     print(f"tab settings reset to their defaults (in {_config_file()})")
     print(f"Tabs repaint on their next hook; `{LAYOUT_COMMAND} --write` applies the "
-          "default font size and tab height.")
+          "default font size, padding, and tab height.")
 
 
 def _config_tab_style(values: list[str]) -> None:
@@ -6713,11 +6731,12 @@ def _config_tab_indent(line: int | None, values: list[str]) -> None:
     print("Tabs repaint with it on their next hook.")
 
 
-def _config_tab_font_size(values: list[str]) -> None:
-    usage = (f"usage: beacon config tab.font-size [<points> | reset], "
-             f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}")
+def _config_tab_points(name: str, key: str, allowed: range, read, values: list[str],
+                       note: str) -> None:
+    """Read, set, or reset a whole-number tab setting measured in points."""
+    usage = f"usage: beacon config {name} [<points> | reset], {allowed.start}..{allowed.stop - 1}"
     if not values:
-        print(_tab_font_size())
+        print(read())
         return
     if len(values) != 1:
         sys.exit(usage)
@@ -6725,19 +6744,31 @@ def _config_tab_font_size(values: list[str]) -> None:
     data = _config_for_edit()
     tab = _tab_config_for_edit(data)
     if value == "reset":
-        tab.pop("font_size", None)
+        tab.pop(key, None)
     else:
         try:
             n = int(value)
         except ValueError:
             sys.exit(usage)
-        if not _valid_tab_font_size(n):
+        if not _valid_tab_number(n, allowed):
             sys.exit(usage)
-        tab["font_size"] = n
+        tab[key] = n
     _save_tab_config(data, tab)
-    print(f"tab.font-size: {_tab_font_size()}pt (in {_config_file()})")
-    print("It is an app-wide iTerm2 setting, and the tab height follows it. "
-          f"Apply both with `{LAYOUT_COMMAND} --write`.")
+    print(f"{name}: {read()}pt (in {_config_file()})")
+    print(note)
+
+
+def _config_tab_font_size(values: list[str]) -> None:
+    _config_tab_points("tab.font-size", "font_size", TAB_FONT_SIZES, _tab_font_size, values,
+                       "It is an app-wide iTerm2 setting, and the tab height follows it. "
+                       f"Apply both with `{LAYOUT_COMMAND} --write`.")
+
+
+def _config_tab_vertical_padding(values: list[str]) -> None:
+    _config_tab_points("tab.vertical-padding", "vertical_padding", TAB_VERTICAL_PADDINGS,
+                       _tab_vertical_padding, values,
+                       "It adds to the tab height above and below the label, leaving the "
+                       f"text size alone. Apply it with `{LAYOUT_COMMAND} --write`.")
 
 
 def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
@@ -6789,6 +6820,8 @@ def cmd_config(args):
         _config_tab_indent(int(args.setting[-1]), args.values)
     elif args.setting == "tab.font-size":
         _config_tab_font_size(args.values)
+    elif args.setting == "tab.vertical-padding":
+        _config_tab_vertical_padding(args.values)
     elif args.setting == "auto-pause":
         _config_auto_pause(args.values)
     elif args.setting == "origins":
@@ -6797,11 +6830,11 @@ def cmd_config(args):
         data = _config_for_edit()
         print(f"config: {_config_file()}")
         for name, value in _tab_settings():
-            print(f"  {name:<14}{value}")
+            print(f"  {name:<22}{value}")
         pause = _load_config().get("auto_pause")
-        print(f"  {'auto-pause':<14}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
+        print(f"  {'auto-pause':<22}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
         origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
-        print(f"  {'origins':<14}{', '.join(origins)}")
+        print(f"  {'origins':<22}{', '.join(origins)}")
 
 
 # --- doctor ---
@@ -6833,6 +6866,10 @@ _DOCTOR_ADVICE = {
                             f"{TAB_FONT_SIZES.start}..{TAB_FONT_SIZES.stop - 1}, so `{LAYOUT_COMMAND}` "
                             f"recommends {DEFAULT_TAB_FONT_SIZE}pt tab labels. "
                             "`beacon config tab.font-size reset` clears it.",
+    "config.tab.vertical_padding": f"`tab.vertical_padding` in {_config_file()} isn't a whole "
+                                   f"number {TAB_VERTICAL_PADDINGS.start}..{TAB_VERTICAL_PADDINGS.stop - 1}, "
+                                   f"so `{LAYOUT_COMMAND}` adds no padding to the tab height. "
+                                   "`beacon config tab.vertical-padding reset` clears it.",
     "config.tab.style": f"`tab.style` in {_config_file()} names no tab style beacon "
                         f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
                         f"{DEFAULT_TAB_STYLE} weights.",
@@ -7825,15 +7862,15 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("config",
                         help="show or change the user config: tab.style, tab.indent, "
-                             "tab.font-size, auto-pause, origins")
+                             "tab.font-size, tab.vertical-padding, auto-pause, origins")
     sp.add_argument("setting", nargs="?",
                     choices=("tab", "tab.style", "tab.indent", "tab.indent.1", "tab.indent.2",
-                             "tab.font-size", "auto-pause", "origins"),
+                             "tab.font-size", "tab.vertical-padding", "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
                     help="tab: reset; tab.style: minimal|compact|regular; tab.indent: reset; "
                          "tab.indent.1, tab.indent.2: <spaces> | reset; "
-                         "tab.font-size: <points> | reset; "
+                         "tab.font-size, tab.vertical-padding: <points> | reset; "
                          "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 

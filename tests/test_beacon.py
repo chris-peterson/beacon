@@ -794,7 +794,7 @@ class ConfigCommand(BeaconTest):
         self.assertEqual(self.beacon._tab_font_size(), self.beacon.DEFAULT_TAB_FONT_SIZE)
         self._run("tab.font-size", "14")
         self.assertEqual(self._saved()["tab"], {"font_size": 14})
-        self.assertEqual(self.beacon._layout_args()[-2:], ["--tab-font-size", "14"])
+        self.assertEqual(self.beacon._layout_args()[2:4], ["--tab-font-size", "14"])
         self._run("tab.font-size", "reset")
         self.assertNotIn("tab", self._saved())
         for bad in (("tab.font-size", "x"), ("tab.font-size", "9"), ("tab.font-size", "31"),
@@ -802,13 +802,38 @@ class ConfigCommand(BeaconTest):
             with self.subTest(bad=bad), self.assertRaises(SystemExit):
                 self._run(*bad)
 
+    def test_tab_vertical_padding_is_set_reset_and_passed_to_the_layout(self):
+        self.assertEqual(self.beacon._tab_vertical_padding(), 0)
+        self._run("tab.vertical-padding", "12")
+        self.assertEqual(self._saved()["tab"], {"vertical_padding": 12})
+        self.assertEqual(self.beacon._layout_args()[-2:], ["--tab-vertical-padding", "12"])
+        self._run("tab.vertical-padding", "20")
+        self._run("tab.vertical-padding", "reset")
+        self.assertNotIn("tab", self._saved())
+        for bad in (("tab.vertical-padding", "x"), ("tab.vertical-padding", "-1"),
+                    ("tab.vertical-padding", "21"), ("tab.vertical-padding", "4", "8")):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                self._run(*bad)
+
+    def test_a_malformed_vertical_padding_is_logged_and_reads_as_none(self):
+        for raw in ("5", 21, -1, True):
+            with self.subTest(raw=raw), \
+                    mock.patch.object(self.beacon, "_load_config",
+                                      return_value={"tab": {"vertical_padding": raw}}), \
+                    mock.patch.object(self.beacon, "log_error") as logged:
+                self.assertEqual(self.beacon._tab_vertical_padding(), 0)
+                self.assertEqual(logged.call_args.args[0], "config.tab.vertical_padding")
+        self.assertIn("config.tab.vertical_padding", self.beacon._DOCTOR_ADVICE)
+
     def test_the_tab_group_lists_and_resets_every_tab_setting(self):
         self._run("tab.style", "regular")
         self._run("tab.font-size", "18")
         self._run("tab.indent.2", "6")
+        self._run("tab.vertical-padding", "8")
         listed = self._run("tab").split()
         self.assertEqual(listed, ["tab.style", "regular", "tab.indent.1", "3",
-                                  "tab.indent.2", "6", "tab.font-size", "18"])
+                                  "tab.indent.2", "6", "tab.font-size", "18",
+                                  "tab.vertical-padding", "8"])
         self._run("tab", "reset")
         self.assertNotIn("tab", self._saved())
         with self.assertRaises(SystemExit):
@@ -1745,13 +1770,13 @@ class CustomizableStatusBarButtons(unittest.TestCase):
 
     def test_layout_audits_by_default(self):
         seen = self._layout()
-        self.assertEqual(seen["cmd"][-5:], ["configure", "--tab-style", "minimal", "--tab-font-size", "16"])
+        self.assertEqual(seen["cmd"][-7:], ["configure", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"])
         self.assertNotIn("--write", seen["cmd"])
 
     def test_layout_passes_its_flags_through(self):
         seen = self._layout(write=True, yes=True, keys="HideTab,TabViewType")
-        self.assertEqual(seen["cmd"][-9:],
-                         ["configure", "--tab-style", "minimal", "--tab-font-size", "16",
+        self.assertEqual(seen["cmd"][-11:],
+                         ["configure", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0",
                           "--write", "--yes", "--keys", "HideTab,TabViewType"])
 
     def test_layout_tells_the_cli_which_command_to_advertise(self):
@@ -4593,7 +4618,7 @@ class InstallGating(unittest.TestCase):
         # nothing can confirm a restart, so the layout is queued for the next
         # time iTerm2 quits rather than skipped.
         out, calls = self._run_install_with_layout(audit_rc=1, tty=False)
-        self.assertIn(["configure", "--defer", "--tab-style", "minimal", "--tab-font-size", "16"], calls)
+        self.assertIn(["configure", "--defer", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"], calls)
         self.assertFalse(any("--write" in c for c in calls),
                          "a write needs a terminal to confirm the restart on")
 
@@ -4601,7 +4626,7 @@ class InstallGating(unittest.TestCase):
         out, calls = self._run_install_with_layout(audit_rc=0)
         self.assertIn("no iTerm2 restart required", out)
         self.assertNotIn("DEFERRED", out)
-        self.assertEqual(calls, [["configure", "--tab-style", "minimal", "--tab-font-size", "16"]],
+        self.assertEqual(calls, [["configure", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"]],
                          "An aligned layout must not be written again")
 
     def test_a_drifted_layout_is_applied_not_just_reported(self):
@@ -4609,8 +4634,8 @@ class InstallGating(unittest.TestCase):
         # as advice they stayed drifted — the closing line read as "nothing left
         # to do" beneath a report saying otherwise.
         out, calls = self._run_install_with_layout(audit_rc=1, write_rc=0)
-        self.assertEqual(calls, [["configure", "--tab-style", "minimal", "--tab-font-size", "16"],
-                                 ["configure", "--write", "--tab-style", "minimal", "--tab-font-size", "16"]],
+        self.assertEqual(calls, [["configure", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"],
+                                 ["configure", "--write", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"]],
                          "Drift must be offered for writing, after the audit table")
         self.assertIn("no iTerm2 restart required", out)
 
@@ -4619,7 +4644,7 @@ class InstallGating(unittest.TestCase):
         # already landed, so declining is a complete answer — install reports the
         # layout as outstanding and names the command, rather than erroring.
         out, calls = self._run_install_with_layout(audit_rc=1, write_rc=1)
-        self.assertIn(["configure", "--write", "--tab-style", "minimal", "--tab-font-size", "16"], calls)
+        self.assertIn(["configure", "--write", "--tab-style", "minimal", "--tab-font-size", "16", "--tab-vertical-padding", "0"], calls)
         self.assertNotIn("no iTerm2 restart required", out)
         self.assertIn("need an iTerm2 restart", out)
         self.assertIn("beacon layout --write", out)
@@ -6159,7 +6184,7 @@ class ConfigureLayoutAudit(unittest.TestCase):
         with mock.patch("subprocess.run", side_effect=fake_run), \
                 contextlib.redirect_stdout(buf), \
                 self.assertRaises(SystemExit) as cm:
-            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal", tab_font_size=16))
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal", tab_font_size=16, tab_vertical_padding=0))
         return cm.exception.code, buf.getvalue()
 
     def _aligned(self):
@@ -6217,6 +6242,19 @@ class ConfigureLayoutAudit(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.iterm._recommended_layout("minimal", 40)
 
+    def test_vertical_padding_grows_the_tab_and_not_the_text(self):
+        # CLI-18b: padding goes above and below the label, so the tab gains
+        # twice it while the font size stays where the user put it.
+        self.assertEqual(self.iterm._tab_height(16, 0), self.iterm._tab_height(16))
+        self.assertEqual(self.iterm._tab_height(12, 20), self.iterm._tab_height(12) + 40)
+        layout = {s["key"]: s for s in self.iterm._recommended_layout("minimal", 12, 10)}
+        self.assertEqual(layout["CustomTabBarFontSize"]["want"], "12")
+        for key in ("DefaultTabBarHeight", "CompactMinimalTabBarHeight"):
+            self.assertEqual(layout[key]["want"], str(self.iterm._tab_height(12) + 20))
+        for bad in (-1, 21):
+            with self.subTest(padding=bad), self.assertRaises(ValueError):
+                self.iterm._recommended_layout("minimal", 16, bad)
+
     def test_compact_recommends_its_own_style_and_drops_the_minimal_height(self):
         # Compact's left strip takes DefaultTabBarHeight, so the Minimal-only
         # per-tab height would be drift the user can't see any effect from.
@@ -6272,7 +6310,7 @@ class ConfigureLayoutDefer(unittest.TestCase):
         self.pidfile = pidfile
 
     def _args(self):
-        return types.SimpleNamespace(tab_style="minimal", tab_font_size=16, defer=True, write=False)
+        return types.SimpleNamespace(tab_style="minimal", tab_font_size=16, tab_vertical_padding=0, defer=True, write=False)
 
     def _drift(self):
         return list(self.iterm.RECOMMENDED_LAYOUT)
@@ -6340,7 +6378,7 @@ class ConfigureLayoutWrite(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def _args(self, **kw):
-        return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, "tab_style": "minimal", "tab_font_size": 16, **kw})
+        return types.SimpleNamespace(**{"write": True, "yes": True, "keys": None, "tab_style": "minimal", "tab_font_size": 16, "tab_vertical_padding": 0, **kw})
 
     @staticmethod
     def _fake_run(calls, running: bool):
@@ -6393,7 +6431,7 @@ class ConfigureLayoutWrite(unittest.TestCase):
             self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
         self.assertEqual(len(popen), 1)
         helper = popen[0][-1]
-        self.assertIn("configure --write --yes --tab-style minimal --tab-font-size 16 --keys", helper)
+        self.assertIn("configure --write --yes --tab-style minimal --tab-font-size 16 --tab-vertical-padding 0 --keys", helper)
         self.assertIn("StatusBarPosition", helper)
         self.assertNotIn("pgrep", helper,
                          "the helper would fall through before iTerm2 finished quitting")
@@ -6568,7 +6606,7 @@ class LayoutAdviceNamesTheFrontDoor(unittest.TestCase):
                 mock.patch.dict(os.environ, {"BEACON_LAYOUT_COMMAND": "beacon layout"}), \
                 contextlib.redirect_stdout(buf), \
                 self.assertRaises(SystemExit):
-            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal", tab_font_size=16))
+            self.iterm.cmd_configure(types.SimpleNamespace(write=False, yes=False, keys=None, tab_style="minimal", tab_font_size=16, tab_vertical_padding=0))
         self.assertIn("beacon layout --write", buf.getvalue())
         self.assertNotIn("beacon-iterm", buf.getvalue())
 
