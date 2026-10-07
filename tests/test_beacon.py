@@ -2657,6 +2657,10 @@ class MarkdownEmphasis(BeaconTest):
         self.assertEqual(self.beacon._title_markup("fix <3 handling & more"),
                          "fix &lt;3 handling &amp; more")
 
+    def test_only_entities_iterm_decodes_are_escaped(self):
+        self.assertEqual(self.beacon._title_markup("inactive for >30 min"),
+                         "inactive for >30 min")
+
     def test_apply_publishes_the_marked_up_task(self):
         self.beacon.apply({**_base_state(), "task": "ship **it**"})
         self.assertIn(("uservar", "beacon_task_nl", "\n  ship <b>it</b>"),
@@ -8550,7 +8554,7 @@ class IdleSweep(BeaconTest):
         self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
         self.beacon.idle_sweep(now=self.NOON)
         line2 = [a for a in seen if a[:2] == ("uservar", "beacon_task_nl")]
-        self.assertTrue(line2 and line2[-1][2].strip() == "inactive for &gt;1 hr", line2)
+        self.assertTrue(line2 and line2[-1][2].strip() == "inactive for >1 hr", line2)
 
     def test_note_buckets_the_elapsed_time(self):
         now = datetime(2026, 10, 1, 9, 0).timestamp()

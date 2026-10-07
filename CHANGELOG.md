@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### A parked tab reads `inactive for >30 min` again
+
+Line 2 of a tab showed `>` as `&gt;`, so a session the idle sweep parked read
+`inactive for &gt;30 min`, and so did any task containing `>`. iTerm2's tab
+titles decode only `&lt;` and `&amp;`, so beacon now escapes only `<` and `&`.
+
 ## 2.17.0
 
 ### A session started with a slash command names its tab

@@ -274,12 +274,11 @@ def _emphasize(text: str, wrappers: dict) -> str:
 def _title_markup(text: str) -> str:
     """Line 2 of the session name, as the HTML iTerm2 reads it (TITLE-05b).
 
-    The escape earns its place twice over: it leaves the emphasis below as the
-    only markup in the line, and it keeps a task reading `fix <3 handling` from
-    losing everything after the `<` to a tag that never closes."""
-    escaped = (text.replace("&", "&amp;")
-                   .replace("<", "&lt;")
-                   .replace(">", "&gt;"))
+    The escape leaves the emphasis below as the only markup in the line. It
+    covers exactly the two entities iTerm2's tab-title parser decodes (`&lt;`
+    and `&amp;`, PSMTabBarControl's `newAttributedStringWithHTML`); any other
+    entity, `&gt;` included, renders as its literal characters."""
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;")
     return _emphasize(escaped, _EMPHASIS_HTML)
 
 
