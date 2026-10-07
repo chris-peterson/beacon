@@ -64,7 +64,7 @@ beacon is not the only thing painting iTerm2 tabs from Claude Code hooks. [claud
 
 Both are smaller than beacon, and if attention state is all you want, that's the reason to prefer them. Three things separate them:
 
-- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus a status bar, the window title, and a [status line](/iterm?id=the-status-line) listing the session's open PRs and issues.
+- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus a status bar, the window title, and a [status line](/iterm/layout?id=the-status-line) listing the session's open PRs and issues.
 - **What has to be running.** They need an iTerm2 Python AutoLaunch script (and an iTerm2 restart) or a resident LaunchAgent holding a websocket. beacon paints with escape sequences and a hot-reloaded profile, so neither is required. beacon's own `serve` is a daemon, but it's opt-in and only powers the dashboard.
 - **Where it stops working.** They're macOS and iTerm2, entirely. beacon's sessions view is the primary product and runs anywhere Python does.
 

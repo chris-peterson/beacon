@@ -447,7 +447,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab.style, tab.indent, tab.font-size, tab.vertical-padding, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -529,12 +529,13 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding auto-pause origins ;;
+        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar auto-pause origins ;;
         4) [[ "${words[3]}" == tab ]] && compadd reset
            [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
            [[ "${words[3]}" == tab.indent* ]] && compadd reset
            [[ "${words[3]}" == tab.font-size ]] && compadd 14 16 18 reset
            [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
+           [[ "${words[3]}" == pane-title-bar ]] && compadd on off reset
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -855,10 +856,32 @@ def _tab_vertical_padding() -> int:
     return _tab_number("vertical_padding", TAB_VERTICAL_PADDINGS, DEFAULT_TAB_VERTICAL_PADDING)
 
 
+def _switch(raw, name: str) -> bool:
+    """An on/off setting, stored as a JSON boolean. Any other value is logged for
+    `doctor` and reads as off."""
+    if raw is None:
+        return False
+    if isinstance(raw, bool):
+        return raw
+    log_error(f"config.{name}", f"{name} {raw!r} is not true or false")
+    return False
+
+
+def _pane_title_bar() -> bool:
+    """Whether `beacon layout` recommends a title bar on each split pane
+    (`pane_title_bar` in the user config, CLI-18c)."""
+    return _switch(_load_config().get("pane_title_bar"), "pane_title_bar")
+
+
+def _on_off(value: bool) -> str:
+    return "on" if value else "off"
+
+
 def _layout_args() -> list[str]:
-    """What every `beacon-iterm configure` call is told about the user's tabs."""
+    """What every `beacon-iterm configure` call is told about the user's layout."""
     return ["--tab-style", _tab_style(), "--tab-font-size", str(_tab_font_size()),
-            "--tab-vertical-padding", str(_tab_vertical_padding())]
+            "--tab-vertical-padding", str(_tab_vertical_padding()),
+            "--pane-title-bar", _on_off(_pane_title_bar())]
 
 
 def _valid_tab_indent(n) -> bool:
@@ -6770,6 +6793,39 @@ def _config_tab_vertical_padding(values: list[str]) -> None:
                        f"text size alone. Apply it with `{LAYOUT_COMMAND} --write`.")
 
 
+def _config_switch(name: str, read, store, values: list[str], note: str) -> None:
+    """Read, set, or reset an on/off setting. `store` takes True, False, or None
+    to remove the key so the default applies."""
+    usage = f"usage: beacon config {name} [on | off | reset]"
+    if not values:
+        print(_on_off(read()))
+        return
+    if len(values) != 1:
+        sys.exit(usage)
+    value = values[0].strip().lower()
+    if value not in ("on", "off", "reset"):
+        sys.exit(usage)
+    store(None if value == "reset" else value == "on")
+    print(f"{name}: {_on_off(read())} (in {_config_file()})")
+    print(note)
+
+
+def _store_pane_title_bar(on: bool | None) -> None:
+    data = _config_for_edit()
+    if on is None:
+        data.pop("pane_title_bar", None)
+    else:
+        data["pane_title_bar"] = on
+    _save_config(data)
+
+
+def _config_pane_title_bar(values: list[str]) -> None:
+    _config_switch("pane-title-bar", _pane_title_bar, _store_pane_title_bar, values,
+                   "It is an app-wide iTerm2 setting: a split pane gets a title bar with "
+                   "a close button, showing the session name on one line with the <b> "
+                   f"tag as text. Apply it with `{LAYOUT_COMMAND} --write`.")
+
+
 def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
     """Whether a `beacon serve` answers on its loopback port: the one process
     auto-pause runs in (WIP-21)."""
@@ -6821,6 +6877,8 @@ def cmd_config(args):
         _config_tab_font_size(args.values)
     elif args.setting == "tab.vertical-padding":
         _config_tab_vertical_padding(args.values)
+    elif args.setting == "pane-title-bar":
+        _config_pane_title_bar(args.values)
     elif args.setting == "auto-pause":
         _config_auto_pause(args.values)
     elif args.setting == "origins":
@@ -6830,6 +6888,7 @@ def cmd_config(args):
         print(f"config: {_config_file()}")
         for name, value in _tab_settings():
             print(f"  {name:<22}{value}")
+        print(f"  {'pane-title-bar':<22}{_on_off(_pane_title_bar())}")
         pause = _load_config().get("auto_pause")
         print(f"  {'auto-pause':<22}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
         origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
@@ -6852,7 +6911,7 @@ _DOCTOR_ADVICE = {
     "provider": "A resolver provider threw, so the chain fell through to a lower "
                 "tier — the project, task, or URL it feeds may be stale or blank.",
     "git": "A git probe failed, so the branch chip and its sync state may be blank.",
-    "layout.audit": "The layout audit could not run — see docs/iterm.md.",
+    "layout.audit": "The layout audit could not run — see docs/iterm/layout.md.",
     "config.auto_pause": f"`auto_pause` in {_config_file()} isn't a duration like 30m "
                          "or 2h, so auto-pause is off. `beacon config auto-pause <duration>` "
                          "sets it.",
@@ -6869,6 +6928,9 @@ _DOCTOR_ADVICE = {
                                    f"number {TAB_VERTICAL_PADDINGS.start}..{TAB_VERTICAL_PADDINGS.stop - 1}, "
                                    f"so `{LAYOUT_COMMAND}` adds no padding to the tab height. "
                                    "`beacon config tab.vertical-padding reset` clears it.",
+    "config.pane_title_bar": f"`pane_title_bar` in {_config_file()} isn't true or false, so "
+                          f"`{LAYOUT_COMMAND}` recommends split panes without title bars. "
+                          "`beacon config pane-title-bar reset` clears it.",
     "config.tab.style": f"`tab.style` in {_config_file()} names no tab style beacon "
                         f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
                         f"{DEFAULT_TAB_STYLE} weights.",
@@ -7430,7 +7492,7 @@ def cmd_install(_args):
         layout_drifted = r.returncode != 0  # the audit exits non-zero on drift
     except Exception as exc:
         log_error("layout.audit", f"{type(exc).__name__}: {exc}")
-        print(_color("33", "  ! could not audit layout prefs — see docs/iterm.md"))
+        print(_color("33", "  ! could not audit layout prefs — see docs/iterm/layout.md"))
     print()
 
     if layout_drifted:
@@ -7861,15 +7923,18 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("config",
                         help="show or change the user config: tab.style, tab.indent, "
-                             "tab.font-size, tab.vertical-padding, auto-pause, origins")
+                             "tab.font-size, tab.vertical-padding, pane-title-bar, "
+                             "auto-pause, origins")
     sp.add_argument("setting", nargs="?",
                     choices=("tab", "tab.style", "tab.indent", "tab.indent.1", "tab.indent.2",
-                             "tab.font-size", "tab.vertical-padding", "auto-pause", "origins"),
+                             "tab.font-size", "tab.vertical-padding", "pane-title-bar",
+                             "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
                     help="tab: reset; tab.style: minimal|compact|regular; tab.indent: reset; "
                          "tab.indent.1, tab.indent.2: <spaces> | reset; "
                          "tab.font-size, tab.vertical-padding: <points> | reset; "
+                         "pane-title-bar: on | off | reset; "
                          "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 

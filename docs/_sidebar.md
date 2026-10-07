@@ -1,7 +1,7 @@
 - [Home](/)
 - [Why beacon?](/why)
 - [Try the demo](/demo)
-- [In iTerm2](/iterm)
+- [Layout](/iterm/layout)
 - [Status-bar buttons](/statusbar)
 - [The palette](/palette)
 - [CLI Reference](/cli)

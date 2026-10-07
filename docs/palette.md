@@ -6,7 +6,7 @@ beacon paints two independent things about a session, so a glance tells you both
 
 **What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background**. `⏸` `🚀` `📋` `🏁` `…`.
 
-They never compete, because they never share a surface. A releasing session that needs you is a red tab beside a `🚀`. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm?id=turning-the-badge-on) if you turn one on — it's off by default.)
+They never compete, because they never share a surface. A releasing session that needs you is a red tab beside a `🚀`. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm/layout?id=turning-the-badge-on) if you turn one on — it's off by default.)
 
 **Plan mode is watched but not painted.** beacon reads Claude Code's permission mode off every hook, and surfaces it in the [sessions view](/demo) — a card has room for the word `plan` where a tab does not. The tab says nothing about it: colour is the only signal you read across every tab at once, so it answers *does this need me* and nothing else.
 
@@ -29,7 +29,7 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.25rem 0;
 }
-.pal-stoplight { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; }
+.pal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; }
 .pal-chip { border: 1px solid var(--line); border-radius: 11px; background: var(--panel); padding: 1rem 0.95rem 0.85rem; }
 .pal-chip .row { font: 700 20px/1.1 var(--mono); }
 /* tab chips take their tint from the state color each figure sets inline */
@@ -56,9 +56,9 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 
 ## activity — the tab color
 
-Everyday development. There's no mode background — the pane stays your own profile — and the tab color is a **dynamic stoplight** the hooks drive as Claude works. Green is deliberately **not** in it: at rest the tab is a calm neutral gray, so a fresh session has a known default before its first turn, and green is freed to mean one thing only — [`release`](#mode-cycles).
+Everyday development. There's no mode background — the pane stays your own profile — and the tab color is the session's **activity**, which the hooks change as Claude works. Green is deliberately **not** one of its colors: at rest the tab is a calm neutral gray, so a fresh session has a known default before its first turn, and green is freed to mean one thing only — [`release`](#mode-cycles).
 
-<div class="pal pal-stoplight">
+<div class="pal pal-grid">
   <div class="pal-chip">
     <div class="tab" style="color: var(--ready)">checkout-api<span class="t">refunds</span></div>
     <div class="cap">idle — at rest, ready for a prompt <span class="hex">#8b8fa0</span></div>
@@ -77,7 +77,7 @@ The tab's label is the project name over the task, indented; line 2 collapses wh
 
 ## what the tab actually paints
 
-The hexes above are the hues, and every surface but one paints them as they are. iTerm2's Minimal style — the one beacon pins — paints the state color as the tab's *whole background* rather than a tint, and a left strip makes each tab tall. A hue that reads right in a small dashboard dot is an assault across that much area, so the tab paints each hue under a weight. [In iTerm2](/iterm?id=the-tab-a-traffic-light) shows the result rendered.
+The hexes above are the hues, and every surface but one paints them as they are. iTerm2's Minimal style — the one beacon pins — paints the state color as the tab's *whole background* rather than a tint, and a left strip makes each tab tall. A hue that reads right in a small dashboard dot is an assault across that much area, so the tab paints each hue under a weight. [Layout](/iterm/layout?id=the-tab-color-is-the-activity) shows the result rendered.
 
 The weight is per state rather than one global dimming, and that distinction is the whole point: uniform dimming calmed the strip and flattened it, because with every row equally muted the one session that wants you no longer stood out from the several that don't. So the weight tracks how often you see a state.
 
@@ -160,9 +160,9 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
 
 ## status line — the footer rows
 
-The [status line](/iterm?id=the-status-line) is the one surface that isn't iTerm2's, so its palette is ANSI rather than hex: beacon emits SGR codes and *your* terminal theme decides the exact shade. The meanings are fixed even though the shades aren't.
+The [status line](/iterm/layout?id=the-status-line) is the one surface that isn't iTerm2's, so its palette is ANSI rather than hex: beacon emits SGR codes and *your* terminal theme decides the exact shade. The meanings are fixed even though the shades aren't.
 
-<div class="pal pal-stoplight">
+<div class="pal pal-grid">
   <div class="pal-chip">
     <div class="row" style="color: #50fa7b"><s>#27</s> <span style="opacity:0.6">merged 🏁</span></div>
     <div class="cap">delivered — green, verb muted against its ref <span class="hex">SGR 32 / 2;32</span></div>

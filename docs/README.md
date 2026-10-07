@@ -20,7 +20,7 @@ A glance across the windows tells you which session needs you:
 <!--
   Bespoke sessions figure drawn in HTML from the spec palette (COLOR_PALETTE,
   THEME-02) rather than screenshotted, so it stays crisp and on-brand and needs
-  no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm and the
+  no macOS/iTerm2. Same hues and idioms as the .pf- figures on /iterm/layout and the
   .pal- ones on /palette.
   Keep the hexes in sync with scripts/beacon. The play-by-play narrative it
   replaces still lives in plugin.yml's suite.session (read by the marketplace hub).
@@ -187,7 +187,7 @@ The default is closed because the payload carries each session's most recent tur
 
 On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
-See **[In iTerm2: per-pane painting](/iterm)** for the anatomy, the tab states, and what the status-bar chips mean.
+See **[Layout](/iterm/layout)** for the anatomy, the tab states, and what the status-bar chips mean.
 
 ### Customizing the two buttons
 
@@ -233,7 +233,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
 
 <!--
   Bespoke command→tab figure in the spec palette (COLOR_PALETTE), same
-  idioms as the .sessions figure above and the .pf- / .pal- ones on /iterm and /palette.
+  idioms as the .sessions figure above and the .pf- / .pal- ones on /iterm/layout and /palette.
   Replaces the generic animated session player; the play-by-play it showed still
   lives in plugin.yml's suite.examples (read by the marketplace hub).
 -->
