@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.17.0
 
 ### A session started with a slash command names its tab
 
