@@ -57,7 +57,7 @@ See [On Windows or a non-iTerm terminal](/?id=on-windows-or-a-non-iterm-terminal
 
 ## On macOS + iTerm2: per-pane painting
 
-iTerm2 gets everything the demo shows, plus the same state painted onto each pane — the tab's label and color, and the status bar — so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [In iTerm2: per-pane painting](/iterm) for the full anatomy.
+iTerm2 gets everything the demo shows, plus the same state painted onto each pane — the tab's label and color, and the status bar — so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [Layout](/iterm/layout) for the full anatomy.
 
 ## Next steps
 

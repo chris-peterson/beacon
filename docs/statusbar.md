@@ -3,7 +3,7 @@
 The iTerm2 status bar carries two action buttons — `↖ web` at the left edge and
 `↗ code` at the right — each paired with the data it acts on. This page is the
 reference for pointing them somewhere else; for what the strip looks like and
-what the chips between them mean, see [In iTerm2](/iterm).
+what the chips between them mean, see [Layout](/iterm/layout).
 
 Each button's text and what it runs come from `~/.config/beacon/config.json` — or `$XDG_CONFIG_HOME/beacon/config.json` when you have that variable set, which is the file every beacon command reads.
 

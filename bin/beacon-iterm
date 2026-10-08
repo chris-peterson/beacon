@@ -501,6 +501,21 @@ _REGULAR_TAB_STYLE = {
 }
 _STYLE_SPECS = {"compact": _COMPACT_TAB_STYLE, "regular": _REGULAR_TAB_STYLE}
 _MINIMAL_ONLY_KEYS = {"CompactMinimalTabBarHeight", "MinimalSelectedTabUnderlineProminence"}
+# The per-pane title bar (CLI-18c), which carries the pane's close button. These
+# rows stand in for the ShowPaneTitles row; iTerm2 reads the second only while
+# the first is on, so the off case audits nothing beyond ShowPaneTitles.
+_PANE_TITLE_BAR_ON = (
+    {"key": "ShowPaneTitles", "want": "1", "type": "bool",
+     "label": "Per-pane title bars",
+     "why": "pane-title-bar is on: a pane can be closed with a click, and its "
+            "title bar shows the session name on one line with <b> as text",
+     "where": "Appearance → Panes"},
+    {"key": "ShowPaneTitlesEvenIfOnlyOnePane", "want": "1", "type": "bool",
+     "label": "Title bar with one pane",
+     "why": "iTerm2 drops the title bar from a tab with one pane, so that pane "
+            "would have no close button; the tab bar is kept for one tab the same way",
+     "where": "Appearance → Panes"},
+)
 
 
 def _sized(spec, font_size: int, padding: int):
@@ -513,7 +528,8 @@ def _sized(spec, font_size: int, padding: int):
 
 def _recommended_layout(style: str = DEFAULT_TAB_STYLE,
                         font_size: int = DEFAULT_TAB_FONT_SIZE,
-                        padding: int = DEFAULT_TAB_VERTICAL_PADDING) -> tuple:
+                        padding: int = DEFAULT_TAB_VERTICAL_PADDING,
+                        pane_title_bar: bool = False) -> tuple:
     if style not in TAB_STYLES:
         raise ValueError(f"unknown tab style {style!r}; expected one of {', '.join(TAB_STYLES)}")
     if font_size not in TAB_FONT_SIZES:
@@ -528,6 +544,10 @@ def _recommended_layout(style: str = DEFAULT_TAB_STYLE,
         style_spec = _STYLE_SPECS[style]
         layout = tuple(style_spec if spec["key"] == style_spec["key"] else spec
                        for spec in RECOMMENDED_LAYOUT if spec["key"] not in _MINIMAL_ONLY_KEYS)
+    if pane_title_bar:
+        layout = tuple(row for spec in layout
+                       for row in (_PANE_TITLE_BAR_ON if spec["key"] == "ShowPaneTitles"
+                                   else (spec,)))
     return tuple(_sized(spec, font_size, padding) for spec in layout)
 
 
@@ -540,8 +560,8 @@ def _aligned(spec, current) -> bool:
 
 
 def _layout_drift(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE,
-                  padding: int = DEFAULT_TAB_VERTICAL_PADDING):
-    return [s for s in _recommended_layout(style, font_size, padding)
+                  padding: int = DEFAULT_TAB_VERTICAL_PADDING, pane_title_bar: bool = False):
+    return [s for s in _recommended_layout(style, font_size, padding, pane_title_bar)
             if not _aligned(s, _read_default(s["key"]))]
 
 
@@ -620,12 +640,13 @@ def _running_caveat() -> str:
 
 
 def _configure_audit(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE,
-                     padding: int = DEFAULT_TAB_VERTICAL_PADDING):
+                     padding: int = DEFAULT_TAB_VERTICAL_PADDING, pane_title_bar: bool = False):
     aligned = "\x1b[32m✓\x1b[0m"
     differs = "\x1b[33m✗\x1b[0m"
-    layout = _recommended_layout(style, font_size, padding)
+    layout = _recommended_layout(style, font_size, padding, pane_title_bar)
     padded = f", {padding}pt vertical padding" if padding else ""
-    print(f"Recommended iTerm2 fleet layout ({style} tabs, {font_size}pt labels{padded}) "
+    titled = ", pane title bars" if pane_title_bar else ""
+    print(f"Recommended iTerm2 fleet layout ({style} tabs, {font_size}pt labels{padded}{titled}) "
           "— app-wide prefs:\n")
     drift = []
     for s in layout:
@@ -751,21 +772,28 @@ def _wait_for_iterm_to_exit() -> None:
 def _configure_defer(args):
     """CLI-22: converge the recommended layout without closing anything: write
     the drifted settings now if iTerm2 is closed, else the next time it quits."""
-    tabs = _tab_flags(args)
-    selected = _layout_drift(args.tab_style, args.tab_font_size, args.tab_vertical_padding)
+    flags = _layout_flags(args)
+    selected = _layout_drift(*_layout_options(args))
     if not selected:
         print("Nothing to queue: the layout already matches the recommendation.")
         return
-    _queue_after_quit(selected, tabs)
+    _queue_after_quit(selected, flags)
 
 
-def _tab_flags(args) -> list:
-    """The tab settings a restart or deferred-write helper is re-invoked with."""
+def _layout_options(args) -> tuple:
+    """The settings `_recommended_layout` takes, from the parsed flags."""
+    return (args.tab_style, args.tab_font_size, args.tab_vertical_padding,
+            args.pane_title_bar == "on")
+
+
+def _layout_flags(args) -> list:
+    """The settings a restart or deferred-write helper is re-invoked with."""
     return ["--tab-style", args.tab_style, "--tab-font-size", str(args.tab_font_size),
-            "--tab-vertical-padding", str(args.tab_vertical_padding)]
+            "--tab-vertical-padding", str(args.tab_vertical_padding),
+            "--pane-title-bar", args.pane_title_bar]
 
 
-def _queue_after_quit(selected, tabs: list) -> None:
+def _queue_after_quit(selected, flags: list) -> None:
     import subprocess
     import tempfile
 
@@ -782,7 +810,7 @@ def _queue_after_quit(selected, tabs: list) -> None:
         with os.fdopen(log_fd, "w") as log:
             proc = subprocess.Popen(
                 ["python3", os.path.realpath(__file__), "configure", "--write", "--yes",
-                 "--after-quit", *tabs, "--keys", keys_csv],
+                 "--after-quit", *flags, "--keys", keys_csv],
                 stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                 start_new_session=True)
         _deferred_pidfile().write_text(f"{proc.pid}\n")
@@ -794,14 +822,14 @@ def _configure_write(args):
     if getattr(args, "after_quit", False):
         _wait_for_iterm_to_exit()
     running = _is_iterm_running()
-    sizing = (args.tab_style, args.tab_font_size, args.tab_vertical_padding)
-    tabs = _tab_flags(args)
+    layout = _layout_options(args)
+    flags = _layout_flags(args)
 
     if args.keys is not None:
         wanted = set(args.keys.split(","))
-        selected = [s for s in _recommended_layout(*sizing) if s["key"] in wanted]
+        selected = [s for s in _recommended_layout(*layout) if s["key"] in wanted]
     else:
-        drift = _layout_drift(*sizing)
+        drift = _layout_drift(*layout)
         if not drift:
             print("Layout already matches the recommendation — nothing to write.")
             if running:
@@ -832,11 +860,11 @@ def _configure_write(args):
         now = _prompt_tty("Quit and relaunch iTerm2 now? No applies them the next "
                           "time you quit, with nothing closed.", False)
         if not now:
-            _queue_after_quit(selected, tabs)
+            _queue_after_quit(selected, flags)
             return
 
     keys_csv = ",".join(s["key"] for s in selected)
-    _run_after_quit(["configure", "--write", "--yes", *tabs, "--keys", keys_csv],
+    _run_after_quit(["configure", "--write", "--yes", *flags, "--keys", keys_csv],
                     "beacon-configure.",
                     "Quitting iTerm2 — it relaunches with the new layout")
 
@@ -1102,7 +1130,7 @@ def cmd_configure(args):
     elif args.write:
         _configure_write(args)
     else:
-        _configure_audit(args.tab_style, args.tab_font_size, args.tab_vertical_padding)
+        _configure_audit(*_layout_options(args))
 
 
 # --- entry ---
@@ -1179,6 +1207,9 @@ def main(argv=None):
                     help=f"points added above and below the tab label, making the tab "
                          f"taller without larger text ({TAB_VERTICAL_PADDINGS.start}.."
                          f"{TAB_VERTICAL_PADDINGS.stop - 1}, default: {DEFAULT_TAB_VERTICAL_PADDING})")
+    sp.add_argument("--pane-title-bar", choices=("on", "off"), default="off",
+                    help="whether a split pane shows a title bar, which carries its "
+                         "close button (default: off)")
     sp.add_argument("--defer", action="store_true",
                     help="write the drifted settings the next time iTerm2 quits "
                          "(or now, if it is closed) instead of restarting it")

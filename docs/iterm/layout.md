@@ -1,4 +1,4 @@
-# In iTerm2: per-pane painting
+# Layout
 
 On macOS with iTerm2, beacon paints each session's state onto its own pane — the tab's label and color, a status bar, and a background for the mode cycles. Where the [dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
 
@@ -7,7 +7,7 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 <!--
   These figures are drawn in HTML from the spec palette (THEME-02 / THEME-03)
   rather than screenshotted, because the iTerm2 surfaces don't exist off macOS.
-  The source of record is dev/iterm-mock.html — edit both together.
+  Preview them by serving docs/ (`python3 -m http.server --directory docs`).
 
   The pf- prefix stays clear of the bcn- namespace that the marketplace hub's
   session.css owns: shipyard links that stylesheet into every plugin whose
@@ -47,8 +47,12 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .pf-spring { flex: 1 1 auto; }
 .pf-branch { color: var(--green); }
 .pf-branch.diverged { color: var(--busy); }
+/* dashed because it is off by default, and it shows <b> as text because that is what iTerm2 draws */
+.pf-ptitle { display: flex; align-items: center; gap: 0.6rem; background: var(--abyss); font: 12px var(--mono); color: var(--identity); padding: 0.25rem 0.7rem; border-bottom: 1px dashed rgba(248,248,242,0.18); }
+.pf-ptitle .x { color: var(--sep); }
 .pf-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
 .pf-body .prompt { color: var(--green); }
+.pf-sl { margin-top: 1.1rem; font-size: 12px; color: var(--identity); }
 .pf-mk { display: inline-flex; align-items: center; justify-content: center; width: 1.05em; height: 1.05em; margin-left: 0.3em; border-radius: 50%; background: #8be9fd; color: #21222c; font: 700 0.62em/1 ui-sans-serif, system-ui, sans-serif; vertical-align: super; position: relative; top: -0.15em; }
 .pf-legend { list-style: none; counter-reset: panefig; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
 .pf-legend li { counter-increment: panefig; display: grid; grid-template-columns: 1.4rem 1fr; align-items: start; font-size: 0.9rem; color: inherit; }
@@ -83,7 +87,7 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 
 ## Anatomy of a painted pane
 
-The tab carries the session's identity and its state, the status bar runs along the top, and the pane itself is left to Claude Code and your profile. (The bar's placement is a [recommended layout](#recommended-layout) setting, not one beacon paints.)
+Each surface beacon renders through has a number here, and [Settings by surface](#settings-by-surface) uses the same numbers for every setting beacon changes. (The figure draws the tabs along the top; beacon's layout puts them in a strip down the left.)
 
 <div class="panefig">
   <div class="pf-win">
@@ -91,31 +95,38 @@ The tab carries the session's identity and its state, the status bar runs along 
       <span class="pf-dots"><i></i><i></i><i></i></span>
       <span class="pf-wintab"><b>claude-marketplace<span class="pf-mk">1</span></b><span class="t">Redesign the install flow</span></span>
     </div>
-    <div class="pf-body">
-      <div><span class="prompt">›</span> run just build</div>
-    </div>
     <div class="pf-bar">
-      <span class="pf-act">↖ web<span class="pf-mk">2</span></span>
+      <span class="pf-act">↖ web</span>
       <span class="pf-spring"></span>
-      <span class="pf-proj">claude-marketplace<span class="pf-mk">3</span></span>
+      <span class="pf-proj">claude-marketplace</span>
       <span class="pf-sep">│</span>
-      <span class="pf-branch">main<span class="pf-mk">4</span></span>
+      <span class="pf-branch">main</span>
       <span class="pf-sep">│</span>
-      <span class="pf-act">↗ code<span class="pf-mk">5</span></span>
+      <span class="pf-act">↗ code<span class="pf-mk">2</span></span>
+    </div>
+    <div class="pf-ptitle">
+      <span class="x">✕</span>
+      <span>&lt;b&gt;claude-marketplace&lt;/b&gt;<span class="pf-mk">3</span></span>
+      <span class="pf-spring"></span>
+      <span class="x">≡</span>
+    </div>
+    <div class="pf-body">
+      <div><span class="prompt">›</span> run just build<span class="pf-mk">4</span></div>
+      <div class="pf-sl">#61 · #58<span class="pf-mk">5</span></div>
     </div>
   </div>
   <ol class="pf-legend">
-    <li><span><b>Tab</b> — the project, with the task indented under it, tinted by the <em>activity</em> traffic-light and led by the <em>mode</em>'s glyph when one is declared. Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
-    <li><span><b><code>↖ web</code> button</b> — opens this session's web view: the PR/MR/issue it resolves to, else the repo. Both buttons take their text and their command from <code>statusbar.buttons</code> in your config.</span></li>
-    <li><span><b>Project chip</b> — the project's name. Needs no git repo, no remote, and no Claude session, so it reads the same in every pane.</span></li>
-    <li><span><b>Branch</b> — colored by git sync state: green synced, amber ahead/behind, gray no upstream.</span></li>
-    <li><span><b><code>↗ code</code> button</b> — opens this session's working directory in your editor (<code>code</code> by default).</span></li>
+    <li><span><b>Tab</b> — the project, with the task indented under it, colored by the session's <em>activity</em> and led by the <em>mode</em>'s glyph when one is declared. Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
+    <li><span><b>Status bar</b> — along the top of the window: the <code>↖ web</code> button, the project's name, the branch colored by its git sync state, and the <code>↗ code</code> button. <a href="#/iterm/layout?id=the-status-bar">The status bar</a> covers each.</span></li>
+    <li><span><b>Per-pane title bar</b> — iTerm2's bar across the top of a pane, with the pane's close button and menu. Off by default, because it shows the session name on one line with <code>&lt;b&gt;</code> as text; <a href="#/iterm/layout?id=per-pane-title-bars">Per-pane title bars</a> turns it on.</span></li>
+    <li><span><b>Pane</b> — left to Claude Code and your profile, except while a mode is declared, when it takes the mode's background color and a faint watermark.</span></li>
+    <li><span><b>Status line</b> — Claude Code's footer rows, where beacon lists the mode's note and the session's PRs and issues.</span></li>
   </ol>
 </div>
 
-## The tab: a traffic light
+## The tab: color is the activity
 
-The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. It carries the **dev** stoplight and nothing else — a neutral gray at rest, amber working, red waiting for you. A mode is carried by the label's glyph instead, so no mode competes for a hue, and neither does anything else: colour is the only signal you read across every tab at once, so it answers *does this need me* alone.
+The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. Its color is the session's activity and nothing else — a neutral gray at rest, amber working, red waiting for you. A mode is carried by the label's glyph instead, so no mode competes for a hue, and neither does anything else: colour is the only signal you read across every tab at once, so it answers *does this need me* alone.
 
 The hexes here are each hue under its **tab weight**: beacon pins iTerm2's Minimal style, which fills the whole tab with the color rather than tinting it, and the states you see constantly recede so the rare one that wants you stands out. [The beacon palette](/palette) has the weights and the reasoning; a [dashboard card](/demo) paints the same hues unweighted, its dot being a fraction of the area.
 
@@ -155,7 +166,7 @@ Re-run `beacon refresh-iterm-profiles` to pick it up; the color follows the same
 
 ### Compact and Regular tabs
 
-![The same five tabs under each style at 16pt: Minimal fills each tab with its color, Compact fades the unselected tabs toward gray, and Regular draws outlined pills with the label inset from their rounded ends.](images/tab-styles.png)
+![The same five tabs under each style at 16pt: Minimal fills each tab with its color, Compact fades the unselected tabs toward gray, and Regular draws outlined pills with the label inset from their rounded ends.](../images/tab-styles.png)
 
 beacon is tuned for iTerm2's **Minimal** tab style by default, which fills each tab with its state color. It also supports **Compact**, which outlines the selected tab and fades the rest toward gray, and **Regular**, which on macOS 26 draws each tab as a pill: filled when selected, outlined in its color otherwise. Tell beacon which you use, so it weights the colors for that style, pads the label clear of Regular's rounded ends, and recommends the matching layout:
 
@@ -176,7 +187,7 @@ beacon config tab.indent.2 <spaces>
 
 ### Tab text size
 
-![Minimal tabs at 12, 16, 20 and 24pt. Each tab grows with its text, and the larger the text, the further the two-line labels sit below the middle of the tab.](images/tab-sizes.png)
+![Minimal tabs at 12, 16, 20 and 24pt. Each tab grows with its text, and the larger the text, the further the two-line labels sit below the middle of the tab.](../images/tab-sizes.png)
 
 beacon recommends 16pt tab labels. To change it:
 
@@ -197,6 +208,17 @@ beacon layout --write
 ```
 
 The padding (0 to 20 points, 0 by default) goes both above and below the label, so the tab grows by twice the value. `beacon config tab.vertical-padding reset` removes it.
+
+### Per-pane title bars
+
+iTerm2's per-pane title bar carries the pane's close button and menu, and beacon's layout turns it off: the bar shows the session name on one line, with the `<b>` tag as text and no task line. If you close panes with the mouse, turn it back on:
+
+```
+beacon config pane-title-bar on
+beacon layout --write
+```
+
+Every pane gets the bar, including the only pane in a tab, so every pane has its close button. `beacon config pane-title-bar reset` turns the bars off again.
 
 ## The status bar
 
@@ -266,9 +288,7 @@ It stays off for the rest of the session.
 
 ## What beacon doesn't paint
 
-beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. It also disables iTerm2's notification-center and terminal-bell alerts on permission and idle prompts, since the tab color already signals both — a duplicate notification adds no information.
-
-Splitting a beacon pane opens the new pane where the old one is, rather than at your home directory — the profile carries that as a pane-scoped rule. New tabs and windows are left to your own profile's setting.
+beacon paints the tab's color and label, the status bar, and — in a mode cycle only — the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. The behavior it does change, such as notifications and where a split opens, is listed under [Settings by surface](#settings-by-surface).
 
 The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, which is why Claude Code's own title no longer shows.
 
@@ -313,6 +333,70 @@ beacon refresh-iterm-profiles --remigrate
 It clears the one preference gating that migration and nothing else — your profile list is untouched. It confirms first, since the migration runs at launch and that means quitting iTerm2, closing every window and pane.
 
 One related knob is left entirely to taste — beacon renders identically whichever way you set it and never touches it: **pane/window dimming** (Appearance → Dimming). Dimming unfocused panes helps you spot the active one, but also dims beacon's colors on the very panes you're scanning.
+
+## Settings by surface
+
+Every setting beacon changes, grouped by the surface it shapes in the [anatomy](#anatomy-of-a-painted-pane) above, and named as iTerm2's Settings window names it. Where you can change one, the last column says how. A **No** setting is set back the next time beacon applies it: `beacon layout --write` (which `install` runs) for the app-wide ones, and `install` for the ones in beacon's profiles.
+
+### ① Tab
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| Show tab bar even when there is only one tab (Appearance → Tabs) | on | iTerm2 hides the tab bar for a window with one tab, which leaves that session no color and no label | No, the tab needs it |
+| Theme (Appearance → General) | Minimal | Minimal fills the whole tab with the state color, the most legible form of the signal | Yes: `beacon config tab.style`, one of `minimal`, `compact`, `regular` ([Compact and Regular tabs](#compact-and-regular-tabs)) |
+| Tab bar location (Appearance → Tabs) | Left | a left strip reads as a column, one row per session | No |
+| Width of the left strip (drag its edge) | 300pt, only while unset | iTerm2's 150pt leaves the task line almost no room | Yes: drag the edge, and beacon keeps your width |
+| Custom tab label font size (Advanced) | 16pt | iTerm2's 11pt is hard to read in a left strip | Yes: `beacon config tab.font-size`, 10 to 30 ([Tab text size](#tab-text-size)) |
+| Use custom font size for tab labels? (Advanced) | Yes | the switch the size above needs | No, the size needs it |
+| Default tab bar height, and Tab bar height (points) for the Minimal theme (Advanced) | derived from the font size | iTerm2's heights clip the task line | Yes, through the font size and `beacon config tab.vertical-padding`, 0 to 20 ([Larger tabs with small text](#larger-tabs-with-small-text)) |
+| Prominence of selected tab underline indicator in the Minimal theme (Advanced) | 0.4 | at full strength the underline is brighter than the tab colors it sits under | No |
+| Tabs have close buttons (Appearance → Tabs) | off | the strip is clicked all day to switch sessions, and a stray click on the button ends one | No |
+| Disable tab bar tooltips? (Advanced) | Yes | the tooltip repeats the label and covers the neighboring tabs you're scanning | No |
+| Show activity indicator (Appearance → Tabs) | off | Claude redraws its screen the whole time it works, so the spinner never stops and repeats the working color | No |
+| Support basic HTML tags in tab titles (Appearance → Tabs) | on | the label bolds the project with `<b>`, which otherwise shows as text | No, the label needs it |
+| Title Components (Profiles → General) | Session Name | the tab and the window title show the name beacon sets | No, the label needs it |
+| Applications in terminal may change the title (Profiles → General) | off | keeps programs in the pane from overwriting that name | No, the label needs it |
+
+### ② Status bar
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| Status bar enabled (Profiles → Session) | on | it's the status bar | No, the status bar needs it |
+| Status bar location (Appearance → General) | Top | the bottom is where Claude Code draws the status line ⑤, and the two would stack | No |
+| Height of the status bar in points (Advanced) | 32 | room for the buttons and the chips beside them | No |
+| The two buttons' text and command | `↖ web`, `↗ code` | the actions a pane needs most: its PR or repo, and its directory in your editor | Yes: `statusbar.buttons` in your config ([Status-bar buttons](/statusbar)) |
+
+### ③ Per-pane title bar
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| Show per-pane title bars (Appearance → Panes) | off | the bar shows the session name on one line, with `<b>` as text and no task line | Yes: `beacon config pane-title-bar on` ([Per-pane title bars](#per-pane-title-bars)) |
+| …even if there is only one pane (Appearance → Panes) | on, while the bar is on | without it the only pane in a tab has no bar, and so no close button | Follows the setting above |
+
+### ④ Pane
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| Background color and image, in the mode profiles only (Profiles → Colors, Window) | a color and a faint watermark per mode | a declared mode reads across the whole focused pane, not only in the tab's glyph | No |
+| Working Directory for New Split Panes (Profiles → General → Advanced Configuration) | Reuse previous session's directory | a split is usually more work in the same project; new tabs and windows follow your profile | No |
+
+### ⑤ Status line
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| `statusLine` in `~/.claude/settings.json` | `beacon statusline` | it's the status line | Yes: beacon sets it only when you have none |
+
+### Alerts, progress, and the shell
+
+These shape no surface of their own.
+
+| Setting | beacon sets | Why | Can you change it? |
+|---|---|---|---|
+| Notification Center alerts (Profiles → Terminal) | off | macOS delivers these unreliably, while the tab color shows the same permission and idle prompts every time and stays until you act | No |
+| Send escape sequence-generated alerts (Profiles → Terminal) | off | the same prompts, the same reason | No |
+| Show progress bars (Profiles → Session) | off | each tab animates at its own pace, so the strip is in constant motion that says nothing the tab color doesn't | No |
+| `terminalProgressBarEnabled` in `~/.claude/settings.json` | `false`, only with iTerm2 | iTerm2 spins a background tab's cell for Claude Code's progress reports, and no iTerm2 setting turns that spinner off | Yes: beacon sets it only when unset |
+| `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get their project, branch, and title from it | Yes: remove the line, and plain shell panes lose them |
 
 ## Setup
 

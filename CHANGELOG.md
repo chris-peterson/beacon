@@ -8,6 +8,23 @@ Line 2 of a tab showed `>` as `&gt;`, so a session the idle sweep parked read
 `inactive for &gt;30 min`, and so did any task containing `>`. iTerm2's tab
 titles decode only `&lt;` and `&amp;`, so beacon now escapes only `<` and `&`.
 
+### Per-pane title bars, with their close buttons
+
+`beacon config pane-title-bar on` brings back iTerm2's per-pane title bar,
+which carries each pane's close button, on every pane, a lone one
+included. It is off by default because the title bar shows the session
+name on one line, with the `<b>` tag as text. Apply it with
+`beacon layout --write`.
+
+### The iTerm2 page is now Layout, with every setting beacon changes
+
+The docs page moved from `/iterm` to `/iterm/layout`. Its anatomy figure
+numbers each surface beacon renders through: the tab, the status bar,
+the per-pane title bar, the pane, and the status line. A new Settings by
+surface section lists every iTerm2, Claude Code, and shell setting beacon
+changes under the name iTerm2's Settings window gives it, with why beacon
+sets it and whether and how you can change it.
+
 ## 2.17.0
 
 ### A session started with a slash command names its tab
@@ -1033,7 +1050,7 @@ A URL you pasted as a reference looks exactly like one you're working, and the r
 
 Since v1.26.0 the pane badge has been opt-in and off by default, and the tab carries what it used to: the color is the ready / busy / blocked state, and the label is `project` over an indented `task`. The docs hadn't caught up — they still introduced the badge as the surface you read a session from.
 
-[In iTerm2](https://chris-peterson.github.io/beacon/#/iterm) and [The beacon palette](https://chris-peterson.github.io/beacon/#/palette) now describe the tab, and [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm?id=turning-the-badge-on) covers `"badge": "on"` for a one-window-at-a-time workflow, where the badge is still the bigger target.
+[In iTerm2](https://chris-peterson.github.io/beacon/#/iterm/layout) and [The beacon palette](https://chris-peterson.github.io/beacon/#/palette) now describe the tab, and [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm/layout?id=turning-the-badge-on) covers `"badge": "on"` for a one-window-at-a-time workflow, where the badge is still the bigger target.
 
 The iTerm2 page also corrects what beacon claimed not to paint: it does own the window title now, via the session name, so a `/rename`d Claude session keeps its project in Mission Control and the window switcher.
 
@@ -1058,7 +1075,7 @@ The status bar's project chip showed an abbreviated forge identity with a delive
 
 That makes it work everywhere the old one didn't: outside a git repo, in a repo with no remote, and in a plain shell with no Claude session, the chip names the directory instead of collapsing to nothing. It also takes a `resolve-url` call — a Python start plus a possible `tack` subprocess — off the shell's every-prompt path, since a name needs no URL.
 
-Which deliverable you're on is the [status line](https://chris-peterson.github.io/beacon/#/iterm?id=the-status-line)'s job, where the ref is a clickable link, and the `↖ web` button still opens it.
+Which deliverable you're on is the [status line](https://chris-peterson.github.io/beacon/#/iterm/layout?id=the-status-line)'s job, where the ref is a clickable link, and the `↖ web` button still opens it.
 
 **Retired:** the `_beacon_resolve_url()` shell override (BADGE-08). Its only consumer was the chip's deliverable ref, so redefining it would now change nothing.
 
