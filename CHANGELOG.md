@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.18.0
 
 ### A parked tab reads `inactive for >30 min` again
 
