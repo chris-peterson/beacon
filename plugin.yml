@@ -152,7 +152,7 @@ cli:
       commands: [wip, watch, serve, forget, prune]
     - name: Deliverables
       about: What the Claude Code status line lists for this session.
-      commands: [drop]
+      commands: [drop, refresh-links]
     - name: Status-bar actions
       about: >-
         What the iTerm2 status bar's buttons run when clicked. Each is also
@@ -199,6 +199,12 @@ cli:
     drop: >-
       Remembers the removal, so re-reading the tack route doesn't put the entry
       back on the row.
+    refresh-links: >-
+      The hooks start this in the background whenever an open CR or issue on the
+      row has no forge record, or one older than ten minutes, so it rarely needs
+      typing. It asks `gh` or `glab` for each item's title, the CRs it waits on,
+      the issues it closes, and what an issue links to, then adds those linked
+      items to the row.
     refresh-iterm-profiles: >-
       iTerm2 reloads the `DynamicProfiles` directory on change, so a re-render
       reaches every open pane with no restart. `--remigrate` is the exception:

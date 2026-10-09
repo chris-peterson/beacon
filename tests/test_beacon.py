@@ -41,6 +41,9 @@ def _load_beacon(data_dir: Path):
     # origins), and a hook under test records the data dir it was handed, which
     # would otherwise overwrite that developer's real pointer with a tempdir.
     os.environ["XDG_CONFIG_HOME"] = str(data_dir / "xdg-config")
+    # Claude Code exports the terminal width to the commands it runs, so a suite
+    # run from a session would otherwise fit every status line to that session.
+    os.environ.pop("COLUMNS", None)
     sys.modules.pop("beacon", None)
     # The script has no .py extension, so spec_from_file_location can't infer
     # a loader. Construct a SourceFileLoader explicitly.
@@ -121,6 +124,11 @@ class BeaconTest(unittest.TestCase):
         )
         remote_patcher.start()
         self.addCleanup(remote_patcher.stop)
+
+        # The forge read is a detached process; a test must never start one.
+        spawn_patcher = mock.patch.object(self.beacon, "_spawn_links_refresh")
+        self.spawn_links_refresh = spawn_patcher.start()
+        self.addCleanup(spawn_patcher.stop)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -2820,25 +2828,18 @@ class DeliverableAccumulation(BeaconTest):
         self.beacon.write_state("resolved", json.dumps(
             {"task": task, "task_provider": provider}))
 
-    def test_title_is_the_same_string_the_badge_shows(self):
-        # The badge paints the resolved task; the footer titles the CR. Sourcing
-        # them separately is what made the two surfaces name one PR differently.
-        self._snapshot("Move per-session values into the status line", "pr")
+    def test_a_pinned_task_does_not_title_the_cr(self):
+        # One session spans several CRs, so its headline titling each of them
+        # gave every entry on the row the same text. The CR's own title comes
+        # from its forge record instead.
+        self._snapshot("widget migration", "override")
         self._publish("https://github.com/acme/widgets/pull/42")
-        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
-                         "Move per-session values into the status line")
+        self.assertNotIn("title", self.beacon.read_state_json("deliverables", [])[0])
+        self.assertEqual(self.beacon._read_links(), {})
 
-    def test_an_override_task_titles_the_cr_too(self):
-        self._snapshot("ship the cart rework", "override")
+    def test_a_publish_asks_for_a_forge_read(self):
         self._publish("https://github.com/acme/widgets/pull/42")
-        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"],
-                         "ship the cart rework")
-
-    def test_a_branch_derived_task_is_not_a_title(self):
-        # `#42 2.0` is the branch name, not a name for the work.
-        self._snapshot("2.0", "branch")
-        self._publish("https://github.com/acme/widgets/pull/42")
-        self.assertEqual(self.beacon.read_state_json("deliverables", [])[0]["title"], "")
+        self.spawn_links_refresh.assert_called()
 
     def test_fresh_start_drops_the_previous_tenant_list(self):
         # State keys on the pane, which outlives a Claude session. Without the
@@ -5413,7 +5414,9 @@ class StatusLineProvider(BeaconTest):
         # gone done.
         with mock.patch.object(self.beacon, "_tack_landed_urls",
                                return_value=set(landed)):
-            self.beacon._record_deliverable(ref, url, project, title)
+            self.beacon._record_deliverable(ref, url, project)
+        if title:
+            self.beacon._update_links(url, title=title)
 
 
     def _lines(self):
@@ -5520,8 +5523,8 @@ class StatusLineProvider(BeaconTest):
         self.assertTrue(title.endswith("…"))
 
     def test_a_title_survives_a_later_touch_that_has_none(self):
-        # Only the current deliverable has a live task to read; an older CR must
-        # keep the title it was captured with rather than being blanked.
+        # The title lives on the forge record, not the entry, so re-recording
+        # entries can't blank it.
         url = "https://x.test/w/pull/9"
         self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", url, "gh:acme/widgets", title="Rework the cart drawer")
@@ -5565,6 +5568,396 @@ class StatusLineProvider(BeaconTest):
         self.assertEqual(out.count("\n"), 1)
         # Reason leads: it answers "why is this parked" before "where is it".
         self.assertLess(out.index("waiting on CI"), out.index("ex#1"))
+
+
+GL = "https://gl.test"
+
+
+def _mr(project, n):
+    return f"{GL}/acme/{project}/-/merge_requests/{n}"
+
+
+def _gl_issue(project, n):
+    return f"{GL}/acme/{project}/-/issues/{n}"
+
+
+class StatusLineLinks(BeaconTest):
+    """STATUSLINE-03 (#66): each CR is titled from its own forge record, CRs
+    that wait on each other render as a tree, a CR names the issues it closes,
+    and an issue brings what it links to onto the row."""
+
+    def setUp(self):
+        super().setUp()
+        self.beacon.write_state("resolved.project",
+                                self.beacon._project_id_from_url(_mr("site", 1)))
+        landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
+        landed.start()
+        self.addCleanup(landed.stop)
+
+    def _touch(self, url, **record):
+        self.beacon._record_deliverable(self.beacon._deliverable_suffix(url), url,
+                                        self.beacon._project_id_from_url(url))
+        if record:
+            self.beacon._update_links(url, **record)
+
+    def _lines(self, columns=None):
+        buf = io.StringIO()
+        env = {"COLUMNS": str(columns)} if columns else {}
+        with mock.patch.dict(os.environ, env), \
+             mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", buf.getvalue())
+        return plain.rstrip("\n").split("\n")
+
+    def test_each_cr_carries_its_own_title(self):
+        self._touch(_mr("site", 5), title="Add a settings page")
+        self._touch(_mr("theme", 3), title="Share the chrome")
+        self.assertEqual(self._lines(),
+                         ["theme:!3 Share the chrome · !5 Add a settings page"])
+
+    def test_the_merge_order_renders_as_a_tree(self):
+        # The six MRs from #66: site:!5 waits on four, skills:!14 on site:!5.
+        prereqs = [_mr("toolbox", 159), _mr("agent", 47), _mr("theme", 3), _mr("site", 16)]
+        for url in prereqs:
+            self._touch(url)
+        self._touch(_mr("site", 5), waits_on=prereqs)
+        self._touch(_mr("skills", 14), waits_on=[_mr("site", 5)])
+        self.assertEqual(self._lines(), [
+            "!16",
+            "theme:!3",
+            "agent:!47",
+            "toolbox:!159",
+            "  ↑ !5",
+            "    ↑ skills:!14",
+        ])
+
+    def test_crs_outside_the_graph_keep_one_line_above_it(self):
+        self._touch(_mr("lib", 54))
+        self._touch(_mr("site", 2), waits_on=[_mr("lib", 54)])
+        self._touch(_mr("other", 7))
+        self._touch(_mr("more", 8))
+        self.assertEqual(self._lines(), ["more:!8 · other:!7", "lib:!54", "  ↑ !2"])
+
+    def test_a_branch_reads_under_its_own_parent(self):
+        # A ← B ← C and A ← D: C belongs under B, not under the block of every
+        # entry one level down.
+        a, b, c, d = (_mr("x", n) for n in (1, 2, 3, 4))
+        self._touch(a)
+        self._touch(b, waits_on=[a])
+        self._touch(c, waits_on=[b])
+        self._touch(d, waits_on=[a])
+        self.assertEqual(self._lines(), ["x:!1", "  ↑ x:!4", "  ↑ x:!2", "    ↑ x:!3"])
+
+    def test_a_dependency_off_the_row_draws_no_tree(self):
+        self._touch(_mr("site", 5), waits_on=[_mr("gone", 1)])
+        self.assertEqual(self._lines(), ["!5"])
+
+    def test_a_cycle_still_renders_every_cr(self):
+        a, b = _mr("x", 1), _mr("x", 2)
+        self._touch(a, waits_on=[b])
+        self._touch(b, waits_on=[a])
+        lines = self._lines()
+        self.assertEqual(len(lines), 2)
+        self.assertEqual({line.strip().removeprefix("↑ ") for line in lines}, {"x:!1", "x:!2"})
+
+    def test_a_cr_names_the_issues_it_closes_and_they_leave_the_issue_line(self):
+        self._touch(_gl_issue("site", 12))
+        self._touch(_gl_issue("site", 13))
+        self._touch(_mr("site", 5), title="Add a settings page",
+                    closes=[_gl_issue("site", 12), _gl_issue("lib", 9)])
+        self.assertEqual(self._lines(), ["!5 Add a settings page (closes #12, lib:#9)", "#13"])
+
+    def test_closes_matches_either_gitlab_issue_spelling(self):
+        self._touch(f"{GL}/acme/site/-/work_items/12")
+        self._touch(_mr("site", 5), closes=[_gl_issue("site", 12)])
+        self.assertEqual(self._lines(), ["!5 (closes #12)"])
+
+    def test_issues_that_block_each_other_form_a_tree(self):
+        self._touch(_gl_issue("site", 1))
+        self._touch(_gl_issue("site", 2), waits_on=[_gl_issue("site", 1)])
+        self.assertEqual(self._lines(), ["#1", "  ↑ #2"])
+
+    def test_an_over_wide_line_shortens_titles_before_dropping_them(self):
+        self._touch(_mr("site", 5), title="A" * 60)
+        self._touch(_mr("site", 6), title="B" * 20)
+        wide = self._lines()[0]
+        self.assertGreater(len(wide), 70)
+        fitted = self._lines(columns=70)[0]
+        self.assertLessEqual(len(fitted), 70)
+        # The short title survives whole: capping trims the longest first.
+        self.assertIn("B" * 20, fitted)
+        self.assertIn("!5 AAAA", fitted)
+
+    def test_a_line_too_narrow_for_titles_keeps_every_ref(self):
+        self._touch(_mr("site", 5), title="A" * 60, closes=[_gl_issue("site", 12)])
+        self._touch(_mr("site", 6), title="B" * 60)
+        self.assertEqual(self._lines(columns=30), ["!6 · !5 (closes #12)"])
+
+    def test_a_tree_line_is_fitted_with_its_indent(self):
+        self._touch(_mr("site", 1))
+        self._touch(_mr("site", 2), title="C" * 80, waits_on=[_mr("site", 1)])
+        line = self._lines(columns=40)[1]
+        self.assertTrue(line.startswith("  ↑ !2 C"))
+        self.assertLessEqual(self.beacon._visible_width(line), 40)
+
+
+class LinksExpansion(BeaconTest):
+    """STATUSLINE-03 *Expansion*: one hop out from each issue the session put on
+    the row, never displacing what the session touched itself."""
+
+    def setUp(self):
+        super().setUp()
+        landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
+        landed.start()
+        self.addCleanup(landed.stop)
+
+    def _record(self, url, expanded=False):
+        self.beacon._record_deliverable(self.beacon._deliverable_suffix(url), url,
+                                        self.beacon._project_id_from_url(url), expanded=expanded)
+
+    def _urls(self):
+        return [e["url"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def test_an_issue_brings_its_links_onto_the_row(self):
+        issue, cr = _gl_issue("site", 12), _mr("site", 5)
+        self._record(issue)
+        self.beacon._update_links(issue, expand=[cr])
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [issue, cr])
+
+    def test_expansion_is_one_hop(self):
+        issue, other, further = _gl_issue("site", 1), _gl_issue("site", 2), _gl_issue("site", 3)
+        self._record(issue)
+        self.beacon._update_links(issue, expand=[other])
+        self.beacon._update_links(other, expand=[further])
+        self.beacon._expand_linked_items()
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [issue, other])
+
+    def test_an_expanded_record_does_not_reorder_a_direct_entry(self):
+        a, b = _gl_issue("site", 1), _mr("site", 5)
+        self._record(b)
+        self._record(a)
+        self._record(b, expanded=True)
+        self.assertEqual(self._urls(), [b, a])
+        self.assertEqual(self.beacon.read_state_json("deliverables.expanded", []), [])
+
+    def test_touching_an_expanded_entry_makes_it_direct(self):
+        issue, other, further = _gl_issue("site", 1), _gl_issue("site", 2), _gl_issue("site", 3)
+        self._record(issue)
+        self.beacon._update_links(issue, expand=[other])
+        self.beacon._update_links(other, expand=[further])
+        self.beacon._expand_linked_items()
+        self._record(other)
+        self.beacon._expand_linked_items()
+        self.assertIn(further, self._urls())
+
+    def test_a_dropped_link_stays_off(self):
+        issue, cr = _gl_issue("site", 12), _mr("site", 5)
+        self._record(issue)
+        self.beacon._update_links(issue, expand=[cr])
+        self.beacon.write_state("deliverables.dropped", json.dumps([cr]))
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [issue])
+
+    def test_fresh_start_drops_the_forge_records(self):
+        self._record(_gl_issue("site", 1), expanded=True)
+        self.beacon._update_links(_gl_issue("site", 1), title="x")
+        self.beacon._wipe_session_for_fresh_start()
+        self.assertEqual(self.beacon._read_links(), {})
+        self.assertEqual(self.beacon.read_state_json("deliverables.expanded", []), [])
+
+
+class RefreshLinks(BeaconTest):
+    """`refresh-links` reads each open item's forge record through `gh`/`glab`,
+    off the hook path, and records what it couldn't read rather than an empty
+    answer."""
+
+    def setUp(self):
+        super().setUp()
+        landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
+        landed.start()
+        self.addCleanup(landed.stop)
+
+    def _record(self, url):
+        self.beacon._record_deliverable(self.beacon._deliverable_suffix(url), url,
+                                        self.beacon._project_id_from_url(url))
+
+    def _refresh(self, responses):
+        calls = []
+
+        def forge(argv):
+            calls.append(argv)
+            for needle, answer in responses.items():
+                if needle in " ".join(argv):
+                    if isinstance(answer, Exception):
+                        raise answer
+                    return answer
+            raise AssertionError(f"unexpected forge call: {argv}")
+
+        with mock.patch.object(self.beacon, "_forge_json", side_effect=forge):
+            self.beacon.cmd_refresh_links(self.beacon.argparse.Namespace(session=None))
+        return calls
+
+    def test_a_gitlab_mr_records_title_closes_and_waits(self):
+        url = _mr("site", 5)
+        self._record(url)
+        calls = self._refresh({
+            "merge_requests/5/closes_issues": [{"web_url": _gl_issue("site", 12)}],
+            "merge_requests/5/blocks": [{"blocking_merge_request": {"web_url": _mr("lib", 9)}}],
+            "merge_requests/5": {"title": "Add a settings page"},
+        })
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["title"], "Add a settings page")
+        self.assertEqual(record["closes"], [_gl_issue("site", 12)])
+        self.assertEqual(record["waits_on"], [_mr("lib", 9)])
+        self.assertIn("projects/acme%2Fsite/merge_requests/5", calls[0])
+        self.assertIn("gl.test", calls[0])
+
+    def test_a_gitlab_issue_expands_its_links_and_titles_them_in_one_run(self):
+        issue, cr, blocker = _gl_issue("site", 12), _mr("site", 5), _gl_issue("site", 3)
+        self._record(issue)
+        self._refresh({
+            "issues/12/links": [{"web_url": blocker, "link_type": "is_blocked_by"}],
+            "issues/12/closed_by": [{"web_url": cr}],
+            "issues/12": {"title": "Settings", "description": "Refs !7\n\n## Context"},
+            "issues/3/links": [], "issues/3/closed_by": [], "issues/3": {"title": "Blocker"},
+            "merge_requests/5/closes_issues": [{"web_url": issue}],
+            "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "Add a settings page"},
+            "merge_requests/7/closes_issues": [], "merge_requests/7/blocks": [],
+            "merge_requests/7": {"title": "Refactor"},
+        })
+        links = self.beacon._read_links()
+        self.assertEqual(links[issue]["waits_on"], [blocker])
+        self.assertEqual(links[issue]["expand"], [cr, blocker, _mr("site", 7)])
+        self.assertEqual(links[cr]["title"], "Add a settings page")
+        urls = [e["url"] for e in self.beacon.read_state_json("deliverables", [])]
+        self.assertEqual(urls, [issue, cr, blocker, _mr("site", 7)])
+
+    def test_a_github_pr_reads_dependencies_from_the_issues_api(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._record(url)
+        calls = self._refresh({
+            "graphql": {"data": {"repository": {"issueOrPullRequest": {
+                "__typename": "PullRequest", "title": "Rework the drawer",
+                "closingIssuesReferences": {"nodes": [{"url": "https://github.com/acme/widgets/issues/7"}]}}}}},
+            "dependencies/blocked_by": [{"html_url": "https://github.com/acme/lib/pull/3"}],
+        })
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["title"], "Rework the drawer")
+        self.assertEqual(record["closes"], ["https://github.com/acme/widgets/issues/7"])
+        self.assertEqual(record["waits_on"], ["https://github.com/acme/lib/pull/3"])
+        self.assertNotIn("--hostname", calls[0])
+
+    def test_a_forge_failure_is_logged_and_recorded_not_emptied(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self.beacon._update_links(url, title="Announced title")
+        self._refresh({"merge_requests/5": self.beacon.ForgeError("glab exited 1: 401")})
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["title"], "Announced title")
+        self.assertIn("401", record["error"])
+        self.assertTrue(record["fetched_at"])
+        self.assertEqual(self.beacon.read_error_log()[-1]["op"], "links")
+
+    def test_a_forge_title_is_made_display_safe(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({"merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+                       "merge_requests/5": {"title": "evil\x1b]8;;x\atitle"}})
+        self.assertEqual(self.beacon._read_links()[url]["title"], "evil]8;;xtitle")
+
+    def test_a_fresh_record_is_not_read_again(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self.beacon._update_links(url, fetched_at=datetime.now().astimezone().isoformat())
+        self.assertEqual(self._refresh({}), [])
+
+    def test_an_aged_record_is_read_again(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self.beacon._update_links(url, fetched_at="2020-01-01T00:00:00+00:00")
+        self.assertEqual(self.beacon._stale_link_urls(), [url])
+
+    def test_a_held_lock_skips_the_run(self):
+        self._record(_mr("site", 5))
+        self.beacon._mkdir_private(self.beacon.CACHE_DIR)
+        self.beacon._links_lock_path().write_text("")
+        self.assertEqual(self._refresh({}), [])
+
+    def test_an_announced_cr_is_titled_and_marked_for_a_fresh_read(self):
+        url = _mr("site", 5)
+        self.beacon._update_links(url, fetched_at=datetime.now().astimezone().isoformat())
+        with mock.patch.object(self.beacon, "find_project_root", return_value=Path("/x")), \
+             mock.patch.object(self.beacon, "_publish_announced_link"):
+            self.beacon._record_announced_cr({"cwd": "/x"}, {"uri": url, "title": "Add a page"})
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["title"], "Add a page")
+        self.assertEqual(record["fetched_at"], "")
+
+
+class LeadingRefs(BeaconTest):
+    """The `Refs` / `Closes` lines an issue description opens with."""
+
+    def _refs(self, text, forge="gitlab"):
+        origin = GL if forge == "gitlab" else "https://github.com"
+        project = f"{origin}/acme/site"
+        return self.beacon._leading_ref_urls(text, forge, origin, project)
+
+    def test_gitlab_refs_resolve_against_the_project(self):
+        self.assertEqual(self._refs("Refs #3, !4, acme/lib#5\nCloses lib!6"),
+                         [_gl_issue("site", 3), _mr("site", 4),
+                          f"{GL}/acme/lib/-/issues/5", f"{GL}/acme/lib/-/merge_requests/6"])
+
+    def test_a_full_url_is_kept(self):
+        self.assertEqual(self._refs(f"Refs: {_mr('lib', 9)}."), [_mr("lib", 9)])
+
+    def test_github_refs_resolve_to_issue_urls(self):
+        self.assertEqual(self._refs("Fixes #3 and acme/lib#4", forge="github"),
+                         ["https://github.com/acme/site/issues/3",
+                          "https://github.com/acme/lib/issues/4"])
+
+    def test_only_the_opening_lines_count(self):
+        self.assertEqual(self._refs("## Context\n\nRefs #3"), [])
+        self.assertEqual(self._refs("\n\nRefs #3\nSome prose that mentions #4"),
+                         [_gl_issue("site", 3)])
+
+
+class SpawnLinksRefresh(unittest.TestCase):
+    """The detached refresher starts only when the row has something to read
+    and no other run holds the lock."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
+        landed.start()
+        self.addCleanup(landed.stop)
+
+    def _spawn(self):
+        with mock.patch.object(self.beacon.subprocess, "Popen") as popen:
+            self.beacon._spawn_links_refresh()
+        return popen
+
+    def test_nothing_to_read_spawns_nothing(self):
+        self._spawn().assert_not_called()
+
+    def test_a_stale_item_spawns_a_detached_refresh_for_this_session(self):
+        url = _mr("site", 5)
+        self.beacon._record_deliverable("!5", url, "gl.test:acme/site")
+        popen = self._spawn()
+        argv = popen.call_args.args[0]
+        self.assertEqual(argv[-3:], ["refresh-links", "--session", self.beacon.session_hash()])
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_a_held_lock_spawns_nothing(self):
+        self.beacon._record_deliverable("!5", _mr("site", 5), "gl.test:acme/site")
+        self.beacon._mkdir_private(self.beacon.CACHE_DIR)
+        self.beacon._links_lock_path().write_text("")
+        self._spawn().assert_not_called()
 
 
 class StatusBarLayout(unittest.TestCase):
