@@ -246,7 +246,7 @@ When a Claude session starts (SessionStart hook), the plugin shall capture the c
 
 #### `HOOK-08a`
 
-When SessionStart fires with `source` of `startup` or `clear` (the two values that begin a session), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, the declared `mode` (with its note), `activity`, the recorded `permission_mode` (PERM-01), `pending-attention`, `latest_turn`, the opening command (PROV-10), the harvested Claude Code signals (`cc.*`, PROV-09), the accumulated `deliverables` plus the `deliverables.dropped` record (STATUSLINE-03 / CMD-24, both scoped to one Claude session), and what a sibling announced (`announced.*` — tier 0 is the CR announced *during this session*, and the landed set is what this session shipped). It shall also stamp `session_started_at`, the window STATUSLINE-03 scopes acquisition to — the wipe empties the row and the stamp is what keeps acquisition from refilling it from the bound route's earlier work. Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `activity = waiting` + `pending-attention` and render red. `resume`, `compact`, and `fork` are excluded: each continues a session already under way, so wiping there would drop the user's pinned label and the deliverables the session has accumulated.
+When SessionStart fires with `source` of `startup` or `clear` (the two values that begin a session), the plugin shall clear stale per-session signals before publishing the anchor — specifically `override.*`, the declared `mode` (with its note), `activity`, the recorded `permission_mode` (PERM-01), `pending-attention`, `latest_turn`, the opening command (PROV-10), the harvested Claude Code signals (`cc.*`, PROV-09), the accumulated `deliverables` plus the `deliverables.dropped`, `deliverables.expanded`, and `deliverables.links` records (STATUSLINE-03 / CMD-24, all scoped to one Claude session), and what a sibling announced (`announced.*` — tier 0 is the CR announced *during this session*, and the landed set is what this session shipped). It shall also stamp `session_started_at`, the window STATUSLINE-03 scopes acquisition to — the wipe empties the row and the stamp is what keeps acquisition from refilling it from the bound route's earlier work. Rationale: per-session state files key on the pane (the GUID of `ITERM_SESSION_ID`, §6.2), which outlives any single Claude session, so a fresh `claude` invocation or `/clear` in a pane that previously hosted a session ending mid-permission-prompt would otherwise inherit `activity = waiting` + `pending-attention` and render red. `resume`, `compact`, and `fork` are excluded: each continues a session already under way, so wiping there would drop the user's pinned label and the deliverables the session has accumulated.
 
 #### `HOOK-08b`
 
@@ -1490,10 +1490,10 @@ beacon shall provide a `beacon statusline` subcommand suitable for Claude Code's
 |:---|:---|
 | 1 | the declared mode's note, led by that mode's glyph (`MODE_SPECS`) and de-emphasized |
 | 2 | what the session has **delivered** (STATUSLINE-03) |
-| 3 | **open change requests**, each with its title |
-| 4 | **open issues** |
+| 3 | **open change requests**, each with its own title and the issues it closes |
+| 4 | **open issues** no open CR on the row closes |
 
-Claude Code renders multi-line status-line output, so a line per class beats packing one row: it lets a glance separate what shipped from what is in flight from what it answers. Items *within* a line are joined by ` · ` — one separator throughout, so the eye never has to learn two.
+Claude Code renders multi-line status-line output, so a line per class beats packing one row: it lets a glance separate what shipped from what is in flight from what it answers. Items *within* a line are joined by ` · ` — one separator throughout, so the eye never has to learn two. Lines 3 and 4 each grow into a tree of further lines where their items depend on each other (STATUSLINE-03 *Dependencies*).
 
 `project`, `task`, and the mode's own name are not repeated here — the first two are the tab's label and the third is its glyph (TITLE-05, TITLE-06). This row carries what the tab has no room for: the mode's free-text note, which is why the note lives here and nowhere painted. The subcommand shall read only per-session state (no network, no `gh`/`glab`) so it stays cheap enough for Claude Code's frequent status-line invocations.
 
@@ -1522,10 +1522,11 @@ What this retires is the `url-<pane-guid>.txt` **handoff file** — the second s
 A session often crosses several deliverables as it moves — land `!3`, open `#4`, cross into another project's `#75` — and a single resolved URL shows only the one matching the current branch. The plugin shall therefore **accumulate** the deliverables the session has touched as `{ref, url, project}` entries in its `deliverables` state, from three sources:
 
 1. **The bound tack route** — the deliverable URL and tracker links of each tack **this session touched**, in route order. PROV-07 answers a narrower question (*which one* URL does this branch point at) and returns a single URL per route, so it surfaces one ref out of everything a well-kept route records. Another project's deliverable the session merely crossed reaches the row only through this source.
-2. **A sibling's announcement** — a `cr.merged`, `issue.created`, or `release.created` line in a tool's stdout, read by the same PostToolUse handler that supplies PROV-07's tier 0. Each names an artifact the session **produced**, which is what the other two sources cannot see: an issue filed from the default branch has no branch to be found by, a release exists only as a tag, and a merge is a state change no URL resolution reveals. Unlike the CR slot of tier 0 these accumulate — two announcements are two facts, not one superseding the other — and each is recorded without a title, since an open CR's title has one source (see *Titles* below).
-3. **PROV-07's resolution**, when it carries a `_deliverable_suffix` **and does not merely name a route deliverable that shipped before this session started**. Recorded last on each publish, so the deliverable in hand is the freshest entry and the furthest from the cap's eviction edge; it is also the only one with a live task to title it.
+2. **A sibling's announcement** — a `cr.merged`, `issue.created`, or `release.created` line in a tool's stdout, read by the same PostToolUse handler that supplies PROV-07's tier 0. Each names an artifact the session **produced**, which is what the other two sources cannot see: an issue filed from the default branch has no branch to be found by, a release exists only as a tag, and a merge is a state change no URL resolution reveals. Unlike the CR slot of tier 0 these accumulate — two announcements are two facts, not one superseding the other.
+3. **Expansion** — what the forge links to an issue already on the row (see *Expansion* below).
+4. **PROV-07's resolution**, when it carries a `_deliverable_suffix` **and does not merely name a route deliverable that shipped before this session started**. Recorded last on each publish, so the deliverable in hand is the freshest entry and the furthest from the cap's eviction edge.
 
-Sources 1 and 3 are re-read on every publish, so their order within a publish is the order above. Source 2 is edge-triggered — it records when the announcement arrives and never again.
+Sources 1, 3, and 4 are re-read on every publish, so their order within a publish is the order above. Source 2 is edge-triggered — it records when the announcement arrives and never again.
 
 **Session scope.** A tack route's lifetime is the project's; the row's is one Claude session. A tack is in scope when it is **open** (`in_progress` or `pending`) or when it completed at or after the session's start, stamped as `session_started_at` at each fresh-start boundary alongside HOOK-08a's wipe. What the scope exists to exclude is the route's shipping history, which a long-lived route holds in full and which the row would otherwise present as this session's work; open work is the opposite case, and a `pending` tack's tracker link is exactly the "what is this for" the trailing line carries. Both open statuses count because a route is commonly kept with its tack marked done only at ship time — scoping to `in_progress` alone emptied the row for whole sessions, which is the state that made STATUSLINE-03 read as broken. The stamp is beacon's own state rather than anything tack records, so the row's scope does not depend on tack's bookkeeping; with no stamp, only the open tacks qualify, so an unstamped pane gets a thin row rather than a stale one.
 
@@ -1535,7 +1536,7 @@ Branch and repo URLs are not deliverables and shall record nothing. Each entry's
 
 A session with no tack route bound gets source 1 empty, and its row is what the announcements and the branch resolver find between them. Source 1 stays the broadest of the three because a route is a record of the whole unit of work; what beacon does not do is keep a **scanner over prose** beside it, hunting forge URLs in arbitrary tool output the way tack's `capture-urls.sh` does. An announcement is the opposite of that scan: a fact its publisher declared, matched by a key, on a line that means one thing.
 
-The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it. It shall be **capped** (`DELIVERABLES_MAX`, currently 8) with the oldest dropped, so the footer cannot grow without bound.
+The list shall be **deduplicated by URL**, and a re-touch shall move the entry to the end rather than duplicate it. It shall be **capped** (`DELIVERABLES_MAX`) with the oldest dropped, so the footer cannot grow without bound.
 
 **Kind.** Each entry's kind is derived from its URL, never stored — so the distinction costs no state field and applies to entries recorded before it existed:
 
@@ -1559,7 +1560,33 @@ Shipping is rare and is what the session has to show for itself, so delivered wo
 
 The two landed sources answer at different costs. The announcement is a fact its publisher read back from the forge before saying so, and it reaches a hook that was already running — so it neither drifts nor spends anything. The tack tier covers what no announcement did: a merge landed outside a session, or by a publisher that announces nothing. It drifts if a tack is not kept current, which is the price of not asking the forge — only the network is authoritative there, and the per-turn hook budget rules that out.
 
-**Titles.** An open CR shall carry the session's resolved `task` — the very string the badge is painting — but only when the task chain drew it from the PR title or a deliberate override. Other tiers (a branch name, an ai-title) name where the session is, not what the deliverable is, and would read as noise beside the ref. Sourcing the title anywhere else is what makes two beacon surfaces describe one PR differently. Titles are per-entry and sticky: only the current deliverable has a live task to read. They are ellipsized past `STATUSLINE_TITLE_MAX` (72). Issues stay bare — several share a line, and titling each would wrap the row the cap exists to prevent; a delivered CR drops its title, since that line is a ledger and the verb is its point.
+**Forge record.** What the row shows about an open CR or issue beyond its ref (its title, the CRs or issues it waits on, the issues it closes, and what it links to) is read from the item's forge through `gh` or `glab` and kept per URL in `deliverables.links`, apart from the entries, because the entry for the branch's own CR is rebuilt on every publish and would drop a field stored on it. The read is several network calls per item, which no hook can wait on (NFR-01), so the hooks that publish the row start `beacon refresh-links` **detached** whenever an open item has no record or one older than `LINKS_TTL_SECONDS` (ten minutes), and the status line picks the result up on its next render; the interval is what lets a dependency added after a CR opened reach the row. A per-session lock keeps two refreshers from running at once. A read that fails is logged (`links`, read back by `doctor`) and recorded with its error, so an item whose links could not be read never renders as one that has none. An announced CR (`cr.created` / `cr.updated`) writes its `title` into the record at once and marks it for a fresh read, since an update can change what the CR closes or waits on. The status line itself still makes no network call (STATUSLINE-01).
+
+| Forge | CR | Issue |
+|:---|:---|:---|
+| GitHub | GraphQL `title`, `closingIssuesReferences`; REST `issues/<n>/dependencies/blocked_by` | GraphQL `title`, `body`, `blockedBy`, `blocking`, `closedByPullRequestsReferences` |
+| GitLab | `merge_requests/<n>` title, `/closes_issues`, `/blocks` | `issues/<n>` title and description, `/links`, `/closed_by` |
+
+**Titles.** An open CR shall carry **its own title**: the announced one until the forge read lands, the forge's after. The session's `task` stays the headline for the tab and is not borrowed here: one session spans several CRs, and titling each from the session's headline gave every entry on the row the same text. Titles are ellipsized past `STATUSLINE_TITLE_MAX` (72). Issues stay bare — several share a line, and titling each would push the row toward the width fitting below; a delivered CR drops its title, since that line is a ledger and the verb is its point.
+
+**Closed issues.** An open CR that closes issues shall name them after its title as `(closes <ref>, <ref>)`, each a link, qualified like any other ref. An issue an open CR on the row closes shall not also appear on the issue line, so each issue reads once and the line that remains is the work no CR covers yet. GitLab serves an issue at both `/-/issues/<n>` and `/-/work_items/<n>`, so the match compares the two spellings as one.
+
+**Dependencies.** Where open items of one kind wait on each other (a CR on a CR, an issue on an issue), they shall render as a tree on lines of their own, one item per line, after the line of items that take part in no dependency:
+
+```
+!16 login flow
+agent:!47 agent docs
+theme:!3 shared chrome
+toolbox:!159 doc generator
+  ↑ site:!5 settings page
+    ↑ skills:!14 input fixes
+```
+
+An item that waits on nothing sits at the margin; an item that waits on others is indented one step per level of its longest chain of waits and led by `↑`, which reads as *waits on the block above*. It is placed directly after the last of the items it waits on, so the several items one CR waits on stack as the block above it, and a branch of the tree reads under its own parent. Only edges between items on the row count: the row can order only what it shows, and a merged prerequisite has stopped mattering. A cycle, which a forge should not allow, has its edges dropped rather than its items. Within a block, newest first still applies. Where two items share some but not all of what they wait on, the block above one of them can hold an item it does not wait on; the tree still reads top to bottom as a valid merge order, which is the question it answers.
+
+**Expansion.** When an issue is on the row, the items its forge record links to shall join the row: the CRs that close it, the issues it blocks or is blocked by, GitLab's `relates_to` links, and whatever the `Refs` / `Closes`-style lines its description **opens** with name (`Refs #3, !4, group/proj#5`, or a URL). Only the opening lines count: a reference further down is prose, and following every passing mention would fill the row with noise. Expansion is **one hop**: an item on the row only by expansion (`deliverables.expanded`) is not expanded in turn. That keeps the row to work adjacent to what the session touched and bounds the forge reads a publish can cause. An expanded item never reorders or replaces one the session touched directly, and touching it directly makes it direct. A dropped item (CMD-24) stays off.
+
+**Width.** Claude Code sets `COLUMNS` to the terminal width before it runs the status-line command, whose output it captures. A line wider than that shall be shortened from its titles inward, so the refs survive: every title is capped shorter, which trims the longest first, down to `STATUSLINE_TITLE_MIN`; then the titles are dropped, keeping refs, `(closes …)`, indentation, and `↑`; only then is the line left for the terminal to cut. Lines split only where items depend on each other, so the CR and issue lines still collect entries until they fill. With no `COLUMNS` (a manual run) no line is fitted.
 
 A session that has touched no deliverable falls back to the single resolved URL of STATUSLINE-02 — the same rendering with one element, and held to the same session scope by that clause's *Pre-session deliveries*.
 
@@ -1681,6 +1708,8 @@ state/<session-hash>.resolved.url_label # STATUSLINE-02: its display label (the 
 state/<session-hash>.resolved.project   # STATUSLINE-03: forge identity, for bare-vs-qualified refs
 state/<session-hash>.deliverables       # STATUSLINE-03: [{ref,url,project}] this session has touched
 state/<session-hash>.deliverables.dropped  # CMD-24: URLs the user took off the row, so acquisition doesn't re-add them
+state/<session-hash>.deliverables.links    # STATUSLINE-03: per-URL forge record {title,closes,waits_on,expand,fetched_at,error}
+state/<session-hash>.deliverables.expanded # STATUSLINE-03: URLs on the row only by expansion, which are not expanded in turn
 state/<session-hash>.announced.cr       # PROV-07 tier 0: {uri,title,root} of the CR a sibling announced this session
 state/<session-hash>.announced.delivered # STATUSLINE-03: URLs a sibling announced as merged this session
 state/<session-hash>.announced.route    # WIP-02: {session,route,tacks[],ended} of the binding tack announced
