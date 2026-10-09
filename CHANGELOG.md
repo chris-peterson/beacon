@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased
+
+### Each CR on the status line carries its own title
+
+A session that opened CRs in several projects showed every one of them
+with the same text: the session's task. Each CR now shows the title it
+has on its forge, read through `gh` or `glab` in the background, so the
+hooks never wait on the network. The tab keeps the task.
+
+### CRs that wait on each other read as a merge order
+
+When CRs on the status line depend on each other (GitLab MR dependencies,
+GitHub's blocked-by), they render as a tree, one per line. A CR is
+indented under the CRs it waits on, behind an `↑`, so you can see which
+ones can merge now. Issues that block each other get the same layout.
+
+```
+lib:!54 Fix the parser (closes lib:#12)
+  ↑ !2 Adopt the new parser
+```
+
+### A CR names the issues it closes
+
+A CR shows `(closes #12)` after its title, and that issue leaves the
+open-issues line, so what's left there is the work no CR covers yet.
+
+### An issue brings its related work with it
+
+When an issue is on the status line, the CRs that close it, the issues it
+blocks or is blocked by, and anything its description opens by
+referencing (`Refs #3, !4`) join the row too. This follows one hop, and
+`beacon drop` still keeps an item off.
+
+### Long status lines shorten titles before refs
+
+A line wider than the terminal shortens its titles, longest first, then
+drops them, so every ref stays visible. The row holds up to 20 items.
+
 ## 2.18.0
 
 ### A parked tab reads `inactive for >30 min` again

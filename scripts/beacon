@@ -31,6 +31,7 @@ import time
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 # --- paths and identity ---
 
@@ -441,6 +442,7 @@ _beacon() {
     'prune:remove per-session state for long-idle sessions'
     'forget:remove per-session state for one session, by its per-pane hash'
     'drop:remove one deliverable from the status-line row'
+    'refresh-links:read titles, dependencies, and linked issues for the status-line row'
     'export:emit a lossless JSON backup of all per-session state'
     'import:restore per-session state from a beacon export file'
     'completions:install or print shell completions'
@@ -503,6 +505,9 @@ _beacon() {
       ;;
     drop)
       (( CURRENT == 3 )) && _message 'deliverable ref or URL'
+      ;;
+    refresh-links)
+      compadd -- --session
       ;;
     export)
       compadd -- --out-file --compress
@@ -1393,6 +1398,8 @@ def _read_announcements(payload: dict) -> None:
         _record_announced_cr(payload, announced_cr)
     for key, body in produced:
         _record_announced_artifact(key, body)
+    if announced_cr is not None or produced:
+        _spawn_links_refresh()
 
 
 def _record_announced_cr(payload: dict, announced: dict) -> None:
@@ -1406,11 +1413,14 @@ def _record_announced_cr(payload: dict, announced: dict) -> None:
         root = str(find_project_root(Path(payload.get("cwd") or Path.cwd())))
     except OSError:
         return
-    write_state("announced.cr", json.dumps({
-        "uri": _safe_uri(announced["uri"]),
-        "title": _display_safe(str(announced.get("title") or "")),
-        "root": root,
-    }))
+    uri = _safe_uri(announced["uri"])
+    title = _display_safe(str(announced.get("title") or ""))
+    write_state("announced.cr", json.dumps({"uri": uri, "title": title, "root": root}))
+    # The row titles a CR from the CR itself (STATUSLINE-03 *Titles*), and the
+    # announcement is the first source to know it. Its forge record is marked
+    # stale as well: an update can have changed what the CR closes or waits on.
+    if _deliverable_suffix(uri):
+        _update_links(uri, **({"title": title} if title else {}), fetched_at="")
     _publish_announced_link()
 
 
@@ -1426,9 +1436,7 @@ def _publish_announced_link() -> None:
 
     Resolved against the session's anchor, not the announcing tool's cwd: a CR
     announced in an unrelated checkout must not take over this session's link,
-    and `_announced_cr_url`'s root guard is what decides. No title is passed to
-    the row — that belongs to the badge's resolved task (STATUSLINE-03
-    *Titles*), which the per-turn publish supplies."""
+    and `_announced_cr_url`'s root guard is what decides."""
     anchored = read_state("anchor.cwd")
     if not anchored:
         return
@@ -1490,12 +1498,7 @@ def _record_announced_artifact(key: str, body: dict) -> None:
     A merge records the URL as delivered *before* the entry, so the re-stamp
     every `_record_deliverable` performs sees it. The flag has to persist apart
     from the entry because that re-stamp recomputes it on every call, and would
-    otherwise drop what the announcement established.
-
-    No title is passed. An open CR's title is the badge's own resolved task
-    (STATUSLINE-03 *Titles*) — sourcing it separately is what made the two
-    surfaces describe one PR differently, and an announcement is exactly such a
-    separate source."""
+    otherwise drop what the announcement established."""
     url = _safe_uri(body["uri"])
     ref = _deliverable_suffix(url)
     if not ref:
@@ -4578,7 +4581,16 @@ def _deliverable_kind(url: str) -> str:
     return ""
 
 
-DELIVERABLES_MAX = 8
+DELIVERABLES_MAX = 20
+
+
+def _canonical_item_url(url: str) -> str:
+    """One spelling per forge item, for comparing URLs that came from different
+    sources. GitLab serves an issue at both `/-/issues/<n>` and
+    `/-/work_items/<n>`, and its API hands back either depending on the
+    endpoint, so the same issue arrives from a tack link and a forge link
+    spelled two ways."""
+    return url.replace("/-/work_items/", "/-/issues/")
 
 
 def _announced_delivered_urls() -> set[str]:
@@ -4594,19 +4606,16 @@ def _announced_delivered_urls() -> set[str]:
     return {u for u in urls if isinstance(u, str)}
 
 
-def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") -> None:
+def _record_deliverable(ref: str, url: str, project_id: str, expanded: bool = False) -> None:
     """STATUSLINE-03: append a deliverable the session has touched. Deduped on
     URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
-    oldest dropped: the row shares a line with the pause reason, and a session
-    that has crossed a dozen deliverables is better served by the older ones
-    ageing out than by a row that wraps.
+    oldest dropped, so the footer can't grow without bound.
 
-    `title` describes the deliverable being recorded now. It is the same string
-    the badge is showing (the resolved `task`, when the task chain drew it from
-    the PR title or a deliberate override), so the two surfaces name the work
-    identically — sourcing them separately is what makes them disagree. Titles
-    already captured for other entries are preserved: only the current
-    deliverable has a live task to read.
+    `expanded` marks an entry that reached the row only because an issue on it
+    links there (STATUSLINE-03 *Expansion*). Expansion is one hop, so such an
+    entry is not expanded in turn, and it never displaces a direct one: an
+    expanded record of a URL already on the row changes nothing, where a direct
+    record of an expanded URL makes it direct.
 
     Every entry is re-stamped against the landed sources on each call, so a CR
     that merged (or a release that shipped) mid-session moves to the delivered
@@ -4616,19 +4625,322 @@ def _record_deliverable(ref: str, url: str, project_id: str, title: str = "") ->
     # remembering the removal would put it back on the next turn.
     if url in read_state_json("deliverables.dropped", []):
         return
+    current = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    marked = set(read_state_json("deliverables.expanded", []))
+    if expanded:
+        if any(_canonical_item_url(e.get("url", "")) == _canonical_item_url(url) for e in current):
+            return
+        marked.add(url)
+    else:
+        marked.discard(url)
     landed = _tack_landed_urls() | _announced_delivered_urls()
-    prior = {e.get("url"): e.get("title", "")
-             for e in read_state_json("deliverables", []) if isinstance(e, dict)}
-    entries = [e for e in read_state_json("deliverables", [])
-               if isinstance(e, dict) and e.get("url") != url]
+    entries = [e for e in current if e.get("url") != url]
     entries.append({"ref": ref, "url": url, "project": project_id})
     for e in entries:
         e_url = e.get("url", "")
         # A release tag URL only exists once the release is published, so the
         # kind alone settles it — no tack route needed.
         e["delivered"] = e_url in landed or _deliverable_kind(e_url) == "release"
-        e["title"] = (title or prior.get(e_url, "")) if e_url == url else prior.get(e_url, "")
-    write_state("deliverables", json.dumps(entries[-DELIVERABLES_MAX:]))
+    entries = entries[-DELIVERABLES_MAX:]
+    write_state("deliverables", json.dumps(entries))
+    kept = {e["url"] for e in entries}
+    write_state("deliverables.expanded", json.dumps(sorted(marked & kept)))
+
+
+# A forge item's title and links change while a session runs (a dependency is
+# added after the CR opens), and nothing announces it. Re-reading on this
+# interval is what picks the change up; the read runs detached from the hook
+# that asks for it, so the interval bounds forge traffic, not hook latency.
+LINKS_TTL_SECONDS = 600
+# A refresher that died without unlinking its lock must not block the next one
+# for the rest of the session.
+LINKS_LOCK_STALE_SECONDS = 120
+LINKS_FORGE_TIMEOUT = 15
+
+
+class ForgeError(Exception):
+    """A forge CLI call that failed or answered something unreadable."""
+
+
+def _read_links() -> dict:
+    """STATUSLINE-03's per-item forge record, keyed by URL: `{title, closes,
+    waits_on, expand, fetched_at, error}`. Held apart from `deliverables`
+    because the entry for the branch's own CR is rebuilt on every publish, and
+    a field stored on it would be dropped each time."""
+    links = read_state_json("deliverables.links", {})
+    return links if isinstance(links, dict) else {}
+
+
+def _update_links(url: str, **fields) -> None:
+    """Merge `fields` into one URL's record. Re-read immediately before the
+    write, because the detached refresher and the hooks both write here."""
+    links = _read_links()
+    record = links.get(url) if isinstance(links.get(url), dict) else {}
+    record.update(fields)
+    links[url] = record
+    write_state("deliverables.links", json.dumps(links))
+
+
+def _links_stale(record: dict | None, now: float) -> bool:
+    fetched = _iso_epoch(str((record or {}).get("fetched_at") or ""))
+    return fetched is None or now - fetched >= LINKS_TTL_SECONDS
+
+
+def _stale_link_urls() -> list[str]:
+    """Open CRs and issues on the row whose forge record is missing or older
+    than LINKS_TTL_SECONDS, newest first. Delivered work is left alone: the
+    delivered line renders no title and no links."""
+    links = _read_links()
+    now = time.time()
+    entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    return [e["url"] for e in reversed(entries)
+            if e.get("url") and not e.get("delivered")
+            and _deliverable_kind(e["url"]) in ("cr", "issue")
+            and _links_stale(links.get(e["url"]), now)]
+
+
+def _expand_linked_items() -> None:
+    """STATUSLINE-03 *Expansion*: put what the forge links to each issue on the
+    row: the CRs that close it, the issues it blocks or is blocked by, and what
+    its description opens by referencing. One hop: an entry that is itself on
+    the row by expansion is not expanded. Reads only the cached forge record, so
+    it is cheap enough for the per-turn publish."""
+    links = _read_links()
+    marked = set(read_state_json("deliverables.expanded", []))
+    issues = [e["url"] for e in read_state_json("deliverables", [])
+              if isinstance(e, dict) and e.get("url") and not e.get("delivered")
+              and _deliverable_kind(e["url"]) == "issue" and e["url"] not in marked]
+    for issue in issues:
+        for url in (links.get(issue) or {}).get("expand") or []:
+            ref = _deliverable_suffix(url)
+            if ref:
+                _record_deliverable(ref, url, _project_id_from_url(url), expanded=True)
+
+
+def _forge_json(argv: list[str]):
+    """Run one forge CLI call and parse its JSON. Raises ForgeError rather than
+    answering empty: an item whose links could not be read must not render as
+    an item that has none."""
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=LINKS_FORGE_TIMEOUT)
+    except (subprocess.SubprocessError, OSError) as exc:
+        raise ForgeError(f"{argv[0]}: {exc}") from exc
+    if r.returncode != 0:
+        raise ForgeError(f"{' '.join(argv[:3])} exited {r.returncode}: {r.stderr.strip()}")
+    try:
+        return json.loads(r.stdout)
+    except ValueError as exc:
+        raise ForgeError(f"{' '.join(argv[:3])}: unreadable JSON") from exc
+
+
+_GITHUB_ITEM_RE = re.compile(r"^https://([^/]+)/([^/]+)/([^/]+)/(pull|issues)/(\d+)")
+_GITLAB_ITEM_RE = re.compile(
+    r"^https://([^/]+)/(.+?)/-/(merge_requests|issues|work_items)/(\d+)")
+
+_GITHUB_ITEM_QUERY = (
+    "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){"
+    "issueOrPullRequest(number:$n){__typename "
+    "... on Issue{title body blockedBy(first:50){nodes{url}} "
+    "blocking(first:50){nodes{url}} closedByPullRequestsReferences(first:50){nodes{url}}} "
+    "... on PullRequest{title closingIssuesReferences(first:50){nodes{url}}}}}}")
+
+
+def _node_urls(conn) -> list[str]:
+    return [n["url"] for n in ((conn or {}).get("nodes") or [])
+            if isinstance(n, dict) and isinstance(n.get("url"), str)]
+
+
+def _fetch_github_links(m: re.Match) -> dict:
+    host, owner, repo, kind, number = m.groups()
+    hostname = [] if host == "github.com" else ["--hostname", host]
+    doc = _forge_json(["gh", "api", *hostname, "graphql", "-f", f"query={_GITHUB_ITEM_QUERY}",
+                       "-f", f"o={owner}", "-f", f"r={repo}", "-F", f"n={number}"])
+    item = (((doc or {}).get("data") or {}).get("repository") or {}).get("issueOrPullRequest")
+    if not isinstance(item, dict):
+        raise ForgeError(f"gh: no item at {m.group(0)}")
+    base = f"https://{host}/{owner}/{repo}"
+    if item.get("__typename") == "PullRequest":
+        # GitHub keeps dependencies on the issues API, which answers for a PR
+        # number too; the GraphQL PullRequest type has no field for them.
+        blocked_by = _forge_json(["gh", "api", *hostname,
+                                  f"repos/{owner}/{repo}/issues/{number}/dependencies/blocked_by"])
+        return {"title": str(item.get("title") or ""),
+                "closes": _node_urls(item.get("closingIssuesReferences")),
+                "waits_on": [b["html_url"] for b in blocked_by or []
+                             if isinstance(b, dict) and isinstance(b.get("html_url"), str)]}
+    blocked_by = _node_urls(item.get("blockedBy"))
+    expand = (_node_urls(item.get("closedByPullRequestsReferences")) + blocked_by
+              + _node_urls(item.get("blocking"))
+              + _leading_ref_urls(str(item.get("body") or ""), "github", f"https://{host}", base))
+    return {"title": str(item.get("title") or ""), "waits_on": blocked_by, "expand": expand}
+
+
+def _fetch_gitlab_links(m: re.Match) -> dict:
+    host, path, kind, number = m.groups()
+    api = ["glab", "api", "--hostname", host]
+    base = f"projects/{quote(path, safe='')}"
+    project_url = f"https://{host}/{path}"
+    if kind == "merge_requests":
+        mr = _forge_json([*api, f"{base}/merge_requests/{number}"])
+        closes = _forge_json([*api, f"{base}/merge_requests/{number}/closes_issues"])
+        blocks = _forge_json([*api, f"{base}/merge_requests/{number}/blocks"])
+        return {"title": str((mr or {}).get("title") or ""),
+                "closes": [i["web_url"] for i in closes or []
+                           if isinstance(i, dict) and isinstance(i.get("web_url"), str)],
+                "waits_on": [(b.get("blocking_merge_request") or {}).get("web_url")
+                             for b in blocks or [] if isinstance(b, dict)
+                             and (b.get("blocking_merge_request") or {}).get("web_url")]}
+    issue = _forge_json([*api, f"{base}/issues/{number}"])
+    related = _forge_json([*api, f"{base}/issues/{number}/links"])
+    closed_by = _forge_json([*api, f"{base}/issues/{number}/closed_by"])
+    linked = [r for r in related or [] if isinstance(r, dict) and isinstance(r.get("web_url"), str)]
+    expand = ([c["web_url"] for c in closed_by or []
+               if isinstance(c, dict) and isinstance(c.get("web_url"), str)]
+              + [r["web_url"] for r in linked]
+              + _leading_ref_urls(str((issue or {}).get("description") or ""),
+                                  "gitlab", f"https://{host}", project_url))
+    return {"title": str((issue or {}).get("title") or ""),
+            "waits_on": [r["web_url"] for r in linked if r.get("link_type") == "is_blocked_by"],
+            "expand": expand}
+
+
+def _fetch_links(url: str) -> dict:
+    """One forge item's title and links, read through the forge's own CLI. A URL
+    on a forge beacon has no reader for answers an empty record, so it isn't
+    asked again until the record ages out."""
+    m = _GITLAB_ITEM_RE.match(url)
+    if m:
+        return _fetch_gitlab_links(m)
+    m = _GITHUB_ITEM_RE.match(url)
+    if m:
+        return _fetch_github_links(m)
+    return {}
+
+
+# What an issue's description opens with when it names related work in a
+# trailer-like line. Only the opening lines count: a reference further down is
+# prose, and following every passing mention would fill the row with noise.
+_LEADING_REF_LINE_RE = re.compile(
+    r"^(?:refs?|closes|fixes|resolves|related(?:\s+to)?|part\s+of|depends\s+on)\b[:\s]+(.+)$",
+    re.IGNORECASE)
+_REF_TOKEN_RE = re.compile(r"https?://[^\s,;)>\]]+|([\w.-]+(?:/[\w.-]+)*)?([#!])(\d+)\b")
+
+
+def _leading_ref_urls(text: str, forge: str, origin: str, project_url: str) -> list[str]:
+    """The forge URLs named by the `Refs` / `Closes`-style lines a description
+    opens with, resolved against the project the description belongs to."""
+    urls = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line and not urls:
+            continue
+        m = _LEADING_REF_LINE_RE.match(line)
+        if not m:
+            break
+        for tok in _REF_TOKEN_RE.finditer(m.group(1)):
+            if tok.group(0).startswith("http"):
+                url = tok.group(0).rstrip(".")
+            else:
+                project, sigil, number = tok.group(1), tok.group(2), tok.group(3)
+                # A one-segment project (`lib!6`) is GitLab's short form for a
+                # sibling in the same namespace.
+                if project and "/" not in project:
+                    root = f"{project_url.rsplit('/', 1)[0]}/{project}"
+                else:
+                    root = f"{origin}/{project}" if project else project_url
+                if forge == "gitlab":
+                    url = f"{root}/-/{'merge_requests' if sigil == '!' else 'issues'}/{number}"
+                elif sigil == "#":
+                    url = f"{root}/issues/{number}"
+                else:
+                    continue
+            if _deliverable_suffix(url) and url not in urls:
+                urls.append(url)
+    return urls
+
+
+def _links_lock_path() -> Path:
+    return CACHE_DIR / f"links-refresh-{session_hash()}.lock"
+
+
+def _spawn_links_refresh() -> None:
+    """Start the detached refresher when anything on the row needs a forge read.
+    The read is several network calls per item, which no hook can afford to
+    wait on; the status line picks the result up on its next render."""
+    if not _stale_link_urls():
+        return
+    lock = _links_lock_path()
+    try:
+        if time.time() - lock.stat().st_mtime < LINKS_LOCK_STALE_SECONDS:
+            return
+    except OSError:
+        pass
+    try:
+        subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "refresh-links",
+             "--session", session_hash()],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
+    except OSError as exc:
+        log_error("links-spawn", str(exc))
+
+
+def cmd_refresh_links(args):
+    """STATUSLINE-03: read the title and links of every open CR and issue on a
+    session's row from its forge, then expand the issues' links onto the row.
+    Two passes, so a CR that arrived by expansion is titled in the same run.
+
+    `--session` names the bucket because a detached process can't count on
+    resolving the one its parent hook did: the hook may have been a guest
+    (HOOK-12) whose marker this process would not see the same way."""
+    if getattr(args, "session", None):
+        _PANE.hash = args.session
+    _mkdir_private(CACHE_DIR)
+    lock = _links_lock_path()
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        try:
+            if time.time() - lock.stat().st_mtime < LINKS_LOCK_STALE_SECONDS:
+                return
+            lock.unlink()
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except OSError:
+            return
+    os.close(fd)
+    try:
+        for _pass in range(2):
+            stale = _stale_link_urls()
+            if not stale:
+                break
+            for url in stale:
+                stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                try:
+                    record = _fetch_links(url)
+                except ForgeError as exc:
+                    log_error("links", f"{url}: {exc}")
+                    _update_links(url, fetched_at=stamp, error=str(exc)[:200])
+                    continue
+                _update_links(url, **_safe_links_record(record), fetched_at=stamp, error="")
+            _expand_linked_items()
+    finally:
+        try:
+            lock.unlink()
+        except OSError:
+            pass
+
+
+def _safe_links_record(record: dict) -> dict:
+    """A fetched record made safe to store and render: the title is forge text
+    bound for OSC-8 link text (`_display_safe`), and every URL list keeps only
+    forge item URLs. An empty fetched title leaves an announced one in place."""
+    out = {key: [u for u in (_safe_uri(v) for v in record.get(key) or [] if isinstance(v, str))
+                 if _deliverable_suffix(u)]
+           for key in ("closes", "waits_on", "expand")}
+    title = _display_safe(str(record.get("title") or ""))
+    if title:
+        out["title"] = title
+    return out
 
 
 def _qualify_deliverable(entry: dict, project_id: str) -> str:
@@ -4858,25 +5170,21 @@ def _publish_chips(cwd: Path) -> None:
     write_state("resolved.url", url)
     write_state("resolved.url_label", label)
     write_state("resolved.project", project_id)
-    # The route first, the resolved URL last: only the latter has a live task to
-    # title it, and recording it last keeps the work in hand furthest from the
+    # The route first, then what its issues link to, the resolved URL last:
+    # recording the work in hand last keeps it furthest from the
     # DELIVERABLES_MAX eviction edge.
     for r_url in route_urls:
         r_ref = _deliverable_suffix(r_url)
         if r_ref and r_url != url:
             _record_deliverable(r_ref, r_url, _project_id_from_url(r_url) or project_id)
+    _expand_linked_items()
     # The substitution above takes a pre-session delivery off the link, which
     # leaves one case it can't reach: a tack marked done while its PR is still
     # open on this branch, which the forge probe hands straight back. Recording it
     # would credit this session with a delivery it had no part in.
     if ref and not _url_delivered_before_session(url):
-        # The badge's own task, when the chain drew it from the PR title (or the
-        # user said so outright). Any other tier — a branch name, an ai-title —
-        # is spatial context rather than a name for the deliverable, and would
-        # read as noise next to the ref it follows.
-        snap = read_state_json("resolved", {})
-        title = (snap.get("task") or "") if snap.get("task_provider") in ("pr", "override") else ""
-        _record_deliverable(ref, url, _project_id_from_url(url) or project_id, title)
+        _record_deliverable(ref, url, _project_id_from_url(url) or project_id)
+    _spawn_links_refresh()
 
     key = _iterm_cache_key()
     if key:
@@ -5943,6 +6251,8 @@ def _wipe_session_for_fresh_start() -> None:
     # never touched.
     remove_state("deliverables")
     remove_state("deliverables.dropped")
+    remove_state("deliverables.expanded")
+    remove_state("deliverables.links")
     # What a sibling announced is scoped the same way and keys on the pane the
     # same way: PROV-07 tier 0 is the CR announced *during this session*, and
     # the landed set is what this session shipped.
@@ -6058,35 +6368,175 @@ def _statusline_link_segment() -> str:
     return f"\033[{STATUSLINE_LINK_COLOR}m{body}\033[0m"
 
 
-def _statusline_open_lines() -> list[str]:
-    """STATUSLINE-03: open work, one line per kind — change requests above the
-    issues they answer. Newest first within each line. Splitting by kind rather
-    than packing one row is what lets a glance separate "what I'm shipping" from
-    "what I'm shipping it for"; on GitHub the two are both `#<n>` and share a
-    line only by accident of numbering."""
-    project_id = read_state("resolved.project") or ""
-    live = [e for e in read_state_json("deliverables", [])
-            if isinstance(e, dict) and not e.get("delivered")]
+STATUSLINE_WAITS_LEAD = "↑ "
+STATUSLINE_INDENT = "  "
+# Titles shorten toward this before they are dropped outright (STATUSLINE-03
+# *Width*): a title cut much shorter reads as noise beside its ref.
+STATUSLINE_TITLE_MIN = 8
+_ANSI_RE = re.compile(r"\x1b\][^\a]*\a|\x1b\[[0-9;]*m")
+
+
+def _visible_width(text: str) -> int:
+    """Terminal columns `text` occupies: escape sequences take none, and a wide
+    character (an emoji, CJK) takes two."""
+    plain = _ANSI_RE.sub("", text)
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in plain)
+
+
+def _terminal_columns() -> int | None:
+    """The terminal width Claude Code sets as `COLUMNS` before it runs the
+    status-line command, which can't query a tty of its own (its output is
+    captured). None when unset, as in a manual run, and then no line is fitted."""
+    try:
+        cols = int(os.environ.get("COLUMNS") or "")
+    except ValueError:
+        return None
+    return cols if cols > 0 else None
+
+
+def _fit_line(render, width: int | None) -> str:
+    """STATUSLINE-03 *Width*: the line `render(cap)` draws, shortened from its
+    titles inward until it fits `width`. Every title is capped shorter, which
+    trims the longest first, then the titles go; refs, `(closes …)` and the tree
+    lead are never cut by beacon, so a line that still doesn't fit is left for
+    the terminal to cut."""
+    line = render(STATUSLINE_TITLE_MAX)
+    if not width or _visible_width(line) <= width:
+        return line
+    for cap in range(STATUSLINE_TITLE_MAX - 1, STATUSLINE_TITLE_MIN - 1, -1):
+        line = render(cap)
+        if _visible_width(line) <= width:
+            return line
+    return render(0)
+
+
+def _dependency_layout(urls: list[str], waits_on: dict) -> tuple[list[str], list[list[tuple[int, str]]]]:
+    """STATUSLINE-03 *Dependencies*: split `urls` (newest first) into the ones
+    no other entry depends on or waits on, and trees of `(depth, url)` in render
+    order for the rest.
+
+    An entry's depth is its longest chain of waits, so every entry sits deeper
+    than everything it waits on. It is emitted only once all of those have been,
+    directly after the last of them, which is what stacks the several CRs one
+    entry waits on as the block above it. An edge to an entry not in `urls`
+    carries no weight here: the row can only order what it shows. A cycle, which
+    a forge shouldn't allow, has its edges dropped rather than its entries."""
+    present = set(urls)
+    parents = {u: [p for p in dict.fromkeys(waits_on.get(u) or []) if p in present and p != u]
+               for u in urls}
+    pending = {u: set(ps) for u, ps in parents.items()}
+    depth = {}
+    ready = [u for u in urls if not pending[u]]
+    while ready:
+        u = ready.pop(0)
+        depth[u] = max((depth[p] + 1 for p in parents[u]), default=0)
+        for c in urls:
+            if u in pending[c]:
+                pending[c].discard(u)
+                if not pending[c]:
+                    ready.append(c)
+    for u in urls:
+        if u not in depth:
+            parents[u] = [p for p in parents[u] if p in depth]
+            depth[u] = max((depth[p] + 1 for p in parents[u]), default=0)
+    children = {u: [c for c in urls if u in parents[c]] for u in urls}
+    linked = {u for u in urls if parents[u] or children[u]}
+    loose = [u for u in urls if u not in linked]
+
+    trees, placed = [], set()
+    for start in urls:
+        if start not in linked or start in placed:
+            continue
+        component, frontier = set(), [start]
+        while frontier:
+            u = frontier.pop()
+            if u not in component:
+                component.add(u)
+                frontier += parents[u] + children[u]
+        order = []
+
+        def visit(u):
+            if u in placed or any(p not in placed for p in parents[u]):
+                return
+            placed.add(u)
+            order.append((depth[u], u))
+            for c in children[u]:
+                visit(c)
+
+        for root in (u for u in urls if u in component and not parents[u]):
+            visit(root)
+        trees.append(order)
+    return loose, trees
+
+
+def _statusline_item(entry: dict, record: dict, project_id: str, sgr: str, cap: int) -> str:
+    """One entry on an open-work line: its ref, then (for a CR) its own title
+    capped at `cap` (none at 0) and the issues it closes."""
+    url = entry.get("url", "")
+    out = f"\033[{sgr}m{_osc8(url, _qualify_deliverable(entry, project_id))}\033[0m"
+    if _deliverable_kind(url) != "cr":
+        return out
+    title = " ".join(str(record.get("title") or "").split())
+    if title and cap:
+        if len(title) > cap:
+            title = title[:cap - 1].rstrip() + "…"
+        out += f" \033[{STATUSLINE_TITLE_SGR}m{title}\033[0m"
+    closes = [_osc8(u, _qualify_deliverable(
+                  {"ref": _deliverable_suffix(u), "project": _project_id_from_url(u)}, project_id))
+              for u in record.get("closes") or [] if _deliverable_suffix(u)]
+    if closes:
+        out += f" \033[{STATUSLINE_TITLE_SGR}m(closes {', '.join(closes)})\033[0m"
+    return out
+
+
+def _statusline_kind_lines(entries: list[dict], links: dict, project_id: str, sgr: str,
+                           width: int | None) -> list[str]:
+    """One kind's open work: the entries with no dependency among them share a
+    line, and each dependency tree follows, one entry per line, indented under
+    what it waits on."""
+    by_url = {e["url"]: e for e in entries}
+    waits_on = {u: [_canonical_item_url(p) for p in (links.get(u) or {}).get("waits_on") or []]
+                for u in by_url}
+    canonical = {_canonical_item_url(u): u for u in by_url}
+    waits_on = {u: [canonical[p] for p in ps if p in canonical] for u, ps in waits_on.items()}
+    loose, trees = _dependency_layout(list(by_url), waits_on)
+
+    def item(u, cap):
+        return _statusline_item(by_url[u], links.get(u) or {}, project_id, sgr, cap)
+
     lines = []
+    if loose:
+        lines.append(_fit_line(
+            lambda cap: STATUSLINE_SEPARATOR.join(item(u, cap) for u in loose), width))
+    for tree in trees:
+        for depth, u in tree:
+            lead = STATUSLINE_INDENT * depth + STATUSLINE_WAITS_LEAD if depth else ""
+            lines.append(_fit_line(lambda cap, u=u, lead=lead: lead + item(u, cap), width))
+    return lines
+
+
+def _statusline_open_lines() -> list[str]:
+    """STATUSLINE-03: open work by kind, change requests above the issues they
+    answer. Newest first within each line. Splitting by kind rather than packing
+    one row is what lets a glance separate "what I'm shipping" from "what I'm
+    shipping it for"; on GitHub the two are both `#<n>` and share a line only by
+    accident of numbering. An issue an open CR on the row closes is shown in
+    that CR's `(closes …)` and not again on the issue line."""
+    project_id = read_state("resolved.project") or ""
+    links = _read_links()
+    live = [e for e in reversed(read_state_json("deliverables", []))
+            if isinstance(e, dict) and e.get("url") and not e.get("delivered")]
+    crs = [e for e in live if _deliverable_kind(e["url"]) == "cr"]
+    closed = {_canonical_item_url(u) for e in crs
+              for u in (links.get(e["url"]) or {}).get("closes") or []}
     # An epic and a milestone are the same class of thing as an issue — what the
     # work is for, not what ships it — so they share the trailing line rather
     # than earning one each and pushing the row toward wrapping.
-    for kinds, sgr in ((("cr",), STATUSLINE_CR_SGR),
-                       (("issue", "epic", "milestone"), STATUSLINE_ISSUE_SGR)):
-        refs = []
-        for e in reversed(live):
-            if _deliverable_kind(e.get("url", "")) not in kinds:
-                continue
-            ref = f"\033[{sgr}m{_osc8(e.get('url', ''), _qualify_deliverable(e, project_id))}\033[0m"
-            title = " ".join((e.get("title") or "").split()) if "cr" in kinds else ""
-            if title:
-                if len(title) > STATUSLINE_TITLE_MAX:
-                    title = title[:STATUSLINE_TITLE_MAX - 1].rstrip() + "…"
-                ref += f" \033[{STATUSLINE_TITLE_SGR}m{title}\033[0m"
-            refs.append(ref)
-        if refs:
-            lines.append(STATUSLINE_SEPARATOR.join(refs))
-    return lines
+    issues = [e for e in live if _deliverable_kind(e["url"]) in ("issue", "epic", "milestone")
+              and _canonical_item_url(e["url"]) not in closed]
+    width = _terminal_columns()
+    return (_statusline_kind_lines(crs, links, project_id, STATUSLINE_CR_SGR, width)
+            + _statusline_kind_lines(issues, links, project_id, STATUSLINE_ISSUE_SGR, width))
 
 
 def _statusline_delivered_line() -> str:
@@ -6911,6 +7361,11 @@ _DOCTOR_ADVICE = {
     "provider": "A resolver provider threw, so the chain fell through to a lower "
                 "tier — the project, task, or URL it feeds may be stale or blank.",
     "git": "A git probe failed, so the branch chip and its sync state may be blank.",
+    "links": "A forge read for the status line failed, so the item above shows no title, "
+             "dependencies, or closed issues. Check `gh auth status` / `glab auth status` "
+             "for its host; it is read again within ten minutes.",
+    "links-spawn": "The background forge read could not start, so status-line titles "
+                   "and dependencies stay as they were. `beacon refresh-links` runs it by hand.",
     "layout.audit": "The layout audit could not run — see docs/iterm/layout.md.",
     "config.auto_pause": f"`auto_pause` in {_config_file()} isn't a duration like 30m "
                          "or 2h, so auto-pause is off. `beacon config auto-pause <duration>` "
@@ -7988,6 +8443,12 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp = sub.add_parser("drop", help="remove one deliverable from this session's status-line row")
     sp.add_argument("ref", help="the deliverable's ref (#42, !17, otherproj:#9) or its URL")
 
+    sp = sub.add_parser("refresh-links",
+                        help="read titles, dependencies, and linked issues for this session's "
+                             "status-line row from the forge")
+    sp.add_argument("--session", metavar="HASH", default=None,
+                    help="the per-pane hash of the session to refresh (default: this one)")
+
     sp = sub.add_parser("export",
                         help="emit a lossless JSON backup of all per-session state (joins to a tack export on claude_session_id)")
     sp.add_argument("--out-file", metavar="FILE", default=None,
@@ -8052,7 +8513,8 @@ def main(argv=None):
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "forget": cmd_forget, "drop": cmd_drop, "export": cmd_export, "import": cmd_import,
+        "forget": cmd_forget, "drop": cmd_drop, "refresh-links": cmd_refresh_links,
+        "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir,
         "doctor": cmd_doctor,
         "shell-init": cmd_shell_init,
