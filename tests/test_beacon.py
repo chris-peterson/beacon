@@ -4505,7 +4505,8 @@ class SessionSeedFallback(BeaconTest):
 class InstallGating(unittest.TestCase):
     """CMD-08: install always runs the terminal-agnostic steps (wrapper,
     completions) and runs the iTerm2 render-adapter steps only when iTerm2 is
-    present. The serve service is opt-in (WIP-07), so install never starts it."""
+    present. The serve service is opt-in (WIP-07), so install never installs
+    it, and restarts one the user installed so it runs the new wrapper target."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -4517,6 +4518,7 @@ class InstallGating(unittest.TestCase):
             "_install_statusline": None,
             "_install_shell_source": None,
             "_service_install": True,
+            "_restart_installed_service": None,
             "install_dynamic_profile": (True, "profile written"),
             "_install_progress_off": None,
             # None = iTerm2 has never run 3.7.0, so the shadowing check that
@@ -4549,7 +4551,8 @@ class InstallGating(unittest.TestCase):
         return buf.getvalue()
 
     _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile", "_install_progress_off")
-    _ALWAYS_STEPS = ("_install_cli_wrapper", "_install_completions", "_install_statusline")
+    _ALWAYS_STEPS = ("_install_cli_wrapper", "_restart_installed_service",
+                     "_install_completions", "_install_statusline")
 
     def test_dashboard_only_skips_iterm_steps(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
@@ -4930,6 +4933,56 @@ class ServiceUnit(unittest.TestCase):
             with contextlib.redirect_stdout(buf):
                 self.assertFalse(self.beacon._service_install(8800))
         self.assertIn("beacon install", buf.getvalue())
+
+    def _restart(self, platform, **supervisor):
+        calls = []
+
+        def record(result):
+            def run(*a):
+                calls.append(a)
+                return result(a)
+            return run
+        patches = [mock.patch.object(self.beacon, name, side_effect=record(fn))
+                   for name, fn in supervisor.items()]
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch("sys.platform", platform))
+            for p in patches:
+                stack.enter_context(p)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.beacon._restart_installed_service()
+        return calls, buf.getvalue()
+
+    def test_restart_launchd_kills_and_respawns_a_loaded_agent(self):
+        # A running serve keeps the build it started with; -k is what makes
+        # kickstart replace the process rather than leave a running one be.
+        calls, out = self._restart("darwin", _launchctl=lambda a: self._ok())
+        target = f"gui/{os.getuid()}/com.beacon.serve"
+        self.assertEqual(calls, [("print", target), ("kickstart", "-k", target)])
+        self.assertIn("✓ restarted the serve service", out)
+
+    def test_restart_launchd_leaves_an_uninstalled_agent_alone(self):
+        calls, out = self._restart("darwin", _launchctl=lambda a: self._fail())
+        self.assertEqual([c[0] for c in calls], ["print"])
+        self.assertEqual(out, "")
+
+    def test_restart_launchd_failure_surfaces_its_error(self):
+        def launchctl(a):
+            return self._fail("Operation not permitted") if a[0] == "kickstart" else self._ok()
+        _, out = self._restart("darwin", _launchctl=launchctl)
+        self.assertIn("! could not restart the serve service: Operation not permitted", out)
+
+    def test_restart_systemd_restarts_an_enabled_unit(self):
+        calls, out = self._restart("linux", _systemctl=lambda a: self._ok())
+        self.assertEqual(calls[-2:], [("is-enabled", "beacon-serve"), ("restart", "beacon-serve")])
+        self.assertIn("✓ restarted the serve service", out)
+
+    def test_restart_systemd_leaves_a_disabled_unit_alone(self):
+        def systemctl(a):
+            return self._ok() if a[0] == "--version" else self._fail()
+        calls, out = self._restart("linux", _systemctl=systemctl)
+        self.assertNotIn("restart", [c[0] for c in calls])
+        self.assertEqual(out, "")
 
     def test_uninstall_launchd_removes_unit(self):
         plist = self.tmp / "agent.plist"

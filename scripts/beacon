@@ -4140,6 +4140,28 @@ def _service_install(port: int, indent: str = "") -> bool:
     return False
 
 
+def _restart_installed_service(indent: str = "") -> None:
+    """CMD-08: restart a serve service the user installed, so it runs the build
+    the wrapper now reaches. The process reads the script once at startup, so a
+    re-pointed wrapper otherwise leaves the idle sweep painting tabs from the
+    old build until the next login."""
+    sup = _service_supervisor()
+    if sup == "launchd":
+        if _launchctl("print", _launchd_target()).returncode != 0:
+            return
+        r = _launchctl("kickstart", "-k", _launchd_target())
+    elif sup == "systemd":
+        if _systemctl("is-enabled", "beacon-serve").returncode != 0:
+            return
+        r = _systemctl("restart", "beacon-serve")
+    else:
+        return
+    if r.returncode == 0:
+        print(f"{indent}✓ restarted the serve service")
+    else:
+        print(f"{indent}! could not restart the serve service: {r.stderr.strip()}")
+
+
 def _service_uninstall() -> bool:
     """Tear down the unit and report on the teardown, not just the file. A
     `bootout`/`disable` that fails (service wedged, permissions) while the unit
@@ -5812,7 +5834,7 @@ def _last_assistant_text() -> str | None:
         return None
     try:
         last_text = None
-        for line in _tail_text(p).splitlines():
+        for line in _tail_text(p).split("\n"):
             line = line.strip()
             if not line:
                 continue
@@ -5866,7 +5888,7 @@ def _read_cc_signals() -> None:
         return
     latest: dict[str, str] = {}
     try:
-        for line in _tail_text(p).splitlines():
+        for line in _tail_text(p).split("\n"):
             line = line.strip()
             if not line:
                 continue
@@ -7435,6 +7457,7 @@ def cmd_install(_args):
     # Terminal-agnostic surface — the fleet dashboard, works in any terminal.
     step("CLI wrapper on PATH")
     _install_cli_wrapper(Path(_args.dir).expanduser() if _args.dir else None)
+    _restart_installed_service("  ")
     print()
     step("tab completion")
     _install_completions()

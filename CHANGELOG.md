@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### `install` restarts the serve service
+
+The serve service loads beacon once, when it starts, so after an upgrade
+it went on running the old build until you logged out. The idle sweep
+runs inside it, which is how a parked tab could still read
+`inactive for &gt;30 min` with 2.18.0 installed. `beacon install`, and so
+`/beacon:install-beacon` and `just trial-on` / `trial-off`, now restarts
+the service when you have installed it.
+
 ## 2.18.0
 
 ### A parked tab reads `inactive for >30 min` again
