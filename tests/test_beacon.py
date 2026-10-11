@@ -5714,6 +5714,12 @@ class StatusLineLinks(BeaconTest):
         self.assertEqual(len(lines), 2)
         self.assertEqual({line.strip().removeprefix("↑ ") for line in lines}, {"x:!1", "x:!2"})
 
+    def test_a_cycle_keeps_the_edges_of_what_waits_on_it(self):
+        a, b, c = _mr("x", 1), _mr("x", 2), _mr("x", 3)
+        loose, trees = self.beacon._dependency_layout([c, a, b], {a: [b], b: [a], c: [a]})
+        self.assertEqual(loose, [])
+        self.assertEqual(trees, [[(0, b), (1, a), (2, c)]])
+
     def test_a_cr_names_the_issues_it_closes_and_they_leave_the_issue_line(self):
         self._touch(_gl_issue("site", 12))
         self._touch(_gl_issue("site", 13))
@@ -5777,7 +5783,7 @@ class LinksExpansion(BeaconTest):
         self._record(issue)
         self.beacon._update_links(issue, expand=[cr])
         self.beacon._expand_linked_items()
-        self.assertEqual(self._urls(), [issue, cr])
+        self.assertEqual(self._urls(), [cr, issue])
 
     def test_expansion_is_one_hop(self):
         issue, other, further = _gl_issue("site", 1), _gl_issue("site", 2), _gl_issue("site", 3)
@@ -5786,7 +5792,42 @@ class LinksExpansion(BeaconTest):
         self.beacon._update_links(other, expand=[further])
         self.beacon._expand_linked_items()
         self.beacon._expand_linked_items()
-        self.assertEqual(self._urls(), [issue, other])
+        self.assertEqual(self._urls(), [other, issue])
+
+    def test_expansion_never_evicts_a_direct_entry(self):
+        issue = _gl_issue("site", 1)
+        self._record(issue)
+        self.beacon._update_links(issue, expand=[_mr("site", n) for n in range(100, 125)])
+        self.beacon._expand_linked_items()
+        urls = self._urls()
+        self.assertEqual(len(urls), self.beacon.DELIVERABLES_MAX)
+        self.assertEqual(urls[-1], issue)
+
+    def test_a_direct_entry_evicts_the_oldest_expanded_one(self):
+        directs = [_mr("site", n) for n in range(1, self.beacon.DELIVERABLES_MAX)]
+        first, second = _gl_issue("site", 50), _gl_issue("site", 51)
+        for url in directs:
+            self._record(url)
+        self._record(first, expanded=True)
+        self._record(second, expanded=True)
+        self.assertEqual(self._urls(), [second, *directs])
+        self._record(_mr("site", 99))
+        self.assertEqual(self._urls(), [*directs, _mr("site", 99)])
+
+    def test_no_room_left_by_direct_entries_adds_nothing(self):
+        for n in range(self.beacon.DELIVERABLES_MAX):
+            self._record(_mr("site", n))
+        self._record(_gl_issue("site", 1), expanded=True)
+        self.assertNotIn(_gl_issue("site", 1), self._urls())
+        self.assertEqual(self.beacon.read_state_json("deliverables.expanded", []), [])
+
+    def test_a_direct_record_replaces_the_other_spelling_of_an_issue(self):
+        direct = _gl_issue("site", 3)
+        work_item = direct.replace("/-/issues/", "/-/work_items/")
+        self._record(work_item, expanded=True)
+        self._record(direct)
+        self.assertEqual(self._urls(), [direct])
+        self.assertEqual(self.beacon.read_state_json("deliverables.expanded", []), [])
 
     def test_an_expanded_record_does_not_reorder_a_direct_entry(self):
         a, b = _gl_issue("site", 1), _mr("site", 5)
@@ -5811,6 +5852,14 @@ class LinksExpansion(BeaconTest):
         self._record(issue)
         self.beacon._update_links(issue, expand=[cr])
         self.beacon.write_state("deliverables.dropped", json.dumps([cr]))
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [issue])
+
+    def test_a_dropped_issue_stays_off_under_its_other_spelling(self):
+        issue, dropped = _gl_issue("site", 12), _gl_issue("site", 4)
+        self._record(issue)
+        self.beacon.write_state("deliverables.dropped", json.dumps([dropped]))
+        self.beacon._update_links(issue, expand=[dropped.replace("/-/issues/", "/-/work_items/")])
         self.beacon._expand_linked_items()
         self.assertEqual(self._urls(), [issue])
 
@@ -5868,12 +5917,13 @@ class RefreshLinks(BeaconTest):
         self.assertIn("projects/acme%2Fsite/merge_requests/5", calls[0])
         self.assertIn("gl.test", calls[0])
 
-    def test_a_gitlab_issue_expands_its_links_and_titles_them_in_one_run(self):
+    def test_a_gitlab_issue_and_what_it_expands_to_are_read_in_one_run(self):
         issue, cr, blocker = _gl_issue("site", 12), _mr("site", 5), _gl_issue("site", 3)
         self._record(issue)
         self._refresh({
-            "issues/12/links": [{"web_url": blocker, "link_type": "is_blocked_by"}],
-            "issues/12/closed_by": [{"web_url": cr}],
+            "issues/12/links": [{"web_url": blocker, "link_type": "is_blocked_by",
+                                 "state": "opened"}],
+            "issues/12/closed_by": [{"web_url": cr, "state": "opened"}],
             "issues/12": {"title": "Settings", "description": "Refs !7\n\n## Context"},
             "issues/3/links": [], "issues/3/closed_by": [], "issues/3": {"title": "Blocker"},
             "merge_requests/5/closes_issues": [{"web_url": issue}],
@@ -5886,8 +5936,67 @@ class RefreshLinks(BeaconTest):
         self.assertEqual(links[issue]["waits_on"], [blocker])
         self.assertEqual(links[issue]["expand"], [cr, blocker, _mr("site", 7)])
         self.assertEqual(links[cr]["title"], "Add a settings page")
-        urls = [e["url"] for e in self.beacon.read_state_json("deliverables", [])]
-        self.assertEqual(urls, [issue, cr, blocker, _mr("site", 7)])
+        self.assertEqual(links[_mr("site", 7)]["title"], "Refactor")
+        self.assertEqual([e["url"] for e in self.beacon.read_state_json("deliverables", [])],
+                         [issue])
+
+    def test_a_merged_or_closed_link_does_not_expand(self):
+        issue = _gl_issue("site", 12)
+        self._record(issue)
+        self._refresh({
+            "issues/12/links": [{"web_url": _gl_issue("site", 3), "link_type": "relates_to",
+                                 "state": "closed"}],
+            "issues/12/closed_by": [{"web_url": _mr("site", 5), "state": "merged"}],
+            "issues/12": {"title": "Settings", "description": ""},
+        })
+        self.assertEqual(self.beacon._read_links()[issue]["expand"], [])
+
+    def test_a_merged_github_pr_does_not_expand(self):
+        issue = "https://github.com/acme/widgets/issues/7"
+        self._record(issue)
+        self._refresh({
+            "blockedBy": {"data": {"repository": {"issue": {
+                "blockedBy": {"nodes": [{"url": "https://github.com/acme/widgets/issues/3",
+                                         "state": "OPEN"}]},
+                "blocking": {"nodes": [{"url": "https://github.com/acme/widgets/issues/4",
+                                        "state": "CLOSED"}]}}}}},
+            "graphql": {"data": {"repository": {"issueOrPullRequest": {
+                "__typename": "Issue", "title": "Drawer", "body": "",
+                "closedByPullRequestsReferences": {"nodes": [
+                    {"url": "https://github.com/acme/widgets/pull/9", "state": "MERGED"}]}}}}}})
+        record = self.beacon._read_links()[issue]
+        self.assertEqual(record["expand"], ["https://github.com/acme/widgets/issues/3"])
+        self.assertEqual(record["waits_on"], ["https://github.com/acme/widgets/issues/3"])
+
+    def test_a_forge_without_mr_dependencies_still_records_title_and_closes(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({
+            "merge_requests/5/closes_issues": [{"web_url": _gl_issue("site", 12)}],
+            "merge_requests/5/blocks": self.beacon.ForgeError("glab exited 1: 403 Forbidden"),
+            "merge_requests/5": {"title": "Add a settings page"},
+        })
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["title"], "Add a settings page")
+        self.assertEqual(record["closes"], [_gl_issue("site", 12)])
+        self.assertNotIn("waits_on", record)
+        self.assertIn("403", record["error"])
+        self.assertEqual(self.beacon.read_error_log()[-1]["op"], "links")
+
+    def test_a_forge_without_issue_dependencies_still_records_title_and_expansion(self):
+        issue = "https://github.com/acme/widgets/issues/7"
+        self._record(issue)
+        self._refresh({
+            "blockedBy": self.beacon.ForgeError("gh exited 1: Field 'blockedBy' doesn't exist"),
+            "graphql": {"data": {"repository": {"issueOrPullRequest": {
+                "__typename": "Issue", "title": "Drawer", "body": "",
+                "closedByPullRequestsReferences": {"nodes": [
+                    {"url": "https://github.com/acme/widgets/pull/9", "state": "OPEN"}]}}}}}})
+        record = self.beacon._read_links()[issue]
+        self.assertEqual(record["title"], "Drawer")
+        self.assertEqual(record["expand"], ["https://github.com/acme/widgets/pull/9"])
+        self.assertNotIn("waits_on", record)
+        self.assertIn("blockedBy", record["error"])
 
     def test_a_github_pr_reads_dependencies_from_the_issues_api(self):
         url = "https://github.com/acme/widgets/pull/42"

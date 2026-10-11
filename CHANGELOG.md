@@ -37,10 +37,11 @@ open-issues line, so what's left there is the work no CR covers yet.
 
 ### An issue brings its related work with it
 
-When an issue is on the status line, the CRs that close it, the issues it
-blocks or is blocked by, and anything its description opens by
+When an issue is on the status line, the open CRs that close it, the open
+issues it blocks or is blocked by, and anything its description opens by
 referencing (`Refs #3, !4`) join the row too. This follows one hop, and
-`beacon drop` still keeps an item off.
+`beacon drop` still keeps an item off. Work you touched directly always
+keeps its place on the row ahead of these.
 
 ### Long status lines shorten titles before refs
 
