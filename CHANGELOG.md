@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.19.0
 
 ### `install` restarts the serve service
 
