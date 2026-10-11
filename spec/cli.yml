@@ -227,6 +227,12 @@ commands:
   - summary: remove one deliverable from this session's status-line row
     args:
     - name: ref
+- name: refresh-links
+  usages:
+  - summary: read titles, dependencies, and linked issues for this session's status-line row from the forge
+    flags:
+    - name: --session
+      arg: HASH
 - name: export
   usages:
   - summary: emit a lossless JSON backup of all per-session state (joins to a tack export on claude_session_id)
