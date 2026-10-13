@@ -5811,6 +5811,19 @@ class StatusLineLinks(BeaconTest):
         self.assertIn(f"\033[{b.STATUSLINE_ISSUE_BLOCKED_SGR}m\033]8;;{_gl_issue('site', 2)}\a#2",
                       out)
 
+    def test_an_indented_line_does_not_start_with_whitespace(self):
+        # Claude Code strips a row's leading whitespace; the indent has to
+        # follow something that isn't.
+        self._touch(_mr("site", 1))
+        self._touch(_mr("site", 2), waits_on=[_mr("site", 1)])
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+        rows = buf.getvalue().rstrip("\n").split("\n")
+        self.assertTrue(rows[1].startswith(self.beacon.STATUSLINE_INDENT_GUARD + "  "))
+        self.assertFalse(any(row[:1].isspace() for row in rows))
+
     def test_a_tree_line_is_fitted_with_its_indent(self):
         self._touch(_mr("site", 1))
         self._touch(_mr("site", 2), title="C" * 80, waits_on=[_mr("site", 1)])

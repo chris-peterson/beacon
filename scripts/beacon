@@ -6569,6 +6569,10 @@ STATUSLINE_STACK_LEAD = "└ "
 # hue, at normal weight: structure reads a step quieter than the ref it leads.
 STATUSLINE_STACK_LEAD_SGR = "90"
 STATUSLINE_INDENT = "  "
+# Claude Code strips a status-line row's leading whitespace, which flattened
+# every tree to the margin. A zero-width reset in front means the row no longer
+# starts with a space, so the indent survives.
+STATUSLINE_INDENT_GUARD = "\033[0m"
 # Titles shorten toward this before they are dropped outright (STATUSLINE-03
 # *Width*): a title cut much shorter reads as noise beside its ref.
 STATUSLINE_TITLE_MIN = 8
@@ -6747,7 +6751,7 @@ def _statusline_kind_lines(entries: list[dict], links: dict, sgr: str, blocked_s
                           for p in stacked_on[u])
             mark = (f"\033[{STATUSLINE_STACK_LEAD_SGR}m{STATUSLINE_STACK_LEAD}\033[0m"
                     if stacked_on[u] else "")
-            lead = STATUSLINE_INDENT * depth + mark
+            lead = STATUSLINE_INDENT_GUARD + STATUSLINE_INDENT * depth + mark if depth else ""
             lines.append(_fit_line(
                 lambda cap, u=u, lead=lead, d=depth, b=stacked: lead + item(u, cap, d > 0, b),
                 width))
