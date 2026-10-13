@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### A CR merged on the forge moves to the delivered line
+
+The status line marked a CR merged only when anchor announced the merge
+or its tack was marked done, so one merged in the forge's UI or from
+another session stayed on the open line with its title. The background
+forge read now records each item's state, and a CR or issue that merged
+or closed during the session moves to the delivered line, struck
+through, within ten minutes. A CR closed without merging reads
+`closed ✗`, and an item that had already merged or closed before the
+session started leaves the row.
+
+### The CR tree says what can merge now
+
+Open work still reads top to bottom in merge order, and anything waiting
+on an open CR or issue on the row now turns gray, so the cyan refs are
+the ones you can merge now. A CR whose base branch is another open CR's
+head hangs off it with `└`; a forge dependency is indented with no
+glyph. Stacks used to reach the tree only when someone also declared a
+dependency; beacon now reads the base branch itself.
+
+When the row spans more than one project, every ref names its project
+(`frontend!16`), the session's own included; a row in one project stays
+bare. The lines under a stacked base never carry it, because the base
+just named it. `beacon drop`
+takes the same form (`otherproj#9`).
+
+When any CR in a tree merges, closes, is retargeted, or changes what it
+waits on, the rest of that tree is read again in the same pass, so the
+row redraws the new shape rather than mixing old and new.
+
+### A docs page for the status line
+
+The docs site has a [status line](https://chris-peterson.github.io/beacon/#/statusline)
+page: what each line means, how to read the merge order, and screenshots
+of each case. `just statusline-demo` renders the same examples in your
+terminal from invented sessions.
+
 ## 2.19.0
 
 ### `install` restarts the serve service

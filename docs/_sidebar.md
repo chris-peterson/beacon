@@ -3,6 +3,7 @@
 - [Try the demo](/demo)
 - [Layout](/iterm/layout)
 - [Status-bar buttons](/statusbar)
+- [The status line](/statusline)
 - [The palette](/palette)
 - [CLI Reference](/cli)
   - [Session state](/cli?id=session-state)

@@ -23,6 +23,11 @@ default:
 demo *args:
     python3 dev/demo.py {{args}}
 
+# render the Claude Code status line for invented sessions; --shots rewrites docs/images
+[group('start here')]
+statusline-demo *args:
+    @python3 dev/statusline-demo.py {{args}}
+
 # launch an interactive Claude Code session with the local plugin loaded
 [group('start here')]
 try:
