@@ -10,8 +10,9 @@ another session stayed on the open line with its title. The background
 forge read now records each item's state, and a CR or issue that merged
 or closed during the session moves to the delivered line, struck
 through, within ten minutes. A CR closed without merging reads
-`closed ✗`, and an item that had already merged or closed before the
-session started leaves the row.
+`closed ✗`, and an item reopened after it closed comes back to the open
+lines. An item that had already merged or closed before the session
+started leaves the row.
 
 ### The CR tree says what can merge now
 
@@ -24,9 +25,9 @@ dependency; beacon now reads the base branch itself.
 
 When the row spans more than one project, every ref names its project
 (`frontend!16`), the session's own included; a row in one project stays
-bare. The lines under a stacked base never carry it, because the base
-just named it. `beacon drop`
-takes the same form (`otherproj#9`).
+bare. A CR drawn directly under its stacked base leaves it off, because
+the base just named it. `beacon drop` takes the same form
+(`otherproj#9`).
 
 When any CR in a tree merges, closes, is retargeted, or changes what it
 waits on, the rest of that tree is read again in the same pass, so the

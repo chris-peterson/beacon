@@ -160,7 +160,7 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
 
 ## status line — the footer rows
 
-The [status line](/iterm/layout?id=the-status-line) is the one surface that isn't iTerm2's, so its palette is ANSI rather than hex: beacon emits SGR codes and *your* terminal theme decides the exact shade. The meanings are fixed even though the shades aren't.
+The [status line](/statusline) is the one surface that isn't iTerm2's, so its palette is ANSI rather than hex: beacon emits SGR codes and *your* terminal theme decides the exact shade. The meanings are fixed even though the shades aren't.
 
 <div class="pal pal-grid">
   <div class="pal-chip">
@@ -176,14 +176,27 @@ The [status line](/iterm/layout?id=the-status-line) is the one surface that isn'
     <div class="cap">open issue — same hue, dimmed <span class="hex">SGR 2;36</span></div>
   </div>
   <div class="pal-chip">
+    <div class="row" style="color: #6272a4; font-weight: 700">!21</div>
+    <div class="cap">change request waiting on open work — gray in place of cyan <span class="hex">SGR 1;90</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="row" style="color: #6272a4; opacity: 0.55">#25</div>
+    <div class="cap">issue waiting on open work <span class="hex">SGR 2;90</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="row"><span style="color: #6272a4">└</span> <span style="color: #6272a4; font-weight: 700">!22</span></div>
+    <div class="cap">stacked change request, led by its mark <span class="hex">SGR 90</span></div>
+  </div>
+  <div class="pal-chip">
     <div class="row" style="color: #6272a4">⏸ waiting on CI</div>
     <div class="cap">the mode's note, led by its glyph <span class="hex">SGR 38;5;61</span></div>
   </div>
 </div>
 
-Three rules carry it:
+The rules that carry it:
 
 - **One hue, two weights.** A change request and the issues it answers share cyan; the CR is bold and the issues are dim. On GitHub both are `#<n>`, so weight and line position are the only cues that separate them — GitLab's `!` already differs by sigil.
+- **Gray means waiting.** A ref that waits on open work on the row takes gray in place of cyan and keeps its weight, so the cyan refs are exactly what can merge now. It is a hue rather than a weight because dim already means "issue".
 - **Green still means shipped.** The delivered row reuses the same green `release` owns, so it reads as shipping on the footer exactly as it does on the pane.
 - **The verb carries the state, not the strike.** `merged 🏁` / `released 🚀` / `closed ✓` are the signal; the strikethrough on the ref is decoration. A four-character struck ref is too subtle at that size, and strikethrough is among the first attributes a terminal drops.
 
@@ -216,4 +229,4 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 - **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the sessions list, matching the pane's watermark — so nothing has to add, and later strip, a marker inside the project name. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
 - **Painted surfaces use hex; the status line uses ANSI.** The pane is beacon's to color exactly. The footer belongs to your terminal, so beacon names a role (bold, dim, green) and lets your theme choose the shade.
 
-The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
+The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_CR_BLOCKED_SGR`, `STATUSLINE_ISSUE_BLOCKED_SGR`, `STATUSLINE_STACK_LEAD_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).

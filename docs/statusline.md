@@ -17,7 +17,7 @@ One line per kind of thing, and a kind with nothing in it takes no line:
 
 ![A paused session: the note "waiting on design review before the toggle lands", then the delivered line with a struck-through !30 merged and v3.1.0 released, then the open CR !32 dark mode toggle.](images/statusline-paused.png)
 
-A CR moves to the delivered line when it merges, whether that happened through `/anchor:merge`, in the forge's web UI, or from another session. beacon reads each CR's state from GitHub or GitLab in the background as the session works, at most every ten minutes per CR, so the move can trail the merge by that much.
+A CR moves to the delivered line when it merges, whether that happened through `/anchor:merge`, in the forge's web UI, or from another session. beacon reads each CR's state from GitHub or GitLab in the background as the session works, at most every ten minutes per CR, so the move can trail the merge by that much. An issue or CR closed without merging keeps being read, so if it's reopened it goes back to the open lines.
 
 ## Reading the order
 
@@ -39,7 +39,7 @@ A row in one project shows bare refs (`!41`, `#22`), the way you'd type them in 
 
 ![One project: !41 PDP gallery redesign (closes #18), then the open issue #22.](images/statusline-single.png)
 
-Once the row spans two projects, every ref names its project (`storefront-web!41`), your own included, so a bare `!41` can't be mistaken for another repo's. The CRs under a stacked base stay bare, since a stack lives in one repo and its base just named it.
+Once the row spans two projects, every ref names its project (`storefront-web!41`), your own included, so a bare `!41` can't be mistaken for another repo's. A stacked CR drawn directly under its base stays bare, since a stack lives in one repo and the line above just named it.
 
 ## How things get on the row
 

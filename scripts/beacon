@@ -4556,15 +4556,7 @@ _DELIVERABLE_PATTERNS = (
 
 def _project_id_from_url(url: str) -> str:
     """The forge identity (`gh:acme/widgets`) of the project a deliverable URL
-    belongs to. Empty when the URL isn't forge-shaped.
-
-    STATUSLINE-03 renders a ref bare or qualified by comparing this against the
-    session's own identity, so an entry has to carry the project *its own URL*
-    names. Taking the cwd's identity was safe only while every entry came from
-    the branch resolver, where the URL belonged to the current project by
-    construction; an entry learned from a tack route can point anywhere, and
-    stamping it with the cwd's identity renders another project's `#9` as if it
-    were local."""
+    belongs to. Empty when the URL isn't forge-shaped."""
     m = re.match(r"https?://([^/]+)/(.+)", url or "")
     if not m:
         return ""
@@ -4687,6 +4679,10 @@ LINKS_TTL_SECONDS = 600
 # for the rest of the session.
 LINKS_LOCK_STALE_SECONDS = 120
 LINKS_FORGE_TIMEOUT = 15
+# The fields that place an item in a tree. When one changes, the rest of the
+# tree's records describe a shape that no longer holds: a merged base retargets
+# what was stacked on it, and a dropped dependency moves a whole branch.
+_LINK_SHAPE_FIELDS = ("state", "waits_on", "stacked_on")
 
 
 class ForgeError(Exception):
@@ -4694,10 +4690,11 @@ class ForgeError(Exception):
 
 
 def _read_links() -> dict:
-    """STATUSLINE-03's per-item forge record, keyed by URL: `{title, closes,
-    waits_on, expand, fetched_at, error}`. Held apart from `deliverables`
-    because the entry for the branch's own CR is rebuilt on every publish, and
-    a field stored on it would be dropped each time."""
+    """STATUSLINE-03's per-item forge record, keyed by URL: `{title, state,
+    landed_at, closes, waits_on, stacked_on, expand, fetched_at, error}`. Held
+    apart from `deliverables` because the entry for the branch's own CR is
+    rebuilt on every publish, and a field stored on it would be dropped each
+    time."""
     links = read_state_json("deliverables.links", {})
     return links if isinstance(links, dict) else {}
 
@@ -4726,7 +4723,9 @@ def _row_entries(links: dict) -> list[dict]:
     current as whoever keeps it. One the forge says left `open` before the
     session started is left off, the same scope that keeps a pre-session
     delivery out of the acquisition path. With no session stamp it is left off
-    too, since a thin row beats a stale one.
+    too, since a thin row beats a stale one. One delivered by a forge `closed`
+    is marked `reopenable`, so the refresher keeps reading it: a close can be
+    undone, where a merge cannot.
 
     Read at render time from the record rather than stamped onto the entry,
     because the refresher that learns the state writes the record and nothing
@@ -4741,7 +4740,7 @@ def _row_entries(links: dict) -> list[dict]:
             landed = _iso_epoch(str(record.get("landed_at") or ""))
             if not (started and landed and landed >= started):
                 continue
-            e = {**e, "delivered": True}
+            e = {**e, "delivered": True, "reopenable": record["state"] == "closed"}
         out.append(e)
     return out
 
@@ -4768,11 +4767,14 @@ def _stale_link_urls() -> list[str]:
     """Open CRs and issues whose forge record is missing or older than
     LINKS_TTL_SECONDS: the row's, newest first, then what the row's issues
     would expand to, so an expanded CR joins the row already titled. Delivered
-    work is left alone: the delivered line renders no title and no links."""
+    work is left alone, since the delivered line renders no title and no links,
+    except what the forge closed: re-reading it is how a reopen reaches the
+    row."""
     links = _read_links()
     now = time.time()
     entries = _row_entries(links)
-    on_row = [e["url"] for e in reversed(entries) if not e.get("delivered")]
+    on_row = [e["url"] for e in reversed(entries)
+              if not e.get("delivered") or e.get("reopenable")]
     skip = {_canonical_item_url(u)
             for u in [e.get("url", "") for e in entries] + read_state_json("deliverables.dropped", [])}
     targets = [u for u in dict.fromkeys(_expansion_targets(entries, links))
@@ -4927,9 +4929,22 @@ def _fetch_gitlab_links(m: re.Match) -> dict:
                 [*api, f"{base}/merge_requests?source_branch={quote(target, safe='')}&state=opened"],
                 errors)
             if heads is not None:
-                record["stacked_on"] = [h["web_url"] for h in heads
-                                        if isinstance(h, dict) and isinstance(h.get("web_url"), str)
-                                        and h["web_url"] != m.group(0)]
+                # The list takes in fork MRs, whose source branch only shares
+                # a name with this target. Like GitHub, an MR into the default
+                # branch stacks on nothing; the project is read only when a
+                # candidate is left, which is rare.
+                stacked_on = [h["web_url"] for h in heads
+                              if isinstance(h, dict) and isinstance(h.get("web_url"), str)
+                              and h["web_url"] != m.group(0)
+                              and h.get("source_project_id") == mr.get("target_project_id")]
+                if stacked_on:
+                    project = _dependency_json([*api, base], errors)
+                    if project is None:
+                        stacked_on = None
+                    elif project.get("default_branch") == target:
+                        stacked_on = []
+                if stacked_on is not None:
+                    record["stacked_on"] = stacked_on
         return {**record, "error": "; ".join(errors)}
     issue = _forge_json([*api, f"{base}/issues/{number}"])
     related = _forge_json([*api, f"{base}/issues/{number}/links"])
@@ -5030,9 +5045,10 @@ def _spawn_links_refresh() -> None:
 
 def cmd_refresh_links(args):
     """STATUSLINE-03: read the title and links of every open CR and issue on a
-    session's row from its forge, and of what the row's issues expand to. Two
-    passes, so the targets of an issue read in the first are read in the second.
-    It writes `deliverables.links` and nothing else: the row itself is the
+    session's row from its forge, and of what the row's issues expand to. It
+    repeats until nothing is left stale, so the targets of an issue read in one
+    pass, and the neighbours of an item whose shape changed, are read in the
+    next. It writes `deliverables.links` and nothing else: the row itself is the
     hooks' to change, and the next publish expands onto it.
 
     `--session` names the bucket because a detached process can't count on
@@ -5091,12 +5107,6 @@ def cmd_refresh_links(args):
             pass
 
 
-# The fields that place an item in a tree. When one changes, the rest of the
-# tree's records describe a shape that no longer holds: a merged base retargets
-# what was stacked on it, and a dropped dependency moves a whole branch.
-_LINK_SHAPE_FIELDS = ("state", "waits_on", "stacked_on")
-
-
 def _linked_component(url: str, before: dict) -> set[str]:
     """Every URL joined to `url` through `waits_on` / `stacked_on`, in either
     direction, by the stored records plus `before` (the record `url` had until
@@ -5140,18 +5150,18 @@ def _safe_links_record(record: dict) -> dict:
     return out
 
 
-def _qualify_deliverable(entry: dict) -> str:
+def _qualify_deliverable(entry: dict, qualify: bool = True) -> str:
     """`widgets#42`: the ref led by the last segment of its forge identity
     (`gh:acme/widgets` → `widgets`), the short form GitLab's own reference
-    syntax uses. Once the row spans two projects every ref carries it, the
-    session's own project included, because a bare `!16` reads the same in
-    each. The forge prefix is stripped as well as the owner: a
-    group-scoped identity (`gl:acme`, which a GitLab epic resolves to) has no
-    `/` to split on. A release ref is a version rather than a sigil, so a space
-    keeps `widgets v2.0.0` from running together."""
+    syntax uses; the bare ref when `qualify` is false. Once the row spans two
+    projects every ref carries it, the session's own project included, because
+    a bare `!16` reads the same in each. The forge prefix is stripped as well
+    as the owner: a group-scoped identity (`gl:acme`, which a GitLab epic
+    resolves to) has no `/` to split on. A release ref is a version rather than
+    a sigil, so a space keeps `widgets v2.0.0` from running together."""
     ref = entry.get("ref", "")
     owner = entry.get("project", "")
-    if not owner:
+    if not qualify or not owner:
         return ref
     name = owner.split(":", 1)[-1].rsplit("/", 1)[-1]
     return f"{name}{ref}" if ref[:1] in "#!&%" else f"{name} {ref}"
@@ -6508,9 +6518,9 @@ STATUSLINE_DELIVERED = {
     "cr": ("merged", "🏁"),
     "release": ("released", "🚀"),
     "issue": ("closed", "✓"),
-    # A CR closed without merging left the open lines but shipped nothing.
-    "abandoned": ("closed", "✗"),
 }
+# A CR closed without merging left the open lines but shipped nothing.
+STATUSLINE_ABANDONED = ("closed", "✗")
 
 
 def _osc8(url: str, text: str) -> str:
@@ -6536,13 +6546,14 @@ def _statusline_mode_segment() -> str:
             f"{_emphasize(note, _EMPHASIS_SGR)}\033[0m")
 
 
-def _statusline_link_segment() -> str:
+def _statusline_link_segment(entries: list[dict]) -> str:
     """STATUSLINE-02/03: the deliverables this session has touched, each a
-    clickable OSC-8 link led by its project (`widgets#4`). Change requests lead the row at full weight
-    and issues trail dimmed, newest first within each group, so the row answers
-    "what am I shipping" before "what does it answer".
+    clickable OSC-8 link, led by its project once the row spans two
+    (`widgets#4`). Change requests lead the row at full weight and issues
+    trail dimmed, newest first within each group, so the row answers "what am
+    I shipping" before "what does it answer".
 
-    A session that has touched no deliverable falls back to the single resolved
+    A session whose row has no entry to show falls back to the single resolved
     URL (an open PR for the branch, else a branch or repo page), which is the same
     rendering with one element. `_publish_chips` keeps a delivery from an earlier
     session out of that slot, so the fallback names a location and never a ref the
@@ -6551,7 +6562,6 @@ def _statusline_link_segment() -> str:
     Reads only what `_publish_chips` persisted; never re-resolves — the row
     renders per prompt, and `resolve_url` shells to git and can shell to
     `gh`/`glab`."""
-    entries = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
     if entries:
         return ""
     url = read_state("resolved.url")
@@ -6692,14 +6702,11 @@ def _row_spans_projects(entries: list[dict], links: dict) -> bool:
     return len(projects) > 1
 
 
-def _statusline_item(entry: dict, record: dict, sgr: str, cap: int, qualify: bool,
-                     bare: bool = False) -> str:
-    """One entry on an open-work line: its ref, then (for a CR) its own title
-    capped at `cap` (none at 0) and the issues it closes. `qualify` leads each
-    ref with its project; `bare` drops it from this entry's own ref, for a
-    stacked CR whose base names it on the line above."""
+def _statusline_item(entry: dict, ref: str, record: dict, sgr: str, cap: int, qualify: bool) -> str:
+    """One entry on an open-work line: `ref`, its label as the caller chose
+    to qualify it, then (for a CR) its own title capped at `cap` (none at 0)
+    and the issues it closes, each led by its project when `qualify`."""
     url = entry.get("url", "")
-    ref = _qualify_deliverable(entry) if qualify and not bare else entry.get("ref", "")
     out = f"\033[{sgr}m{_osc8(url, ref)}\033[0m"
     if _deliverable_kind(url) != "cr":
         return out
@@ -6709,8 +6716,7 @@ def _statusline_item(entry: dict, record: dict, sgr: str, cap: int, qualify: boo
             title = title[:cap - 1].rstrip() + "…"
         out += f" \033[{STATUSLINE_TITLE_SGR}m{title}\033[0m"
     closes = [_osc8(u, _qualify_deliverable(
-                  {"ref": _deliverable_suffix(u),
-                   "project": _project_id_from_url(u) if qualify else ""}))
+                  {"ref": _deliverable_suffix(u), "project": _project_id_from_url(u)}, qualify))
               for u in record.get("closes") or [] if _deliverable_suffix(u)]
     if closes:
         out += f" \033[{STATUSLINE_TITLE_SGR}m(closes {', '.join(closes)})\033[0m"
@@ -6734,40 +6740,40 @@ def _statusline_kind_lines(entries: list[dict], links: dict, sgr: str, blocked_s
     stacked_on = {u: on_row(u, "stacked_on") for u in by_url}
     waits_on = {u: stacked_on[u] + on_row(u, "waits_on") for u in by_url}
     loose, trees = _dependency_layout(list(by_url), waits_on)
+    refs = {u: _qualify_deliverable(e, qualify) for u, e in by_url.items()}
 
-    def item(u, cap, blocked=False, bare=False):
-        return _statusline_item(by_url[u], links.get(u) or {},
-                                blocked_sgr if blocked else sgr, cap, qualify, bare)
+    def item(u, cap, blocked=False):
+        return _statusline_item(by_url[u], refs[u], links.get(u) or {},
+                                blocked_sgr if blocked else sgr, cap, qualify)
 
     lines = []
     if loose:
         lines.append(_fit_line(
             lambda cap: STATUSLINE_SEPARATOR.join(item(u, cap) for u in loose), width))
     for tree in trees:
+        above = None
         for depth, u in tree:
-            # A stack is one repo's branches, so its base already named the
-            # project; a dependency can cross projects and keeps it.
-            stacked = any(by_url[p].get("project") == by_url[u].get("project")
-                          for p in stacked_on[u])
+            # A stack is one repo's branches, so a base on the line directly
+            # above has just named the project. Placed under anything else, a
+            # stacked CR keeps it.
+            if above in stacked_on[u]:
+                refs[u] = _qualify_deliverable(by_url[u], False)
             mark = (f"\033[{STATUSLINE_STACK_LEAD_SGR}m{STATUSLINE_STACK_LEAD}\033[0m"
                     if stacked_on[u] else "")
             lead = STATUSLINE_INDENT_GUARD + STATUSLINE_INDENT * depth + mark if depth else ""
             lines.append(_fit_line(
-                lambda cap, u=u, lead=lead, d=depth, b=stacked: lead + item(u, cap, d > 0, b),
-                width))
+                lambda cap, u=u, lead=lead, d=depth: lead + item(u, cap, d > 0), width))
+            above = u
     return lines
 
 
-def _statusline_open_lines() -> list[str]:
+def _statusline_open_lines(entries: list[dict], links: dict, qualify: bool) -> list[str]:
     """STATUSLINE-03: open work by kind, change requests above the issues they
     answer. Newest first within each line. Splitting by kind rather than packing
     one row is what lets a glance separate "what I'm shipping" from "what I'm
     shipping it for"; on GitHub the two are both `#<n>` and share a line only by
     accident of numbering. An issue an open CR on the row closes is shown in
     that CR's `(closes …)` and not again on the issue line."""
-    links = _read_links()
-    entries = _row_entries(links)
-    qualify = _row_spans_projects(entries, links)
     live = [e for e in reversed(entries) if not e.get("delivered")]
     crs = [e for e in live if _deliverable_kind(e["url"]) == "cr"]
     closed = {_canonical_item_url(u) for e in crs
@@ -6784,21 +6790,19 @@ def _statusline_open_lines() -> list[str]:
                                      STATUSLINE_ISSUE_BLOCKED_SGR, width, qualify))
 
 
-def _statusline_delivered_line() -> str:
+def _statusline_delivered_line(entries: list[dict], links: dict, qualify: bool) -> str:
     """STATUSLINE-03: what the session has shipped, on its own line above the
     open work. `~widgets#27~ merged 🏁`. Newest first — the most recent thing
     shipped is the one worth seeing."""
-    links = _read_links()
-    entries = _row_entries(links)
-    qualify = _row_spans_projects(entries, links)
     parts = []
     for e in reversed([e for e in entries if e.get("delivered")]):
         url = e.get("url", "")
         kind = _deliverable_kind(url)
         if kind == "cr" and (links.get(url) or {}).get("state") == "closed":
-            kind = "abandoned"
-        word, glyph = STATUSLINE_DELIVERED.get(kind, ("done", "✓"))
-        ref = _osc8(url, f"\033[9m{_qualify_deliverable(e) if qualify else e.get('ref', '')}\033[29m")
+            word, glyph = STATUSLINE_ABANDONED
+        else:
+            word, glyph = STATUSLINE_DELIVERED.get(kind, ("done", "✓"))
+        ref = _osc8(url, f"\033[9m{_qualify_deliverable(e, qualify)}\033[29m")
         parts.append(f"\033[{STATUSLINE_DELIVERED_SGR}m{ref}\033[0m"
                      f" \033[{STATUSLINE_VERB_SGR}m{word} {glyph}\033[0m")
     return STATUSLINE_SEPARATOR.join(parts)
@@ -6825,11 +6829,14 @@ def cmd_statusline(_args):
     # why, what it has shipped, then the open work split by kind. Shipping is
     # rare, and burying it among the open refs is what made it unreadable on a
     # shared row.
+    links = _read_links()
+    entries = _row_entries(links)
+    qualify = _row_spans_projects(entries, links)
     rows = [
         STATUSLINE_SEPARATOR.join(
-            s for s in (_statusline_mode_segment(), _statusline_link_segment()) if s),
-        _statusline_delivered_line(),
-        *_statusline_open_lines(),
+            s for s in (_statusline_mode_segment(), _statusline_link_segment(entries)) if s),
+        _statusline_delivered_line(entries, links, qualify),
+        *_statusline_open_lines(entries, links, qualify),
     ]
     rows = [r for r in rows if r]
     if rows:

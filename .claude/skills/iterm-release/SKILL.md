@@ -51,10 +51,10 @@ git -C <clone> diff <range> -- docs/notes-<major>.<minor>.txt
 git -C <clone> log --oneline --no-merges <range>
 ```
 
-Pick out every commit that could touch a surface beacon paints (SPEC.md §4.1):
-tab color and label, window title and session name,
-status bar, badge, dynamic profiles and their loading, OSC 8 links, `SetUserVar`
-/ `SetColors` / `SetProfile`, AppleScript `select` / `activate`, tab-bar layout.
+Pick out every commit that could touch a surface beacon paints (SPEC §4.1):
+tab color and label, window title and session name, status bar, badge, dynamic
+profiles and their loading, OSC 8 links, `SetUserVar` / `SetColors` /
+`SetProfile`, AppleScript `select` / `activate`, tab-bar layout.
 For each, `git -C <clone> show --stat <sha>` and read the message.
 
 Then check the one class the scan can't judge from a hit alone: a changed

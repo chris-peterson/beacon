@@ -3249,7 +3249,8 @@ class DropAnnouncedCR(BeaconTest):
         self.assertIsNone(self.beacon.read_state("announced.cr"))
         self.assertIsNone(self.beacon.read_state("resolved.url"))
         self.assertIsNone(self.beacon.read_state("resolved.url_label"))
-        self.assertEqual(self.beacon._statusline_link_segment(), "")
+        self.assertEqual(
+            self.beacon._statusline_link_segment(self.beacon._row_entries(self.beacon._read_links())), "")
 
     def test_the_announced_url_drops_with_no_row_entry_left(self):
         # A session whose row entry is already dropped has nothing left on
@@ -5618,14 +5619,17 @@ class StatusLineLinks(BeaconTest):
         if record:
             self.beacon._update_links(url, **record)
 
-    def _lines(self, columns=None):
+    def _raw(self, columns=None):
         buf = io.StringIO()
         env = {"COLUMNS": str(columns)} if columns else {}
         with mock.patch.dict(os.environ, env), \
              mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(buf):
             self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
-        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", buf.getvalue())
+        return buf.getvalue()
+
+    def _lines(self, columns=None):
+        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", self._raw(columns))
         return plain.rstrip("\n").split("\n")
 
     def test_each_cr_carries_its_own_title(self):
@@ -5753,6 +5757,21 @@ class StatusLineLinks(BeaconTest):
                     fetched_at="2020-01-01T00:00:00+00:00")
         self.assertEqual(self.beacon._stale_link_urls(), [])
 
+    def test_what_the_forge_closed_is_read_again_so_a_reopen_returns(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        issue = _gl_issue("site", 12)
+        self._touch(issue, state="closed", landed_at="2026-10-13T10:00:00Z",
+                    fetched_at="2020-01-01T00:00:00+00:00")
+        self.assertEqual(self.beacon._stale_link_urls(), [issue])
+        self.beacon._update_links(issue, state="open", landed_at="")
+        self.assertEqual(self._lines(), ["#12"])
+
+    def test_a_row_with_every_entry_filtered_falls_back_to_the_resolved_url(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self.beacon.write_state("resolved.url", "https://example.com/acme/site")
+        self._touch(_mr("site", 5), state="merged", landed_at="2026-10-12T10:00:00Z")
+        self.assertEqual(self._lines(), ["https://example.com/acme/site"])
+
     def test_a_stack_hangs_off_its_base_and_a_dependency_waits_on_it(self):
         base, mid, tip = _mr("site", 20), _mr("site", 21), _mr("site", 22)
         self._touch(_mr("toolbox", 159))
@@ -5770,6 +5789,13 @@ class StatusLineLinks(BeaconTest):
         self._touch(base)
         self._touch(tip, stacked_on=[base], waits_on=[base])
         self.assertEqual(self._lines(), ["!20", "  └ !21"])
+
+    def test_a_stacked_cr_under_another_projects_line_keeps_its_project(self):
+        base, tip, other = _mr("site", 20), _mr("site", 21), _mr("toolbox", 159)
+        self._touch(other)
+        self._touch(base)
+        self._touch(tip, stacked_on=[base], waits_on=[other])
+        self.assertEqual(self._lines(), ["site!20", "toolbox!159", "  └ site!21"])
 
     def test_a_merged_base_lifts_its_stack_a_level(self):
         self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
@@ -5797,11 +5823,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(tip, stacked_on=[base])
         self._touch(_gl_issue("site", 1))
         self._touch(_gl_issue("site", 2), waits_on=[_gl_issue("site", 1)])
-        buf = io.StringIO()
-        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
-             contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
-        out = buf.getvalue()
+        out = self._raw()
         b = self.beacon
         self.assertIn(f"\033[{b.STATUSLINE_CR_SGR}m\033]8;;{base}\a!20", out)
         self.assertIn(f"\033[{b.STATUSLINE_CR_BLOCKED_SGR}m\033]8;;{tip}\a!21", out)
@@ -5816,11 +5838,7 @@ class StatusLineLinks(BeaconTest):
         # follow something that isn't.
         self._touch(_mr("site", 1))
         self._touch(_mr("site", 2), waits_on=[_mr("site", 1)])
-        buf = io.StringIO()
-        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
-             contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
-        rows = buf.getvalue().rstrip("\n").split("\n")
+        rows = self._raw().rstrip("\n").split("\n")
         self.assertTrue(rows[1].startswith(self.beacon.STATUSLINE_INDENT_GUARD + "  "))
         self.assertFalse(any(row[:1].isspace() for row in rows))
 
@@ -6158,12 +6176,41 @@ class RefreshLinks(BeaconTest):
         url = _mr("site", 5)
         self._record(url)
         calls = self._refresh({
-            "merge_requests?source_branch=feat%2Fbase&state=opened": [{"web_url": _mr("site", 4)}],
+            "merge_requests?source_branch=feat%2Fbase&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 7}],
             "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
-            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "feat/base"},
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "feat/base",
+                                 "target_project_id": 7},
+            "projects/acme%2Fsite": {"default_branch": "main"},
         })
         self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [_mr("site", 4)])
         self.assertTrue(any("source_branch=feat%2Fbase" in " ".join(c) for c in calls))
+
+    def test_a_gitlab_fork_mr_sharing_the_branch_name_is_no_stack_base(self):
+        url = _mr("site", 5)
+        self._record(url)
+        calls = self._refresh({
+            "merge_requests?source_branch=feat%2Fbase&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 99}],
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "feat/base",
+                                 "target_project_id": 7},
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
+        self.assertFalse(any(c[-1] == "projects/acme%2Fsite" for c in calls))
+
+    def test_a_gitlab_mr_into_the_default_branch_stacks_on_nothing(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({
+            "merge_requests?source_branch=main&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 7}],
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "main",
+                                 "target_project_id": 7},
+            "projects/acme%2Fsite": {"default_branch": "main"},
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
 
     def test_a_change_in_a_tree_rereads_the_rest_of_it(self):
         base, tip, other = _mr("site", 4), _mr("site", 5), _mr("site", 9)
