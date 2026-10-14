@@ -26,7 +26,14 @@ python3 dev/iterm-release.py
   every surface marked `✗` with the files it names.
 
 On the first run the clone moves to the newest tag. If a re-run is needed, pass
-`--no-checkout`.
+`--no-checkout`. The clone is `$ITERM2_SRC`, else `~/src/github/gnachman/iTerm2`.
+
+The scan's symbols come from beacon's own sources (`RECOMMENDED_LAYOUT` and
+`RESET_FAMILIES` in `bin/beacon-iterm`, the keys in
+`iterm/profile.json.template`), so a key dropped from a table drops from the
+watch in the same edit. A preference can be a string literal in
+`iTermPreferences.m` or a `DEFINE_FLOAT(name, default, …)` in
+`iTermAdvancedSettingsModel.m`, where the literal form never appears.
 
 ## 2. Read the notes
 
@@ -44,10 +51,10 @@ git -C <clone> diff <range> -- docs/notes-<major>.<minor>.txt
 git -C <clone> log --oneline --no-merges <range>
 ```
 
-Pick out every commit that could touch a surface beacon paints (AGENTS.md,
-"Surfaces beacon paints"): tab color and label, window title and session name,
-status bar, badge, dynamic profiles and their loading, OSC 8 links, `SetUserVar`
-/ `SetColors` / `SetProfile`, AppleScript `select` / `activate`, tab-bar layout.
+Pick out every commit that could touch a surface beacon paints (SPEC §4.1):
+tab color and label, window title and session name, status bar, badge, dynamic
+profiles and their loading, OSC 8 links, `SetUserVar` / `SetColors` /
+`SetProfile`, AppleScript `select` / `activate`, tab-bar layout.
 For each, `git -C <clone> show --stat <sha>` and read the message.
 
 Then check the one class the scan can't judge from a hit alone: a changed

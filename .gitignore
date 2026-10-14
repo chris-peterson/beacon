@@ -11,6 +11,7 @@ docs/*
 !docs/iterm/
 !docs/palette.md
 !docs/statusbar.md
+!docs/statusline.md
 !docs/why.md
 !docs/images/
 
