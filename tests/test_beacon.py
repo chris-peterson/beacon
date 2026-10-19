@@ -1857,7 +1857,7 @@ class ProjectChipIsTheProjectName(BeaconTest):
 
     def test_the_forge_identity_still_qualifies_deliverables(self):
         # `_project_full_at` outlives the chip that rendered it: STATUSLINE-03
-        # needs it to tell this project's deliverables from another's.
+        # qualifies every deliverable with it.
         recorded = {}
         with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widgets"), \
@@ -1872,7 +1872,6 @@ class ProjectChipIsTheProjectName(BeaconTest):
             self.beacon._publish_chips(Path("/work/widgets"))
         self.assertEqual(recorded["args"][0], "#42")
         self.assertEqual(recorded["args"][2], "gh:acme/widgets")
-        self.assertEqual(self.beacon.read_state("resolved.project"), "gh:acme/widgets")
 
 
 class ShellMirrorsTheChipContract(unittest.TestCase):
@@ -2811,12 +2810,11 @@ class DeliverableAccumulation(BeaconTest):
         self.assertEqual(self._refs(), [])
 
     def test_project_identity_is_stored_without_the_suffix(self):
-        # The stored identity is what qualification compares against; carrying
-        # the `#42` suffix would make every later ref read as foreign.
+        # The stored identity qualifies the ref, so a `#42` suffix on it would
+        # render the ref with two numbers.
         self._publish("https://github.com/acme/widgets/pull/42")
         entry = self.beacon.read_state_json("deliverables", [])[0]
         self.assertEqual(entry["project"], "gh:acme/widgets")
-        self.assertEqual(self.beacon.read_state("resolved.project"), "gh:acme/widgets")
 
     def test_crossing_projects_accumulates_both(self):
         self._publish("https://github.com/acme/widgets/pull/42")
@@ -3113,36 +3111,24 @@ class WorkItemAndTrackerRefs(BeaconTest):
                 self.assertEqual(self.beacon._deliverable_kind(url), kind)
 
 
-class QualifyAgainstGroupScope(BeaconTest):
-    """STATUSLINE-03: an epic or group milestone resolves to the group where the
-    session resolves to a repo inside it, so exact comparison alone would render
-    the tracker the work is filed under as another project's."""
+class QualifyDeliverable(BeaconTest):
+    """STATUSLINE-03: every ref carries its project, in GitLab's short reference
+    form, because one row spans several projects."""
 
     CASES = (
-        ("gl:acme", "gl:acme/widgets", "&7", "own group's epic reads bare"),
-        ("gl:acme/platform", "gl:acme/platform/widgets", "%2", "nested subgroup"),
-        ("gh:acme/widgets", "gh:acme/widgets", "#32", "own repo"),
-        ("", "gh:acme/widgets", "#9", "entry with no identity"),
+        ("gh:acme/widgets", "#32", "widgets#32", "own repo"),
+        ("gh:other/proj", "#9", "proj#9", "another repo"),
+        ("gl:acme", "&7", "acme&7", "group epic"),
+        ("gl:acme/platform", "%2", "platform%2", "nested subgroup milestone"),
+        ("gh:acme/widgets", "v2.0.0", "widgets v2.0.0", "release"),
+        ("", "#9", "#9", "entry with no identity"),
     )
 
-    def test_prefix_of_session_identity_reads_bare(self):
-        for owner, project_id, ref, name in self.CASES:
+    def test_every_ref_names_its_project(self):
+        for owner, ref, want, name in self.CASES:
             with self.subTest(case=name):
-                entry = {"ref": ref, "project": owner}
                 self.assertEqual(
-                    self.beacon._qualify_deliverable(entry, project_id), ref)
-
-    def test_boundary_keeps_lookalike_group_qualified(self):
-        # Without the trailing slash `gl:acme` would prefix-match `gl:acmecorp/x`
-        # and a genuinely foreign epic would read as local.
-        entry = {"ref": "&7", "project": "gl:acmecorp"}
-        self.assertEqual(
-            self.beacon._qualify_deliverable(entry, "gl:acme/widgets"), "acmecorp:&7")
-
-    def test_foreign_repo_still_qualifies(self):
-        entry = {"ref": "#9", "project": "gh:other/proj"}
-        self.assertEqual(
-            self.beacon._qualify_deliverable(entry, "gh:acme/widgets"), "proj:#9")
+                    self.beacon._qualify_deliverable({"ref": ref, "project": owner}), want)
 
 
 class OriginUrlMemo(BeaconTest):
@@ -3202,11 +3188,10 @@ class DropDeliverable(BeaconTest):
         self.assertEqual(self._refs(), ["#42"])
 
     def test_a_qualified_ref_names_the_same_entry(self):
-        # The row renders another project's entry qualified, so that is the
-        # string the user has in front of them to type.
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
+        # The row renders every entry qualified, so that is the string the
+        # user has in front of them to type.
         self._touch("#9", self.URL, project="gh:other/otherproj")
-        self._drop("otherproj:#9")
+        self._drop("otherproj#9")
         self.assertEqual(self._refs(), [])
 
     def test_a_dropped_entry_does_not_come_back(self):
@@ -3264,7 +3249,8 @@ class DropAnnouncedCR(BeaconTest):
         self.assertIsNone(self.beacon.read_state("announced.cr"))
         self.assertIsNone(self.beacon.read_state("resolved.url"))
         self.assertIsNone(self.beacon.read_state("resolved.url_label"))
-        self.assertEqual(self.beacon._statusline_link_segment(), "")
+        self.assertEqual(
+            self.beacon._statusline_link_segment(self.beacon._row_entries(self.beacon._read_links())), "")
 
     def test_the_announced_url_drops_with_no_row_entry_left(self):
         # A session whose row entry is already dropped has nothing left on
@@ -5476,35 +5462,29 @@ class StatusLineProvider(BeaconTest):
         return self._visible(self._run()).split("\n")
 
     def test_open_work_splits_by_kind_crs_above_issues(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("!3", "https://x.test/w/-/merge_requests/3", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
-        # CRs lead; issues follow, newest first. Bare for this project,
-        # qualified for another.
-        self.assertEqual(self._lines(), ["!3", "otherproj:#75 · #4"])
+        # CRs lead; issues follow, newest first, each led by its project.
+        self.assertEqual(self._lines(), ["widgets!3", "otherproj#75 · widgets#4"])
 
     def test_an_epic_and_a_milestone_share_the_issue_line(self):
         # They are what the work is *for*, like an issue — so they trail the CRs
         # rather than each claiming a line and wrapping the row.
-        self.beacon.write_state("resolved.project", "gl:acme/widgets")
         self._touch("!3", "https://gl.test/acme/widgets/-/merge_requests/3", "gl:acme/widgets")
         self._touch("&7", "https://gl.test/groups/acme/-/epics/7", "gl:acme")
         self._touch("%2", "https://gl.test/acme/widgets/-/milestones/2", "gl:acme/widgets")
-        # `&7` bare: the epic's own group is where this repo lives, so the
-        # tracker the work is filed under is not another project's.
-        self.assertEqual(self._lines(), ["!3", "%2 · &7"])
+        # An epic belongs to a group, so the group is what qualifies it.
+        self.assertEqual(self._lines(), ["widgets!3", "widgets%2 · acme&7"])
 
     def test_each_deliverable_is_its_own_link(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#75", "https://x.test/o/issues/75", "gh:other/otherproj")
         out = self._run()
-        self.assertIn("\033]8;;https://x.test/w/issues/4\a#4", out)
-        self.assertIn("\033]8;;https://x.test/o/issues/75\aotherproj:#75", out)
+        self.assertIn("\033]8;;https://x.test/w/issues/4\awidgets#4", out)
+        self.assertIn("\033]8;;https://x.test/o/issues/75\aotherproj#75", out)
 
     def test_crs_carry_more_weight_than_issues(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         out = self._run()
@@ -5516,14 +5496,12 @@ class StatusLineProvider(BeaconTest):
                       "\033]8;;https://x.test/w/issues/4\a#4", out)
 
     def test_retouch_moves_to_the_front_without_duplicating(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#9", "https://x.test/w/issues/9", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self.assertEqual(self._lines(), ["#4 · #9"])
 
     def test_items_on_a_line_share_one_separator(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         for n in (4, 5, 6):
             self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
         line = self._lines()[0]
@@ -5532,14 +5510,12 @@ class StatusLineProvider(BeaconTest):
 
     def test_delivered_work_leads_on_its_own_line(self):
         url = "https://x.test/w/pull/9"
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self._touch("#9", url, "gh:acme/widgets", landed=[url])
         self.assertEqual(self._lines(), ["#9 merged 🏁", "#4"])
 
     def test_delivered_ref_is_struck_but_the_verb_carries_it(self):
         url = "https://x.test/w/pull/9"
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", url, "gh:acme/widgets", landed=[url])
         out = self._run()
         # Strike wraps the ref text only — a four-character strike is too subtle
@@ -5550,12 +5526,10 @@ class StatusLineProvider(BeaconTest):
     def test_a_release_is_delivered_without_asking_tack(self):
         # A /releases/tag/ URL only exists once published, so the kind settles
         # it — no tack route required.
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("v2.0.0", "https://x.test/w/releases/tag/v2.0.0", "gh:acme/widgets")
         self.assertEqual(self._lines(), ["v2.0.0 released 🚀"])
 
     def test_a_cr_carries_a_title(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets",
                     title="Rework the cart drawer")
         self.assertEqual(self._lines(), ["#9 Rework the cart drawer"])
@@ -5563,13 +5537,11 @@ class StatusLineProvider(BeaconTest):
     def test_issues_stay_bare(self):
         # Several issues share a line; titling each would wrap the row the cap
         # exists to prevent.
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets",
                     title="Some issue summary")
         self.assertEqual(self._lines(), ["#4"])
 
     def test_a_long_title_is_ellipsized(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", "https://x.test/w/pull/9", "gh:acme/widgets", title="x" * 200)
         title = self._lines()[0].split(" ", 1)[1]
         self.assertEqual(len(title), self.beacon.STATUSLINE_TITLE_MAX)
@@ -5579,7 +5551,6 @@ class StatusLineProvider(BeaconTest):
         # The title lives on the forge record, not the entry, so re-recording
         # entries can't blank it.
         url = "https://x.test/w/pull/9"
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", url, "gh:acme/widgets", title="Rework the cart drawer")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self.assertEqual(self._lines()[0], "#9 Rework the cart drawer")
@@ -5587,13 +5558,11 @@ class StatusLineProvider(BeaconTest):
     def test_a_delivered_cr_drops_its_title(self):
         # The delivered line is a ledger, not a worklist — the verb is the point.
         url = "https://x.test/w/pull/9"
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#9", url, "gh:acme/widgets",
                     title="Rework the cart drawer", landed=[url])
         self.assertEqual(self._lines(), ["#9 merged 🏁"])
 
     def test_oldest_drops_past_the_cap(self):
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         for n in range(self.beacon.DELIVERABLES_MAX + 3):
             self._touch(f"#{n}", f"https://x.test/w/issues/{n}", "gh:acme/widgets")
         entries = self.beacon.read_state_json("deliverables", [])
@@ -5606,7 +5575,6 @@ class StatusLineProvider(BeaconTest):
         # deliverable — the accumulated work is the more useful answer.
         self.beacon.write_state("resolved.url", "https://x.test/w/tree/main")
         self.beacon.write_state("resolved.url_label", "acme/widgets")
-        self.beacon.write_state("resolved.project", "gh:acme/widgets")
         self._touch("#4", "https://x.test/w/issues/4", "gh:acme/widgets")
         self.assertEqual(self._visible(self._run()), "#4")
 
@@ -5641,8 +5609,6 @@ class StatusLineLinks(BeaconTest):
 
     def setUp(self):
         super().setUp()
-        self.beacon.write_state("resolved.project",
-                                self.beacon._project_id_from_url(_mr("site", 1)))
         landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
         landed.start()
         self.addCleanup(landed.stop)
@@ -5653,21 +5619,24 @@ class StatusLineLinks(BeaconTest):
         if record:
             self.beacon._update_links(url, **record)
 
-    def _lines(self, columns=None):
+    def _raw(self, columns=None):
         buf = io.StringIO()
         env = {"COLUMNS": str(columns)} if columns else {}
         with mock.patch.dict(os.environ, env), \
              mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(buf):
             self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
-        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", buf.getvalue())
+        return buf.getvalue()
+
+    def _lines(self, columns=None):
+        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", self._raw(columns))
         return plain.rstrip("\n").split("\n")
 
     def test_each_cr_carries_its_own_title(self):
         self._touch(_mr("site", 5), title="Add a settings page")
         self._touch(_mr("theme", 3), title="Share the chrome")
         self.assertEqual(self._lines(),
-                         ["theme:!3 Share the chrome · !5 Add a settings page"])
+                         ["theme!3 Share the chrome · site!5 Add a settings page"])
 
     def test_the_merge_order_renders_as_a_tree(self):
         # The six MRs from #66: site:!5 waits on four, skills:!14 on site:!5.
@@ -5677,12 +5646,12 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("site", 5), waits_on=prereqs)
         self._touch(_mr("skills", 14), waits_on=[_mr("site", 5)])
         self.assertEqual(self._lines(), [
-            "!16",
-            "theme:!3",
-            "agent:!47",
-            "toolbox:!159",
-            "  ↑ !5",
-            "    ↑ skills:!14",
+            "site!16",
+            "theme!3",
+            "agent!47",
+            "toolbox!159",
+            "  site!5",
+            "    skills!14",
         ])
 
     def test_crs_outside_the_graph_keep_one_line_above_it(self):
@@ -5690,7 +5659,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("site", 2), waits_on=[_mr("lib", 54)])
         self._touch(_mr("other", 7))
         self._touch(_mr("more", 8))
-        self.assertEqual(self._lines(), ["more:!8 · other:!7", "lib:!54", "  ↑ !2"])
+        self.assertEqual(self._lines(), ["more!8 · other!7", "lib!54", "  site!2"])
 
     def test_a_branch_reads_under_its_own_parent(self):
         # A ← B ← C and A ← D: C belongs under B, not under the block of every
@@ -5700,7 +5669,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(b, waits_on=[a])
         self._touch(c, waits_on=[b])
         self._touch(d, waits_on=[a])
-        self.assertEqual(self._lines(), ["x:!1", "  ↑ x:!4", "  ↑ x:!2", "    ↑ x:!3"])
+        self.assertEqual(self._lines(), ["!1", "  !4", "  !2", "    !3"])
 
     def test_a_dependency_off_the_row_draws_no_tree(self):
         self._touch(_mr("site", 5), waits_on=[_mr("gone", 1)])
@@ -5712,7 +5681,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(b, waits_on=[a])
         lines = self._lines()
         self.assertEqual(len(lines), 2)
-        self.assertEqual({line.strip().removeprefix("↑ ") for line in lines}, {"x:!1", "x:!2"})
+        self.assertEqual({line.strip() for line in lines}, {"!1", "!2"})
 
     def test_a_cycle_keeps_the_edges_of_what_waits_on_it(self):
         a, b, c = _mr("x", 1), _mr("x", 2), _mr("x", 3)
@@ -5725,7 +5694,8 @@ class StatusLineLinks(BeaconTest):
         self._touch(_gl_issue("site", 13))
         self._touch(_mr("site", 5), title="Add a settings page",
                     closes=[_gl_issue("site", 12), _gl_issue("lib", 9)])
-        self.assertEqual(self._lines(), ["!5 Add a settings page (closes #12, lib:#9)", "#13"])
+        self.assertEqual(self._lines(),
+                         ["site!5 Add a settings page (closes site#12, lib#9)", "site#13"])
 
     def test_closes_matches_either_gitlab_issue_spelling(self):
         self._touch(f"{GL}/acme/site/-/work_items/12")
@@ -5735,7 +5705,7 @@ class StatusLineLinks(BeaconTest):
     def test_issues_that_block_each_other_form_a_tree(self):
         self._touch(_gl_issue("site", 1))
         self._touch(_gl_issue("site", 2), waits_on=[_gl_issue("site", 1)])
-        self.assertEqual(self._lines(), ["#1", "  ↑ #2"])
+        self.assertEqual(self._lines(), ["#1", "  #2"])
 
     def test_an_over_wide_line_shortens_titles_before_dropping_them(self):
         self._touch(_mr("site", 5), title="A" * 60)
@@ -5753,11 +5723,130 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("site", 6), title="B" * 60)
         self.assertEqual(self._lines(columns=30), ["!6 · !5 (closes #12)"])
 
+    def test_a_cr_the_forge_merged_this_session_moves_to_the_delivered_line(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_mr("site", 4))
+        self._touch(_mr("site", 5), title="Add a settings page", state="merged",
+                    landed_at="2026-10-13T10:00:00Z", waits_on=[_mr("site", 4)])
+        self.assertEqual(self._lines(), ["!5 merged 🏁", "!4"])
+
+    def test_a_cr_closed_unmerged_reads_closed_not_merged(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_mr("site", 5), state="closed", landed_at="2026-10-13T10:00:00Z")
+        self.assertEqual(self._lines(), ["!5 closed ✗"])
+
+    def test_an_issue_the_forge_closed_this_session_is_delivered(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_gl_issue("site", 12), state="closed", landed_at="2026-10-13T10:00:00Z")
+        self.assertEqual(self._lines(), ["#12 closed ✓"])
+
+    def test_work_the_forge_landed_before_the_session_leaves_the_row(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_mr("site", 5), state="merged", landed_at="2026-10-12T10:00:00Z")
+        self._touch(_mr("site", 6), state="open")
+        self.assertEqual(self._lines(), ["!6"])
+
+    def test_without_a_session_stamp_forge_landed_work_leaves_the_row(self):
+        self._touch(_mr("site", 5), state="merged", landed_at="2026-10-13T10:00:00Z")
+        self._touch(_mr("site", 6))
+        self.assertEqual(self._lines(), ["!6"])
+
+    def test_forge_landed_work_is_not_read_again(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_mr("site", 5), state="merged", landed_at="2026-10-13T10:00:00Z",
+                    fetched_at="2020-01-01T00:00:00+00:00")
+        self.assertEqual(self.beacon._stale_link_urls(), [])
+
+    def test_what_the_forge_closed_is_read_again_so_a_reopen_returns(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        issue = _gl_issue("site", 12)
+        self._touch(issue, state="closed", landed_at="2026-10-13T10:00:00Z",
+                    fetched_at="2020-01-01T00:00:00+00:00")
+        self.assertEqual(self.beacon._stale_link_urls(), [issue])
+        self.beacon._update_links(issue, state="open", landed_at="")
+        self.assertEqual(self._lines(), ["#12"])
+
+    def test_a_row_with_every_entry_filtered_falls_back_to_the_resolved_url(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self.beacon.write_state("resolved.url", "https://example.com/acme/site")
+        self._touch(_mr("site", 5), state="merged", landed_at="2026-10-12T10:00:00Z")
+        self.assertEqual(self._lines(), ["https://example.com/acme/site"])
+
+    def test_a_stack_hangs_off_its_base_and_a_dependency_waits_on_it(self):
+        base, mid, tip = _mr("site", 20), _mr("site", 21), _mr("site", 22)
+        self._touch(_mr("toolbox", 159))
+        self._touch(base)
+        self._touch(mid, stacked_on=[base])
+        self._touch(tip, stacked_on=[mid])
+        self._touch(_mr("site", 5), waits_on=[_mr("toolbox", 159)])
+        self.assertEqual(self._lines(), [
+            "toolbox!159", "  site!5",
+            "site!20", "  └ !21", "    └ !22",
+        ])
+
+    def test_a_stack_declared_as_a_dependency_too_reads_as_a_stack(self):
+        base, tip = _mr("site", 20), _mr("site", 21)
+        self._touch(base)
+        self._touch(tip, stacked_on=[base], waits_on=[base])
+        self.assertEqual(self._lines(), ["!20", "  └ !21"])
+
+    def test_a_stacked_cr_under_another_projects_line_keeps_its_project(self):
+        base, tip, other = _mr("site", 20), _mr("site", 21), _mr("toolbox", 159)
+        self._touch(other)
+        self._touch(base)
+        self._touch(tip, stacked_on=[base], waits_on=[other])
+        self.assertEqual(self._lines(), ["site!20", "toolbox!159", "  └ site!21"])
+
+    def test_a_merged_base_lifts_its_stack_a_level(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        base, mid, tip = _mr("site", 20), _mr("site", 21), _mr("site", 22)
+        self._touch(base, state="merged", landed_at="2026-10-13T10:00:00Z")
+        self._touch(mid, stacked_on=[base])
+        self._touch(tip, stacked_on=[mid])
+        self.assertEqual(self._lines(), ["!20 merged 🏁", "!21", "  └ !22"])
+
+    def test_a_second_project_qualifies_every_ref(self):
+        self._touch(_mr("site", 5), title="Add a settings page")
+        self.assertEqual(self._lines(), ["!5 Add a settings page"])
+        self._touch(_mr("lib", 9))
+        self.assertEqual(self._lines(), ["lib!9 · site!5 Add a settings page"])
+
+    def test_a_delivered_ref_in_another_project_qualifies_the_row(self):
+        self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
+        self._touch(_mr("lib", 9), state="merged", landed_at="2026-10-13T10:00:00Z")
+        self._touch(_mr("site", 5))
+        self.assertEqual(self._lines(), ["lib!9 merged 🏁", "site!5"])
+
+    def test_what_waits_on_open_work_is_gray_and_keeps_its_weight(self):
+        base, tip = _mr("site", 20), _mr("site", 21)
+        self._touch(base)
+        self._touch(tip, stacked_on=[base])
+        self._touch(_gl_issue("site", 1))
+        self._touch(_gl_issue("site", 2), waits_on=[_gl_issue("site", 1)])
+        out = self._raw()
+        b = self.beacon
+        self.assertIn(f"\033[{b.STATUSLINE_CR_SGR}m\033]8;;{base}\a!20", out)
+        self.assertIn(f"\033[{b.STATUSLINE_CR_BLOCKED_SGR}m\033]8;;{tip}\a!21", out)
+        self.assertIn(f"  \033[{b.STATUSLINE_STACK_LEAD_SGR}m└ \033[0m\033[{b.STATUSLINE_CR_BLOCKED_SGR}m",
+                      out)
+        self.assertIn(f"\033[{b.STATUSLINE_ISSUE_SGR}m\033]8;;{_gl_issue('site', 1)}\a#1", out)
+        self.assertIn(f"\033[{b.STATUSLINE_ISSUE_BLOCKED_SGR}m\033]8;;{_gl_issue('site', 2)}\a#2",
+                      out)
+
+    def test_an_indented_line_does_not_start_with_whitespace(self):
+        # Claude Code strips a row's leading whitespace; the indent has to
+        # follow something that isn't.
+        self._touch(_mr("site", 1))
+        self._touch(_mr("site", 2), waits_on=[_mr("site", 1)])
+        rows = self._raw().rstrip("\n").split("\n")
+        self.assertTrue(rows[1].startswith(self.beacon.STATUSLINE_INDENT_GUARD + "  "))
+        self.assertFalse(any(row[:1].isspace() for row in rows))
+
     def test_a_tree_line_is_fitted_with_its_indent(self):
         self._touch(_mr("site", 1))
         self._touch(_mr("site", 2), title="C" * 80, waits_on=[_mr("site", 1)])
         line = self._lines(columns=40)[1]
-        self.assertTrue(line.startswith("  ↑ !2 C"))
+        self.assertTrue(line.startswith("  !2 C"))
         self.assertLessEqual(self.beacon._visible_width(line), 40)
 
 
@@ -6012,6 +6101,149 @@ class RefreshLinks(BeaconTest):
         self.assertEqual(record["closes"], ["https://github.com/acme/widgets/issues/7"])
         self.assertEqual(record["waits_on"], ["https://github.com/acme/lib/pull/3"])
         self.assertNotIn("--hostname", calls[0])
+
+    def test_a_merged_gitlab_mr_records_its_state_and_when(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({"merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+                       "merge_requests/5": {"title": "x", "state": "merged",
+                                            "merged_at": "2026-10-13T10:00:00.000Z"}})
+        record = self.beacon._read_links()[url]
+        self.assertEqual(record["state"], "merged")
+        self.assertEqual(record["landed_at"], "2026-10-13T10:00:00.000Z")
+
+    def test_a_locked_gitlab_mr_is_still_open(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({"merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+                       "merge_requests/5": {"title": "x", "state": "locked"}})
+        self.assertEqual(self.beacon._read_links()[url]["state"], "open")
+
+    def test_a_merged_github_pr_records_its_state_and_when(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._record(url)
+        self._refresh({
+            "graphql": {"data": {"repository": {"issueOrPullRequest": {
+                "__typename": "PullRequest", "title": "Rework the drawer", "state": "MERGED",
+                "mergedAt": "2026-10-13T10:00:00Z", "closedAt": "2026-10-13T10:00:00Z",
+                "closingIssuesReferences": {"nodes": []}}}}},
+            "dependencies/blocked_by": [],
+        })
+        record = self.beacon._read_links()[url]
+        self.assertEqual((record["state"], record["landed_at"]), ("merged", "2026-10-13T10:00:00Z"))
+
+    def test_an_unreadable_landed_stamp_is_dropped(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({"merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+                       "merge_requests/5": {"title": "x", "state": "closed", "closed_at": "soon"}})
+        self.assertEqual(self.beacon._read_links()[url]["landed_at"], "")
+
+    def test_a_github_pr_records_the_open_pr_it_is_stacked_on(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._record(url)
+        self._refresh({
+            "graphql": {"data": {"repository": {
+                "defaultBranchRef": {"name": "main"},
+                "issueOrPullRequest": {
+                    "__typename": "PullRequest", "title": "x", "state": "OPEN",
+                    "baseRefName": "drawer-base",
+                    "baseRef": {"associatedPullRequests": {"nodes": [
+                        {"url": "https://github.com/acme/widgets/pull/41"}]}},
+                    "closingIssuesReferences": {"nodes": []}}}}},
+            "dependencies/blocked_by": [],
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"],
+                         ["https://github.com/acme/widgets/pull/41"])
+
+    def test_a_github_pr_into_the_default_branch_stacks_on_nothing(self):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._record(url)
+        self._refresh({
+            "graphql": {"data": {"repository": {
+                "defaultBranchRef": {"name": "main"},
+                "issueOrPullRequest": {
+                    "__typename": "PullRequest", "title": "x", "state": "OPEN",
+                    "baseRefName": "main",
+                    "baseRef": {"associatedPullRequests": {"nodes": [
+                        {"url": "https://github.com/acme/widgets/pull/1"}]}},
+                    "closingIssuesReferences": {"nodes": []}}}}},
+            "dependencies/blocked_by": [],
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
+
+    def test_a_gitlab_mr_records_the_open_mr_whose_head_is_its_target(self):
+        url = _mr("site", 5)
+        self._record(url)
+        calls = self._refresh({
+            "merge_requests?source_branch=feat%2Fbase&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 7}],
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "feat/base",
+                                 "target_project_id": 7},
+            "projects/acme%2Fsite": {"default_branch": "main"},
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [_mr("site", 4)])
+        self.assertTrue(any("source_branch=feat%2Fbase" in " ".join(c) for c in calls))
+
+    def test_a_gitlab_fork_mr_sharing_the_branch_name_is_no_stack_base(self):
+        url = _mr("site", 5)
+        self._record(url)
+        calls = self._refresh({
+            "merge_requests?source_branch=feat%2Fbase&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 99}],
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "feat/base",
+                                 "target_project_id": 7},
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
+        self.assertFalse(any(c[-1] == "projects/acme%2Fsite" for c in calls))
+
+    def test_a_gitlab_mr_into_the_default_branch_stacks_on_nothing(self):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({
+            "merge_requests?source_branch=main&state=opened":
+                [{"web_url": _mr("site", 4), "source_project_id": 7}],
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests/5": {"title": "x", "state": "opened", "target_branch": "main",
+                                 "target_project_id": 7},
+            "projects/acme%2Fsite": {"default_branch": "main"},
+        })
+        self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
+
+    def test_a_change_in_a_tree_rereads_the_rest_of_it(self):
+        base, tip, other = _mr("site", 4), _mr("site", 5), _mr("site", 9)
+        fresh = datetime.now().astimezone().isoformat()
+        for url in (base, tip, other):
+            self._record(url)
+        self.beacon._update_links(base, state="open", fetched_at="2020-01-01T00:00:00+00:00")
+        self.beacon._update_links(tip, state="open", stacked_on=[base], fetched_at=fresh)
+        self.beacon._update_links(other, state="open", fetched_at=fresh)
+        calls = self._refresh({
+            "merge_requests/4/closes_issues": [], "merge_requests/4/blocks": [],
+            "merge_requests/4": {"title": "base", "state": "merged",
+                                 "merged_at": "2026-10-13T10:00:00Z"},
+            "merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+            "merge_requests?source_branch=main": [],
+            "merge_requests/5": {"title": "tip", "state": "opened", "target_branch": "main"},
+        })
+        read = {c[-1].split("/merge_requests")[1] for c in calls}
+        self.assertIn("/5", read)
+        self.assertNotIn("/9", read)
+        self.assertEqual(self.beacon._read_links()[tip]["stacked_on"], [])
+
+    def test_a_first_read_rereads_no_neighbour(self):
+        base, tip = _mr("site", 4), _mr("site", 5)
+        fresh = datetime.now().astimezone().isoformat()
+        self._record(base)
+        self._record(tip)
+        self.beacon._update_links(tip, stacked_on=[base], fetched_at=fresh)
+        calls = self._refresh({
+            "merge_requests/4/closes_issues": [], "merge_requests/4/blocks": [],
+            "merge_requests/4": {"title": "base", "state": "opened"},
+        })
+        self.assertEqual(len(calls), 3)
 
     def test_a_forge_failure_is_logged_and_recorded_not_emptied(self):
         url = _mr("site", 5)

@@ -255,36 +255,9 @@ The chip needs no git repo, no remote, and no Claude session to have an answer, 
 
 Claude Code renders footer rows from a command you nominate, above its own badges and never overlapping terminal output. beacon supplies one — `beacon statusline` — and it works in **any** terminal, not just iTerm2.
 
-It gives you a line per class of thing, so a glance separates what you shipped from what's in flight:
+What's on it, how to read the merge order, and how work gets onto the row are on the [status line](/statusline) page.
 
-```text
-⏸ waiting on CI
-v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
-#28 Move per-session values into the Claude Code status line
-#25 · #18 · #26 · #23
-```
-
-Every ref is a clickable link. Empty lines are omitted, so an ordinary session is one line of open work.
-
-- **Delivered** work is kept on screen — shipping is rare and it's what the session has to show for itself. It reads by its verb and glyph, in the same green beacon reserves for releases.
-- **Change requests** lead the open work and carry a title: the same string the tab shows, so the two surfaces never describe one PR differently.
-- **Issues** trail, dimmed and bare — several share a line, and titling each would wrap the row. GitLab epics (`&7`) and milestones (`%2`) ride the same line.
-- Refs in the current project render bare (`#4`); refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
-
-The row comes from the [tack](https://github.com/chris-peterson/tack) route bound to the session — every deliverable and tracker link it holds — plus whatever the current branch resolves to. So an issue you filed from `main`, with no branch and no open PR, still lands on the row: the route knows about it. With no route bound, the row is just the branch resolution, and keeping a route is what makes it complete.
-
-"Delivered" comes from the same place: a tack that's `done` promotes its deliverable. That means it follows *your* record of the work rather than the forge's — it can drift if a tack goes stale, and the trade is that the row costs no network call. Releases are the exception: a release tag only exists once published, so it needs no tack.
-
-A URL you pasted as a reference is indistinguishable from one you're working, and the row holds eight before the oldest ages out. Take one off with `beacon drop`, naming it the way the row does:
-
-```console
-$ beacon drop otherproj:#75
-dropped otherproj:#75 (3 deliverable(s) remaining)
-```
-
-It stays off for the rest of the session.
-
-`beacon install` prints the `settings.json` block to add; it doesn't edit the file for you. Whether the links are actually clickable is your terminal's call — iTerm2, WezTerm, kitty, Windows Terminal, and recent VTE all render them.
+Whether the links are clickable is your terminal's call. iTerm2 renders them, and agterm does depending on its settings.
 
 ## What beacon doesn't paint
 
