@@ -41,6 +41,12 @@ When any CR in a tree merges, closes, is retargeted, or changes what it
 waits on, the rest of that tree is read again in the same pass, so the
 row redraws the new shape rather than mixing old and new.
 
+### Tree rows keep their indent in Claude Code
+
+Claude Code strips a status-line row's leading spaces, so dependency and
+stack rows rendered flush left instead of under the CR they wait on.
+They now keep their indent.
+
 ### A docs page for the status line
 
 The docs site has a [status line](https://chris-peterson.github.io/beacon/#/statusline)
