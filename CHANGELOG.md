@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.19.1
 
 ### A session that opens with a slash command is named after it again
 
