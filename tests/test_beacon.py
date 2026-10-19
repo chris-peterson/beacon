@@ -5129,6 +5129,42 @@ class OpeningCommand(BeaconTest):
         with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
             self.beacon.cmd_hook(mock.Mock(event="UserPromptExpansion"))
 
+    def _submit(self, prompt):
+        payload = {"hook_event_name": "UserPromptSubmit", "prompt": prompt}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event="UserPromptSubmit"))
+
+    def test_records_the_first_command_when_submit_fires_first(self):
+        self._submit("/mate:fix #53")
+        self._expand("mate:fix", "#53")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
+    def test_a_later_command_is_not_recorded_when_submit_fires_first(self):
+        self._submit("fix the flaky test")
+        self._submit("/anchor:commit")
+        self._expand("anchor:commit")
+        self.assertIsNone(self.beacon.read_state("opening_command"))
+
+    def test_the_opener_stands_when_submit_fires_first(self):
+        self._submit("/mate:fix #53")
+        self._expand("mate:fix", "#53")
+        self._submit("/anchor:commit")
+        self._expand("anchor:commit")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
+    def test_the_opener_stands_when_expansion_fires_first(self):
+        self._expand("mate:fix", "#53")
+        self._submit("/mate:fix #53")
+        self._expand("anchor:commit")
+        self._submit("/anchor:commit")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
+    def test_a_synthetic_prompt_does_not_take_the_first_slot(self):
+        self._submit("<task-notification>done</task-notification>")
+        self._submit("/mate:fix #53")
+        self._expand("mate:fix", "#53")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
+
     def test_records_the_first_prompt_when_it_is_a_command(self):
         self._expand("mate:fix", "#53")
         self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
@@ -5161,6 +5197,13 @@ class OpeningCommand(BeaconTest):
         self.beacon.write_state("opening_command", "/mate:fix #53")
         self.beacon._wipe_session_for_fresh_start()
         self.assertIsNone(self.beacon.read_state("opening_command"))
+
+    def test_a_fresh_start_reopens_the_first_slot(self):
+        self._submit("fix the flaky test")
+        self.beacon._wipe_session_for_fresh_start()
+        self._submit("/mate:fix #53")
+        self._expand("mate:fix", "#53")
+        self.assertEqual(self.beacon.read_state("opening_command"), "/mate:fix #53")
 
 
 class ReadCcSignals(BeaconTest):

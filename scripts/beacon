@@ -1244,12 +1244,12 @@ def _parked_by_sweep() -> bool:
 def _invoked_skill(payload: dict) -> str:
     """The skill this payload reports as invoked, from either shape the
     invocation arrives in. An agent invocation emits a `Skill` tool call
-    carrying the name; a user-typed `/name` emits no tool call at all — Claude
-    Code expands the skill body straight into the prompt, so UserPromptSubmit is
-    the only event and the typed command heads it. Reading one shape is blind to
-    the other in silence, which is how the retired HOOK-11 subscriber spent its
-    life: the tool call covers only what the agent invoked, and typed commands
-    are most of what a human runs.
+    carrying the name; a user-typed `/name` emits no tool call at all.
+    UserPromptSubmit receives the typed `/name args` as its prompt, ahead of the
+    UserPromptExpansion that expands the skill body, so the typed command heads
+    it. Reading one shape is blind to the other in silence, which is how the
+    retired HOOK-11 subscriber spent its life: the tool call covers only what
+    the agent invoked, and typed commands are most of what a human runs.
 
     Only the prompt's first line counts, so a turn that *mentions* the command
     ("run /anchor:release when the pipeline is green") declares nothing."""
@@ -6087,6 +6087,7 @@ def _disengage() -> None:
         remove_state("activity")
     _clear_cc_signals()
     remove_state("opening_command")
+    remove_state("first_prompt")
     remove_state("title_reasserted")
     remove_engagement_marker()
     remove_state("resolved")
@@ -6284,14 +6285,28 @@ def _write_latest_turn(role: str, text: str | None) -> None:
     write_state("latest_turn_full", _full_turn(text))
 
 
+def _prompt_digest(text: str) -> str:
+    return hashlib.sha1(text.strip().encode()).hexdigest()
+
+
+def _is_first_prompt(prompt: str) -> bool:
+    """Whether `prompt` is the session's first human prompt, whichever of
+    UserPromptSubmit and UserPromptExpansion fires first for it: no turn yet
+    recorded when expansion leads, or the digest submit took of the first prompt
+    when submit leads (Claude Code 2.1.299 onward)."""
+    if not read_state("latest_turn"):
+        return True
+    return read_state("first_prompt") == _prompt_digest(prompt)
+
+
 def _record_opening_command(payload: dict) -> None:
     """Record the skill or custom command a session opened with (PROV-10).
 
-    UserPromptExpansion fires before UserPromptSubmit writes `latest_turn`, so an
-    absent turn means this command is the session's first prompt. A command
-    typed later is a step in work the opener already named; a commit command
-    typed at the end would caption the session by its last chore."""
-    if payload.get("expansion_type") != "slash_command" or read_state("latest_turn"):
+    A command typed later is a step in work the opener already named; a commit
+    command typed at the end would caption the session by its last chore."""
+    if payload.get("expansion_type") != "slash_command":
+        return
+    if not _is_first_prompt(str(payload.get("prompt") or "")):
         return
     name = str(payload.get("command_name") or "").strip()
     if not name:
@@ -6441,6 +6456,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("latest_turn")
     remove_state("latest_turn_full")
     remove_state("opening_command")
+    remove_state("first_prompt")
     remove_state("title_reasserted")
     # STATUSLINE-03: the accumulated list is scoped to one Claude session, but
     # the state keys on the pane — without this, a fresh session inherits the
@@ -8421,6 +8437,8 @@ def cmd_hook(args):
         # surfacing the raw tag as the latest turn. The status flip below still
         # runs: the session is resuming work.
         if not SYNTHETIC_PROMPT_RE.match(prompt_text):
+            if not read_state("latest_turn"):
+                write_state("first_prompt", _prompt_digest(prompt_text))
             _write_latest_turn("human", prompt_text)
         if prompt_text and FRESH_START_RE.match(prompt_text):
             # In-session commands like /recipe re-bootstrap context; treat them

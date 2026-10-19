@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### A session that opens with a slash command is named after it again
+
+On Claude Code 2.1.299 and later, a session whose first prompt was a
+skill or custom command (`/acme:fix #12`) never recorded it as its
+opening command, so an untitled session on the default branch showed
+the project name alone. beacon now recognizes the first prompt in either
+hook order, and a command typed later still leaves the opener in place.
+
 ### A CR merged on the forge moves to the delivered line
 
 The status line marked a CR merged only when anchor announced the merge
