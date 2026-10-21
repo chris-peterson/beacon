@@ -4,7 +4,7 @@ argument-hint: "[--dir <path>]"
 disable-model-invocation: true
 ---
 
-Run beacon's install bootstrap, then report its output as-is — one line if every step was already current. Do no other work.
+Run beacon's install bootstrap, then report its output as-is (one line if every step was already current). Do no other work.
 
 <!-- This command exists because it is the only door to the *newly installed*
 plugin root. The wrapper at ~/.local/bin/beacon and the `source` line in .zshrc
@@ -16,4 +16,4 @@ name. `${CLAUDE_PLUGIN_ROOT}` is the new one. -->
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" install ${ARGUMENTS}
 ```
 
-Every step is idempotent, so re-running it is the normal way to recover from drift — the SessionStart freshness hook nudges you here when `beacon --version` falls behind the plugin.
+Every step is idempotent, so re-running it is the normal way to recover from drift. The SessionStart freshness hook nudges you here when `beacon --version` falls behind the plugin.

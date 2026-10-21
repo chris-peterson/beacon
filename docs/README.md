@@ -151,7 +151,7 @@ That's the full sessions view: the bundled dashboard, plus `beacon wip` and `bea
 
 `wip` / `watch` / `serve` read every beacon session's state and paint no pane, so they need no iTerm2 and run anywhere Python 3 does.
 
-- **`beacon wip`**: a snapshot of active work streams, grouped by correlated [tack](https://github.com/chris-peterson/tack) route. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
+- **`beacon wip`**: a snapshot of active work streams, grouped by the [tack](https://github.com/chris-peterson/tack) route each session is bound to. `--json` emits the machine-readable payload; `--since` / `--all` set the window.
 - **`beacon watch`**: a live, in-place view with the most-recently-active session on top, so a pane that starts working rises to the head. `q` to quit. Use it to scan your own sessions.
 - **`beacon serve`**: a bundled reference dashboard served at `http://127.0.0.1:8787/`, with its data at `/wip.json` (loopback only). Open the URL in any browser to see your sessions. The page polls `/wip.json` and renders one card per session. It also accepts two mutating actions the dashboard drives: `POST /focus` raises a session's iTerm2 window when its card is clicked, and `POST /forget` deletes a session's state when you dismiss a timed-out card (the `beacon forget <hash>` verb does the same from the CLI). To keep it always running, see [the always-on service](#always-on-serve-service-optional) below.
 
@@ -223,13 +223,13 @@ beacon <TAB>        # subcommands with descriptions
 
 Then run `claude` in that tab and type any prompt:
 
-- the tab color flips to amber while Claude is processing, back to a neutral gray when the turn ends; it goes red when Claude is waiting for you (a permission or idle prompt)
+- the tab shows Claude's status: orange while Claude is working, blue with a ringed dot when it's waiting for you, and green when the turn ends, turning gray once you've typed. Under the legacy [tab look](/iterm/layout?id=tab-look) the tab is amber while Claude works, gray when the turn ends, and red when Claude is waiting for you
 - `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and the status line; sending the next prompt clears both
-- `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still goes red
+- `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still shows it
 
 ## Usage
 
-The label and mode commands paint the pane's tab. Color always reports what Claude is doing; a mode adds a glyph beside the name. Here's what each one produces:
+The label and mode commands paint the pane's tab. Color reports what Claude is doing; a mode adds a glyph beside the name. Here's what each one produces, drawn in the legacy [tab look](/iterm/layout?id=tab-look):
 
 <!--
   Bespoke command→tab figure in the spec palette (COLOR_PALETTE), same
@@ -281,7 +281,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <code class="cf-cmd">beacon set task perms</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-tab ready">ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-tab ready">widgets<span class="t">perms</span></span>
       <span class="cf-cap">labeled, neutral gray while idle</span>
     </span>
   </div>
@@ -289,7 +289,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <code class="cf-cmd">(Claude hits a permission prompt)</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-tab blocked">ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-tab blocked">widgets<span class="t">perms</span></span>
       <span class="cf-cap">the tab goes red: Claude needs you</span>
     </span>
   </div>
@@ -297,7 +297,7 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <code class="cf-cmd">/beacon:pause "lunch"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-tab ready">⏸ ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-tab ready">⏸ widgets<span class="t">perms</span></span>
       <span class="cf-cap">parked: a ⏸ on the tab, the pane dims to purple</span>
     </span>
   </div>
@@ -305,13 +305,13 @@ The label and mode commands paint the pane's tab. Color always reports what Clau
     <code class="cf-cmd">beacon release "v2.5.0"</code>
     <span class="cf-arrow">→</span>
     <span class="cf-out">
-      <span class="cf-tab blocked">🚀 ai-sdlc<span class="t">perms</span></span>
+      <span class="cf-tab blocked">🚀 widgets<span class="t">perms</span></span>
       <span class="cf-cap">shipping <em>and</em> blocked on you: both, at once</span>
     </span>
   </div>
 </div>
 
-Inside Claude Code there is one, for the one thing you park by hand:
+Inside Claude Code there is one slash command, for the one thing you park by hand:
 
 ```text
 /beacon:pause "out for lunch"                # the next prompt resumes it
@@ -339,18 +339,16 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 - **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab: that color stays the ready/busy/blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
-Between `beacon task` and `/rename`, the most recent one wins.
-
 ## Tack integration (optional)
 
-beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon asks it for the URL most relevant to the current branch and surfaces that URL in two places:
+beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon names each session's project by tack's repo label, the shortest name unique among the repos tack knows, so two checkouts that share a basename read apart. When a tack route is bound to the session, beacon asks tack for that route's most relevant URL and surfaces it in two places:
 
 - The status-line link points at it instead of the bare project URL.
 - The `↖ web` button opens it instead of the repo's front page.
 
-The dependency is **soft**: if tack isn't installed or has nothing for the current branch, beacon probes the forge directly (`gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts) and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
+The dependency is **soft**: if tack isn't installed or no route is bound to the session, beacon probes the forge directly (`gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts) and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-Prefer Linear, Jira, GitHub Issues, or a custom provider? There's no hook for that today: the `_beacon_resolve_url()` shell override retired along with the URL the status bar used to need (see [BADGE-08](/spec)). What you can still repoint is the `↖ web` button, at any command you like.
+Prefer Linear, Jira, GitHub Issues, or a custom provider? Point the `↖ web` button at any command you like (see [Status-bar buttons](/statusbar)).
 
 ## Standalone (no tack, no recipes)
 
@@ -392,7 +390,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 | ID | What | Form |
 |:---|:---|:---|
-| D1 | This specification | [SPEC.md](/spec) |
+| D1 | Behavioral spec | [SPEC.md](/spec) |
 | D2 | `beacon-iterm` CLI | A stateless executable that emits iTerm2 escape sequences |
 | D3 | `beacon` Claude Code plugin | Hooks, slash commands, ambient rule, COR resolver, shell integration |
 

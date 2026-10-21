@@ -25,11 +25,11 @@ Top to bottom is the order to merge in. **Cyan is what you can merge now**; a CR
 
 ![Two projects: storefront-web!41 and ledger-svc!12 in cyan at the margin, checkout-api!88 indented under them in gray because it waits on ledger-svc!12.](images/statusline-multi.png)
 
-A **stacked** CR, one whose branch is built on another CR's branch, hangs off it with `└`. A CR that merely depends on another (a forge dependency) is indented with no mark. The difference matters at merge time: a stack merges as its base does and gets retargeted when the base lands, while a dependency just has to wait its turn.
+A **stacked** CR, one whose branch is built on another CR's branch, hangs off it with `└`. A CR that depends on another (a forge dependency) is indented with no mark. The difference matters at merge time: a stack merges as its base does and gets retargeted when the base lands, while a dependency waits until the CR it depends on merges.
 
 ![A stack in one project: !30 extract color tokens in cyan, then └ !31 theme provider and └ !32 dark mode toggle in gray beneath it.](images/statusline-stack.png)
 
-When the base merges, it moves to the delivered line, and the rest of the stack moves up a level. beacon re-reads every CR in a stack or dependency chain together when any one of them changes, so you never see half the old shape and half the new.
+When the base merges, it moves to the delivered line, and the rest of the stack moves up a level. beacon re-reads every CR in a stack or dependency chain together when any one of them changes, so the row moves to the new shape in one step.
 
 ![The same stack after !30 merges: !30 struck through as merged, then !31 theme provider in cyan with └ !32 dark mode toggle in gray beneath it.](images/statusline-merged.png)
 

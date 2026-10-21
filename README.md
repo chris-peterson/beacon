@@ -47,7 +47,7 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
 | `dashboard/index.html` | Self-contained reference dashboard `serve` hosts at `/` |
 | `iterm/profile.json.template` | Beacon dynamic profile, including the status-bar layout |
-| `docs/` | Docsify site sources; `spec.md` is the EARS-style behavioral spec (D1) |
+| `docs/` | Docsify site sources; the site renders the EARS-style behavioral spec (D1) from `SPEC.md` |
 
 ## Tests
 
@@ -70,7 +70,7 @@ beacon ships as three deliverables with a hard boundary between them:
 
 D3 invokes D2 for every iTerm2 surface change. D2 has no Claude awareness: it can be used from any caller, which keeps the seam clean for future render-target CLIs (`beacon-tmux`, `beacon-kitty`) or driver plugins.
 
-The behavioral contract for hooks vs shell is documented in [`AGENTS.md`](AGENTS.md): the plugin owns `mode` (with its note) and `activity`, and writes to its user-var slots; the shell owns `project`/`branch`/`cwd` and writes to disjoint slots; the CLI is unaware of either.
+The behavioral contract for hooks vs shell is documented in [`AGENTS.md`](AGENTS.md): the plugin owns `mode` (with its note) and `activity`, and writes to its user-var slots; the shell owns the status-bar chips (project name, branch, cwd) and writes to disjoint slots; the CLI is unaware of either.
 
 `beacon wip` / `watch` / `serve` (spec §3.8) are the terminal-agnostic sessions surface on D3: they enumerate every session's state and render a snapshot (TTY, JSON, or localhost HTTP) for external dashboards rather than painting iTerm2, so they don't route through D2 and work in any terminal. `beacon serve install` keeps `serve` running under launchd/systemd. The per-session state-file directory is the single source of record: the iTerm2 paint and the sessions view both read it, and `serve` re-reads it per request, so they can't disagree.
 
@@ -168,7 +168,7 @@ sequenceDiagram
 | cwd for the status-bar buttons | `<DATA_DIR>/cache/cwd-<pane-guid>.txt` | On `cd`; `prune` sweeps it by mtime | The pane, on disk |
 | Last-painted surfaces | `<DATA_DIR>/state/<hash>.resolved` | Every `apply()` (this snapshot is what lets a hook skip the CLI spawn) | The session, on disk |
 | Resolved URL, label, project | `state/<hash>.resolved.url*` | SessionStart, and each `Stop` | The session, on disk |
-| Origin URL and tack routes, python side | Module dicts in `scripts/beacon` | Nothing (the process exits with the hook) | One hook invocation |
+| Origin URL, tack routes, and tack repo labels, python side | Module dicts in `scripts/beacon` | Nothing (the process exits with the hook) | One hook invocation |
 
 Which state a session writes, and how its hash is seeded, is in [`AGENTS.md`](AGENTS.md); the requirements behind each surface are in [SPEC.md](SPEC.md).
 

@@ -337,7 +337,7 @@ tack and git-fi already report this shape, so one reading now answers all three.
 A task or a mode note written as `pick this up with **anchor**` now reads with
 *anchor* in bold on line 2 of the tab and in the status-line note, instead of
 showing the asterisks. `**bold**`, `__bold__`, `*italic*` and `_italic_` all
-translate — to HTML on the tab, which iTerm2 already parses to render the
+translate: to HTML on the tab, which iTerm2 already parses to render the
 project accent, and to SGR on the status line. An identifier like
 `beacon_task_nl` and an expression like `2 * 3 * 4` are left alone.
 
@@ -445,8 +445,8 @@ The anchor is the requirement ID lowercased, so it can be written without
 opening the page. Section numbers are unchanged.
 
 The page also says what beacon does again. Seven places where it disagreed
-with the running code are corrected — the branch chip's colours
-worst among them, wrong at two of the three places they were described — and
+with the running code are corrected (among them the branch chip's colours,
+wrong at two of the three places they were described), and
 four behaviours it never documented are written down: the CORS preflight, the
 dashboard's pop-out panel, the Markdown an expanded turn renders, and the
 task/project shorthand.
@@ -478,7 +478,7 @@ The SessionStart check that was meant to catch this compared `beacon --version` 
 It now compares paths, which is also what lets it reach the `.zshrc` line and the profile buttons that a version number never could:
 
 ```
-  ~/.claude/plugins/cache/getty-claude-marketplace/beacon/2.11.0/scripts/beacon — still there, so these run its older code:
+  ~/.claude/plugins/cache/acme-marketplace/beacon/2.11.0/scripts/beacon — still there, so these run its older code:
       the `beacon` command on $PATH
       the .zshrc shell integration
       the beacon-dev status-bar buttons
@@ -488,7 +488,7 @@ A path that is gone is reported separately, as surfaces that now do nothing. Sur
 
 ### `reset-layout` puts a machine back to iTerm2's defaults
 
-The layout beacon recommends (`beacon layout`) is a hand-curated list of app-wide prefs, and its gaps do not show up on a machine that already has the missing ones set for unrelated reasons. Every surface reads correctly there and wrongly on a colleague's stock install, which is the worst place to meet the difference.
+The layout beacon recommends (`beacon layout`) is a hand-curated list of app-wide prefs, and its gaps do not show up on a machine that already has the missing ones set for unrelated reasons. Every surface reads correctly there and wrongly on a colleague's stock install.
 
 `just reset-iterm-layout` reads which of them this machine has set, grouped by the surface each one reaches:
 
@@ -509,12 +509,12 @@ The first reset found four gaps. `beacon layout` now recommends all of them:
 
 | Setting | Want | Why |
 |:---|:---|:---|
-| `LeftTabBarWidth` | 300 | a wider start than iTerm2's 150pt, which leaves line 2 of the label — the task — almost no width to be read in |
+| `LeftTabBarWidth` | 300 | a wider start than iTerm2's 150pt, which leaves line 2 of the label (the task) almost no width to be read in |
 | `StatusBarHeight` | 32 | at iTerm2's 21pt the project chip and the two action buttons crowd each other |
 | `TabsHaveCloseButton` | off | the strip is clicked all day to focus a session, and an errant click on a close button ends one; ending a session is something you do deliberately |
 | `DisableTabBarTooltips` | on | the tooltip repeats the project and task the label already shows, over the neighbouring tabs you were scanning |
 
-`LeftTabBarWidth` is a starting width, not a final one — dragging the strip's inner edge is the only thing that writes the key, so drag it to taste and the audit will report the difference. `StatusBarHeight` is read at launch, which the `--write` restart already provides.
+`LeftTabBarWidth` is a starting width, not a final one: dragging the strip's inner edge is the only thing that writes the key, so drag it to taste and the audit will report the difference. `StatusBarHeight` is read at launch, which the `--write` restart already provides.
 
 ## 2.12.0
 
@@ -539,8 +539,8 @@ Each origin is recorded once per `serve` process, so a dashboard polling every c
 
 ### The two-line tab label fits again on iTerm2 3.7.0
 
-iTerm2 3.7.0 gives a Minimal left or right tab strip — the layout `beacon
-layout` recommends — its own tab-height setting, `CompactMinimalTabBarHeight`,
+iTerm2 3.7.0 gives a Minimal left or right tab strip (the layout `beacon
+layout` recommends) its own tab-height setting, `CompactMinimalTabBarHeight`,
 and stops reading `DefaultTabBarHeight` there. At that setting's 38pt default a
 22pt label has room for one line, so line 2 of every tab, the task, was clipped.
 
@@ -554,7 +554,7 @@ Through iTerm2 3.6.x a profile was dynamic if it carried a `Dynamic` tag. 3.7.0
 moved that to an `Is Dynamic Profile` key its loader writes, and profiles iTerm2
 saved before the upgrade carry only the tag. Its loader then reads each beacon
 profile file, finds what it now takes for an ordinary saved profile already
-holding that Guid, and skips the file — so the status bar, mode backgrounds and
+holding that Guid, and skips the file, so the status bar, mode backgrounds and
 badge sizing freeze at whatever was last loaded, and `beacon
 refresh-iterm-profiles` rewrites files nothing reads.
 
@@ -570,7 +570,7 @@ its profile step, which is where an iTerm2 upgrade is most likely to be met, and
 iTerm2's own. 3.7.0 ships a one-shot migration that flags exactly these profiles,
 but a run that leaves one behind has already closed the gate on it, and it never
 reopens. The flag clears that gate so the next launch migrates again. Clearing it
-only sticks with iTerm2 down — it rewrites its preferences from memory on quit —
+only sticks with iTerm2 down (it rewrites its preferences from memory on quit),
 so the command confirms, quits iTerm2, clears one boolean, and relaunches, the
 same way `beacon layout --write` does. Nothing in your profile list is written.
 
@@ -578,8 +578,8 @@ same way `beacon layout --write` does. Nothing in your profile list is written.
 
 The `↖ web` and `↗ code` status-bar buttons read the pane's working directory
 out of a `<DATA_DIR>` baked into the iTerm2 profile when it was rendered, so
-beacon moving — reinstalled from a different marketplace, or bumped to a new
-version — leaves them reading a directory nothing writes. The button then says
+beacon moving (reinstalled from a different marketplace, or bumped to a new
+version) leaves them reading a directory nothing writes. The button then says
 the session has no working directory, which is also what it says for a pane
 beacon really isn't tracking, and every click looks like a `↗ code` bug.
 
@@ -592,7 +592,7 @@ are reported as such and pass, since that is how beacon is developed.
 ### The tab commits to iTerm2's Minimal style, and the palette is weighted for it
 
 beacon already pins where the tab strip sits, how tall its tabs are, and what
-size their labels print at. It left the *tab style* alone — the one setting that
+size their labels print at. It left the *tab style* alone: the one setting that
 decides whether the state color is a thin tint or the tab's entire background.
 That made beacon's own primary surface depend on a preference it never named.
 
@@ -601,9 +601,9 @@ signal gets in a left strip: you can read every session's state from across the
 room without focusing anything.
 
 The palette is weighted to match. Under Minimal at full strength the loudness
-ladder ran backwards — `busy` orange measured 8.37 contrast against the tab
+ladder ran backwards: `busy` orange measured 8.37 contrast against the tab
 ground where `blocked` red measured 4.54, so the state that means "carry on"
-out-shouted the one that means "stop and look", and a strip of them was painful.
+out-shouted the one that means "stop and look", and a strip of them was hard to look at.
 Dimming everything uniformly fixed the pain and flattened the signal with it. So
 the tab paints each hue under a **per-state weight**, tracking how often you see
 that state:
@@ -615,7 +615,7 @@ that state:
 | `ready` | 0.46 | `#40424a` |
 
 One row wants you; the rest recede. The weight scales only value, so a weighted
-state is the same color with less light behind it — the hues are unchanged, and
+state is the same color with less light behind it. The hues are unchanged, and
 they still mean what they meant.
 
 This applies to **the tab alone**. The badge, the dashboard dot, and the docs
@@ -628,7 +628,7 @@ and you can skip it with `--keys`; the tab weights apply either way.
 ### beacon knows about plan mode, and the terminal stays quiet about it
 
 beacon reads Claude Code's permission mode off every hook, so it knows which
-sessions are in plan mode without any cooperation — no skill announces it, and
+sessions are in plan mode without any cooperation. No skill announces it, and
 entering or leaving is a keystroke between turns that fires no hook of its own,
 so the next hook of any kind is the observation point.
 
@@ -636,10 +636,10 @@ It surfaces in the **sessions view**: `wip` and `watch` read `plan·release·wai
 and the dashboard tags the card `plan`. A card and a row have room for a word.
 
 The **tab says nothing about it**, deliberately. The tab has two channels and
-colour is the only pre-attentive one — the only signal you read across every tab
-at once without scanning each — so it answers *does this session need me* and
+colour is the only pre-attentive one (the only signal you read across every tab
+at once without scanning each), so it answers *does this session need me* and
 nothing else. The activity stoplight was already telling the truth about a
-planning session: it genuinely is working while it researches, and genuinely is
+planning session: it is working while it researches, and is
 blocked when a plan is waiting on you. What made it unpleasant to look at was
 loudness, and the tab weights above fix that for every state rather than one.
 
@@ -654,8 +654,8 @@ come and go.
 
 A space rather than a mark, for two reasons: a glyph asserting "development"
 would make the default read as a fifth phase, where it is the absence of a
-declaration — and a mark on the great majority of tabs carries no information
-while costing the rare marks (⏸ 🚀 📋 🏁) the salience that is their whole job.
+declaration; and a mark on most tabs carries no information while costing the
+rare marks (⏸ 🚀 📋 🏁) the salience they exist for.
 
 ## 2.10.0
 
@@ -669,7 +669,7 @@ three, and the scan parsed a file format tack is free to change without telling
 anyone.
 
 tack now announces the binding, so beacon is told. What that route currently
-holds — its group, and each tack's summary, status and links — comes from `tack
+holds (its group, and each tack's summary, status and links) comes from `tack
 tree`, a documented command, asked only for the one route and only when there is
 one. So a machine without tack runs nothing, and neither does a session with no
 route bound.
@@ -684,7 +684,7 @@ A merged change request, a freshly filed issue, and a published release now
 reach the status-line row from anchor's own announcements, alongside the bound
 tack route and the branch resolution. Each is a fact anchor read back from the
 forge before saying so, so the row no longer waits on a route being kept current
-to show that something landed — a session with no route bound gets one at all.
+to show that something landed: a session with no route bound gets one at all.
 
 anchor used to call `tack done` when it merged and `tack link add` when it
 released, which is where beacon's delivered line learned that work had shipped.
@@ -697,7 +697,7 @@ surface from either.
 ### The status line links a new change request the moment it opens
 
 The link was published once per turn, so a change request anchor opened mid-turn
-reached the row only after the turn ended — the row named the branch tree
+reached the row only after the turn ended, and the row named the branch tree
 through the one stretch where it had something better to say. The announcement
 carries the URL and the title outright, so the row takes them on arrival. A
 change request announced in an unrelated checkout still doesn't claim the slot.
@@ -705,7 +705,7 @@ change request announced in an unrelated checkout still doesn't claim the slot.
 ### The branch chip keeps up with a push made mid-turn
 
 The status bar's branch chip refreshed once per turn, so a push made early in a
-long turn left it painting `↑1` diverged until the turn ended — and the shell's
+long turn left it painting `↑1` diverged until the turn ended, and the shell's
 own per-prompt refresh can't run while Claude holds the pane. A tool call whose
 command names a branch-moving git subcommand now republishes the branch slots on
 the spot. Read-only git (`status`, `log`, `diff`) doesn't trigger it, and a
@@ -731,7 +731,7 @@ fresh-start wipe now clears it along with the deliverables it sits beside.
 ### An MCP server asking for input turns the tab red
 
 beacon matched two of Claude Code's notification kinds, so a session blocked on
-an MCP elicitation — waiting for input, or for you to open a link — kept
+an MCP elicitation (waiting for input, or for you to open a link) kept
 painting its tab orange. The Notification hook now reads the kind from the
 payload rather than from the matcher that selected it, and every kind that means
 this session is waiting on you paints red. Kinds reporting something already
@@ -739,13 +739,13 @@ finished, such as a successful login or a resumed quota, paint nothing.
 
 ### A blocked tab turns red when it blocks
 
-A session waiting on a permission prompt — a plan card, a question, a command to approve — read as busy for the first six seconds. Claude Code reports the prompt on a timer that fires only once it has gone unanswered, and the tool's own `PreToolUse` has painted the tab orange by then. beacon now also reads Claude Code's `PermissionRequest` event, which arrives with the prompt, so the tab is red from the moment the session stops. Idle prompts are unchanged.
+A session waiting on a permission prompt (a plan card, a question, a command to approve) read as busy for the first six seconds. Claude Code reports the prompt on a timer that fires only once it has gone unanswered, and the tool's own `PreToolUse` has painted the tab orange by then. beacon now also reads Claude Code's `PermissionRequest` event, which arrives with the prompt, so the tab is red from the moment the session stops. Idle prompts are unchanged.
 
 ### The status line links the change request anchor just opened
 
 anchor's announcements settled on new keys in its v1.12.0, and beacon was still
 matching the old ones, so a change request a sibling plugin had just opened
-stopped reaching the status line and `↖ web` — both fell back to probing the
+stopped reaching the status line and `↖ web`; both fell back to probing the
 forge for it. beacon matches the settled `cr.created` and `cr.updated` keys, and
 the link now reads with the change request's own title where it used to read as
 a bare `#88`. Announced values are stripped of control characters before they
@@ -756,7 +756,7 @@ reading across plugins reports those keys as heard.
 
 ### `serve` refuses an opaque origin
 
-2.9.0's origin gate read a literal `Origin: null` as the same fact as a missing header and served it. A browser sends `null` for every *opaque* origin — a sandboxed iframe, a `data:` URL, a cross-origin redirect — and any page can create one on demand, so a page you had open could still read the sessions feed, latest turn text included, and reach `focus` and `forget` through the preflight. A present `Origin: null` is now foreign, and rejected on every route.
+2.9.0's origin gate read a literal `Origin: null` as the same fact as a missing header and served it. A browser sends `null` for every *opaque* origin (a sandboxed iframe, a `data:` URL, a cross-origin redirect), and any page can create one on demand, so a page you had open could still read the sessions feed, latest turn text included, and reach `focus` and `forget` through the preflight. A present `Origin: null` is now foreign, and rejected on every route.
 
 A request that sends no `Origin` at all is unchanged: that is `curl` or a same-origin fetch, and a browser cannot suppress the header on a cross-origin request. The bundled dashboard at `http://127.0.0.1:8787/` and an allowlisted one are unaffected.
 
@@ -764,7 +764,7 @@ A request that sends no `Origin` at all is unchanged: that is `curl` or a same-o
 
 ### `serve` answers only origins you allow
 
-The sessions feed carries each session's most recent turn — your prompts and Claude's replies — and `serve`'s read routes answered any origin while ignoring the `Host` header. Any page open in your browser could read it, and the reads were open to DNS rebinding. Every route now requires a loopback `Host` and an allowed `Origin`.
+The sessions feed carries each session's most recent turn (your prompts and Claude's replies), and `serve`'s read routes answered any origin while ignoring the `Host` header. Any page open in your browser could read it, and the reads were open to DNS rebinding. Every route now requires a loopback `Host` and an allowed `Origin`.
 
 The bundled dashboard at `http://127.0.0.1:8787/` is same-origin and unaffected, as is `https://chris-peterson.github.io`. A dashboard you host anywhere else needs its origin in `~/.config/beacon/config.json`, which now governs the reads as well as the focus and dismiss buttons:
 
@@ -791,7 +791,7 @@ Everything beacon writes under its data dir is created `0700` / `0600` rather th
 
 The tab color is a per-session OSC override, and things other than beacon clear
 it: any `SetProfile=` wipes it, including one a nested `claude` emits on its way
-out — that OSC reaches the pane it was started in, while its state goes to a
+out: that OSC reaches the pane it was started in, while its state goes to a
 bucket of its own. beacon painted the tab only when the activity moved, compared
 against the last-rendered snapshot, so a wipe it hadn't caused was invisible to
 it and the tab stayed uncolored for the rest of the session. A pane sitting at
@@ -805,8 +805,8 @@ next hook.
 ### A release phase marks itself
 
 Entering `release` mode meant remembering to run `beacon release` in the middle
-of cutting one. beacon now watches for the release skill being invoked — the
-agent calling `anchor:release`, or you typing `/anchor:release` or `/release` —
+of cutting one. beacon now watches for the release skill being invoked (the
+agent calling `anchor:release`, or you typing `/anchor:release` or `/release`)
 and enters the mode itself, so the 🚀 reaches the tab whether or not anyone
 thought about the tab.
 
@@ -820,7 +820,7 @@ yourself survives the skill firing afterward.
 
 Per-session state keys on the iTerm2 pane, which is what lets a pane keep one
 identity across a `/clear` or a compaction. A `claude` started from *inside* a
-live session — by a hook, a script, a terminal integration — inherits that pane
+live session (by a hook, a script, a terminal integration) inherits that pane
 id, so its own SessionStart landed in the running session's state: wiping the
 label, the turn history and the accumulated deliverables, and repinning the
 session's project onto wherever the nested one happened to launch. A session
@@ -840,7 +840,7 @@ and left the dashboard disagreeing with it.
 The docs sampled the handful of commands you type most and left the rest to
 `beacon --help`. The site now carries a [CLI reference](https://chris-peterson.github.io/beacon/#/cli):
 every command, its flags, what each one is for, and the notes and worked examples
-help output has no room for — grouped by what they do, from session state through
+help output has no room for, grouped by what they do, from session state through
 the sessions view to the install steps.
 
 It is generated, not written. shipyard runs `beacon --help` and each command's own
@@ -856,21 +856,21 @@ the marketplace card is the way there.
 
 Claude Code re-fires SessionStart when it compacts a session's context, and the cwd it passes is its own live working directory rather than the one the session started in. beacon read that as a new session: it re-pinned the navigational anchor onto wherever the agent happened to be, and cleared the pinned label, the accumulated deliverables, and the status-line window along with it. A long session that compacted while working in a temp directory came back named after that directory. Compaction and forks now keep the anchor the session already has and refresh only the chips, the way the end of a turn does.
 
-Outside a recognized project the project chain also named the bare directory, so a session in macOS's `$TMPDIR` read as a project called `T` on the tab while the sessions view showed the full path. The last chained tier now names a *project root* only, and where there is none the abbreviated path answers (PROV-06) — the same value the anchor already recorded, so the two surfaces agree.
+Outside a recognized project the project chain also named the bare directory, so a session in macOS's `$TMPDIR` read as a project called `T` on the tab while the sessions view showed the full path. The last chained tier now names a *project root* only, and where there is none the abbreviated path answers (PROV-06): the same value the anchor already recorded, so the two surfaces agree.
 
 ## 2.7.0
 
 ### Tab labels come back on a machine with two iTerm2 builds
 
-An Xcode build of iTerm2 installs as `iTerm2.app` where the release installs as `iTerm.app`, and beacon addressed iTerm2 by name — so on a machine carrying both, every Apple Events call went to the dev build and found no session there. Tab labels, window titles, and clicking a session in the dashboard to raise its window all stopped, with nothing on screen to say why. beacon now addresses iTerm2 by its bundle id, which resolves to the installed app.
+An Xcode build of iTerm2 installs as `iTerm2.app` where the release installs as `iTerm.app`, and beacon addressed iTerm2 by name, so on a machine carrying both, every Apple Events call went to the dev build and found no session there. Tab labels, window titles, and clicking a session in the dashboard to raise its window all stopped, with nothing on screen to say why. beacon now addresses iTerm2 by its bundle id, which resolves to the installed app.
 
 ### A new tab gets its name in a third of a second
 
-Naming a new tab waited up to two seconds for a marker that a plain shell never receives, so a fresh tab read `Default` for two and a half seconds before its project appeared. It now names itself immediately — measured at 0.35s. A pane that Claude takes over later still gets the managed label; the wait was what made the two writers race in the first place.
+Naming a new tab waited up to two seconds for a marker that a plain shell never receives, so a fresh tab read `Default` for two and a half seconds before its project appeared. It now names itself immediately, measured at 0.35s. A pane that Claude takes over later still gets the managed label; the wait was what made the two writers race in the first place.
 
 ### `beacon doctor` checks the install and reports what has been failing
 
-A display failure must never crash a Claude Code hook, so beacon swallows every external command it runs. That is what let a broken tab label go a whole session unnoticed. Failures are now recorded to `<data-dir>/logs/errors.log`, and `beacon doctor` reads them back grouped by operation with advice for each, alongside live checks: whether every context resolves the same data directory, whether the state directory is writable, whether the `PATH` wrapper and Claude Code status line are wired, and — on iTerm2 — whether the dynamic profiles are present and this session's pane is still reachable. It exits non-zero when something is wrong, so it can gate a health check.
+A display failure must never crash a Claude Code hook, so beacon swallows every external command it runs. That is what let a broken tab label go a whole session unnoticed. Failures are now recorded to `<data-dir>/logs/errors.log`, and `beacon doctor` reads them back grouped by operation with advice for each, alongside live checks: whether every context resolves the same data directory, whether the state directory is writable, whether the `PATH` wrapper and Claude Code status line are wired, and (on iTerm2) whether the dynamic profiles are present and this session's pane is still reachable. It exits non-zero when something is wrong, so it can gate a health check.
 
 `beacon doctor --since 30d` widens the error window; `--json` emits the checks and entries for a script.
 
@@ -889,7 +889,7 @@ A checkout and an installed plugin report the same version, so there was no way 
 
 "Fleet" was a metaphor you had to translate. The cross-session read behind `wip` / `watch` / `serve` is the **sessions view** now, and `dashboard` keeps the narrower meaning: the browser page `serve` hosts at `/`. Both words were doing both jobs before.
 
-The dashboard masthead and page title read `beacon · sessions`, and the docs section is "Sessions view (any terminal)" — a bookmark to the old anchor needs updating. Nothing you type changes; no command, flag, or state field moved.
+The dashboard masthead and page title read `beacon · sessions`, and the docs section is "Sessions view (any terminal)", so a bookmark to the old anchor needs updating. Nothing you type changes; no command, flag, or state field moved.
 
 ### Also
 
@@ -900,15 +900,15 @@ The dashboard masthead and page title read `beacon · sessions`, and the docs se
 
 ### A parked session's tab stops reading as blocked
 
-A paused or done session sits at an idle prompt by definition, so the idle timer always fired and red — the color that means Claude needs you — was the resting state of every parked tab. A halted mode now records nothing from an idle prompt. A permission prompt still paints red in every mode.
+A paused or done session sits at an idle prompt by definition, so the idle timer always fired and red (the color that means Claude needs you) was the resting state of every parked tab. A halted mode now records nothing from an idle prompt. A permission prompt still paints red in every mode.
 
 ### A pause note reaches the tab strip
 
-While a session is paused or done, its note takes line 2 of the tab label in place of the task, which a halted session has no live work to fill. The note's other home is the Claude Code status line, which exists only in the focused pane — so a note saying why a session is parked reached only the pane you were already looking at.
+While a session is paused or done, its note takes line 2 of the tab label in place of the task, which a halted session has no live work to fill. The note's other home is the Claude Code status line, which exists only in the focused pane, so a note saying why a session is parked reached only the pane you were already looking at.
 
 ### `beacon layout` applies the recommended iTerm2 layout
 
-The app-wide settings beacon recommends — tab position and size, status-bar position — were reachable only as `beacon-iterm configure`, a second executable nothing pointed at. They are `beacon layout` now, and `install` applies them instead of only listing them.
+The app-wide settings beacon recommends (tab position and size, status-bar position) were reachable only as `beacon-iterm configure`, a second executable nothing pointed at. They are `beacon layout` now, and `install` applies them instead of only listing them.
 
 ```
 beacon layout            # audit; writes nothing
@@ -921,11 +921,11 @@ The recommended tab-label font size is 22.
 
 ### A git worktree is the same project
 
-Working in a linked worktree captioned the tab with that directory's name — an opaque id, where a tool cuts the tree. Sibling checkouts share a git dir, which is what now tells a second checkout from leaving the repository.
+Working in a linked worktree captioned the tab with that directory's name: an opaque id, where a tool cuts the tree. Sibling checkouts share a git dir, which is what now tells a second checkout from leaving the repository.
 
 ### Where a session is now reads on line 1
 
-The tab shows `beacon @ ai-sdlc` over the task, rather than opening line 2 with a separator whose antecedent sat on the line above. The marker went only to the badge, which is opt-in, so by default it had no surface.
+The tab shows `beacon @ widgets` over the task, rather than opening line 2 with a separator whose antecedent sat on the line above. The marker went only to the badge, which is opt-in, so by default it had no surface.
 
 ### Also
 
@@ -938,16 +938,16 @@ The tab shows `beacon @ ai-sdlc` over the task, rather than opening line 2 with 
 
 ### `status` splits into `mode` and `activity`
 
-A session's state is now two independent fields rather than one. **`activity`** — idle, working, waiting — is what the hooks observe. **`mode`** — pause, release, retro, done — is what you or a skill declare.
+A session's state is now two independent fields rather than one. **`activity`** (idle, working, waiting) is what the hooks observe. **`mode`** (pause, release, retro, done) is what you or a skill declare.
 
-They were one `status` field, merged by priority, and the declared value won. A session in `release` or `retro` could not report that it was blocked on you — entering a mode suppressed the signal meant to interrupt you. `release · waiting` had no representation at all.
+They were one `status` field, merged by priority, and the declared value won. A session in `release` or `retro` could not report that it was blocked on you: entering a mode suppressed the signal meant to interrupt you. `release · waiting` had no representation at all.
 
 With many tabs open, only one **pane** is visible, so the tab strip is where a session signals you when you're looking elsewhere. It has two slots, and there are now two axes:
 
 | Slot | Now carries |
 |:---|:---|
-| tab **color** | `activity` — gray at rest, orange working, red when Claude needs you |
-| tab **glyph** | `mode` — `⏸` pause, `🚀` release, `📋` retro, `🏁` done |
+| tab **color** | `activity`: gray at rest, orange working, red when Claude needs you |
+| tab **glyph** | `mode`: `⏸` pause, `🚀` release, `📋` retro, `🏁` done |
 
 Nothing arbitrates between them, since they never share a surface: a release that hits a permission prompt is a red tab beside a `🚀`. The pane background still carries the mode, but only in the focused pane.
 
@@ -955,7 +955,7 @@ So a mode no longer hides whether a session needs you, and every mode is visible
 
 ### `beacon status` sets modes only
 
-`beacon status working` is now an error naming the mode verbs. It used to pin the activity above the hooks, and the pin never expired: thirteen sessions in local state carried one, most 77–90 days old, and **eight contradicted the live hook signal** — tabs painted `working` while the session was blocked on the user. The hooks own activity; there is no longer a way to overrule them.
+`beacon status working` is now an error naming the mode verbs. It used to pin the activity above the hooks, and the pin never expired: thirteen sessions in local state carried one, most 77–90 days old, and **eight contradicted the live hook signal**: tabs painted `working` while the session was blocked on the user. The hooks own activity; there is no longer a way to overrule them.
 
 `beacon status dev` leaves whatever mode is set. `beacon pause` / `release` / `retro` / `done` are unchanged.
 
@@ -967,7 +967,7 @@ Pause now writes the mode and its note, and nothing else. The fleet view already
 
 ### `beacon json` emits the payload CMD-15 specifies
 
-The payload documented "signals, providers, description" and shipped three of the seven keys `resolve()` returns. `beacon json | jq -r .task` printed `null` unconditionally — not "no task set", but "never emitted".
+The payload documented "signals, providers, description" and shipped three of the seven keys `resolve()` returns. `beacon json | jq -r .task` printed `null` unconditionally: not "no task set", but "never emitted".
 
 ```json
 {
@@ -986,11 +986,11 @@ Every signal now ships with the provider that supplied it. That matters for `tas
 
 ### Announcing a break in prose no longer parks your session
 
-Typing "brb" or "stepping away" used to park the session, mark it `⏸`, and exempt it from the fleet's activity window. Across three months of local state it authored **zero** notes — every one came from an explicit `pause`, `release`, `retro`, or `done`. Those phrases also now signal the opposite: they're what you say when handing work off to run unattended, so the pane was parked while the session kept working. Say it however you like; use `/beacon:pause` to park.
+Typing "brb" or "stepping away" used to park the session, mark it `⏸`, and exempt it from the fleet's activity window. Across three months of local state it authored **zero** notes; every one came from an explicit `pause`, `release`, `retro`, or `done`. Those phrases also now signal the opposite: they're what you say when handing work off to run unattended, so the pane was parked while the session kept working. Say it however you like; use `/beacon:pause` to park.
 
 ### A note belongs to its mode
 
-A mode's note is stored with the mode and cleared with it, so it can't outlive what it annotates. It surfaces in the Claude Code status line (led by the mode's glyph) and the fleet view; it is never painted on the pane, where there's no room for prose. Recall context is `latest_turn`'s job — derived from the transcript, needing nothing from the agent.
+A mode's note is stored with the mode and cleared with it, so it can't outlive what it annotates. It surfaces in the Claude Code status line (led by the mode's glyph) and the fleet view; it is never painted on the pane, where there's no room for prose. Recall context is `latest_turn`'s job, derived from the transcript, needing nothing from the agent.
 
 ### `retro` gets a new mark
 
@@ -998,7 +998,7 @@ A mode's note is stored with the mode and cleared with it, so it can't outlive w
 
 ### The `handoff` mode is gone
 
-The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a session mid-transition to another tool or session, and what separated it from `done` was a single turn: it lifted on your next prompt. The phase it named — a work session closing out — is what `done` already says, and what a route tracker records durably rather than for one turn on a tab.
+The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a session mid-transition to another tool or session, and what separated it from `done` was a single turn: it lifted on your next prompt. The phase it named (a work session closing out) is what `done` already says, and what a route tracker records durably rather than for one turn on a tab.
 
 `beacon handoff` is gone, and `beacon status handoff` is an error naming the modes that remain. The automatic trigger goes with it: tack's session-close skill firing no longer moves the pane into a mode, so `/tack:end` leaves whatever mode is set. Declare `beacon done` when you want the finished pane to say so.
 
@@ -1006,17 +1006,17 @@ The mode set is `dev`, `pause`, `release`, `retro`, `done`. `handoff` marked a s
 
 ### Dashboard: stacked cards reveal on hover
 
-Where several sessions share a project, the dashboard stacks their cards. Hovering a tucked-behind card now brings that whole card forward, above the front one — you read the real card. It replaces a floating tooltip that showed the tucked card's task and latest turn, a second and partial rendering of something you could just be shown. Clicking still pins the raise, and keyboard focus gets the same reveal.
+Where several sessions share a project, the dashboard stacks their cards. Hovering a tucked-behind card now brings that whole card forward, above the front one, so you read the real card. It replaces a floating tooltip that showed the tucked card's task and latest turn, a second, partial rendering of the card itself. Clicking still pins the raise, and keyboard focus gets the same reveal.
 
 ### `cd` in a beacon shell is roughly 40x faster
 
 A directory change in a beacon-integrated shell cost ~574ms, and a plain prompt redraw ~63ms. A `cd` is now ~15ms and a redraw ~14ms.
 
-Nearly all of that was python interpreter startup: every prompt published seven iTerm2 user-var slots and paid a `beacon-iterm` process for each one. The shell writes those escape sequences itself now — straight to the terminal device, encoded by a zsh-native base64 — so a redraw spawns nothing. Branch resolution collapses four git invocations into one, and the origin URL is remembered per project root.
+Nearly all of that was python interpreter startup: every prompt published seven iTerm2 user-var slots and paid a `beacon-iterm` process for each one. The shell writes those escape sequences itself now (straight to the terminal device, encoded by a zsh-native base64), so a redraw spawns nothing. Branch resolution collapses four git invocations into one, and the origin URL is remembered per project root.
 
 ### Opening a terminal spawns no python
 
-Sourcing beacon's shell integration asked the plugin two questions — where its data dir is, and whether the badge is on — and each answer cost a python interpreter startup, in every terminal you open. They now come from one cached block, rebuilt only when beacon itself, its data-dir record, or `~/.config/beacon/config.json` is newer than the cache. In the steady state, sourcing spawns nothing.
+Sourcing beacon's shell integration asked the plugin two questions (where its data dir is, and whether the badge is on), and each answer cost a python interpreter startup, in every terminal you open. They now come from one cached block, rebuilt only when beacon itself, its data-dir record, or `~/.config/beacon/config.json` is newer than the cache. In the steady state, sourcing spawns nothing.
 
 ### Also
 
@@ -1026,18 +1026,18 @@ Sourcing beacon's shell integration asked the plugin two questions — where its
 - **Breaking:** `wip.json` carries `mode` as the same nested `{name, note}` tuple `beacon json` does, rather than a flat `mode` string beside a top-level `note`. Both payloads now describe the value identically, so a consumer reading either writes one accessor.
 - `install` now sweeps stale beacon profiles by comparing against what it just wrote, instead of carrying a list of every profile name retired since 0.x.
 - **Breaking:** `wip.json` and `beacon json` can no longer carry `handoff` as a mode name. A stored value this version doesn't recognize reads as `dev`, so a session left in the old mode reports the dev cycle rather than needing a migration.
-- Fixed: mode watermarks on dashboard cards were sized from the card's *width*, and the assets are square while a card is far wider than it is tall — so the mark came out taller than the card and was cropped to a middle band, reading as an off-centre fragment. They size from the height now, the CSS analog of the Scale Aspect Fit the pane uses.
+- Fixed: mode watermarks on dashboard cards were sized from the card's *width*, and the assets are square while a card is far wider than it is tall, so the mark came out taller than the card and was cropped to a middle band, reading as an off-center fragment. They size from the height now, the CSS analog of the Scale Aspect Fit the pane uses.
 - Fixed: `beacon watch` column alignment with the new glyphs. `🚀` `📋` `🏁` are one character but two terminal columns wide, so padding by character count left every glyph-bearing row a column short.
 
 ## 2.4.1
 
 ### Panes keep your color scheme on a fresh install
 
-A first install painted panes near-white. The base profile forced iTerm2's "Use Separate Colors for Light and Dark Mode" off, and that switch decides which color keys iTerm2 reads — off, a dark-mode pane resolves to the parent profile's *light* background. The switch is the parent profile's to answer now, and the two colors beacon does set in a profile, the mode backgrounds and the ready-gray badge default, are written for either setting.
+A first install painted panes near-white. The base profile forced iTerm2's "Use Separate Colors for Light and Dark Mode" off, and that switch decides which color keys iTerm2 reads: off, a dark-mode pane resolves to the parent profile's *light* background. The switch is the parent profile's to answer now, and the two colors beacon does set in a profile, the mode backgrounds and the ready-gray badge default, are written for either setting.
 
 ### A long status-bar button label no longer blanks the button
 
-An action button draws its title inside a width cap, under a layout that removes components rendering empty — so a `statusbar.buttons.<name>.label` wider than the six-character default erased the button instead of truncating it. The cap now grows with the label you configure.
+An action button draws its title inside a width cap, under a layout that removes components rendering empty, so a `statusbar.buttons.<name>.label` wider than the six-character default erased the button instead of truncating it. The cap now grows with the label you configure.
 
 ### Splits open where the pane they split from is
 
@@ -1057,51 +1057,51 @@ The internal `resolve-url` subcommand is gone. It had no caller left and was alr
 
 Parking a session is the thing you reach for by hand, mid-turn, so `pause` gets a command of its own again.
 
-`/beacon:session-mode` is gone with it. It was kept model-invocable so a skill owning a phase could enter the matching mode itself, and that caller never showed up — a skill runs `beacon release` in one shell call, where a slash command spends a whole model turn to reach the same subcommand. The skills that actually drive modes were written against the CLI from the start. The collision that folded `/beacon:release` and `/beacon:retro` into it is still resolved, more simply: with no mode command at all, there is nothing left to collide with the skills of those names.
+`/beacon:session-mode` is gone with it. It was kept model-invocable so a skill owning a phase could enter the matching mode itself, and that caller never showed up: a skill runs `beacon release` in one shell call, where a slash command spends a whole model turn to reach the same subcommand. The skills that actually drive modes were written against the CLI from the start. The collision that folded `/beacon:release` and `/beacon:retro` into it is still resolved: with no mode command at all, there is nothing left to collide with the skills of those names.
 
 ### The `/beacon:beacon` wrapper and the beacon skill are gone
 
-Both were doors onto the CLI that cost a model turn to walk through. `! beacon <anything>` from a Claude prompt is faster and needs no reasoning, so the wrapper earned nothing; the skill's two conventions — don't set a status the hooks own, don't narrate the invocation — now live in the `keep-session-labeled` ambient rule, which is in context from SessionStart instead of waiting to be loaded, and its CLI-freshness check was already the SessionStart hook's job.
+Both were doors onto the CLI that cost a model turn to walk through. `! beacon <anything>` from a Claude prompt is faster and needs no reasoning, so the wrapper earned nothing; the skill's two conventions (don't set a status the hooks own, don't narrate the invocation) now live in the `keep-session-labeled` ambient rule, which is in context from SessionStart instead of waiting to be loaded, and its CLI-freshness check was already the SessionStart hook's job.
 
 The `project` slot moved into that rule with them: ask for the *session* or the *tab* to be labeled and Claude sets `project`, the leading line, rather than the task under it.
 
 ### `install-cli` folds into `install`
 
-`install-cli` ran exactly `install`'s first two steps, and it was the one the drift nudge pointed you at — which made it the wrong answer to the situation you reached for it in. The `source` line in `.zshrc` is version-pinned the same way the wrapper is, and only `install` rewrites it, so refreshing the wrapper alone left your shell integration on the previous version. `--dir` moved onto `install`; `beacon completions zsh` still stands alone if that's all you want.
+`install-cli` ran exactly `install`'s first two steps, and it was the one the drift nudge pointed you at, which made it the wrong answer to the situation you reached for it in. The `source` line in `.zshrc` is version-pinned the same way the wrapper is, and only `install` rewrites it, so refreshing the wrapper alone left your shell integration on the previous version. `--dir` moved onto `install`; `beacon completions zsh` still stands alone if that's all you want.
 
 ### `/beacon:install-beacon` for the upgrade path
 
 The one thing a slash command can do that `! beacon` can't: run from the *newly installed* plugin root. A stale wrapper's `beacon install` re-points everything at the version it already names, which is why the freshness nudge has to name a plugin-root door. It now names `/beacon:install-beacon`, and says why the shell path won't do.
 
-The plugin is in the name because the bare `/install-beacon` is what you end up typing, and every sibling plugin that puts a wrapper on `$PATH` needs the same door — a plain `/install` would be a four-way collision the moment a second one shipped.
+The plugin is in the name because the bare `/install-beacon` is what you end up typing, and every sibling plugin that puts a wrapper on `$PATH` needs the same door; a plain `/install` would be a four-way collision the moment a second one shipped.
 
 ### `install-profile` is now `refresh-iterm-profiles`
 
-Same operation, better name. `install-` means the bootstrap now, and this was never one — `beacon install` writes the profiles itself, so you only reach for this to *re-apply* one. It also writes five profiles, not one.
+Same operation, better name. `install-` means the bootstrap now, and this was never one: `beacon install` writes the profiles itself, so you only reach for this to *re-apply* one. It also writes five profiles, not one.
 
-Three things make a rendered profile stale, and only the first is something you did on purpose: a `statusbar.buttons.*.label` edit, a `python3` that moved out from under the baked absolute path (buttons silently stop working, and nothing tells you), and a profile you edited in iTerm2's GUI. After a plugin upgrade, use `/beacon:install-beacon` instead — the profiles embed the plugin's own paths, so re-rendering through a stale wrapper bakes the old version's paths back in.
+Three things make a rendered profile stale, and only the first is something you did on purpose: a `statusbar.buttons.*.label` edit, a `python3` that moved out from under the baked absolute path (buttons silently stop working, and nothing tells you), and a profile you edited in iTerm2's GUI. After a plugin upgrade, use `/beacon:install-beacon` instead: the profiles embed the plugin's own paths, so re-rendering through a stale wrapper bakes the old version's paths back in.
 
 ### A `handoff` mode for a session passing control on
 
-A session mid-transition to another tool, skill, or session had no mode that fit. `paused` freezes the badge identity, and `release` / `retro` / `done` persist until you explicitly resume — so routing a session close into `done` would leave the pane in a terminal mode while the session keeps working past the close.
+A session mid-transition to another tool, skill, or session had no mode that fit. `paused` freezes the badge identity, and `release` / `retro` / `done` persist until you explicitly resume, so routing a session close into `done` would leave the pane in a terminal mode while the session keeps working past the close.
 
-`handoff` borrows the one trait that fits, auto-resume on the next prompt, and none of `paused`'s other semantics: no identity freeze, no watermark on the pane, just its own background and badge color. It enters automatically when tack's session-close skill fires — beacon watches for the skill rather than asking tack's skill text to name beacon, since tack is a separate, tool-agnostic project — and by hand with `beacon handoff [<note>]`.
+`handoff` borrows the one trait that fits, auto-resume on the next prompt, and none of `paused`'s other semantics: no identity freeze, no watermark on the pane, just its own background and badge color. It enters automatically when tack's session-close skill fires (beacon watches for the skill rather than asking tack's skill text to name beacon, since tack is a separate, tool-agnostic project), and by hand with `beacon handoff [<note>]`.
 
 ### The fleet view finds your sessions when beacon is loaded from a directory
 
 Claude Code hands hooks a `CLAUDE_PLUGIN_DATA`. Slash commands, the `~/.local/bin/beacon` wrapper, and the serve service get none, and derived the directory from the checkout's git remote instead, which always lands on the marketplace name. Load beacon from a local directory (`claude --plugin-dir .`) and the two halves disagreed: hooks wrote a full session record to `beacon-inline` while `wip`, the dashboard, and `statusline` read `beacon-chris-peterson` and found nothing there.
 
-It presents as hooks that never fired, because the pane still paints correctly — a hook process holds a consistent view of its own directory. Every hook now records which install is loaded, at `~/.config/beacon/data-dir`, and the env-less callers read that pointer. One that is empty, unreadable, or names a directory since removed reads as absent, so a stale record can't strand every invocation on a dead path.
+It presents as hooks that never fired, because the pane still paints correctly: a hook process holds a consistent view of its own directory. Every hook now records which install is loaded, at `~/.config/beacon/data-dir`, and the env-less callers read that pointer. One that is empty, unreadable, or names a directory since removed reads as absent, so a stale record can't strand every invocation on a dead path.
 
 ### The docs site splits, and the /iterm figures render again
 
-The tab and status-bar figures on `/iterm` shared a `bcn-` class prefix with the stylesheet shipyard links into every plugin page. Its rules landed after the page's own, and its `.bcn-tab` background resolved through a variable these figures never set — so the ready and paused tabs came out white-on-white with the dot stacked over the label, and the branch chip rendered slate while the legend beside it called green "synced". The figures now sit in a `panefig` namespace nothing else claims. On a phone the status-bar strip clipped the `↗ code` button off while the legend still described it; the strip scrolls now. The tab-strip caption, which was 1.41:1 against a light background, takes the page's own text color.
+The tab and status-bar figures on `/iterm` shared a `bcn-` class prefix with the stylesheet shipyard links into every plugin page. Its rules landed after the page's own, and its `.bcn-tab` background resolved through a variable these figures never set, so the ready and paused tabs came out white-on-white with the dot stacked over the label, and the branch chip rendered slate while the legend beside it called green "synced". The figures now sit in a `panefig` namespace nothing else claims. On a phone the status-bar strip clipped the `↗ code` button off while the legend still described it; the strip scrolls now. The tab-strip caption, which was 1.41:1 against a light background, takes the page's own text color.
 
-The home page ran past 11,000px behind a five-entry sidebar, so the status-bar button configuration moves to its own [`/statusbar`](https://chris-peterson.github.io/beacon/#/statusbar) page and the sidebar goes flat. [`/why`](https://chris-peterson.github.io/beacon/#/why) is new: what to weigh beacon against tmux, Zellij, a worktree orchestrator, or a terminal built for agents — including where those win, and the problem none of the category has solved, that sessions have no clear end so any view of them drifts into a list of finished work.
+The home page ran past 11,000px behind a five-entry sidebar, so the status-bar button configuration moves to its own [`/statusbar`](https://chris-peterson.github.io/beacon/#/statusbar) page and the sidebar goes flat. [`/why`](https://chris-peterson.github.io/beacon/#/why) is new: what to weigh beacon against tmux, Zellij, a worktree orchestrator, or a terminal built for agents, including where those win, and the problem none of the category has solved, that sessions have no clear end so any view of them drifts into a list of finished work.
 
 ### beacon won't carry session-to-session messages
 
-Claude Code now has cross-session `SendMessage`, which sits close enough to what the fleet view computes that it's worth answering once: beacon is not going to surface or wrap it. beacon publishes state anything may read, where a message bus owes delivery to a named recipient — a different contract with different failure modes. The messaging primitives are also macOS and Linux only, and the fleet view runs wherever Python does, Windows included.
+Claude Code now has cross-session `SendMessage`, which sits close enough to what the fleet view computes that it's worth answering once: beacon is not going to surface or wrap it. beacon publishes state anything may read, where a message bus owes delivery to a named recipient, a different contract with different failure modes. The messaging primitives are also macOS and Linux only, and the fleet view runs wherever Python does, Windows included.
 
 ### Upgrading
 
@@ -1119,13 +1119,13 @@ Claude Code now has cross-session `SendMessage`, which sits close enough to what
 
 ### `install` wires the status line for you
 
-The status line only exists if `statusLine` is set in Claude Code's settings, and `install` printed that block for you to paste rather than writing it. So the row existed only where the block had been pasted — and pasted into a single project's `.claude/settings.local.json`, it is scoped to that one repo, which from every other repo looks exactly like a status line that never has anything to say.
+The status line only exists if `statusLine` is set in Claude Code's settings, and `install` printed that block for you to paste rather than writing it. So the row existed only where the block had been pasted, and pasted into a single project's `.claude/settings.local.json`, it is scoped to that one repo, which from every other repo looks exactly like a status line that never has anything to say.
 
 `install` now writes the block into `~/.claude/settings.json` itself. It touches that one key and leaves the rest of the file alone, and it will not replace a `statusLine` you already set: if you have your own, it says so and prints beacon's for you to merge by hand.
 
 ### Open tacks reach the status-line row
 
-2.2.1 scoped the row to one Claude session, and read "this session's work" as the tack in progress plus anything completed since the session started. Routes are commonly kept the other way — the tack is filed as `pending` and marked done at ship time — so on those routes nothing qualified while the work was actually happening, and the row stayed empty until the moment it shipped. The issues and CRs the route was carrying never appeared at all.
+2.2.1 scoped the row to one Claude session, and read "this session's work" as the tack in progress plus anything completed since the session started. Routes are commonly kept the other way (the tack is filed as `pending` and marked done at ship time), so on those routes nothing qualified while the work was actually happening, and the row stayed empty until the moment it shipped. The issues and CRs the route was carrying never appeared at all.
 
 The row now takes the route's open work, `pending` as well as `in_progress`. Completed tacks are unchanged: they still need to have landed after the session started, which is what keeps the project's shipping history off a fresh session's row.
 
@@ -1133,25 +1133,25 @@ The row now takes the route's open work, `pending` as well as `in_progress`. Com
 
 ### The status-line link stops naming last session's PR
 
-2.2.1 kept work from earlier sessions off the delivered row but left one way in. The link the row falls back to when a session has touched nothing is the resolved URL, and on a tack route with nothing open, that resolver nominates the most recently completed deliverable — so a fresh session still opened with the PR you merged yesterday, which is what the fix was supposed to end.
+2.2.1 kept work from earlier sessions off the delivered row but left one way in. The link the row falls back to when a session has touched nothing is the resolved URL, and on a tack route with nothing open, that resolver nominates the most recently completed deliverable, so a fresh session still opened with the PR you merged yesterday, which is what the fix was supposed to end.
 
 The link now skips a delivery that landed before the session started and takes the next answer down the chain: an open PR or MR for the current branch, else the branch page, else the repository. On a branch whose PR the route hasn't caught up with, that means the row shows your actual PR instead of the route's last one.
 
-`↖ web` is unaffected — it resolves when you click it, it's asking where the project's work lives rather than what this session did, and an old merged PR is a fine place to land.
+`↖ web` is unaffected: it resolves when you click it, it's asking where the project's work lives rather than what this session did, and an old merged PR is a fine place to land.
 
 ## 2.2.1
 
 ### `↗ code` lands in the right directory again
 
-The button's default command was `code --maximized`. VS Code's CLI has no `--maximized` option — it hands one it doesn't recognize to Electron/Chromium, and on a cold start (nothing running yet) that makes it drop the directory and open a Welcome window. Click the button with VS Code already open and the directory arrived; click it as the day's first launch and you got an empty editor. It never maximized anything either: VS Code exposes no CLI flag for window state.
+The button's default command was `code --maximized`. VS Code's CLI has no `--maximized` option; it hands one it doesn't recognize to Electron/Chromium, and on a cold start (nothing running yet) that makes it drop the directory and open a Welcome window. Click the button with VS Code already open and the directory arrived; click it as the day's first launch and you got an empty editor. It never maximized anything either: VS Code exposes no CLI flag for window state.
 
 The default is now a bare `code`. If you want a maximized window, that's `"window.newWindowDimensions": "maximized"` in VS Code's own settings. Startup flags you add to `statusbar.buttons.code.cmd` are worth checking against your editor's `--help` first, for the same reason.
 
 ### The tab keeps its name when you exit Claude
 
-Ending a session returns the pane to its unmanaged look, which blanks the user vars the tab label and window title interpolate. The name itself was left pointing at them, so the tab went blank on `exit`. It now hands the name back to the interactive title — the project you're in, else the directory — which the shell prompt keeps current.
+Ending a session returns the pane to its unmanaged look, which blanks the user vars the tab label and window title interpolate. The name itself was left pointing at them, so the tab went blank on `exit`. It now hands the name back to the interactive title (the project you're in, else the directory), which the shell prompt keeps current.
 
-The handback also moved ahead of the blanking. It runs over Apple Events, and if it didn't land, the pane stayed blank permanently — the shell sets the name once at startup and skips a pane Claude owns, so nothing came along later to reclaim it. Done in this order, a handback that fails leaves the last label you had instead.
+The handback also moved ahead of the blanking. It runs over Apple Events, and if it didn't land, the pane stayed blank permanently: the shell sets the name once at startup and skips a pane Claude owns, so nothing came along later to reclaim it. Done in this order, a handback that fails leaves the last label you had instead.
 
 If you have a pane already stuck this way, `beacon clear` in it restores the label.
 
@@ -1159,13 +1159,13 @@ If you have a pane already stuck this way, `beacon clear` in it restores the lab
 
 The delivered row is meant to cover one Claude session, and a new session cleared it. Acquisition then refilled it: it read every deliverable and tracker link the bound tack route held, and a route lives as long as the project does. So a session that had shipped nothing opened with a row of merged PRs and old release tags, and there was no way to tell that from a session that had genuinely just landed them.
 
-A tack now reaches the row only if the session touched it: it's the one in progress, or it completed after the session started. The resolved URL is held to the same bar, which matters more than it sounds — with nothing open on a route, that resolver falls back to the most recently completed deliverable, so it kept nominating work from previous sessions. `↖ web` and the status line's own link still go there (a stale click target beats none), but the row no longer counts it as delivered.
+A tack now reaches the row only if the session touched it: it's the one in progress, or it completed after the session started. The resolved URL is held to the same bar, which matters: with nothing open on a route, that resolver falls back to the most recently completed deliverable, so it kept nominating work from previous sessions. `↖ web` and the status line's own link still go there (a stale click target beats none), but the row no longer counts it as delivered.
 
 Nothing to configure, and route hygiene still bounds what the row can show. A pane that was already running keeps its current row until its next session.
 
 ### `prune` collects the per-pane cache too
 
-`prune` swept per-session state and left the pane cache alone — the working-directory handoff files and engagement markers the status-bar buttons and the shell read. Those are named by pane, so one accumulated for every pane you have ever opened and nothing removed them; long-running installs have thousands.
+`prune` swept per-session state and left the pane cache alone: the working-directory handoff files and engagement markers the status-bar buttons and the shell read. Those are named by pane, so one accumulated for every pane you have ever opened and nothing removed them; long-running installs have thousands.
 
 The same `--since` cutoff now applies to both, going by each file's own timestamp (both writers touch them continuously while a pane is alive, so an untouched one belongs to a pane that's gone). Your current pane is always kept.
 
@@ -1175,7 +1175,7 @@ The sweep also picks up the `url-` handoff files 2.0 stopped writing when `↖ w
 
 ### The status line reads your whole tack route
 
-The second status-line row — what the session has to show for itself — was fed by one thing: the deliverable the *current branch* points at. An issue filed from `main` with no branch and no open PR reached it not at all.
+The second status-line row (what the session has to show for itself) was fed by one thing: the deliverable the *current branch* points at. An issue filed from `main` with no branch and no open PR reached it not at all.
 
 It now reads every deliverable and tracker link on the tack route bound to the session, plus the branch resolution as before. Nothing to configure: if a route is bound, the issue you filed through `/anchor:issue` and the CR that answers it are both on the row. With no route bound the row is what the branch resolver finds, as it was.
 
@@ -1183,7 +1183,7 @@ Each entry now carries the project **its own URL** names, so another project's `
 
 ### GitLab work items, epics, and milestones
 
-`/-/work_items/<n>` — GitLab's rename of `/-/issues/<n>`, and what the API hands back — is recognized as an issue. Epics (`&7`) and milestones (`%2`) are classified rather than ignored, and ride the issue line. Sigils are GitLab's own, so a ref reads the way you'd type it into a comment. An epic belongs to a group rather than a repo, so it reads bare when that group is the one your repo lives in — the tracker your own work is filed under shouldn't look like another project's.
+`/-/work_items/<n>` (GitLab's rename of `/-/issues/<n>`, and what the API hands back) is recognized as an issue. Epics (`&7`) and milestones (`%2`) are classified rather than ignored, and ride the issue line. Sigils are GitLab's own, so a ref reads the way you'd type it into a comment. An epic belongs to a group rather than a repo, so it reads bare when that group is the one your repo lives in: the tracker your own work is filed under shouldn't look like another project's.
 
 ### `beacon drop <ref>`
 
@@ -1194,11 +1194,11 @@ $ beacon drop otherproj:#9
 dropped otherproj:#9 (3 deliverable(s) remaining)
 ```
 
-A URL you pasted as a reference looks exactly like one you're working, and the row is capped at eight — so noise left in place evicts real work. Matches the ref as rendered, the bare ref, or the URL. Session-scoped: a fresh session starts clean.
+A URL you pasted as a reference looks exactly like one you're working, and the row is capped at eight, so noise left in place evicts real work. Matches the ref as rendered, the bare ref, or the URL. Session-scoped: a fresh session starts clean.
 
 ### The docs lead with the tab
 
-Since v1.26.0 the pane badge has been opt-in and off by default, and the tab carries what it used to: the color is the ready / busy / blocked state, and the label is `project` over an indented `task`. The docs hadn't caught up — they still introduced the badge as the surface you read a session from.
+Since v1.26.0 the pane badge has been opt-in and off by default, and the tab carries what it used to: the color is the ready / busy / blocked state, and the label is `project` over an indented `task`. The docs hadn't caught up; they still introduced the badge as the surface you read a session from.
 
 [In iTerm2](https://chris-peterson.github.io/beacon/#/iterm/layout) and [The beacon palette](https://chris-peterson.github.io/beacon/#/palette) now describe the tab, and [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm/layout?id=turning-the-badge-on) covers `"badge": "on"` for a one-window-at-a-time workflow, where the badge is still the bigger target.
 
@@ -1223,7 +1223,7 @@ A changed `cmd` applies on the next click. A changed `label` applies on `beacon 
 
 The status bar's project chip showed an abbreviated forge identity with a deliverable ref pinned to it (`gh:acme/widgets#42`). It now shows the project's name (`widgets`).
 
-That makes it work everywhere the old one didn't: outside a git repo, in a repo with no remote, and in a plain shell with no Claude session, the chip names the directory instead of collapsing to nothing. It also takes a `resolve-url` call — a Python start plus a possible `tack` subprocess — off the shell's every-prompt path, since a name needs no URL.
+That makes it work everywhere the old one didn't: outside a git repo, in a repo with no remote, and in a plain shell with no Claude session, the chip names the directory instead of collapsing to nothing. It also takes a `resolve-url` call (a Python start plus a possible `tack` subprocess) off the shell's every-prompt path, since a name needs no URL.
 
 Which deliverable you're on is the [status line](https://chris-peterson.github.io/beacon/#/iterm/layout?id=the-status-line)'s job, where the ref is a clickable link, and the `↖ web` button still opens it.
 
@@ -1231,7 +1231,7 @@ Which deliverable you're on is the [status line](https://chris-peterson.github.i
 
 ## 2.0.0
 
-beacon's per-session context moves off iTerm2 and into the Claude Code status line — a footer Claude renders, that never overlaps terminal output, and that **any** terminal shows. What stays on the iTerm2 strip is what a footer can't do, rebuilt so it can't go stale.
+beacon's per-session context moves off iTerm2 and into the Claude Code status line: a footer Claude renders, that never overlaps terminal output, and that **any** terminal shows. What stays on the iTerm2 strip is what a footer can't do, rebuilt so it can't go stale.
 
 ## The status line is the new home for per-session detail
 
@@ -1246,24 +1246,24 @@ v1.26.0 released 🚀 · #19 closed ✓ · #27 merged 🏁
 
 - **Every ref is a clickable link.** Refs in the current project render bare, refs elsewhere are qualified (`otherproj:#75`), so a session crossing repos still reads unambiguously.
 - **Delivered work stays on screen.** Shipping is rare and it's what a session has to show for itself, so a merged CR, a closed issue, and a published release each keep their place, reading by verb and glyph in the green beacon reserves for releases.
-- **Open change requests carry a title** — the same string the badge shows, so the two surfaces never describe one PR differently.
+- **Open change requests carry a title**: the same string the badge shows, so the two surfaces never describe one PR differently.
 - **Issues trail, dimmed.** On GitHub a CR and an issue are both `#<n>`, so the line and the weight are what separate them.
 
-"Delivered" follows your [tack](https://github.com/chris-peterson/tack) record: a tack that's `done` promotes its deliverable. That means it tracks the work *you* logged rather than the forge, and can drift if a tack goes stale — the trade is that the row costs no network call, which matters because it renders on every prompt. Releases need no tack: a release tag only exists once published.
+"Delivered" follows your [tack](https://github.com/chris-peterson/tack) record: a tack that's `done` promotes its deliverable. That means it tracks the work *you* logged rather than the forge, and can drift if a tack goes stale. The trade is that the row costs no network call, which matters because it renders on every prompt. Releases need no tack: a release tag only exists once published.
 
 The pause reason landed here first (1.27-era, #15); this builds the rest on top.
 
 ## The iTerm2 strip is smaller and steadier
 
-`↖ web · project ⟷ branch ↗ code` — the project identity now sits beside the branch it describes.
+`↖ web · project ⟷ branch ↗ code`: the project identity now sits beside the branch it describes.
 
-- **`↖ web` resolves when you click it.** No cached URL means it can't disagree with the chip beside it, which is what made it flaky before (#5). It works in *any* pane — including a plain shell with no Claude session, which is exactly when you want to jump to a repo's web view.
+- **`↖ web` resolves when you click it.** No cached URL means it can't disagree with the chip beside it, which is what made it flaky before (#5). It works in *any* pane, including a plain shell with no Claude session, which is exactly when you want to jump to a repo's web view.
 - **Both buttons are configurable.** `code_app` / `code_args` choose the editor (default `code --maximized`); `web_cmd` hands the web button to your own command, e.g. `"git web"`. Both are read when you click, so changes take effect with no reinstall.
 - **`⇄ review` is gone**, and so is the feature behind it. `beacon review`, its moor sidecar contract, the anchor delegation, and the `moor` / `anchor` soft dependencies are all removed. It went unused, and reviewing a diff is a job other tools already own.
 
 ## One command for session modes
 
-`/beacon:release`, `/beacon:retro`, `/beacon:pause`, and `/beacon:done` become **`/beacon:session-mode <mode>`**. `/release` and `/retro` are common enough verbs that a bare invocation was ambiguous against the ai-sdlc skills of the same name — and beacon's wrappers were the interlopers. The CLI is unchanged: `beacon pause`, `beacon retro`, and friends work exactly as before.
+`/beacon:release`, `/beacon:retro`, `/beacon:pause`, and `/beacon:done` become **`/beacon:session-mode <mode>`**. `/release` and `/retro` are common enough verbs that a bare invocation was ambiguous against the widgets skills of the same name, and beacon's wrappers were the interlopers. The CLI is unchanged: `beacon pause`, `beacon retro`, and friends work exactly as before.
 
 ## Upgrading
 
@@ -1295,7 +1295,7 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 
 ### Features
 - Dashboard cards let you select and copy text without collapsing: a mouse-up after selecting turn text keeps the selection instead of toggling the card open/closed.
-- The expanded turn now has its own copy button — it copies the full fetched turn text when the card has it, otherwise the on-screen excerpt, so a copy never returns less than what you see.
+- The expanded turn now has its own copy button: it copies the full fetched turn text when the card has it, otherwise the on-screen excerpt, so a copy never returns less than what you see.
 - Each real Claude session's card gains a `resume` row carrying its `claude --resume <id>` command, copyable in one click.
 - New pop-out mode (Chromium browsers): an always-on-top floating panel that starts with the sessions waiting on you and pulls in others as they show activity while it's open. Clicking a row raises that session's iTerm2 window rather than expanding detail, and the panel auto-fits its height to its contents. A leave-confirmation guards against a stray tab close silently tearing the panel down.
 
@@ -1308,7 +1308,7 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 ### Features
 
 - Each session mode now paints a richer, illustrated watermark on the iTerm2 pane: a rocket while releasing, a checklist clipboard during a retro, a checkered finish-flag when done, and a pause button when paused. The retro mode, previously plain, now carries a mark of its own.
-- The fleet dashboard's mode cards now show the same watermark the pane paints — served from the actual generated asset — so a card and its pane always match instead of drifting apart.
+- The fleet dashboard's mode cards now show the same watermark the pane paints (served from the actual generated asset), so a card and its pane always match instead of drifting apart.
 
 ### Other
 
@@ -1324,12 +1324,12 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 
 ### Notes
 
-- anchor is an optional soft dependency, detected via Claude Code's plugin registry. Without anchor — or on a clean tree — `beacon review` stays inert on the default branch, exactly as before. Feature-branch review (branch vs. default) is unchanged.
+- anchor is an optional soft dependency, detected via Claude Code's plugin registry. Without anchor, or on a clean tree, `beacon review` stays inert on the default branch, exactly as before. Feature-branch review (branch vs. default) is unchanged.
 
 ## 1.22.1
 
 ### Fixes
-- The iTerm2 window title on a Claude session now reliably shows `project · task`, mirroring the badge. Previously — on setups with many open windows — a plain shell's startup title write could win a race on the shared session-name surface and leave an engaged pane stuck showing the project (or cwd) with no task. The shell now defers to the plugin on a Claude-owned pane.
+- The iTerm2 window title on a Claude session now reliably shows `project · task`, mirroring the badge. Previously, on setups with many open windows, a plain shell's startup title write could win a race on the shared session-name surface and leave an engaged pane stuck showing the project (or cwd) with no task. The shell now defers to the plugin on a Claude-owned pane.
 
 ### Other
 - Spec (TITLE-04) and CLAUDE.md reconciled to the new deferral mechanism.
@@ -1343,7 +1343,7 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 
 ## Web button follows the session's tack route
 
-- The ↖ web URL now resolves by the session→route pin — the same route the fleet-view chip shows — instead of matching only the git branch slug. A route pinned to the session whose slug differs from the branch (e.g. an issue tacked mid-session) previously resolved to the branch tree; it now opens the pinned deliverable.
+- The ↖ web URL now resolves by the session→route pin (the same route the fleet-view chip shows) instead of matching only the git branch slug. A route pinned to the session whose slug differs from the branch (e.g. an issue tacked mid-session) previously resolved to the branch tree; it now opens the pinned deliverable.
 
 ## Buttons report when there's nothing to open
 
@@ -1351,16 +1351,16 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 
 ## Upgrade note
 
-- Because per-session state now keys on the pane GUID rather than the full session id, sessions that were already open before upgrading do not carry their prior task/status across — they re-establish it on their next turn. Newly started sessions are unaffected.
+- Because per-session state now keys on the pane GUID rather than the full session id, sessions that were already open before upgrading do not carry their prior task/status across; they re-establish it on their next turn. Newly started sessions are unaffected.
 
 ## 1.21.0
 
 ## Window title, /rename, and wander rendering
 
 - Interactive panes now show the current directory in the window title when outside a project, instead of going blank.
-- Claude Code's `/rename` now updates the beacon task label — it's treated as shorthand for `beacon set task`, sharing one slot where the most recent of the two wins.
+- Claude Code's `/rename` now updates the beacon task label: it's treated as shorthand for `beacon set task`, sharing one slot where the most recent of the two wins.
 - The plugin reclaims the Claude-pane title once per session (a one-shot on the first turn boundary), so the shell's backgrounded startup title write can no longer clobber it.
-- The wander overlay reads `home @ where · what` — a ` @ ` separator symmetric with the ` · ` task separator — instead of the old `home · @where: what`.
+- The wander overlay reads `home @ where · what` (a ` @ ` separator symmetric with the ` · ` task separator) instead of the old `home · @where: what`.
 
 ## Export / import state backup
 
@@ -1375,16 +1375,16 @@ Fixes along the way: the `↗ code` button failed for anyone whose editor lives 
 
 ## Window title
 
-A `/rename`d window kept losing its project context, leaving concurrent sessions hard to tell apart in Mission Control, the window switcher, and the Dock. The OS window title now carries `project · task` — the same as the badge — and it sticks.
+A `/rename`d window kept losing its project context, leaving concurrent sessions hard to tell apart in Mission Control, the window switcher, and the Dock. The OS window title now carries `project · task`, the same as the badge, and it sticks.
 
-- **`project · task` in the title bar** — set via the iTerm2 session *name*, so it survives Claude Code's `/rename` and auto-titles. The profile disables terminal-set titles (`Allow Title Setting`), so nothing overwrites it; beacon owns the name out-of-band through Apple Events.
-- **Reuses the badge template** — the title and badge are one source, so they never drift, and the title re-evaluates live as the project / task change.
-- **Interactive shells get it too** — a plain `beacon-dev` pane shows its project in the title (project only; there's no task outside a Claude session).
-- **Profiles unchanged** — no profile renames, same switch keys, so nothing else moves.
+- **`project · task` in the title bar**: set via the iTerm2 session *name*, so it survives Claude Code's `/rename` and auto-titles. The profile disables terminal-set titles (`Allow Title Setting`), so nothing overwrites it; beacon owns the name out-of-band through Apple Events.
+- **Reuses the badge template**: the title and badge are one source, so they never drift, and the title re-evaluates live as the project / task change.
+- **Interactive shells get it too**: a plain `beacon-dev` pane shows its project in the title (project only; there's no task outside a Claude session).
+- **Profiles unchanged**: no profile renames, same switch keys, so nothing else moves.
 
 ## Badge default
 
-- **At-rest badge is now gray by default** — a fresh pane reads the dev-cycle gray before its first status render, instead of inheriting the parent profile's badge color.
+- **At-rest badge is now gray by default**: a fresh pane reads the dev-cycle gray before its first status render, instead of inheriting the parent profile's badge color.
 
 Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md).
 
@@ -1394,25 +1394,25 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 - **Statuses are now SDLC cycles.** The everyday **dev** cycle (`idle` /
   `working` / `waiting`) rides the base `beacon-dev` profile with a dynamic
-  badge stoplight; the mode cycles — `pause`, `release`, `retro`, `done` — each
+  badge stoplight; the mode cycles (`pause`, `release`, `retro`, `done`) each
   own a dedicated profile. `wrapping` is renamed **`retro`** and `releasing` is
   renamed **`release`**; the base profile is renamed `beacon` → `beacon-dev` and
   the mode profiles to `beacon-pause` / `beacon-release` / `beacon-retro` /
   `beacon-done` (an upgrade sweeps the old profile files).
-- **`release` mode** — a new cycle for a ship-it / release flow (`beacon release`
-  or `/beacon:release`): a deep launch-sky navy pane with a faint rocket
+- **`release` mode**: a new cycle for a ship-it / release flow (`beacon release`
+  or `/beacon:release`): a deep navy pane with a faint rocket
   watermark under a pinned **green** badge.
 - **Green leaves the dev stoplight.** At rest the badge is now a neutral **gray**
   (a session's known default before its first turn), so green is reserved for
   `release` and reads unambiguously as "shipping."
-- **`done` drops the task.** A completed session shows its project alone —
-  the task slot is suppressed while `done` (reversibly, STATE-12) — plus a
+- **`done` drops the task.** A completed session shows its project alone
+  (the task slot is suppressed while `done`, reversibly, STATE-12), plus a
   dim-gray badge and the powered-off pane.
 - **`retro` recolored** to a white badge on its muted-green pane.
 - **No more `||` badge glyph.** Every cycle now reads by background + color
   alone, consistently across the pane, the dashboard card, and the fleet list;
   the pause text glyph is gone.
-- **New docs page — [The beacon palette](https://chris-peterson.github.io/beacon/#/palette)** — the cycle
+- **New docs page: [The beacon palette](https://chris-peterson.github.io/beacon/#/palette)**, the cycle
   taxonomy and every color, plus refreshed fleet screenshots.
 
 ### Spec & internals
@@ -1429,23 +1429,23 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 ### Fleet dashboard: grouping, project stacks, and a needs-you band
 
-- **Automatic grouping** — the fleet view now groups sessions by their
+- **Automatic grouping**: the fleet view now groups sessions by their
   correlated route group; the flat/group toggle is gone. Sessions with no route
   group fall into an unlabeled section at the bottom.
-- **Same-project stacks** — multiple sessions for one project collapse into an
+- **Same-project stacks**: multiple sessions for one project collapse into an
   overlapping stack, newest in front, with the rest brought forward on click or
   Tab (an animated raise). Only the front card exposes its controls; a behind
   card is click-anywhere-to-raise and previews its task + latest turn on hover.
   An expanded card holds the front slot so a sibling's newer turn can't collapse
   what you're reading.
-- **Needs-you band** — genuinely blocked sessions are hoisted into a pinned band
+- **Needs-you band**: genuinely blocked sessions are hoisted into a pinned band
   above the calmer fleet. A parked/wrapping/done session stays in the fleet (its
   mode outranks a lingering attention marker), so it reads as set-aside rather
   than as needing you. Clicking a card's `waiting` pill focuses the session.
-- **Mode-card treatment** — a paused/done card echoes its iTerm2 pane: a muted
+- **Mode-card treatment**: a paused/done card echoes its iTerm2 pane: a muted
   tint plus a large, faint, centered watermark (`||` for paused, a power-off ring
   for done); wrapping is tint-only.
-- **Inline forget** — the card close (×) opens a small confirmation fly-out
+- **Inline forget**: the card close (×) opens a small confirmation fly-out
   instead of the browser `confirm()` dialog (Keep / Esc / click-away to dismiss).
 
 ### Spec & internals
@@ -1468,7 +1468,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
   sidecar verdict (comments + exit code) on stdout. On the default branch, or
   outside a git repo, it reports there's nothing to review instead of opening an
   empty diff.
-- The status bar gains a centered **`⇄ review`** action chip — an iTerm2 Send
+- The status bar gains a centered **`⇄ review`** action chip: an iTerm2 Send
   Text action that types `beacon review` into the pane. In a shell it opens moor
   for a manual review; in a live Claude session Claude runs it and acts on the
   `fix-now` comments, closing the review loop from one click. `bin/beacon-iterm`
@@ -1478,7 +1478,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 ### Fleet dashboard
 
-- Turn cards now render markdown **links** — `[text](url)` becomes a clickable
+- Turn cards now render markdown **links**: `[text](url)` becomes a clickable
   link (new tab), including code chips inside links (`[`sha`](url)`) and links
   in table cells. Hrefs are scheme-sanitized (http(s)/relative/anchor only) and
   quote-escaped, so a `javascript:`/`data:` URL falls through as plain text.
@@ -1488,7 +1488,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 ### Session control
 
 - `beacon pause --clear-screen` clears the iTerm2 session's screen **and**
-  scrollback (the Cmd+K / "Clear Buffer" equivalent) alongside pausing — for a
+  scrollback (the Cmd+K / "Clear Buffer" equivalent) alongside pausing, for a
   clean stand-down, e.g. the retro launcher parking a spent session. It degrades
   gracefully outside iTerm2 or with no reachable tty: the pause still applies,
   the clear is skipped. (#8)
@@ -1497,8 +1497,8 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 ### Fleet dashboard: rich turn rendering
 
-- Expanded session cards render Claude's replies as markdown — bold, inline &
-  fenced code, bulleted/numbered lists, headings, and GFM tables — in a quoted
+- Expanded session cards render Claude's replies as markdown (bold, inline &
+  fenced code, bulleted/numbered lists, headings, and GFM tables) in a quoted
   transcript panel; the collapsed one-liner renders inline bold/code too. All
   rendering escapes before it formats, so turn text can't inject markup.
 - The session description renders its own _italic_ and line breaks (beacon's
@@ -1521,7 +1521,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 ## 1.14.0
 
 ### Features
-- **Fleet dashboard overhaul.** Visual weight now tracks how much a session needs you: a blocked or attention-flagged session keeps its red glow + `WAITING` flag wherever it sits, sorts first within its group, and floats its group to the top — no separate band. A grouping toggle (flat / group / project) in the masthead governs the whole view.
+- **Fleet dashboard overhaul.** Visual weight now tracks how much a session needs you: a blocked or attention-flagged session keeps its red glow + `WAITING` flag wherever it sits, sorts first within its group, and floats its group to the top, with no separate band. A grouping toggle (flat / group / project) in the masthead governs the whole view.
 - **`/color` as the card's identity.** `agent_color` fills the whole title row behind the project icon (which stands in for the status dot); the status color moves to a bottom bar so identity and status don't compete.
 - **Click-to-expand.** Reveals the full task, the full turn, and a detail block (cwd, turn time, session id) with copy buttons; a dedicated `go →` button focuses the window; the route chip is dropped when it just echoes the project.
 - **Full turn on demand (WIP-14).** The plugin persists each turn's full text (`latest_turn_full`) and serves it at `GET /turn/<hash>`; the dashboard fetches it on expand. The bulk `/wip.json` stays single-line (WIP-11), so the cross-session feed stays small.
@@ -1533,7 +1533,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 ## 1.13.0
 
 ### Features
-- **`/rename` and `/color` are now beacon signals.** Renaming a session with Claude Code's `/rename` sets its fleet-view **task** — ranked just below an explicit `beacon task`, above the PR-title and branch fallbacks — so the label you reach for naturally shows up across the fleet without a separate `beacon` command. Claude's auto-generated session title becomes the *weakest* task fallback, so a session you never labeled still carries a readable headline. Setting a session's **`/color`** surfaces that color in the fleet view (a swatch on each dashboard card, and an `agent_color` field in `/wip.json`); it does **not** repaint the badge, which stays the ready / busy / blocked status light.
+- **`/rename` and `/color` are now beacon signals.** Renaming a session with Claude Code's `/rename` sets its fleet-view **task** (ranked just below an explicit `beacon task`, above the PR-title and branch fallbacks), so the label you reach for naturally shows up across the fleet without a separate `beacon` command. Claude's auto-generated session title becomes the *weakest* task fallback, so a session you never labeled still carries a readable headline. Setting a session's **`/color`** surfaces that color in the fleet view (a swatch on each dashboard card, and an `agent_color` field in `/wip.json`); it does **not** repaint the badge, which stays the ready / busy / blocked status light.
 
 ### Fixes
 - A Claude session that ends (or is cleared with `beacon clear`) while in a mode state (`paused` / `wrapping` / `done`) now restores its pane background instead of keeping the mode's darkened background.
@@ -1541,7 +1541,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 ## 1.12.0
 
 ### Features
-- Sessions can now be marked **done** — a "session complete, ready to hand off" mode for a session that has finished and delegated (e.g. a retro that stands down). The pane drops to a near-black "powered off" look with a faint power-symbol watermark and a dim purple badge. Set it with `beacon done [note]` or `/beacon:done`. Like `wrap`, it persists until you `resume`/`clear` rather than auto-resuming on the next prompt, and it stays pinned in the fleet view as deliberately set aside.
+- Sessions can now be marked **done**: a "session complete, ready to hand off" mode for a session that has finished and delegated (e.g. a retro that stands down). The pane drops to a near-black "powered off" look with a faint power-symbol watermark and a dim purple badge. Set it with `beacon done [note]` or `/beacon:done`. Like `wrap`, it persists until you `resume`/`clear` rather than auto-resuming on the next prompt, and it stays pinned in the fleet view as deliberately set aside.
 
 ## 1.11.1
 
@@ -1552,7 +1552,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 ### Fixes
 - Fleet view no longer shows a raw `<task-notification>` as a session's latest turn. Harness wake-ups (prompts that arrive with a leading angle-bracket tag) are skipped at UserPromptSubmit, so the play-by-play keeps showing the prior real turn; the status still flips to working.
-- Clicking a fleet-view card now focuses a session whose window was minimized to the Dock — the window is de-miniaturized before select/activate (a no-op when it wasn't minimized).
+- Clicking a fleet-view card now focuses a session whose window was minimized to the Dock: the window is de-miniaturized before select/activate (a no-op when it wasn't minimized).
 
 ### Other
 - Trimmed the `beacon` skill's `description` frontmatter to cut the always-resident context cost; the trigger enumeration is dropped in favor of one what/when sentence.
@@ -1569,7 +1569,7 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 ### Features
 - Paused sessions now dim the whole pane: the background switches to a muted
   purple with a faint `||` watermark, so a parked pane is recognizable at a
-  glance — not just by its badge color. The `||` glyph also anchors the session
+  glance, not just by its badge color. The `||` glyph also anchors the session
   on the badge and in the fleet view (`wip` / `watch` / dashboard).
 - New `wrapping` mode for a post-work follow-up / retro phase. `beacon wrap
   [note]` (or `/beacon:wrap`) gives the session a muted-green pane background
@@ -1583,11 +1583,11 @@ Full detail in the [CHANGELOG](https://github.com/chris-peterson/beacon/blob/mai
 
 ## 1.9.0
 
-Each fleet card now shows what a session is actually doing — not just its project and status — without relying on the agent to label itself.
+Each fleet card now shows what a session is doing, beyond its project and status, without relying on the agent to label itself.
 
 ### Features
 
-- **The fleet view surfaces each session's most recent turn.** Every card now carries a `latest_turn` line — the latest human prompt (`›`) or agent reply (`↳`) — derived automatically from the session's transcript at hook time, so a session that never sets a task label still shows live context. The dashboard ellipsizes the line to the card's width. The task label becomes the durable headline layered over this play-by-play (WIP-11).
+- **The fleet view surfaces each session's most recent turn.** Every card now carries a `latest_turn` line, the latest human prompt (`›`) or agent reply (`↳`), derived automatically from the session's transcript at hook time, so a session that never sets a task label still shows live context. The dashboard ellipsizes the line to the card's width. The task label becomes the durable headline layered over this play-by-play (WIP-11).
 
 ### Other
 
@@ -1605,11 +1605,11 @@ Makes the fleet view a first-class cross-platform surface, so beacon is useful b
 
 ### Reference dashboard
 
-- `beacon serve` now hosts a self-contained reference dashboard at `http://127.0.0.1:8787/` (data still at `/wip.json`). Open it in any browser to see your fleet — no dashboard of your own required. Clone and restyle it, or point your own consumer at the same `/wip.json` + `/focus` + `/forget` contract.
+- `beacon serve` now hosts a self-contained reference dashboard at `http://127.0.0.1:8787/` (data still at `/wip.json`). Open it in any browser to see your fleet, with no dashboard of your own required. Clone and restyle it, or point your own consumer at the same `/wip.json` + `/focus` + `/forget` contract.
 
 ### Standalone labeling
 
-- A `keep-session-labeled` ambient rule (emitted at SessionStart) keeps each session's task label current as the work shifts, so the fleet view has signal without tack or recipes — and defers to tack when a route is bound.
+- A `keep-session-labeled` ambient rule (emitted at SessionStart) keeps each session's task label current as the work shifts, so the fleet view has signal without tack or recipes, and defers to tack when a route is bound.
 
 ### Tooling
 
@@ -1622,8 +1622,8 @@ Docs and the spec (WIP-10) updated to match.
 
 ### Features
 
-- **The fleet view shows which tack each session is driving, not just which route.** `wip` records now carry a `tacks` field — the route-qualified tacks the session is bound to (in touch order, last = current focus), each tagged `existing` (work resumed on a tracked tack) or `emerging` (spun up fresh this session). Pairs with tack 0.18.0, which records the binding (WIP-09).
-- **`/beacon:pause [note]`** — a dedicated slash command to park a session in one keystroke, instead of `/beacon:beacon pause`. The badge flips to the paused color immediately (CMD-18).
+- **The fleet view shows which tack each session is driving, not just which route.** `wip` records now carry a `tacks` field: the route-qualified tacks the session is bound to (in touch order, last = current focus), each tagged `existing` (work resumed on a tracked tack) or `emerging` (spun up fresh this session). Pairs with tack 0.18.0, which records the binding (WIP-09).
+- **`/beacon:pause [note]`**: a dedicated slash command to park a session in one keystroke, instead of `/beacon:beacon pause`. The badge flips to the paused color immediately (CMD-18).
 
 ### Performance
 
@@ -1631,17 +1631,17 @@ Docs and the spec (WIP-10) updated to match.
 
 ### Fixes
 
-- **Pausing no longer makes a network call or drops your label.** Setting `paused` froze the badge's identity by re-resolving from scratch — which ran a `gh`/`glab` PR-title lookup in that hot path and discarded any active project/task override. It now freezes what the badge already shows (STATE-03).
+- **Pausing no longer makes a network call or drops your label.** Setting `paused` froze the badge's identity by re-resolving from scratch, which ran a `gh`/`glab` PR-title lookup in that hot path and discarded any active project/task override. It now freezes what the badge already shows (STATE-03).
 
 ## 1.6.0
 
 ### Features
-- **Forget a single stale session from the fleet view.** A long-idle pane lingers in the dashboard — a paused or aged-out session you've moved on from. `prune` sweeps these in bulk by age; the new `forget <hash>` removes one named session now, and the always-on `serve` process exposes it as `POST /forget` so the dashboard's close button on a timed-out card deletes that session's state directly (FORGET-01..03). The route shares the `/focus` access model — loopback bind, DNS-rebind defense, the same origin allowlist — since it's a mutating endpoint. A forgotten session repaints on its next hook event, exactly as after a prune; forgetting a session with no state on disk is a no-op.
+- **Forget a single stale session from the fleet view.** A long-idle pane lingers in the dashboard: a paused or aged-out session you've moved on from. `prune` sweeps these in bulk by age; the new `forget <hash>` removes one named session now, and the always-on `serve` process exposes it as `POST /forget` so the dashboard's close button on a timed-out card deletes that session's state directly (FORGET-01..03). The route shares the `/focus` access model (loopback bind, DNS-rebind defense, the same origin allowlist), since it's a mutating endpoint. A forgotten session repaints on its next hook event, exactly as after a prune; forgetting a session with no state on disk is a no-op.
 
 ## 1.5.0
 
 ### Changes
-- **Paused sessions stay in the fleet view however long they're parked.** `wip` / `serve` window by last-activity, so a session you set aside for days used to drop out of the snapshot once it aged past the window. A `paused` session is now exempt from the window — parking is deliberate, not idle decay — so it survives past the cutoff where an idle/working session of the same age is dropped (WIP-03). A dashboard can surface these alongside active work (the wip dashboard pins them to the right).
+- **Paused sessions stay in the fleet view however long they're parked.** `wip` / `serve` window by last-activity, so a session you set aside for days used to drop out of the snapshot once it aged past the window. A `paused` session is now exempt from the window (parking is deliberate, not idle decay), so it survives past the cutoff where an idle/working session of the same age is dropped (WIP-03). A dashboard can surface these alongside active work (the wip dashboard pins them to the right).
 
 ## 1.4.0
 
@@ -1651,52 +1651,52 @@ Docs and the spec (WIP-10) updated to match.
 ## 1.3.0
 
 ### Features
-- **Exiting a session now clears its badge.** A new `SessionEnd` hook disengages the pane when you leave Claude — the badge text and color clear and the pane looks like an unmanaged terminal again, instead of holding the last-painted color and project. `/clear` and resume are exempt, since those re-engage the same pane immediately. (Exit is best-effort: a hard crash or `kill -9` can't run the hook, so a stale badge there clears on the pane's next beacon-aware action.)
+- **Exiting a session now clears its badge.** A new `SessionEnd` hook disengages the pane when you leave Claude: the badge text and color clear and the pane looks like an unmanaged terminal again, instead of holding the last-painted color and project. `/clear` and resume are exempt, since those re-engage the same pane immediately. (Exit is best-effort: a hard crash or `kill -9` can't run the hook, so a stale badge there clears on the pane's next beacon-aware action.)
 
 ### Changes
-- **The `@<project>` wander marker now clears when a session comes home.** The marker is live "where the session is working" context, so it shows only while the session is actively working. At rest — idle, blocked on a prompt, or paused — the task re-resolves from the session's anchor and the marker drops. A session that returns home and finishes its turn clears the marker at Stop, and a session that blocks or ends while away no longer freezes a stale marker into the fleet view.
+- **The `@<project>` wander marker now clears when a session comes home.** The marker is live "where the session is working" context, so it shows only while the session is actively working. At rest (idle, blocked on a prompt, or paused), the task re-resolves from the session's anchor and the marker drops. A session that returns home and finishes its turn clears the marker at Stop, and a session that blocks or ends while away no longer freezes a stale marker into the fleet view.
 
 ## 1.2.0
 
 ### Changes
-- **A wandering session now shows a compact `@<project>` marker plus what it's doing there.** When a session works in another project mid-task, the task slot read the full live path (`beacon: ~/src/getty/cpeterson/ai-sdlc`). It now reads `beacon: @ai-sdlc: <task>`, where the task is your explicit override if set, otherwise the PR title or branch resolved at the wandered location. With nothing to show there, the marker stands alone (`beacon: @ai-sdlc`). The marker now also coexists with an override instead of being suppressed by it.
+- **A wandering session now shows a compact `@<project>` marker plus what it's doing there.** When a session works in another project mid-task, the task slot read the full live path (`beacon: ~/src/acme/widgets`). It now reads `beacon: @widgets: <task>`, where the task is your explicit override if set, otherwise the PR title or branch resolved at the wandered location. With nothing to show there, the marker stands alone (`beacon: @widgets`). The marker now also coexists with an override instead of being suppressed by it.
 
 ## 1.1.0
 
 ### Features
-- **A session that works in another project now shows where it went.** When a Claude session changes directory into a different project mid-task, the badge's task slot surfaces that location (e.g. `beacon: ~/src/ai-sdlc`) as secondary context. Navigating within the session's own project keeps the branch/PR task; an explicit task you've set always wins.
+- **A session that works in another project now shows where it went.** When a Claude session changes directory into a different project mid-task, the badge's task slot surfaces that location (e.g. `beacon: ~/src/widgets`) as secondary context. Navigating within the session's own project keeps the branch/PR task; an explicit task you've set always wins.
 
 ### Fixes
 - **The badge project stays anchored to where the session started.** A session that changed directory mid-task used to repaint its badge with the new directory's project, so glancing across panes no longer identified each session by its home project. The badge now pins the project to the directory the session began in, and `beacon show` reports the same project and task the badge paints.
-- **A dashboard deployed to a private host can now focus sessions on click.** `POST /focus` extends its origin allowlist (FOCUS-04) with the `focus_origins` list in `~/.config/beacon/config.json` — so a dashboard served off-machine (e.g. GitLab/Cloudflare Pages) clears the browser's CORS preflight without committing the origin to the source. The config is read at serve startup and persists across reinstalls. Reading `wip.json` was already open to any origin; only focus-on-click was gated.
+- **A dashboard deployed to a private host can now focus sessions on click.** `POST /focus` extends its origin allowlist (FOCUS-04) with the `focus_origins` list in `~/.config/beacon/config.json`, so a dashboard served off-machine (e.g. GitLab/Cloudflare Pages) clears the browser's CORS preflight without committing the origin to the source. The config is read at serve startup and persists across reinstalls. Reading `wip.json` was already open to any origin; only focus-on-click was gated.
 
 ## 1.0.0
 
 ### Breaking Changes
-- **The iTerm2 marginalia overlay is retired in favor of the externalized fleet view.** Its raster-to-file rendering, permission grants, behind-text layering, and color-banding made it a poor surface. Removed with it: the `note` / background-image / clear-screen subcommands, the `_compose.py` helper and the Pillow dependency, the four per-state dynamic profiles and the `!` / `?` watermark assets, and the exclusive-configuration / default-profile / background-image-trust machinery. beacon no longer issues any `defaults write` — badge and tab color paint via OSC on a single base profile, activated by a runtime `set-profile`.
+- **The iTerm2 marginalia overlay is retired in favor of the externalized fleet view.** Its raster-to-file rendering, permission grants, behind-text layering, and color-banding made it a poor surface. Removed with it: the `note` / background-image / clear-screen subcommands, the `_compose.py` helper and the Pillow dependency, the four per-state dynamic profiles and the `!` / `?` watermark assets, and the exclusive-configuration / default-profile / background-image-trust machinery. beacon no longer issues any `defaults write`: badge and tab color paint via OSC on a single base profile, activated by a runtime `set-profile`.
 
 ### Features
 - **Click a session in the fleet dashboard to raise its iTerm2 window** (FOCUS-01..04). `beacon-iterm focus <id>` brings the window forward; the iTerm2 session GUID is recorded at SessionStart and exposed as a per-session `focusable` flag in `wip.json` without leaking the GUID. `serve` adds `POST /focus`, which resolves the hash to the handle server-side behind a loopback `Host` check and an `Origin` allowlist; `GET /wip.json` keeps its permissive CORS.
-- **The session description is now recall context in the fleet view** rather than paint on the pane — it survives the overlay's removal.
+- **The session description is now recall context in the fleet view** rather than paint on the pane, so it survives the overlay's removal.
 - **`task` is part of the `wip.json` session payload** (WIP-01). One of beacon's three core signals (project / task / status), it was previously dropped from the payload, so the fleet view and the goals/WIP dashboard couldn't show what each session was working on. Sourced from the last-rendered snapshot, preferring a fresher explicit override.
 
 ## 0.23.0
 
 ### Features
-- **The fleet dashboard (`wip` / `watch` / `serve`) now works in any terminal.** It reads across all sessions and paints no pane, so it no longer depends on iTerm2 — only the per-pane painting (badge, status bar, overlay) needs macOS + iTerm2.
+- **The fleet dashboard (`wip` / `watch` / `serve`) now works in any terminal.** It reads across all sessions and paints no pane, so it no longer depends on iTerm2; only the per-pane painting (badge, status bar, overlay) needs macOS + iTerm2.
 - **`beacon install` is terminal-aware.** It detects iTerm2 (macOS + `iTerm.app`); when absent it installs only the CLI wrapper and completions and points you at the fleet dashboard, skipping the iTerm2-only setup instead of attempting it.
-- **New `beacon serve install|uninstall|status`.** Keeps `serve` always running under a launchd agent (macOS) or systemd user unit (Linux) so an external dashboard has a stable endpoint that restarts on crash. Opt-in — `install` doesn't start it.
+- **New `beacon serve install|uninstall|status`.** Keeps `serve` always running under a launchd agent (macOS) or systemd user unit (Linux) so an external dashboard has a stable endpoint that restarts on crash. Opt-in: `install` doesn't start it.
 
 ### Fixes
 - **`beacon install` no longer reports success for an iTerm2 preference it couldn't set.** On a non-macOS box the `PerPaneBackgroundImage` write silently no-ops; install now reports the failure instead of printing a checkmark.
 
 ### Other
-- Repositioned the spec and docs around beacon's two surfaces — the terminal-agnostic fleet view and the iTerm2 per-pane adapter. `docs/README.md` gains a Fleet dashboard section and an opt-in always-on service section.
+- Repositioned the spec and docs around beacon's two surfaces: the terminal-agnostic fleet view and the iTerm2 per-pane adapter. `docs/README.md` gains a Fleet dashboard section and an opt-in always-on service section.
 
 ## 0.22.0
 
 ### Breaking Changes
-- **Bare `beacon` (no arguments) now prints the usage text** (to stderr, exit 1) instead of running `show` (CMD-17). Run `beacon show` for the resolved signal state. The `/beacon:beacon` slash command is unaffected — its shim passes `show` when given no arguments.
+- **Bare `beacon` (no arguments) now prints the usage text** (to stderr, exit 1) instead of running `show` (CMD-17). Run `beacon show` for the resolved signal state. The `/beacon:beacon` slash command is unaffected; its shim passes `show` when given no arguments.
 
 ### Features
 - **`beacon-iterm` with no arguments now prints the full help text** (to stderr, exit 1) instead of argparse's one-line "cmd required" error (CLI-16). `--help` / `-h` behavior is unchanged (full help to stdout, exit 0).
@@ -1723,7 +1723,7 @@ Docs and the spec (WIP-10) updated to match.
 - `beacon prune [--since 30d]` (alias `--keep`) garbage-collects per-session state for long-idle panes (including project-less sessions that never reached SessionStart), keeping the current session and everything active within the window.
 
 ### Other
-- `wip` / `serve` / `prune` are read-only/maintenance surfaces — they paint no iTerm2 surface. New spec section §3.8 (WIP-01..06); CLAUDE.md and README updated; `tests/test_wip.py` added.
+- `wip` / `serve` / `prune` are read-only/maintenance surfaces; they paint no iTerm2 surface. New spec section §3.8 (WIP-01..06); CLAUDE.md and README updated; `tests/test_wip.py` added.
 
 ## 0.19.0
 
@@ -1731,7 +1731,7 @@ Docs and the spec (WIP-10) updated to match.
 - The session note card is now a compact tile in the top-right corner instead of a tall panel down the side of the pane. It covers far less of the terminal and gets overwritten by output much less often. A longer note grows the card (up to ~2x its resting height) and shrinks its text to fit before truncating, so short notes stay small and long ones stay readable.
 
 ### Fixes
-- `beacon pause` with no note now shows the paused gray badge and tab color — previously a note-less pause painted nothing (it tried to switch to a profile that doesn't exist).
+- `beacon pause` with no note now shows the paused gray badge and tab color. Previously a note-less pause painted nothing (it tried to switch to a profile that doesn't exist).
 - Clearing the note while a pane stays paused (e.g. `pause "x"` then `pause`) no longer leaves the old card on screen.
 - A pane showing an idle-prompt notification alongside a note now reads red, matching its state, instead of the paused gray.
 - Project / branch / URL chips stay pinned to where the session started instead of drifting with the working directory mid-session.
@@ -1754,11 +1754,11 @@ Docs and the spec (WIP-10) updated to match.
 - Overlay descriptions now support bulleted lists (`* item` per line) and strikethrough (`~text~`), in addition to the existing `*bold*` and `_italic_` markers.
 
 ### Fixes
-- Strikethrough renders as a single continuous line across struck words instead of one segment per word — no more visible gaps or wobble.
+- Strikethrough renders as a single continuous line across struck words instead of one segment per word, with no gaps or wobble.
 - Long overlay text no longer overflows past the card's bottom or right edge. Content past the card truncates with an ellipsis. Body text also stays at a consistent size across notes (previously the font shrank to fit, making the same overlay look different sizes for different inputs).
 
 ### Other
-- Added `just preview` — renders an HTML gallery of representative overlays at `.preview/index.html` for visual iteration without launching iTerm2.
+- Added `just preview`, which renders an HTML gallery of representative overlays at `.preview/index.html` for visual iteration without launching iTerm2.
 - Added 67 tests covering the overlay compositor (parser, block splitting, layout, strike-run merging, oversized-word truncation, smoke render).
 - Spec updates: OVERLAY-01 and CLI-05 enumerate the expanded markdown subset; §6.11 names a daemon-backed headless renderer as the eventual escape hatch.
 
@@ -1766,13 +1766,13 @@ Docs and the spec (WIP-10) updated to match.
 
 ### Breaking Changes
 - The `stage` signal is gone. `beacon stage …`, `beacon set stage …`, `beacon signal stage …`, and `beacon clear stage` no longer exist and fail with an argparse error. Stage never had a render surface (it only appeared in `beacon show`); folding the visible behaviors into `status` simplified the model.
-- The `signal` subcommand is removed — it existed solely to feed `stage` from the skill. The skill no longer signals stage transitions on plan-mode entry or code-review requests.
-- `beacon-iterm note` now requires a label: `note <label> <text>` (the uppercase status — `PAUSED`, `WAITING`, etc.). Direct callers must update; the plugin's internal callers are updated in this release.
+- The `signal` subcommand is removed; it existed solely to feed `stage` from the skill. The skill no longer signals stage transitions on plan-mode entry or code-review requests.
+- `beacon-iterm note` now requires a label: `note <label> <text>` (the uppercase status: `PAUSED`, `WAITING`, etc.). Direct callers must update; the plugin's internal callers are updated in this release.
 
 ### Features
 - `status` accepts a free-text description that drives a marginalia card on the right edge of the pane: `beacon status waiting "bg data refresh ~30 min"` parks the card with that note while the badge flips to red. Useful for "I'm waiting on something async, not Claude."
 - `paused` is now a fourth `status` value. The marginalia card renders for any user-set status with a description, not just paused; the card label tracks the live status (`PAUSED`, `WAITING`, …).
-- `pause [<note>]` stays as shorthand for `status paused [<note>]` — muscle memory unaffected. Auto-resume on prompt submission fires only for `paused`; other user-set statuses survive the next turn.
+- `pause [<note>]` stays as shorthand for `status paused [<note>]`, so muscle memory is unaffected. Auto-resume on prompt submission fires only for `paused`; other user-set statuses survive the next turn.
 
 ### Other
 - iTerm2 notification-center delivery and terminal-generated alerts are disabled on the beacon profile (`BM Growl: false`, `Send Terminal Generated Alerts: false`). They duplicated the badge color signal and could transiently overlay the badge.
@@ -1780,15 +1780,15 @@ Docs and the spec (WIP-10) updated to match.
 - Hook handlers no longer promote stage on `Write` / `Edit` / `Bash` / `ExitPlanMode`. The deploy regex is gone.
 
 ### Migration
-- Re-run `python3 scripts/beacon install` after upgrading. The profile template gained `BM Growl: false` and `Send Terminal Generated Alerts: false` — without re-install the existing profile still fires Claude Code's permission/idle alerts as duplicate notifications.
+- Re-run `python3 scripts/beacon install` after upgrading. The profile template gained `BM Growl: false` and `Send Terminal Generated Alerts: false`; without re-install the existing profile still fires Claude Code's permission/idle alerts as duplicate notifications.
 - If any external scripts call `beacon stage …`, `beacon signal stage …`, or `beacon-iterm note <text>` (the single-arg form), update them. The arg surface changed.
 
 ## 0.16.0
 
 ### Features
-- The pause overlay is now a left-anchored Dracula marginalia card — uppercase `PAUSED` label in pink, timestamp, short editorial rule, and your note body in foreground type — replacing the centered yellow post-it. The right side of the pane stays transparent so terminal content reads when you return.
+- The pause overlay is now a left-anchored Dracula marginalia card (uppercase `PAUSED` label in pink, timestamp, short editorial rule, and your note body in foreground type), replacing the centered yellow post-it. The right side of the pane stays transparent so terminal content reads when you return.
 - `/beacon pause "<note>"` no longer co-opts the badge's task slot. The note carries recall context for the overlay only; the badge's task slot keeps whatever PAUSE-01 snapshotted (PR title, branch, override). Long notes that previously overflowed the badge now stay where they belong.
-- The pane's visible viewport is cleared before the overlay paints, so TUI content (Claude Code's chips, input, transcript) stops fighting the card for legibility. Scrollback is preserved — scroll up to see pre-pause history.
+- The pane's visible viewport is cleared before the overlay paints, so TUI content (Claude Code's chips, input, transcript) stops fighting the card for legibility. Scrollback is preserved: scroll up to see pre-pause history.
 
 ### Other
 - New CLI subcommand `beacon-iterm clear-screen` (CLI-15) emits the CSI `2J` + `H` escapes used by the pause render path.
@@ -1805,15 +1805,15 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.15.1
 
 ### Fixes
-- Branch and URL status-bar chips now refresh during a Claude session. Previously, the chips were painted once at SessionStart and stayed frozen for the rest of the session — so a branch the agent created mid-turn, or a tack deliverable pinned mid-session, was invisible until you returned to a shell prompt. The plugin now re-resolves the chip slots from the session's anchor cwd at the end of each turn.
+- Branch and URL status-bar chips now refresh during a Claude session. Previously, the chips were painted once at SessionStart and stayed frozen for the rest of the session, so a branch the agent created mid-turn, or a tack deliverable pinned mid-session, was invisible until you returned to a shell prompt. The plugin now re-resolves the chip slots from the session's anchor cwd at the end of each turn.
 
 ## 0.15.0
 
 ### Features
-- The red blocked-state badge now distinguishes two prompt kinds via watermark: `!` for a permission prompt (Claude is hard-blocked on a human answer) and `?` for an idle prompt (softer — often spurious during background tools). Both still paint the badge red; the watermark lets a scan across panes separate "must answer now" from "might want to look."
+- The red blocked-state badge now distinguishes two prompt kinds via watermark: `!` for a permission prompt (Claude is hard-blocked on a human answer) and `?` for an idle prompt (softer, and often spurious during background tools). Both still paint the badge red; the watermark lets a scan across panes separate "must answer now" from "might want to look."
 
 ### Fixes
-- Idle prompts again paint the badge red. 0.14.0 narrowed the Notification matcher to `permission_prompt` only to suppress false positives during `run_in_background` work — but `permission_prompt` alone fires rarely enough that the red state was effectively gone. The matcher is back to catching both, with the `?` vs `!` watermark carrying the urgency distinction instead.
+- Idle prompts again paint the badge red. 0.14.0 narrowed the Notification matcher to `permission_prompt` only to suppress false positives during `run_in_background` work, but `permission_prompt` alone fires rarely enough that the red state was effectively gone. The matcher is back to catching both, with the `?` vs `!` watermark carrying the urgency distinction instead.
 
 ### Migration
 - Run `python3 scripts/beacon install` after upgrading to land the new `beacon-blocked-idle` dynamic profile and its `?` watermark image.
@@ -1824,7 +1824,7 @@ Docs and the spec (WIP-10) updated to match.
 - Badge labels are now shorter and consistent. Previously, projects with a `name` field in `package.json` / `Cargo.toml` / `pyproject.toml` showed the short name (`beacon`, `tack`) while everything else showed the full owner/repo path (`chris-peterson/beacon`). The badge now always renders the repo basename. The owner-bearing identity is still available as the `gh:owner/repo` status-bar chip for disambiguation; with `beacon set project <label>` available for custom overrides, the short form is the better default for the badge.
 
 ### Fixes
-- The red `!` blocked-state badge no longer fires during background work. Previously, beacon caught both `idle_prompt` and `permission_prompt` Notifications. But Claude Code emits `idle_prompt` whenever the agent is idle — including while a `run_in_background` Bash is still in flight (e.g. `/wip`'s background refresh phase), even though no permission dialog is open. The matcher is now narrowed to `permission_prompt`, so red `!` reliably means "a permission dialog needs your answer."
+- The red `!` blocked-state badge no longer fires during background work. Previously, beacon caught both `idle_prompt` and `permission_prompt` Notifications. But Claude Code emits `idle_prompt` whenever the agent is idle, including while a `run_in_background` Bash is still in flight (e.g. `/wip`'s background refresh phase), even though no permission dialog is open. The matcher is now narrowed to `permission_prompt`, so red `!` reliably means "a permission dialog needs your answer."
 
 ### Other
 - Spec entries PROV-01 and §6.2's badge-render example synced to match the new basename behavior.
@@ -1832,7 +1832,7 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.13.0
 
 ### Breaking Changes
-- The drift detection feature is removed. The badge no longer appends a `:<basename>` suffix when Claude's Bash subprocess wanders out of the SessionStart anchor, and there is no longer a separate cyan "drifted" badge color or `beacon-drifted` dynamic profile. In practice, the feature was firing on cases the suppression logic was supposed to catch (e.g. badges reading `chris-peterson/beacon:beacon` or `cpeterson/ai-sdlc:ai-sdlc`), and the cost of fixing it didn't justify the at-a-glance signal it was meant to provide.
+- The drift detection feature is removed. The badge no longer appends a `:<basename>` suffix when Claude's Bash subprocess wanders out of the SessionStart anchor, and there is no longer a separate cyan "drifted" badge color or `beacon-drifted` dynamic profile. In practice, the feature was firing on cases the suppression logic was supposed to catch (e.g. badges reading `chris-peterson/beacon:beacon` or `cpeterson/widgets:widgets`), and the cost of fixing it didn't justify the at-a-glance signal it was meant to provide.
 
 ### Migration
 - Run `python3 scripts/beacon install` after upgrading. The install step rewrites the dynamic profile JSONs (three states now: ready / busy / blocked) and deletes the leftover `beacon-drifted.json` from `~/Library/Application Support/iTerm2/DynamicProfiles/` so it stops showing up in the iTerm2 profile picker.
@@ -1841,7 +1841,7 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.12.0
 
 ### Features
-- The badge now shows the resolved task as a `: <task>` suffix after the project (e.g. `beacon: render-on-badge`). When no task is set, the badge shows project alone — the slot self-collapses. Previously, `beacon set task` only updated `beacon show`; the visible badge stayed on project alone, leaving users without an at-a-glance signal of *what* they're working on within a given project.
+- The badge now shows the resolved task as a `: <task>` suffix after the project (e.g. `beacon: render-on-badge`). When no task is set, the badge shows project alone; the slot self-collapses. Previously, `beacon set task` only updated `beacon show`; the visible badge stayed on project alone, leaving users without an at-a-glance signal of *what* they're working on within a given project.
 
 ### Migration
 - Run `python3 scripts/beacon install` after upgrading to land the new dynamic profile JSON with the updated badge format. Existing iTerm panes pick up the format hot from the dynamic-profile reload; new panes pick it up via the refreshed shell snippet.
@@ -1849,18 +1849,18 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.11.0
 
 ### Features
-- The URL chain now probes `gh` (github hosts) or `glab` (gitlab hosts) for an open PR/MR on the current branch when tack has no link for it. The `↖ web` button lands on your MR/PR even when you haven't run `tack link add` — the common workflow gap. Soft integration: missing CLI or unrecognized forge host skips silently to the existing branch / project fallbacks.
+- The URL chain now probes `gh` (github hosts) or `glab` (gitlab hosts) for an open PR/MR on the current branch when tack has no link for it. The `↖ web` button lands on your MR/PR even when you haven't run `tack link add`, the common workflow gap. Soft integration: missing CLI or unrecognized forge host skips silently to the existing branch / project fallbacks.
 
 ## 0.10.0
 
 ### Features
-- Freshly opened terminals stay unmanaged until a beacon-aware action engages them — no more giant badge spanning the pane the moment you open a tab. The badge only appears once you run `claude`, `beacon ...`, or invoke a beacon slash command in that pane. `beacon clear` fully disengages a pane, returning it to the same calm state as a fresh tab.
+- Freshly opened terminals stay unmanaged until a beacon-aware action engages them, so no giant badge spans the pane the moment you open a tab. The badge only appears once you run `claude`, `beacon ...`, or invoke a beacon slash command in that pane. `beacon clear` fully disengages a pane, returning it to the same calm state as a fresh tab.
 - Badge color is now translucent, so terminal content shows through. Mission Control / Exposé legibility is preserved while normal-zoom readability is no longer compromised. Badge sizing also shrinks (Max Height halved) so long repo names occupy less of the pane.
-- The blocked state ships an `!` watermark behind the terminal — "Claude needs me" is now parseable in Mission Control where badge text isn't.
+- The blocked state ships an `!` watermark behind the terminal, so "Claude needs me" is now parseable in Mission Control where badge text isn't.
 - `beacon set project <label>` overrides now stick in interactive shells. The shell snippet no longer republishes a cwd-derived value on every prompt and clobbers your explicit label.
 
 ### Fixes
-- The `my-proj:my-proj` drift false positive — drift detection no longer adds a `:<basename>` suffix when the suffix would just repeat the anchor's last segment.
+- The `my-proj:my-proj` drift false positive: drift detection no longer adds a `:<basename>` suffix when the suffix would just repeat the anchor's last segment.
 - `_publish_drift` self-heals when no SessionStart anchor exists: adopts the first observation as the anchor instead of running away with `:<basename>` suffixes on every PostToolUse Bash.
 - `set project` overrides now propagate to the badge text (previously they updated `beacon show` but the badge stayed on the SessionStart anchor value).
 - `skills/beacon/SKILL.md` previously told agents to use `beacon set task` for "badge labeling at session start", but task isn't on the badge. Replaced with a surface map and explicit "use set project" guidance.
@@ -1871,7 +1871,7 @@ Docs and the spec (WIP-10) updated to match.
 - 22 unit tests (11 new this release) covering profile switching, OSC overlay for pause, engagement marker, first-render publish, and drift no-op condition.
 
 ### Migration
-- Run `python3 scripts/beacon install` after upgrading — the new state profiles need to land in `~/Library/Application Support/iTerm2/DynamicProfiles/`.
+- Run `python3 scripts/beacon install` after upgrading: the new state profiles need to land in `~/Library/Application Support/iTerm2/DynamicProfiles/`.
 - If you previously had `beacon-flicker-test.json` from manual testing in your DynamicProfiles dir, remove it.
 
 ## 0.9.0
@@ -1879,13 +1879,13 @@ Docs and the spec (WIP-10) updated to match.
 ### Features
 - The status bar's project chip now collapses known forge hosts: `github.com/owner/repo` shows as `gh:owner/repo`, GitLab as `gl:`, Bitbucket as `bb:`. Unknown hosts pass through as `host/owner/repo`.
 - When tack is tracking a deliverable for the current branch (or you've set a URL override pointing at a forge issue/PR/MR), the project chip appends `#42` for issues/PRs or `!17` for GitLab merge requests, e.g. `gh:chris-peterson/beacon#42`. The chip answers "what am I working on", not just "what repo am I in."
-- Status bar reshaped: `↖ web · project │ branch · ↗ code`. The branch chip now sits next to the `↗ code` action so each end pairs an action with the data it acts on. The cwd chip is gone — the project chip now carries the spatial-context job alone.
+- Status bar reshaped: `↖ web · project │ branch · ↗ code`. The branch chip now sits next to the `↗ code` action so each end pairs an action with the data it acts on. The cwd chip is gone; the project chip now carries the spatial-context job alone.
 - Badge renders the full nested-group path. `acmecorp/platform/auth-svc` shows in full instead of being collapsed to `acmecorp/.../auth-svc`. With the cwd chip gone, the badge owns spatial context and doesn't need to truncate.
-- Branch chip drops the leading `@` sigil on the synced state — color (green / orange / dim gray) already carries the synced / diverged / untracked signal, and the bare name reads cleaner. Diverged (`↑3 main`) and untracked are unchanged.
-- Drift hint format simplified from ` (@ <basename>)` to `:<basename>`, e.g. `chris-peterson/beacon:ai-sdlc`. The colon separator reads as a path tail and keeps the anchor in the same spatial column when scanning panes vertically.
+- Branch chip drops the leading `@` sigil on the synced state: color (green / orange / dim gray) already carries the synced / diverged / untracked signal, and the bare name reads cleaner. Diverged (`↑3 main`) and untracked are unchanged.
+- Drift hint format simplified from ` (@ <basename>)` to `:<basename>`, e.g. `chris-peterson/beacon:widgets`. The colon separator reads as a path tail and keeps the anchor in the same spatial column when scanning panes vertically.
 
 ### Fixes
-- Badge sizing now uses iTerm2's Badge Max Width / Max Height knobs rather than a font-size suffix — more consistent across panes of different sizes.
+- Badge sizing now uses iTerm2's Badge Max Width / Max Height knobs rather than a font-size suffix, which is more consistent across panes of different sizes.
 
 ### Other
 - The docsify homepage (`docs/README.md`) gained a "Tack integration (optional)" section describing the soft dependency on tack and the `_beacon_resolve_url()` override hook for users wanting Linear / Jira / GitHub Issues / a custom provider.
@@ -1896,7 +1896,7 @@ Docs and the spec (WIP-10) updated to match.
 
 ### Features
 - Project names with multi-level subgroups now display as `<top>/.../<repo>` instead of silently dropping intermediate segments. A remote at `acmecorp/platform/auth-svc` renders as `acmecorp/.../auth-svc`, so the displayed path is unambiguous. Two-segment paths render as before.
-- Drift hint changed from ` (<basename>)` to ` (@ <basename>)` and now uses Dracula cyan. The `@` prefix reads as "currently at" — a transient location Claude has stepped into — so drift is visually distinct from the badge anchor identity.
+- Drift hint changed from ` (<basename>)` to ` (@ <basename>)` and now uses Dracula cyan. The `@` prefix reads as "currently at", a transient location Claude has stepped into, so drift is visually distinct from the badge anchor identity.
 - Freshly-sourced shell integration paints the badge calm green (`ready`) immediately, so a fresh pane doesn't inherit a stale red/orange color from whatever Claude session was last active there. Claude's hooks repaint to `busy` / `blocked` on the next turn as before.
 - All iTerm2 surfaces beacon paints (badge, tab color, status-bar chips) now share a single Dracula palette with a strict one-role-per-hue rule: green/orange/red is the calm/working/blocked traffic light, cyan is reserved exclusively for drift, comment-gray is de-emphasis, and pink is the single "interactive" accent on action chips.
 
@@ -1916,7 +1916,7 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.6.0
 
 ### Changes
-- Badge now stays calm (green) between turns. Red is reserved for moments when Claude is actually blocked on you (permission or idle prompt), so across a wall of panes a red badge always means "this one needs me right now" — not "this one is between turns." Dock bounces follow the same rule and no longer fire on turn-end.
+- Badge now stays calm (green) between turns. Red is reserved for moments when Claude is actually blocked on you (permission or idle prompt), so across a wall of panes a red badge always means "this one needs me right now", not "this one is between turns." Dock bounces follow the same rule and no longer fire on turn-end.
 - Badge font reduced to `Menlo-Bold 10` so the badge text competes less with terminal content while staying readable in Mission Control.
 
 ### Fixes
@@ -1925,7 +1925,7 @@ Docs and the spec (WIP-10) updated to match.
 ## 0.5.0
 
 ### Features
-- `SessionStart` hook now checks CLI wrapper freshness on every Claude Code session start, regardless of which surface invokes the CLI. Previously the freshness check lived in the `beacon` skill, which only fired on skill invocation — consumers calling `beacon` directly (other skills, shell, tooling) bypassed it. The hook compares `beacon --version` against `plugin.json#version` and emits an `additionalContext` nudge when they differ; silent on match, silent when the CLI isn't on PATH, never blocks the session.
+- `SessionStart` hook now checks CLI wrapper freshness on every Claude Code session start, regardless of which surface invokes the CLI. Previously the freshness check lived in the `beacon` skill, which only fired on skill invocation, so consumers calling `beacon` directly (other skills, shell, tooling) bypassed it. The hook compares `beacon --version` against `plugin.json#version` and emits an `additionalContext` nudge when they differ; silent on match, silent when the CLI isn't on PATH, never blocks the session.
 
 ## 0.4.0
 

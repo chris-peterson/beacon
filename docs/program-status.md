@@ -233,7 +233,7 @@ A program asks whether the terminal supports it with `ESC ] 7501 ; ? ESC \`, and
 <a href="https://github.com/microsoft/terminal/issues?q=7501" target="_blank" rel="noopener"><title>Windows Terminal: No issue or pull request upstream; ConPTY passes the sequence through</title>
 <rect class="rowhit" x="0" y="560.0" width="1040" height="30"/>
 <text class="name" x="150" y="579.0" text-anchor="end">Windows Terminal</text>
-<text class="status st-link st-none" x="880" y="579.0">No support yet</text>
+<text class="status st-link st-none" x="880" y="579.0">No support found</text>
 </a>
 <text class="grp" x="12" y="612">Applications</text>
 <line class="grpline" x1="12" x2="1028" y1="620" y2="620"/>
@@ -333,15 +333,15 @@ Checked against each project's own releases, pull requests, and changelogs on **
 | iTerm2 | Shipped in 3.7.5 | [downloads](https://iterm2.com/downloads.html) | A dot on the tab and the status color on the tab's subtitle line; also the Session Status tool, the Cockpit window, and the dock badge |
 | cmux | Shipped in v0.65.1 | [release](https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1) | A sidebar row per pane with the app, title, message, and progress |
 | Rex | Shipped | [spec](https://www.superlogical.com/rex/docs/build/program-status) | The session picker and unfocused tab headers; a Lua event for scripts |
-| kitty | Merged, unreleased (0.50.0) | [#10657](https://github.com/kovidgoyal/kitty/pull/10657) | `tab.program_status` in the tab title template; `kitten @ ls` |
+| kitty | Merged, for 0.50.0 | [#10657](https://github.com/kovidgoyal/kitty/pull/10657) | `tab.program_status` in the tab title template; `kitten @ ls` |
 | Zellij | Merged, unreleased | [#5734](https://github.com/zellij-org/zellij/pull/5734) | Marks on pane frames and tabs, an inbox in the session manager; forwards to the outer terminal by default |
 | Ghostty | Library only, unreleased (1.4.0) | [#14560](https://github.com/ghostty-org/ghostty/pull/14560) | libghostty keeps the records; the Ghostty app doesn't show them yet |
-| Warp | Open pull request | [#16460](https://github.com/warpdotdev/warp/pull/16460) | |
-| Herdr | Open draft pull request | [#5172](https://github.com/herdrdev/herdr/pull/5172) | |
+| Warp | Pull request open | [#16460](https://github.com/warpdotdev/warp/pull/16460) | |
+| Herdr | Draft pull request | [#5172](https://github.com/herdrdev/herdr/pull/5172) | |
 | tmux | Declined for now | [#5713](https://github.com/tmux/tmux/issues/5713) | Drops the sequence, so reports from inside tmux never reach the outer terminal |
 | noctty (Windows) | Shipped in v1.3.132 | [release](https://github.com/amanthanvi/noctty/releases/tag/v1.3.132) | Tab badges, the taskbar, and toast notifications |
 | Wintty (Windows) | Merged, unreleased | [#1316](https://github.com/deblasis/wintty/pull/1316) | A Windows fork of Ghostty; a state glyph on each tab |
-| psmux (Windows) | Merged, unreleased | [`daa6be09c`](https://github.com/psmux/psmux/commit/daa6be09c) | A Windows multiplexer; its `program-status` option is off by default |
+| psmux (Windows) | Merged, off by default | [`daa6be09c`](https://github.com/psmux/psmux/commit/daa6be09c) | A Windows multiplexer; turned on by its `program-status` option |
 | Windows Terminal | No support found | | ConPTY passes the sequence through, so it reaches Windows Terminal, which doesn't draw it or answer the query |
 | WezTerm, Alacritty, VS Code | No support found | | |
 
@@ -350,15 +350,16 @@ Checked against each project's own releases, pull requests, and changelogs on **
 | Program | Status | Source | Notes |
 |:---|:---|:---|:---|
 | Claude Code | Shipped in 2.1.295 | [release](https://github.com/anthropics/claude-code/releases/tag/v2.1.295) | Sends only after the terminal answers the query. `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` turns it off, along with Claude's window title. |
-| OpenAI Codex CLI | Shipped in rust-v0.163.0 | [#52725](https://github.com/openai/codex/pull/52725) | `idle`, `working`, and `blocked`, whenever its output is a terminal |
+| Codex CLI | Shipped in rust-v0.163.0 | [#52725](https://github.com/openai/codex/pull/52725) | `idle`, `working`, and `blocked`, whenever its output is a terminal |
 | Crush | Shipped in v0.98.0 | [release](https://github.com/charmbracelet/crush/releases/tag/v0.98.0) | Through Bubble Tea |
 | Bubble Tea | Shipped in v2.1.0 | [release](https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0) | Any Bubble Tea program can report |
 | pi | Shipped in v1.1.0 | [release](https://github.com/earendil-works/pi/releases/tag/v1.1.0) | `PI_PROGRAM_STATUS=0` turns it off |
-| Gemini CLI | Requested | [#29710](https://github.com/google-gemini/gemini-cli/issues/29710) | || Terraform, Homebrew | Proof of concept | [announcement](https://mitchellh.com/writing/program-status-osc7501) | No upstream change |
+| Gemini CLI | Requested | [#29710](https://github.com/google-gemini/gemini-cli/issues/29710) | |
+| Terraform, Homebrew | Proof of concept | [announcement](https://mitchellh.com/writing/program-status-osc7501) | No upstream change |
 
 ## Where it overlaps beacon
 
-Read as a list of keys, the protocol looks like it covers much of what beacon paints: a state, a reason, a message, a title. In practice the overlap is one axis, because of three narrowings between the spec and your tab.
+Read as a list of keys, the protocol looks like it covers much of what beacon paints: a state, a reason, a message, a title. In practice the two share one axis, for three reasons.
 
 1. **The spec describes what a program can send.** Claude Code sends less of it. As of 2.1.306, `msg` carries the question or the command awaiting approval while `blocked`, a task headline while `working` only in fullscreen mode, and nothing on `done`. `title` is set only on sub-agent records.
 2. **iTerm2 puts only `state` on the tab.** `msg` and `title` appear in the Session Status tool and the Cockpit window, not in the tab label.
@@ -390,24 +391,24 @@ The protocol also brings surfaces beacon has no counterpart for: the dock badge 
 
 ## How beacon uses it
 
-beacon doesn't read the reports. It decides how its tab shares the strip with them, through the [tab look](/iterm/layout?id=tab-look):
+beacon leaves the reports to iTerm2 and decides how its tab shares the strip with them, through the [tab look](/iterm/layout?id=tab-look):
 
-- **modern** (the default) leaves Claude Code's reports on and paints a dark fill for iTerm2's status colors to read on. A finished turn stays green until you've looked at it, rather than turning red when the prompt sits unanswered.
+- **modern** (the default) leaves Claude Code's reports on and paints a dark fill for iTerm2's status colors to read on. A finished turn's task line stays green until you've looked at it, then turns gray.
 - **legacy** turns Claude Code's reports off with `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`, and the tab is beacon's color alone.
 
 iTerm2's status colors are fixed, and no iTerm2 setting hides the dot. The ring around a blocked dot marks whichever status sits first in iTerm2's Status Priority list, which is `waiting` unless you reorder it.
 
 ## Security
 
-A report is only as trustworthy as the bytes in the pane. Anything that prints there can send one: `cat` of a file, `curl`, `git log`, a log you're tailing, a host you're connected to over SSH. The spec treats every report as untrusted input, and the points below are what that means in practice on iTerm2 3.7.6.
+Anything that prints in the pane can send a report: `cat` of a file, `curl`, `git log`, a log you're tailing, a host you're connected to over SSH. The spec treats every report as untrusted input. The table covers what that means on iTerm2 3.7.6.
 
 | Concern | What can happen | Mitigation today |
 |:---|:---|:---|
-| A false status | Printed output can mark a session `done` or `idle` while it's still working, or `blocked` when it isn't. A report of `state=clear` with no `id` removes every record in the pane, including Claude's real `blocked`. | None in the protocol; it identifies the terminal, not the program. Treat the dot as a hint and the pane as the truth. |
+| A false status | Printed output can mark a session `done` or `idle` while it's still working, or `blocked` when it isn't. A report of `state=clear` with no `id` removes every record in the pane, including Claude's real `blocked`. | None in the protocol; it identifies the terminal, not the program. Check the pane before acting on the dot. |
 | Status that triggers actions | iTerm2 workgroups can send clippings to another session, or request a review, when a session goes from working to idle. A false report fires them. | Both are opt-in toggles in the workgroup toolbar. Leave them off where untrusted output can reach the pane. |
 | Text read by an agent | Orchestrators and agent inboxes read `msg`, which makes it a prompt-injection channel. iTerm2 strips bidi overrides and most invisible formatting from it but keeps Unicode tag characters, which people can't see and models can read. | Don't feed another program's `msg` to a model unfiltered. |
 | A fake prompt | `blocked` with `kind=auth` and a message asking for a password shows in the Session Status tool, the Cockpit, and notifications. | iTerm2's per-status notifications are off by default and name the session. No real prompt asks for a password through the status line. |
 | Flooding | The record cap is 256 per terminal, oldest dropped first, so a burst of reports can push out real ones. | iTerm2 3.7.6 coalesces floods. |
-| Remote hosts | The spec doesn't cover SSH or multiplexers. A remote host's output reports into your local terminal like any other. | tmux currently drops the sequence; Zellij forwards it unless `host_status false`. |
+| Remote hosts | The spec doesn't cover SSH or multiplexers. A remote host's output reports into your local terminal like any other. | tmux drops the sequence; Zellij forwards it unless `host_status false`. |
 
-What the protocol rules out: it can't be used to read anything back. The only reply a terminal sends is the answer to the feature query, which carries nothing from any report, and there is no way to ask for the records.
+Reports travel one way. The only reply a terminal sends is the answer to the feature query, which carries nothing from any report, and the protocol has no request that returns the records.
