@@ -34,6 +34,20 @@ a status-bar chip whose value nothing has set, which is every chip in a
 pane opened on a command rather than a shell. The chips render blank
 there again. Run `beacon refresh-iterm-profiles` to pick it up.
 
+### Same-named repos read apart when tack is installed
+
+With tack on `PATH`, a session's project is tack's repo label: the
+shortest name unique among the repos tack knows. Two checkouts that
+share a basename, such as `acme/web` and `globex/web`, now show
+distinct names on the tab and in the sessions view instead of both
+reading `web`. beacon asks tack once at SessionStart, so a hook pays
+nothing extra. Without tack, the project name comes from the git
+remote as before.
+
+The project name no longer comes from `package.json`, `Cargo.toml` or
+`pyproject.toml`. A repo whose manifest declared a different name now
+shows its repo name. `beacon set project` still overrides either.
+
 ## 2.19.1
 
 ### A session that opens with a slash command is named after it again

@@ -160,7 +160,9 @@ A mode's note shall be stored as one value with the mode, not beside it. Enterin
 
 #### `PROV-01`
 
-For `project`, the plugin shall consult providers in this order: user override, package manifest (`package.json` `name`, `Cargo.toml` `[package].name`, `pyproject.toml` `[project].name`), git remote origin (repo basename — the last path segment of the remote URL), project root directory name. The badge wants a short, scannable label; the owner-bearing identity is exposed separately via the `project_full` status-bar chip. See PROV-06 for the final pwd fallback when none of these provide a value.
+For `project`, the plugin shall consult providers in this order: user override, tack's repo label (`tack repo label <root> --json`, when tack is on `$PATH`), git remote origin (repo basename — the last path segment of the remote URL), project root directory name. The badge wants a short, scannable label; the owner-bearing identity is exposed separately via the `project_full` status-bar chip. See PROV-06 for the final pwd fallback when none of these provide a value.
+
+The tack label is the shortest name unique among the repos tack knows: the basename where it is unique (`widgets`), with as many leading path segments as it takes where two checkouts share one (`acme/web`, `globex/web`). Two sessions in same-named repos therefore read apart on the tab and in the sessions view, where a basename made them identical. Asking costs a python startup, more than a per-hook render can afford, so SessionStart asks once for the anchored project root and records the answer as `anchor.slug` (HOOK-08); the tier reads that record whenever the cwd is inside the anchored project, and asks tack directly for any other project. A repo with no origin remote has no label, and the chain continues to the git remote.
 
 #### `PROV-02`
 
@@ -186,7 +188,7 @@ When detecting project root, the plugin shall walk parent directories looking fo
 
 #### `PROV-06`
 
-When no provider in PROV-01's chain returns a value for `project` (no override, no package manifest, no git remote, no project root marker found within `$HOME`), the plugin shall use the abbreviated current working directory as a spatial-context fallback: `$HOME` substituted with `~`. Examples:
+When no provider in PROV-01's chain returns a value for `project` (no override, no tack label, no git remote, no project root marker found within `$HOME`), the plugin shall use the abbreviated current working directory as a spatial-context fallback: `$HOME` substituted with `~`. Examples:
 
 ```text
 /Users/cpeterson/src          →  ~/src
@@ -194,7 +196,7 @@ When no provider in PROV-01's chain returns a value for `project` (no override, 
 /tmp                          →  /tmp
 ```
 
-The fallback is not parenthesized — it appears as a real path so it reads naturally in the badge alongside actual project names. The PROV chain order is therefore: override → package manifest → git remote → project-root dir name → pwd fallback.
+The fallback is not parenthesized — it appears as a real path so it reads naturally in the badge alongside actual project names. The PROV chain order is therefore: override → tack label → git remote → project-root dir name → pwd fallback.
 
 #### `PROV-07`
 
@@ -242,7 +244,7 @@ When Claude requests user attention (HOOK-03), the plugin shall set a sticky `pe
 
 #### `HOOK-08`
 
-When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_name`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record the resolved project name as `anchor.project` and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). Two of SessionStart's `source` values fire without a new `claude` invocation — `compact` (context rebuilt in place) and `fork` (a new id for the conversation already in the pane) — and a hook payload's cwd is Claude's own live process cwd, which follows the agent's navigation. For those the plugin shall keep the anchor it already holds and refresh only the chips, as at Stop (HOOK-08b); a pane with no anchor yet takes the payload cwd whatever the source. Rationale: a session that compacts while the agent is working in a scratch directory it cd'd into would otherwise adopt that directory as its identity, which is the opposite of what the anchor is for. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
+When a Claude session starts (SessionStart hook), the plugin shall capture the cwd Claude was invoked with as the session's **navigational anchor** and publish the full set of status-bar slots (`beacon_project`, `beacon_project_name`, the six `beacon_branch*` slots) plus the per-session `cwd-<pane-guid>.txt` handoff file (keyed on the pane GUID per §6.10 caveat 6) that the `↗ code` action button consumes, and persist the resolved URL as `resolved.url` / `resolved.url_label` for the status line (STATUSLINE-02). The plugin shall additionally record tack's repo label for the anchored project root (PROV-01) as `anchor.slug`, removing it when tack gives none; the resolved project name, preferring that label, as `anchor.project`; and the discovered project icon path (PROV-08) as `anchor.icon` per-session state. The anchor cwd is fixed at SessionStart and does not follow Claude's Bash subprocess cwd; chip *values* read from the anchor may evolve (see HOOK-08b). Two of SessionStart's `source` values fire without a new `claude` invocation — `compact` (context rebuilt in place) and `fork` (a new id for the conversation already in the pane) — and a hook payload's cwd is Claude's own live process cwd, which follows the agent's navigation. For those the plugin shall keep the anchor it already holds and refresh only the chips, as at Stop (HOOK-08b); a pane with no anchor yet takes the payload cwd whatever the source. Rationale: a session that compacts while the agent is working in a scratch directory it cd'd into would otherwise adopt that directory as its identity, which is the opposite of what the anchor is for. This duplicates the shell integration's prompt-driven publish path (§6.5); in interactive (non-Claude) shell sessions the shell continues to track the user's actual PWD as expected.
 
 #### `HOOK-08a`
 
@@ -1715,6 +1717,7 @@ The CLI shall be usable independently of the plugin — e.g., from a shell scrip
 
 ```
 state/<session-hash>.override.{project,task}  # OVR-01: only where a provider chain sits below
+state/<session-hash>.anchor.slug            # PROV-01 / HOOK-08: tack's unique repo label for the anchored project root
 state/<session-hash>.anchor.icon            # PROV-08: discovered project icon path
 state/<session-hash>.mode                   # RES-06/-07: {"name","note","by","parked"} — declared; absent = dev; by = "sweep" and parked = {since} for a park (STATE-16)
 state/<session-hash>.activity               # RES-06: idle|working|waiting — hooks only, no override tier

@@ -1605,31 +1605,44 @@ def _is_planning(raw: object) -> bool:
     return raw == PLAN_PERMISSION_MODE
 
 
-def p_package_name(cwd: Path):
-    root = find_project_root(cwd)
-    pkg = root / "package.json"
-    if pkg.is_file():
+_REPO_LABELS: dict[str, str | None] = {}
+
+
+def _tack_repo_label(root: Path) -> str | None:
+    """`tack repo label <root>`: the shortest name unique among the repos tack
+    knows (`widgets`, or `acme/web` where two checkouts share a
+    basename). Memoized per process. A repo with no origin exits nonzero, which
+    is an answer, not a failure.
+
+    The call is a python startup (~200ms), more than a per-hook render can
+    afford, so SessionStart asks once and anchors the answer (`anchor.slug`)."""
+    key = str(root)
+    if key in _REPO_LABELS:
+        return _REPO_LABELS[key]
+    label = None
+    if _which("tack"):
         try:
-            return (json.loads(pkg.read_text()).get("name") or "").strip() or None
-        except Exception:
-            pass
-    cargo = root / "Cargo.toml"
-    if cargo.is_file():
-        try:
-            m = re.search(r'(?ms)^\[package\][^\[]*?^\s*name\s*=\s*"([^"]+)"', cargo.read_text())
-            if m:
-                return m.group(1)
-        except Exception:
-            pass
-    pyp = root / "pyproject.toml"
-    if pyp.is_file():
-        try:
-            m = re.search(r'(?ms)^\[project\][^\[]*?^\s*name\s*=\s*"([^"]+)"', pyp.read_text())
-            if m:
-                return m.group(1)
-        except Exception:
-            pass
-    return None
+            r = subprocess.run(["tack", "repo", "label", key, "--json"],
+                               capture_output=True, text=True, timeout=2)
+            if r.returncode == 0:
+                label = (json.loads(r.stdout).get("label") or "").strip() or None
+        except (subprocess.SubprocessError, json.JSONDecodeError, OSError, AttributeError) as exc:
+            log_error("tack.repo-label", f"{type(exc).__name__}: {exc}")
+    _REPO_LABELS[key] = label
+    return label
+
+
+def p_tack_slug(cwd: Path):
+    """PROV-01's tack tier. Inside the anchored project the anchored slug
+    answers, so the per-hook render never runs tack; any other project is asked
+    live."""
+    root = _project_root(cwd)
+    if not root:
+        return None
+    anchor = read_state("anchor.cwd")
+    if anchor and _project_root(Path(anchor).expanduser()) == root:
+        return read_state("anchor.slug") or None
+    return _tack_repo_label(root)
 
 
 _ORIGIN_URL_CACHE: dict[str, str] = {}
@@ -4279,7 +4292,7 @@ def resolve(cwd: Path | None = None) -> dict:
 
     project, p_proj = chain([
         ("override",   lambda: p_override("project")),
-        ("package",    lambda: p_package_name(cwd)),
+        ("tack",       lambda: p_tack_slug(cwd)),
         ("git-remote", lambda: p_git_remote(cwd)),
         ("dir",        lambda: p_project_dir(cwd)),
     ])
@@ -5434,7 +5447,13 @@ def _publish_anchor(cwd: Path) -> None:
     session began, not an implicit property of Claude's hook payloads."""
     _publish_chips(cwd)
 
-    project = _project_name_at(cwd)
+    root = _project_root_at(cwd)
+    slug = _tack_repo_label(root) if root else None
+    if slug:
+        write_state("anchor.slug", slug)
+    else:
+        remove_state("anchor.slug")
+    project = slug or _project_name_at(cwd)
     local_path = _local_path_at(cwd)
     # BADGE-04 + PROV-06: when SessionStart's cwd is outside any recognized
     # project, fall back to the abbreviated cwd so the badge always carries

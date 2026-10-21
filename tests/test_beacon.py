@@ -113,11 +113,14 @@ class BeaconTest(unittest.TestCase):
         proj_patcher.start()
         self.addCleanup(proj_patcher.stop)
 
-        pkg_patcher = mock.patch.object(
-            self.beacon, "p_package_name", return_value="",
+        # tack is a python startup per call; the suite must not depend on
+        # whether the developer has it installed, or on what it knows.
+        self.real_tack_repo_label = self.beacon._tack_repo_label
+        label_patcher = mock.patch.object(
+            self.beacon, "_tack_repo_label", return_value=None,
         )
-        pkg_patcher.start()
-        self.addCleanup(pkg_patcher.stop)
+        label_patcher.start()
+        self.addCleanup(label_patcher.stop)
 
         remote_patcher = mock.patch.object(
             self.beacon, "p_git_remote", return_value="acme/widget",
@@ -3736,7 +3739,7 @@ class ProjectOutsideAProject(BeaconTest):
         # Separators are normalized because the fallback is `str(cwd)`, which
         # a Windows runner renders with backslashes.
         with mock.patch.object(self.beacon, "p_git_remote", return_value=None), \
-             mock.patch.object(self.beacon, "p_package_name", return_value=None):
+             mock.patch.object(self.beacon, "p_tack_slug", return_value=None):
             state = self.beacon.resolve(Path("/tmp"))
         self.assertEqual(state["project"].replace("\\", "/"), "/tmp")
         self.assertEqual(state["project_provider"], "pwd")
@@ -3746,9 +3749,104 @@ class ProjectOutsideAProject(BeaconTest):
         # directory painted a session that had wandered there as project "T".
         tmpdir = Path("/private/var/folders/xm/w8qj7c7521x2w0dkkpl8b9zm0000gp/T")
         with mock.patch.object(self.beacon, "p_git_remote", return_value=None), \
-             mock.patch.object(self.beacon, "p_package_name", return_value=None):
+             mock.patch.object(self.beacon, "p_tack_slug", return_value=None):
             state = self.beacon.resolve(tmpdir)
         self.assertEqual(state["project"], str(tmpdir))
+
+
+class ProjectFromTackRepoLabel(BeaconTest):
+    """PROV-01's tack tier: the shortest label unique among the repos tack
+    knows. SessionStart asks once and anchors it, so the per-hook render reads
+    state instead of starting tack."""
+
+    def _root(self, *parts) -> Path:
+        d = Path(self._tmp.name).joinpath("home", *parts)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / ".git").mkdir(exist_ok=True)
+        return d
+
+    def _home(self, root: Path):
+        return mock.patch("pathlib.Path.home", return_value=root.parent)
+
+    def test_the_anchored_slug_names_the_project(self):
+        root = self._root("web")
+        self.beacon.write_state("anchor.cwd", str(root))
+        self.beacon.write_state("anchor.slug", "acme/web")
+        with self._home(root):
+            state = self.beacon.resolve(root)
+        self.assertEqual(state["project"], "acme/web")
+        self.assertEqual(state["project_provider"], "tack")
+        self.beacon._tack_repo_label.assert_not_called()
+
+    def test_an_anchor_without_a_slug_falls_to_the_remote_without_asking_tack(self):
+        root = self._root("widget")
+        self.beacon.write_state("anchor.cwd", str(root))
+        with self._home(root):
+            state = self.beacon.resolve(root)
+        self.assertEqual(state["project_provider"], "git-remote")
+        self.beacon._tack_repo_label.assert_not_called()
+
+    def test_a_project_other_than_the_anchor_asks_tack(self):
+        home = self._root("widget")
+        other = self._root("web")
+        self.beacon.write_state("anchor.cwd", str(home))
+        self.beacon._tack_repo_label.return_value = "acme/web"
+        with self._home(other):
+            self.assertEqual(self.beacon.p_tack_slug(other), "acme/web")
+        self.beacon._tack_repo_label.assert_called_once_with(other.resolve())
+
+    def test_session_start_anchors_the_slug(self):
+        root = self._root("web")
+        self.beacon._tack_repo_label.return_value = "acme/web"
+        with self._home(root), \
+             mock.patch.object(self.beacon, "_publish_chips"), \
+             mock.patch.object(self.beacon, "_discover_icon_at", return_value=None):
+            self.beacon._publish_anchor(root)
+        self.assertEqual(self.beacon.read_state("anchor.slug"), "acme/web")
+        self.assertEqual(self.beacon.read_state("anchor.project"), "acme/web")
+
+    def test_session_start_clears_a_prior_tenants_slug(self):
+        root = self._root("widget")
+        self.beacon.write_state("anchor.slug", "acme/web")
+        with self._home(root), \
+             mock.patch.object(self.beacon, "_publish_chips"), \
+             mock.patch.object(self.beacon, "_discover_icon_at", return_value=None):
+            self.beacon._publish_anchor(root)
+        self.assertIsNone(self.beacon.read_state("anchor.slug"))
+        self.assertEqual(self.beacon.read_state("anchor.project"), "acme/widget")
+
+    def _label(self, run=None, which=True):
+        with mock.patch.object(self.beacon, "_which", return_value=which), \
+             mock.patch.object(self.beacon.subprocess, "run", side_effect=run) as ran, \
+             mock.patch.object(self.beacon, "log_error") as logged:
+            label = self.real_tack_repo_label(Path("/work/web"))
+        return label, ran, logged
+
+    def test_the_label_is_read_from_tack_json(self):
+        out = subprocess.CompletedProcess(
+            [], 0, stdout='{"key": "example.com/acme/web", "label": "acme/web"}')
+        label, ran, _ = self._label(run=lambda *a, **k: out)
+        self.assertEqual(label, "acme/web")
+        self.assertEqual(ran.call_args.args[0],
+                         ["tack", "repo", "label", str(Path("/work/web")), "--json"])
+
+    def test_no_tack_runs_nothing(self):
+        label, ran, _ = self._label(which=False)
+        self.assertIsNone(label)
+        ran.assert_not_called()
+
+    def test_a_repo_without_an_origin_is_an_answer_not_an_error(self):
+        out = subprocess.CompletedProcess([], 1, stdout="", stderr="No git repo with an origin remote")
+        label, _, logged = self._label(run=lambda *a, **k: out)
+        self.assertIsNone(label)
+        logged.assert_not_called()
+
+    def test_a_tack_that_hangs_is_logged(self):
+        def hang(*a, **k):
+            raise subprocess.TimeoutExpired(a[0], 2)
+        label, _, logged = self._label(run=hang)
+        self.assertIsNone(label)
+        self.assertEqual(logged.call_args.args[0], "tack.repo-label")
 
 
 class CompactionIsNotAFreshStart(BeaconTest):
