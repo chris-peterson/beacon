@@ -2,7 +2,7 @@
 
 beacon paints two independent things about a session, so a glance tells you both — no reading required.
 
-**What's happening right now** (`activity`) is the tab **color**: gray at rest, orange working, red when Claude needs you. Three values, one meaning, on every tab.
+**What's happening right now** (`activity`) is the tab **color**: gray at rest, orange working, red when Claude needs you. Three values, one meaning, on every tab. That's the legacy [tab look](/iterm/layout?id=tab-look) this page draws. The modern look, the default on iTerm2 3.7.5+, lets Claude Code's own status color the task line and puts a dark fill tinted toward the same hue behind it.
 
 **What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background**. `⏸` `🚀` `📋` `🏁` `…`.
 
