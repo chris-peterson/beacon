@@ -1980,6 +1980,17 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
                 self.assertNotIn(gone, self.shell)
 
 
+class ShellDefersTheSessionNameToClaude(unittest.TestCase):
+    """TITLE-04: a shell Claude Code spawns skips the startup set-name, since
+    its data dir may hold no engagement marker for the pane it runs in."""
+
+    def test_the_set_name_block_is_gated_on_claudecode(self):
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        block = shell[:shell.index("set-name \"$ITERM_SESSION_ID\"")]
+        gate = block[block.rindex("\nif "):]
+        self.assertIn('-z "${CLAUDECODE:-}"', gate)
+
+
 class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
     """Every `__BEACON_*__` in the profile template needs a matching `.replace`
     in `install_dynamic_profile`. A placeholder added to the template alone

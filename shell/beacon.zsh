@@ -280,7 +280,13 @@ mkdir -p "$_BEACON_CACHE_DIR"
 # _BEACON_CACHE_DIR; backgrounded (`&!`) so the osascript round trip doesn't
 # delay the first prompt. The name is an interpolated string, rendered once the
 # first precmd publishes beacon_title.
-if [[ -n "$ITERM_SESSION_ID" ]]; then
+#
+# A shell Claude Code spawns carries CLAUDECODE and runs inside the pane Claude
+# holds, so it never writes. The marker alone misses one of them: the snapshot
+# shell Claude builds on its first Bash call sources this file with a terminal,
+# and while two installs run at once the data dir it resolves can be the other
+# install's, which holds no marker for this pane.
+if [[ -n "$ITERM_SESSION_ID" && -z "${CLAUDECODE:-}" ]]; then
   {
     _beacon_marker="${_BEACON_CACHE_DIR}/engaged-${ITERM_SESSION_ID##*:}"
     [[ -e "$_beacon_marker" ]] || \

@@ -18,6 +18,15 @@ in `~/.claude/settings.json`, and `beacon config tab.look modern` turns
 them back on. Restart running Claude Code sessions to switch them over.
 `beacon doctor` reports when that setting and the look disagree.
 
+### A Claude tab keeps its task line
+
+While a marketplace install and a working-tree trial of beacon ran side
+by side, a Claude session's tab could lose its task line a few seconds
+into the session and show only the project. The shell Claude Code
+starts to snapshot your setup reset the tab's name. iTerm2 then drew
+Claude's status word, such as `Idle` or `waiting`, where the task
+belongs. Shells that Claude Code starts now leave the tab's name alone.
+
 ### Status-bar chips stay blank in panes beacon doesn't manage
 
 iTerm2 3.7.5 prints `[undef: user.beacon_branch_clean]` and the like in
