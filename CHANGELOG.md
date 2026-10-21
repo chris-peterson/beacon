@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.20.0
 
 ### A modern tab look that works with Claude Code's own status
 
