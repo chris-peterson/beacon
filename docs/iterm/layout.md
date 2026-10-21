@@ -128,7 +128,7 @@ Each surface beacon renders through has a number here, and [Settings by surface]
 
 The tab's color is the highest-leverage signal beacon paints, and its label is the session's identity — so a strip of tabs tells you what every session is and which one needs you, with nothing focused. Its color is the session's activity and nothing else — a neutral gray at rest, amber working, red waiting for you. A mode is carried by the label's glyph instead, so no mode competes for a hue, and neither does anything else: colour is the only signal you read across every tab at once, so it answers *does this need me* alone.
 
-The hexes here are each hue under its **tab weight**: beacon pins iTerm2's Minimal style, which fills the whole tab with the color rather than tinting it, and the states you see constantly recede so the rare one that wants you stands out. [The beacon palette](/palette) has the weights and the reasoning; a [dashboard card](/demo) paints the same hues unweighted, its dot being a fraction of the area.
+On iTerm2 3.7.5 and later, Claude Code draws its own status on the tab too, so beacon offers two [tab looks](#tab-look). The figures in this section show the **legacy** look, where beacon's color is the only signal. Its hexes are each hue under its **tab weight**: beacon pins iTerm2's Minimal style, which fills the whole tab with the color rather than tinting it, and the states you see constantly recede so the rare one that wants you stands out. [The beacon palette](/palette) has the weights and the reasoning; a [dashboard card](/demo) paints the same hues unweighted, its dot being a fraction of the area.
 
 <div class="panefig pf-states">
   <div class="pf-chip"><div class="b ready">checkout-api</div><div class="cap">idle — ready for a prompt</div></div>
@@ -153,6 +153,29 @@ That signal comes into its own with **tabs down the left side**. A left strip tu
 </div>
 
 Line 1 is the project name; line 2 is the task (or, on a parked or finished session, its note), and it collapses when there is neither. The hooks own the gray / amber / red dev transitions; you (or a skill) drive the mode cycles — `/beacon:pause "leaving for lunch"`, and from the CLI `beacon release`, `beacon retro`, `beacon done` (or any `beacon status …`). A pause note rides line 2 of the tab in place of the task, and also shows in the [dashboard](/demo) and the [status line](#the-status-line); the next prompt clears it.
+
+### Tab look
+
+From iTerm2 3.7.5, Claude Code reports its own status to the terminal through the [Program Status Protocol](/program-status), and iTerm2 draws it on the tab: a dot by the tab number, and the task line in the status color.
+
+| Claude's status | Dot | Task line |
+|:---|:---|:---|
+| working | orange | orange |
+| waiting for you | blue, ringed when it first needs you | blue |
+| finished, and you haven't typed since | green | green |
+| idle, or finished and you've typed | green | gray |
+| the turn failed | red | red |
+
+beacon's **modern** look, the default, keeps those and paints each tab a dark fill for the text to read on, tinted toward the state's hue. A finished turn stays calm instead of turning red when the prompt sits unanswered: its green text says it's your turn, and it turns gray once you've looked. The ringed blue dot, and iTerm2's dock badge, mark the session that's waiting on a decision.
+
+The **legacy** look turns Claude's reports off and paints the tab as it did before 3.7.5: gray, amber, and red, with red for any session waiting on you.
+
+```bash
+beacon config tab.look legacy
+beacon config tab.look modern
+```
+
+The switch writes `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json`, which Claude Code reads at launch, so restart running sessions to move them over. If something else manages that file and overwrites it, `beacon doctor` says so.
 
 ### Turning the badge on
 
@@ -369,6 +392,7 @@ These shape no surface of their own.
 | Send escape sequence-generated alerts (Profiles → Terminal) | off | the same prompts, the same reason | No |
 | Show progress bars (Profiles → Session) | off | each tab animates at its own pace, so the strip is in constant motion that says nothing the tab color doesn't | No |
 | `terminalProgressBarEnabled` in `~/.claude/settings.json` | `false`, only with iTerm2 | iTerm2 spins a background tab's cell for Claude Code's progress reports, and no iTerm2 setting turns that spinner off | Yes: beacon sets it only when unset |
+| `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
 | `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get their project, branch, and title from it | Yes: remove the line, and plain shell panes lose them |
 
 ## Setup

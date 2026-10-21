@@ -10,6 +10,7 @@ docs/*
 !docs/demo.md
 !docs/iterm/
 !docs/palette.md
+!docs/program-status.md
 !docs/statusbar.md
 !docs/statusline.md
 !docs/why.md

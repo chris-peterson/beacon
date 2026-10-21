@@ -617,7 +617,13 @@ class TabAreaWeighting(BeaconTest):
     """TAB-04 — the tab paints the canonical hue under a per-state area weight,
     one table per iTerm2 tab style, because Minimal fills the whole tab with it and
     Compact blends it toward gray. Every other surface takes the hue at full
-    strength."""
+    strength. The weights are the legacy look's (TAB-05)."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(self.beacon, "_tab_look", return_value="legacy")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_every_tab_style_weights_every_color_state(self):
         for style, weights in self.beacon.TAB_MUTE.items():
@@ -730,6 +736,77 @@ class TabAreaWeighting(BeaconTest):
     def test_an_unknown_state_falls_back_without_weighting(self):
         self.assertEqual(self.beacon._tab_hex("nonesuch"),
                          self.beacon._mute_hex(self.beacon.COLOR_PALETTE["ready"], 1.0))
+
+
+class ModernTabLook(BeaconTest):
+    """TAB-05 — the modern look paints a dark fill per state for Claude Code's
+    status to read on, and HOOK-03f stops the idle timer turning an iTerm2 tab
+    blocked."""
+
+    def _contrast(self, a, b):
+        def lum(h):
+            def ch(v):
+                v /= 255
+                return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+            r, g, b_ = (int(h[i:i+2], 16) for i in (0, 2, 4))
+            return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b_)
+        hi, lo = sorted((lum(a), lum(b)), reverse=True)
+        return (hi + 0.05) / (lo + 0.05)
+
+    def test_modern_is_the_default(self):
+        with mock.patch.object(self.beacon, "_load_config", return_value={}):
+            self.assertEqual(self.beacon._tab_look(), "modern")
+
+    def test_every_color_state_has_a_modern_fill(self):
+        self.assertEqual(set(self.beacon.MODERN_TAB_FILL), set(self.beacon.COLOR_PALETTE))
+
+    def test_modern_fills_ignore_the_tab_style_weights(self):
+        for style in self.beacon.TAB_STYLES:
+            for state, fill in self.beacon.MODERN_TAB_FILL.items():
+                with self.subTest(style=style, state=state), \
+                        mock.patch.object(self.beacon, "_tab_style", return_value=style), \
+                        mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+                    self.assertEqual(self.beacon._tab_hex(state), fill)
+
+    def test_claude_status_text_reads_on_its_fill(self):
+        # The colors iTerm2 3.7.6 draws each status in (setStatusAndColors).
+        text = {"ready": ["00d75f", "888888", "ff3b30"], "busy": ["ff9500"],
+                "blocked": ["5f87ff"]}
+        for state, colors in text.items():
+            fill = self.beacon.MODERN_TAB_FILL[state]
+            for color in [*colors, "ffffff"]:
+                with self.subTest(state=state, color=color):
+                    self.assertGreaterEqual(self._contrast(fill, color), 3.3)
+
+    def _notify(self, kind):
+        args = mock.Mock(event="Notification")
+        payload = json.dumps({"notification_type": kind})
+        with mock.patch.object(sys, "stdin", io.StringIO(payload)):
+            self.beacon.cmd_hook(args)
+
+    def test_modern_drops_the_idle_prompt_in_an_iterm2_pane(self):
+        self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
+        with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+            self._notify("idle_prompt")
+        self.assertNotEqual(self.beacon.read_state("activity"), "waiting")
+        self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_modern_keeps_the_idle_prompt_outside_iterm2(self):
+        with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+            self._notify("idle_prompt")
+        self.assertEqual(self.beacon.read_state("activity"), "waiting")
+
+    def test_legacy_keeps_the_idle_prompt_in_an_iterm2_pane(self):
+        self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
+        with mock.patch.object(self.beacon, "_tab_look", return_value="legacy"):
+            self._notify("idle_prompt")
+        self.assertEqual(self.beacon.read_state("activity"), "waiting")
+
+    def test_modern_still_paints_a_permission_prompt(self):
+        self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
+        with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+            self._notify("permission_prompt")
+        self.assertEqual(self.beacon.read_state("activity"), "waiting")
 
 
 class ConfigCommand(BeaconTest):
@@ -863,7 +940,7 @@ class ConfigCommand(BeaconTest):
         self._run("tab.indent.2", "6")
         self._run("tab.vertical-padding", "8")
         listed = self._run("tab").split()
-        self.assertEqual(listed, ["tab.style", "regular", "tab.indent.1", "3",
+        self.assertEqual(listed, ["tab.style", "regular", "tab.look", "modern", "tab.indent.1", "3",
                                   "tab.indent.2", "6", "tab.font-size", "18",
                                   "tab.vertical-padding", "8"])
         self._run("tab", "reset")
@@ -1901,6 +1978,17 @@ class ShellMirrorsTheChipContract(unittest.TestCase):
                      "_BEACON_RESOLVED_URL", '"$_BEACON_SCRIPT" resolve-url', "zstat"):
             with self.subTest(symbol=gone):
                 self.assertNotIn(gone, self.shell)
+
+
+class ShellDefersTheSessionNameToClaude(unittest.TestCase):
+    """TITLE-04: a shell Claude Code spawns skips the startup set-name, since
+    its data dir may hold no engagement marker for the pane it runs in."""
+
+    def test_the_set_name_block_is_gated_on_claudecode(self):
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        block = shell[:shell.index("set-name \"$ITERM_SESSION_ID\"")]
+        gate = block[block.rindex("\nif "):]
+        self.assertIn('-z "${CLAUDECODE:-}"', gate)
 
 
 class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
@@ -3521,7 +3609,7 @@ class HybridBranchProfileSlots(unittest.TestCase):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
         for var in ("beacon_branch_default", "beacon_branch_clean",
                     "beacon_branch_diverged", "beacon_branch_untracked"):
-            self.assertIn(rf"\\(user.{var})", template)
+            self.assertIn(rf"\\(user.{var}?)", template)
 
 
 class BranchIdentity(unittest.TestCase):
@@ -4508,6 +4596,7 @@ class InstallGating(unittest.TestCase):
             "_restart_installed_service": None,
             "install_dynamic_profile": (True, "profile written"),
             "_install_progress_off": None,
+            "_sync_claude_status": None,
             # None = iTerm2 has never run 3.7.0, so the shadowing check that
             # follows the render doesn't apply and reaches no real prefs.
             "_shadowed_profiles": None,
@@ -4537,7 +4626,7 @@ class InstallGating(unittest.TestCase):
                 self.beacon.argparse.Namespace(dir=dir, skip_layout=skip_layout))
         return buf.getvalue()
 
-    _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile", "_install_progress_off")
+    _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile", "_install_progress_off", "_sync_claude_status")
     _ALWAYS_STEPS = ("_install_cli_wrapper", "_restart_installed_service",
                      "_install_completions", "_install_statusline")
 
@@ -4773,6 +4862,88 @@ class ProgressReportsOff(unittest.TestCase):
         out = self._install()
         self.assertEqual(self.settings.read_text(), "{ not json")
         self.assertIn("terminalProgressBarEnabled: false", out)
+
+
+class ClaudeStatusFollowsTabLook(unittest.TestCase):
+    """RENDER-06b: Claude Code's OSC 7501 status reports follow `tab.look`. The
+    env var in the settings `env` block is set for legacy and unset for modern.
+    Install leaves a value it would have to change alone; `config tab.look` is
+    the user choosing, so it writes."""
+
+    VAR = "CLAUDE_CODE_DISABLE_TERMINAL_TITLE"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.beacon = _load_beacon(self.tmp)
+        self.addCleanup(self._tmp.cleanup)
+        self.settings = self.tmp / "settings.json"
+
+    def _sync(self, look, explicit=False):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.beacon._sync_claude_status(look, self.settings, explicit=explicit)
+        return buf.getvalue()
+
+    def _written(self):
+        return json.loads(self.settings.read_text())
+
+    def test_legacy_adds_to_an_existing_env_block(self):
+        self.settings.write_text(json.dumps({"model": "opus", "env": {"FOO": "bar"}}))
+        self._sync("legacy")
+        self.assertEqual(self._written(), {"model": "opus", "env": {"FOO": "bar", self.VAR: "1"}})
+
+    def test_legacy_creates_the_env_block_and_file_when_missing(self):
+        self._sync("legacy")
+        self.assertEqual(self._written(), {"env": {self.VAR: "1"}})
+
+    def test_modern_writes_nothing_when_unset(self):
+        out = self._sync("modern")
+        self.assertFalse(self.settings.exists())
+        self.assertIn("reports on", out)
+
+    def test_install_leaves_a_value_it_would_change(self):
+        self.settings.write_text(json.dumps({"env": {self.VAR: "1"}}))
+        out = self._sync("modern")
+        self.assertEqual(self._written(), {"env": {self.VAR: "1"}})
+        self.assertIn("beacon config tab.look modern", out)
+        self.settings.write_text(json.dumps({"env": {self.VAR: "0"}}))
+        self._sync("legacy")
+        self.assertEqual(self._written(), {"env": {self.VAR: "0"}})
+
+    def test_choosing_modern_removes_the_var_and_an_emptied_env(self):
+        self.settings.write_text(json.dumps({"model": "opus", "env": {self.VAR: "1"}}))
+        self._sync("modern", explicit=True)
+        self.assertEqual(self._written(), {"model": "opus"})
+
+    def test_choosing_modern_keeps_the_rest_of_env(self):
+        self.settings.write_text(json.dumps({"env": {"FOO": "bar", self.VAR: "1"}}))
+        self._sync("modern", explicit=True)
+        self.assertEqual(self._written(), {"env": {"FOO": "bar"}})
+
+    def test_choosing_legacy_overwrites_another_value(self):
+        self.settings.write_text(json.dumps({"env": {self.VAR: "0"}}))
+        self._sync("legacy", explicit=True)
+        self.assertEqual(self._written(), {"env": {self.VAR: "1"}})
+
+    def test_rerun_is_a_no_op(self):
+        self._sync("legacy")
+        before = self.settings.read_text()
+        out = self._sync("legacy")
+        self.assertEqual(self.settings.read_text(), before)
+        self.assertIn("reports off", out)
+
+    def test_a_non_object_env_is_not_clobbered(self):
+        self.settings.write_text(json.dumps({"env": ["nope"]}))
+        out = self._sync("legacy", explicit=True)
+        self.assertEqual(self._written(), {"env": ["nope"]})
+        self.assertIn(f'env.{self.VAR}: "1"', out)
+
+    def test_unparseable_settings_are_not_clobbered(self):
+        self.settings.write_text("{ not json")
+        out = self._sync("modern", explicit=True)
+        self.assertEqual(self.settings.read_text(), "{ not json")
+        self.assertIn(f"remove `env.{self.VAR}`", out)
 
 
 @unittest.skipIf(sys.platform == "win32", "launchd/systemd service is POSIX-only")
@@ -6424,8 +6595,18 @@ class StatusBarLayout(unittest.TestCase):
         self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 1)
         self.assertEqual(
             comps[2]["configuration"]["knobs"]["expression"],
-            r"\(user.beacon_project_name)")
+            r"\(user.beacon_project_name?)")
         self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
+
+    def test_every_chip_expression_renders_blank_when_unset(self):
+        # iTerm2 3.7.5+ prints `[undef: <var>]` in an Interpolated String
+        # component for a variable nothing set, which is every beacon var in a
+        # pane the shell integration never ran in. `?` keeps those blank.
+        for comp in self._layout():
+            expr = comp["configuration"]["knobs"].get("expression")
+            if expr is not None:
+                with self.subTest(expr=expr):
+                    self.assertRegex(expr, r"^\\\(user\.beacon_[a-z_]+\?\)$")
 
     def test_review_chip_is_gone(self):
         template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
@@ -6998,7 +7179,7 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
             if "beacon_branch" not in expr or not color:
                 continue
             seen += 1
-            slot = expr.split("user.")[-1].rstrip(")")
+            slot = expr.split("user.")[-1].rstrip(")?")
             with self.subTest(slot=slot):
                 hex6 = documented.get(slot)
                 self.assertIsNotNone(hex6, f"SPEC.md documents no {slot}")

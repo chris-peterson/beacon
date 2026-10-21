@@ -84,7 +84,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_project_name)",
+                "expression": "\\(user.beacon_project_name?)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
@@ -110,7 +110,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_branch_default)",
+                "expression": "\\(user.beacon_branch_default?)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
@@ -136,7 +136,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_branch_clean)",
+                "expression": "\\(user.beacon_branch_clean?)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
@@ -162,7 +162,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_branch_diverged)",
+                "expression": "\\(user.beacon_branch_diverged?)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",
@@ -188,7 +188,7 @@
             "class": "iTermStatusBarSwiftyStringComponent",
             "configuration": {
               "knobs": {
-                "expression": "\\(user.beacon_branch_untracked)",
+                "expression": "\\(user.beacon_branch_untracked?)",
                 "base: priority": 5,
                 "base: compression resistance": 1,
                 "minwidth": "0",

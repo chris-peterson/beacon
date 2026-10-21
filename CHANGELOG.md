@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### A modern tab look that works with Claude Code's own status
+
+iTerm2 3.7.5 draws Claude Code's status on the tab: a colored dot, and
+the task line in the status color. On beacon's tabs that clashed, with
+blue text on a red blocked tab and a green dot on a paused one. The new
+default look keeps Claude's status and paints each tab a dark fill for
+it to read on. A finished turn no longer turns red when the prompt sits
+unanswered: its task line stays green until you've looked, then turns
+gray. The ringed blue dot marks the session waiting on a decision.
+
+To keep the tab as it was, run `beacon config tab.look legacy`. It turns
+Claude's status reports off through `CLAUDE_CODE_DISABLE_TERMINAL_TITLE`
+in `~/.claude/settings.json`, and `beacon config tab.look modern` turns
+them back on. Restart running Claude Code sessions to switch them over.
+`beacon doctor` reports when that setting and the look disagree.
+
+### A Claude tab keeps its task line
+
+While a marketplace install and a working-tree trial of beacon ran side
+by side, a Claude session's tab could lose its task line a few seconds
+into the session and show only the project. The shell Claude Code
+starts to snapshot your setup reset the tab's name. iTerm2 then drew
+Claude's status word, such as `Idle` or `waiting`, where the task
+belongs. Shells that Claude Code starts now leave the tab's name alone.
+
+### Status-bar chips stay blank in panes beacon doesn't manage
+
+iTerm2 3.7.5 prints `[undef: user.beacon_branch_clean]` and the like in
+a status-bar chip whose value nothing has set, which is every chip in a
+pane opened on a command rather than a shell. The chips render blank
+there again. Run `beacon refresh-iterm-profiles` to pick it up.
+
 ## 2.19.1
 
 ### A session that opens with a slash command is named after it again

@@ -449,7 +449,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab.style, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -534,9 +534,10 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab tab.style tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar auto-pause origins ;;
+        3) compadd tab tab.style tab.look tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar auto-pause origins ;;
         4) [[ "${words[3]}" == tab ]] && compadd reset
            [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
+           [[ "${words[3]}" == tab.look ]] && compadd modern legacy
            [[ "${words[3]}" == tab.indent* ]] && compadd reset
            [[ "${words[3]}" == tab.font-size ]] && compadd 14 16 18 reset
            [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
@@ -634,6 +635,23 @@ TAB_LABEL_INDENT = {
 MAX_TAB_INDENT = 12
 TAB_INDENT_LINES = ("line-1", "line-2")
 DEFAULT_TAB_STYLE = "minimal"
+
+# How the tab shares the strip with Claude Code's own status (TAB-05, RENDER-06b).
+# iTerm2 3.7.5+ draws Claude's reports as a dot and a colored task line on the
+# tab. `modern` keeps them and paints a dark fill under each state that the
+# status text reads on; `legacy` turns Claude's reports off and paints TAB-04.
+TAB_LOOKS = ("modern", "legacy")
+DEFAULT_TAB_LOOK = "modern"
+
+# The modern fills: the Dracula background tinted toward the hue iTerm2 draws
+# Claude's status in for that state (working #ff9500, waiting #5f87ff), so the
+# colored task line sits on its own hue at low strength. Dark enough that every
+# status color clears 3.3:1 and white clears 11:1. No TAB_MUTE weight applies.
+MODERN_TAB_FILL = {
+    "ready":    "282a36",
+    "busy":     "423730",
+    "blocked":  "2e334a",
+}
 
 # The tab-label font size `beacon layout` recommends (CLI-18a), and the sizes
 # `tab.font_size` accepts. bin/beacon-iterm holds the same pair: it derives the
@@ -832,6 +850,19 @@ def _tab_style() -> str:
     return DEFAULT_TAB_STYLE
 
 
+def _tab_look() -> str:
+    """`tab.look` from the user config (TAB-05): whether the tab shares the strip
+    with Claude Code's status (`modern`) or keeps it to itself (`legacy`)."""
+    raw = _tab_config().get("look")
+    if raw is None:
+        return DEFAULT_TAB_LOOK
+    look = str(raw).strip().lower()
+    if look in TAB_LOOKS:
+        return look
+    log_error("config.tab.look", f"unknown tab.look {raw!r}")
+    return DEFAULT_TAB_LOOK
+
+
 def _valid_tab_number(n, allowed: range) -> bool:
     return isinstance(n, int) and not isinstance(n, bool) and n in allowed
 
@@ -921,7 +952,9 @@ def _tab_hex(color_state: str) -> str:
     """The hex the *tab* paints for a color state (TAB-04) — the canonical hue
     under its area weight for the user's tab style. Every other surface takes
     COLOR_PALETTE directly: a weight tuned for a full-bleed tab erases a 10px
-    dashboard dot."""
+    dashboard dot. The modern look (TAB-05) paints its own fills instead."""
+    if _tab_look() == "modern":
+        return MODERN_TAB_FILL.get(color_state, MODERN_TAB_FILL["ready"])
     base = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
     return _mute_hex(base, TAB_MUTE[_tab_style()].get(color_state, 1.0))
 
@@ -7360,6 +7393,7 @@ def _tab_settings() -> list[tuple[str, object]]:
     """Each tab setting's `config` name and effective value, in listing order."""
     indent = _tab_indent()
     return [("tab.style", _tab_style()),
+            ("tab.look", _tab_look()),
             ("tab.indent.1", indent[0]),
             ("tab.indent.2", indent[1]),
             ("tab.font-size", _tab_font_size()),
@@ -7397,6 +7431,28 @@ def _config_tab_style(values: list[str]) -> None:
     print(f"tab.style: {style} (in {_config_file()})")
     print(f"Tabs repaint with the {style} weights on their next hook. "
           f"Switch iTerm2's theme to match with `{LAYOUT_COMMAND} --write`.")
+
+
+def _config_tab_look(values: list[str]) -> None:
+    if not values:
+        print(_tab_look())
+        return
+    if len(values) > 1:
+        sys.exit(f"usage: beacon config tab.look [{'|'.join(TAB_LOOKS)}]")
+    look = values[0].strip().lower()
+    if look not in TAB_LOOKS:
+        sys.exit(f"unknown tab look {values[0]!r}; expected one of {', '.join(TAB_LOOKS)}")
+    data = _config_for_edit()
+    tab = _tab_config_for_edit(data)
+    tab["look"] = look
+    _save_tab_config(data, tab)
+    print(f"tab.look: {look} (in {_config_file()})")
+    if not _is_iterm_installed():
+        print("The look applies to iTerm2 tabs, and iTerm2 isn't installed here.")
+        return
+    _sync_claude_status(look, explicit=True)
+    print("Tabs repaint on their next hook. Claude Code reads the status setting "
+          "at launch, so restart running sessions to switch them over.")
 
 
 def _config_origins(values: list[str]) -> None:
@@ -7591,6 +7647,8 @@ def cmd_config(args):
         _config_tab(args.values)
     elif args.setting == "tab.style":
         _config_tab_style(args.values)
+    elif args.setting == "tab.look":
+        _config_tab_look(args.values)
     elif args.setting == "tab.indent":
         _config_tab_indent(None, args.values)
     elif args.setting in ("tab.indent.1", "tab.indent.2"):
@@ -7661,6 +7719,9 @@ _DOCTOR_ADVICE = {
     "config.tab.style": f"`tab.style` in {_config_file()} names no tab style beacon "
                         f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
                         f"{DEFAULT_TAB_STYLE} weights.",
+    "config.tab.look": f"`tab.look` in {_config_file()} is neither "
+                       f"{' nor '.join(TAB_LOOKS)}, so tabs paint the {DEFAULT_TAB_LOOK} look. "
+                       f"`beacon config tab.look {DEFAULT_TAB_LOOK}` rewrites it.",
     "serve.origin": "serve refused the origin above, so a dashboard on it reads as a "
                     "dead feed. If it is yours, add it to the `focus_origins` list in "
                     f"{_config_file()} and restart serve: the allowlist is read at "
@@ -7967,6 +8028,20 @@ def _doctor_checks() -> list[dict]:
                 add("iTerm2", "this pane", _DOCTOR_OK if found else _DOCTOR_BAD,
                     f"{guid} reachable" if found
                     else f"{guid} not reachable via Apple Events ({why})")
+        look = _tab_look()
+        value, problem = _claude_status_env(CLAUDE_SETTINGS)
+        if problem:
+            add("iTerm2", "tab look", _DOCTOR_WARN, problem)
+        elif _claude_status_agrees(look, value):
+            add("iTerm2", "tab look", _DOCTOR_OK,
+                f"{look}: Claude's status reports {'off' if look == 'legacy' else 'on'}")
+        else:
+            add("iTerm2", "tab look", _DOCTOR_WARN,
+                f"{look}, but {CLAUDE_SETTINGS} sets {PROGRAM_STATUS_ENV} to "
+                f"{json.dumps(value)} — run `beacon config tab.look {look}`"
+                if value is not None else
+                f"{look}, but {CLAUDE_SETTINGS} leaves Claude's status reports on — "
+                f"run `beacon config tab.look {look}`")
 
     # Claude Code — `statusLine` is the only settings key that makes the
     # status line exist.
@@ -8046,6 +8121,7 @@ def cmd_doctor(args):
 
 CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 PROGRESS_SETTING = "terminalProgressBarEnabled"
+PROGRAM_STATUS_ENV = "CLAUDE_CODE_DISABLE_TERMINAL_TITLE"
 
 
 def _statusline_settings_value() -> dict:
@@ -8139,6 +8215,65 @@ def _install_progress_off(settings: Path | None = None) -> None:
     print(f"  ✓ turned off progress reports in {settings}")
 
 
+def _claude_status_env(settings: Path) -> tuple[object, str | None]:
+    """The value `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` holds in Claude Code's
+    settings (None when unset), or why the settings can't be read for it."""
+    data, problem = _read_claude_settings(settings)
+    if problem:
+        return None, problem
+    env = data.get("env", {})
+    if not isinstance(env, dict):
+        return None, f"{settings} has a non-object `env` — leaving it alone"
+    return env.get(PROGRAM_STATUS_ENV), None
+
+
+def _claude_status_agrees(look: str, value) -> bool:
+    """Whether the env var matches the look (RENDER-06b): set to "1" for legacy,
+    unset for modern."""
+    return value == "1" if look == "legacy" else value is None
+
+
+def _sync_claude_status(look: str, settings: Path | None = None,
+                        explicit: bool = False) -> None:
+    """RENDER-06b: make Claude Code's OSC 7501 status reports follow `tab.look`.
+    iTerm2 3.7.5+ paints them on the tab as a dot and a colored task line; the
+    env var is the only switch Claude Code reads for them, and the `env` block of
+    the user settings reaches `process.env` before the terminal probe runs.
+    `legacy` sets it, `modern` leaves it unset. Install (`explicit=False`) leaves
+    a value it would have to change alone and says how to settle it;
+    `config tab.look` is the user choosing, so it writes."""
+    settings = settings or CLAUDE_SETTINGS
+    by_hand = (f"set `env.{PROGRAM_STATUS_ENV}: \"1\"` there" if look == "legacy"
+               else f"remove `env.{PROGRAM_STATUS_ENV}` there")
+    value, problem = _claude_status_env(settings)
+    if problem:
+        print(f"  ! {problem}")
+        print(f"  For the {look} tab look, {by_hand}.")
+        return
+    if _claude_status_agrees(look, value):
+        state = "off" if look == "legacy" else "on"
+        print(f"  ✓ Claude's status reports {state} for the {look} tab look: {settings}")
+        return
+    if value is not None and not explicit:
+        other = "modern" if look == "legacy" else "legacy"
+        print(f"  ! {settings} sets {PROGRAM_STATUS_ENV} to {json.dumps(value)} — "
+              f"leaving it alone. `beacon config tab.look {look}` makes it match "
+              f"the {look} look; `beacon config tab.look {other}` keeps what it does.")
+        return
+    data, _ = _read_claude_settings(settings)
+    env = data.setdefault("env", {})
+    if look == "legacy":
+        env[PROGRAM_STATUS_ENV] = "1"
+    else:
+        env.pop(PROGRAM_STATUS_ENV, None)
+        if not env:
+            data.pop("env")
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(json.dumps(data, indent=2) + "\n")
+    state = "off" if look == "legacy" else "on"
+    print(f"  ✓ turned Claude's status reports {state} in {settings}")
+
+
 def cmd_install(_args):
     print("beacon install")
     print("==============")
@@ -8199,6 +8334,7 @@ def cmd_install(_args):
     if warning:
         print(_color("33", f"  ! {warning}"))
     _install_progress_off()
+    _sync_claude_status(_tab_look())
     print()
     layout_drifted = False
     if not layout_step:
@@ -8500,6 +8636,13 @@ def cmd_hook(args):
         # observation, not the activity axis losing an argument to the mode.
         if kind == IDLE_NOTIFICATION and _mode_stood_down(read_mode()[0]):
             return
+        # HOOK-03f: under the modern look, iTerm2 already shows a finished turn
+        # as Claude's green `done` until the user types, so the idle timer adds
+        # nothing to an iTerm2 pane but red. Outside iTerm2 there is no tab
+        # showing `done`, so the observation still counts there.
+        if (kind == IDLE_NOTIFICATION and _tab_look() == "modern"
+                and read_state("iterm_session_id")):
+            return
         write_state("activity", "waiting")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
@@ -8652,16 +8795,17 @@ def _build_parser() -> "argparse.ArgumentParser":
                     help="comma-separated setting keys to write, skipping the drift check")
 
     sp = sub.add_parser("config",
-                        help="show or change the user config: tab.style, tab.indent, "
+                        help="show or change the user config: tab.style, tab.look, tab.indent, "
                              "tab.font-size, tab.vertical-padding, pane-title-bar, "
                              "auto-pause, origins")
     sp.add_argument("setting", nargs="?",
-                    choices=("tab", "tab.style", "tab.indent", "tab.indent.1", "tab.indent.2",
-                             "tab.font-size", "tab.vertical-padding", "pane-title-bar",
-                             "auto-pause", "origins"),
+                    choices=("tab", "tab.style", "tab.look", "tab.indent", "tab.indent.1",
+                             "tab.indent.2", "tab.font-size", "tab.vertical-padding",
+                             "pane-title-bar", "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
-                    help="tab: reset; tab.style: minimal|compact|regular; tab.indent: reset; "
+                    help="tab: reset; tab.style: minimal|compact|regular; "
+                         "tab.look: modern|legacy; tab.indent: reset; "
                          "tab.indent.1, tab.indent.2: <spaces> | reset; "
                          "tab.font-size, tab.vertical-padding: <points> | reset; "
                          "pane-title-bar: on | off | reset; "

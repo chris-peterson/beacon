@@ -15,4 +15,6 @@
   - [Backup](/cli?id=backup)
   - [Diagnostics](/cli?id=diagnostics)
   - [Internal](/cli?id=internal)
-- [Specification](/spec)
+- Technical details
+  - [Specification](/spec)
+  - [Program status (OSC 7501)](/program-status)
