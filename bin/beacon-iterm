@@ -428,12 +428,6 @@ RECOMMENDED_LAYOUT = (
      "why": "the tooltip repeats the project and task the label already shows, "
             "and pops over the neighbouring tabs being scanned",
      "where": "Advanced → Tabs"},
-    {"key": "HideActivityIndicator", "want": "1", "type": "bool",
-     "label": "No tab activity spinner",
-     "why": "iTerm2 spins it on a background tab while the session prints, and "
-            "Claude's screen redraws the whole time it works, so it repeats "
-            "what the working tab color already says",
-     "where": "Appearance → Tabs"},
     {"key": "StatusBarPosition", "want": "0", "type": "int",
      "label": "Status bar at the top",
      "why": "reads as a header for the pane; the bottom is where Claude Code "

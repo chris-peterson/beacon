@@ -2,12 +2,17 @@
 
 ## Unreleased
 
-### iTerm2's progress bars follow your profile
+### Claude Code's progress reports are yours to set
 
-The beacon profiles take iTerm2's Show progress bars setting from the
-profile they're based on. Tabs look the same: Claude Code's progress
-reports stay off through `terminalProgressBarEnabled: false`, which
-`beacon install` sets, and its status reports draw no bar.
+`beacon install` leaves `terminalProgressBarEnabled` in
+`~/.claude/settings.json` alone, and the beacon profiles take iTerm2's
+Show progress bars setting from the profile they're based on. With
+progress reports on, a background tab shows a spinner while Claude works
+in place of the status dot. An earlier install set the key to `false`;
+delete it to get the spinner.
+
+`beacon layout` no longer manages iTerm2's Show activity indicator
+setting, which draws nothing different on a beacon tab either way.
 
 ## 2.20.0
 
