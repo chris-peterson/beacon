@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### iTerm2's progress bars follow your profile
+
+The beacon profiles take iTerm2's Show progress bars setting from the
+profile they're based on. Tabs look the same: Claude Code's progress
+reports stay off through `terminalProgressBarEnabled: false`, which
+`beacon install` sets, and its status reports draw no bar.
+
 ## 2.20.0
 
 ### A modern tab look that works with Claude Code's own status
