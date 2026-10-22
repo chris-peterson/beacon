@@ -5296,14 +5296,18 @@ def _local_path_at(cwd: Path) -> str:
 
 
 def _project_chip_at(cwd: Path) -> str:
-    """The project chip's value (STATUS-BAR-02): the project's name, and the
-    directory's own name when that isn't a project.
+    """The project chip's value (STATUS-BAR-02): tack's repo label when the
+    session anchored one, else the project's name, and the directory's own name
+    when that isn't a project.
+
+    The label is what the tab's line 1 already reads (`anchor.project`), so the
+    chip agrees with it. The shell's precmd paints the remote basename instead,
+    since it can't afford a tack call per prompt.
 
     `_project_name_at` answers empty outside a recognized project because its
     other caller (tack route lookup) needs that distinction. The chip has no use
-    for a blank slot — it reads the same in a plain shell as under Claude, in a
-    git repo or not — so it floors here. Mirrors the shell's precmd."""
-    return _project_name_at(cwd) or cwd.name or str(cwd)
+    for a blank slot, so it floors here."""
+    return p_tack_slug(cwd) or _project_name_at(cwd) or cwd.name or str(cwd)
 
 
 def _branch_slot_pairs(display: str, state: str, identity: str) -> tuple[str, ...]:
@@ -5444,9 +5448,11 @@ def _publish_anchor(cwd: Path) -> None:
     are persisted as `anchor.cwd` / `anchor.project` so the Stop hook
     (HOOK-08b) re-resolves chips from this fixed anchor rather than trusting
     each turn's payload cwd — the anchor is beacon's own record of where the
-    session began, not an implicit property of Claude's hook payloads."""
-    _publish_chips(cwd)
+    session began, not an implicit property of Claude's hook payloads.
 
+    The anchor is written before the chips publish: the project chip reads
+    `anchor.slug` through `p_tack_slug`, which a prior tenant's anchor would
+    otherwise answer."""
     root = _project_root_at(cwd)
     slug = _tack_repo_label(root) if root else None
     if slug:
@@ -5466,6 +5472,7 @@ def _publish_anchor(cwd: Path) -> None:
         write_state("anchor.icon", icon)
     else:
         remove_state("anchor.icon")
+    _publish_chips(cwd)
     _cli("uservar-batch", f"beacon_project={project_display}",
          "beacon_task=", "beacon_location=")
 

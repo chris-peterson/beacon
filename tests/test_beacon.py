@@ -3805,6 +3805,27 @@ class ProjectFromTackRepoLabel(BeaconTest):
         self.assertEqual(self.beacon.read_state("anchor.slug"), "acme/web")
         self.assertEqual(self.beacon.read_state("anchor.project"), "acme/web")
 
+    def test_the_project_chip_reads_the_anchored_slug(self):
+        # STATUS-BAR-02: the chip and the tab's line 1 name the project alike.
+        root = self._root("web")
+        self.beacon._tack_repo_label.return_value = "acme/web"
+        published = []
+        with self._home(root), \
+             mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("main", "clean", "", "default")), \
+             mock.patch.object(self.beacon, "resolve_url", return_value=("", "")), \
+             mock.patch.object(self.beacon, "_tack_route_urls", return_value=[]), \
+             mock.patch.object(self.beacon, "_discover_icon_at", return_value=None), \
+             mock.patch.object(self.beacon, "_cli", side_effect=lambda *a: published.append(a)):
+            self.beacon._publish_anchor(root)
+            self.beacon._tack_repo_label.reset_mock()
+            self.beacon._publish_chips(root)
+        chips = [a for a in published if any(str(p).startswith("beacon_project_name=") for p in a)]
+        self.assertEqual(len(chips), 2)
+        for args in chips:
+            self.assertIn("beacon_project_name=acme/web", args)
+        self.beacon._tack_repo_label.assert_not_called()
+
     def test_session_start_clears_a_prior_tenants_slug(self):
         root = self._root("widget")
         self.beacon.write_state("anchor.slug", "acme/web")

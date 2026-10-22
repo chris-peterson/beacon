@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### The status-bar project chip names the repo the way the tab does
+
+In a Claude session with tack installed, the status bar's project chip
+now shows tack's repo label, the same name as the tab. A session in
+`globex/web` no longer reads `globex/web` on the tab and `web` beside
+the branch. A plain shell's chip still shows the repo name.
+
 ## 2.20.0
 
 ### A modern tab look that works with Claude Code's own status
