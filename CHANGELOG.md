@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does
 
