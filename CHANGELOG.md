@@ -15,6 +15,13 @@ start a browser the same way.
 If iTerm2 is carrying those variables now (`env | grep CLAUDE` in a new
 tab prints them), quit it with Cmd-Q and start it from the Dock.
 
+### iTerm2's progress bars follow your profile
+
+The beacon profiles take iTerm2's Show progress bars setting from the
+profile they're based on. Tabs look the same: Claude Code's progress
+reports stay off through `terminalProgressBarEnabled: false`, which
+`beacon install` sets, and its status reports draw no bar.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does

@@ -1669,7 +1669,7 @@ Read as a list of keys, the protocol looks like it covers much of what beacon pa
 | `kind` | The detail line in the Session Status tool, when there's no `msg` |
 | `msg` | The detail line in the Session Status tool and the Cockpit |
 | `title` | Sub-agent rows in the Session Status tool |
-| `progress` | The progress bar, which beacon turns off |
+| `progress` | The progress bar |
 
 Against beacon's surfaces:
 

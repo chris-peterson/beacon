@@ -390,8 +390,7 @@ These shape no surface of their own.
 |---|---|---|---|
 | Notification Center alerts (Profiles → Terminal) | off | macOS delivers these unreliably, while the tab color shows the same permission and idle prompts every time and stays until you act | No |
 | Send escape sequence-generated alerts (Profiles → Terminal) | off | the same prompts, the same reason | No |
-| Show progress bars (Profiles → Session) | off | each tab animates at its own pace, so the strip is in constant motion that says nothing the tab color doesn't | No |
-| `terminalProgressBarEnabled` in `~/.claude/settings.json` | `false`, only with iTerm2 | iTerm2 spins a background tab's cell for Claude Code's progress reports, and no iTerm2 setting turns that spinner off | Yes: beacon sets it only when unset |
+| `terminalProgressBarEnabled` in `~/.claude/settings.json` | `false`, only with iTerm2 | iTerm2 draws Claude Code's progress reports as a bar along each tab, each animating at its own pace, and as a spinner in a background tab's cell that no iTerm2 setting turns off | Yes: beacon sets it only when unset |
 | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
 | `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get their project, branch, and title from it | Yes: remove the line, and plain shell panes lose them |
 
