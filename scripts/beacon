@@ -8148,7 +8148,6 @@ def cmd_doctor(args):
 
 
 CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
-PROGRESS_SETTING = "terminalProgressBarEnabled"
 PROGRAM_STATUS_ENV = "CLAUDE_CODE_DISABLE_TERMINAL_TITLE"
 
 
@@ -8215,32 +8214,6 @@ def _install_statusline(settings: Path | None = None) -> None:
     settings.parent.mkdir(parents=True, exist_ok=True)
     settings.write_text(json.dumps(data, indent=2) + "\n")
     print(f"  ✓ wrote statusLine to {settings}")
-
-
-def _install_progress_off(settings: Path | None = None) -> None:
-    """RENDER-06a: turn off Claude Code's OSC 9;4 progress reports. iTerm2 spins
-    a background tab's indicator for an indeterminate report, and neither the
-    profile's `Enable Progress Bars` nor `HideActivityIndicator` reaches that
-    path, so the sender is the only place it stops. An explicit `true` is the
-    user's choice and is left alone."""
-    settings = settings or CLAUDE_SETTINGS
-    data, problem = _read_claude_settings(settings)
-    if problem:
-        print(f"  ! {problem}")
-        print(f"  To stop the tab spinner, set `{PROGRESS_SETTING}: false` there.")
-        return
-    current = data.get(PROGRESS_SETTING)
-    if current is False:
-        print(f"  ✓ progress reports already off: {settings}")
-        return
-    if current is not None:
-        print(f"  ! {settings} sets {PROGRESS_SETTING} to {json.dumps(current)} — "
-              "leaving it alone; background tabs will spin while Claude works")
-        return
-    data[PROGRESS_SETTING] = False
-    settings.parent.mkdir(parents=True, exist_ok=True)
-    settings.write_text(json.dumps(data, indent=2) + "\n")
-    print(f"  ✓ turned off progress reports in {settings}")
 
 
 def _claude_status_env(settings: Path) -> tuple[object, str | None]:
@@ -8361,7 +8334,6 @@ def cmd_install(_args):
     warning = _render_shadowed_warning() if ok else None
     if warning:
         print(_color("33", f"  ! {warning}"))
-    _install_progress_off()
     _sync_claude_status(_tab_look())
     print()
     layout_drifted = False
