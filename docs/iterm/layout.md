@@ -156,7 +156,7 @@ Line 1 is the project name; line 2 is the task (or, on a parked or finished sess
 
 ### Tab look
 
-From iTerm2 3.7.5, Claude Code reports its own status to the terminal through the [Program Status Protocol](/program-status), and iTerm2 draws it on the tab: a dot by the tab number, and the task line in the status color.
+From iTerm2 3.7.5, Claude Code reports its own status to the terminal through the [Program Status Protocol](/program-status), and iTerm2 draws it on the tab: a dot by the tab number, and the status word at the front of the task line (`<status> – <task>`), the whole line in the status color.
 
 | Claude's status | Dot | Task line |
 |:---|:---|:---|
@@ -199,7 +199,7 @@ beacon config tab.style regular
 
 Then run `beacon layout --write` to switch iTerm2's theme. `beacon config tab.style minimal` switches back.
 
-If the label sits too close to the tab's edge, set how many spaces lead each line (project, then task):
+If the label sits too close to the tab's edge, set how many spaces lead each line (project, then task). Under the modern [tab look](#tab-look), Claude's status leads the task line, so the task line takes no indent:
 
 ```
 beacon config tab.indent.1 <spaces>

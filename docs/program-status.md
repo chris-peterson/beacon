@@ -1665,7 +1665,7 @@ Read as a list of keys, the protocol looks like it covers much of what beacon pa
 
 | Key | iTerm2 3.7.6 shows it |
 |:---|:---|
-| `state` | The tab dot, the color of the tab's subtitle line, and the status word on that line, which beacon's two-line label pushes out of view |
+| `state` | The tab dot, and the status word and color on the tab's subtitle line, which on a beacon tab reads `<status> – <task>` |
 | `kind` | The detail line in the Session Status tool, when there's no `msg` |
 | `msg` | The detail line in the Session Status tool and the Cockpit |
 | `title` | Sub-agent rows in the Session Status tool |

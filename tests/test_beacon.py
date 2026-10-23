@@ -669,7 +669,7 @@ class TabAreaWeighting(BeaconTest):
             self.beacon.apply({**_base_state(), "task": "ship it"})
         self.assertIn(("uservar", "beacon_title_prefix", "   " + self.beacon.DEV_TITLE_LEAD),
                       self.cli_calls)
-        self.assertIn(("uservar", "beacon_task_nl", "\n     ship it"), self.cli_calls)
+        self.assertIn(("uservar", "beacon_subtitle", "     ship it"), self.cli_calls)
 
     def test_minimal_and_compact_keep_the_shipped_indents(self):
         self.assertEqual(self.beacon.TAB_LABEL_INDENT["minimal"], (0, 2))
@@ -680,7 +680,7 @@ class TabAreaWeighting(BeaconTest):
                                return_value={"tab": {"indent": {"line-1": 1, "line-2": 4}}}):
             self.assertEqual(self.beacon._tab_indent(), (1, 4))
             self.beacon.apply({**_base_state(), "task": "ship it"})
-        self.assertIn(("uservar", "beacon_task_nl", "\n    ship it"), self.cli_calls)
+        self.assertIn(("uservar", "beacon_subtitle", "    ship it"), self.cli_calls)
 
     def test_a_line_left_out_keeps_the_style_default(self):
         with mock.patch.object(self.beacon, "_load_config", return_value={"tab": {"indent": {"line-2": 4}}}):
@@ -2107,12 +2107,12 @@ class StoodDownModeNoteOnLineTwo(BeaconTest):
     the slot is empty in exactly the sessions that carry a note."""
 
     def _line_two(self):
-        return [c[2] for c in self.cli_calls if c[:2] == ("uservar", "beacon_task_nl")]
+        return [c[2] for c in self.cli_calls if c[:2] == ("uservar", "beacon_subtitle")]
 
     def test_pause_note_fills_line_two(self):
         self.beacon.write_mode("pause", "out for lunch")
         self.beacon.render()
-        self.assertEqual(self._line_two(), ["\n  out for lunch"])
+        self.assertEqual(self._line_two(), ["out for lunch"])
 
     def test_done_note_fills_line_two_that_state_12_blanked(self):
         self.beacon.write_state("override.task", "perms")
@@ -2120,7 +2120,7 @@ class StoodDownModeNoteOnLineTwo(BeaconTest):
         self.beacon.render()
         # STATE-12 still suppresses the task on the badge's single line; the note
         # is what now occupies the second line it left empty.
-        self.assertEqual(self._line_two(), ["\n  handed off, CI green"])
+        self.assertEqual(self._line_two(), ["handed off, CI green"])
         self.assertEqual(
             [c[2] for c in self.cli_calls if c[:2] == ("uservar", "beacon_task")], [""],
         )
@@ -2134,7 +2134,7 @@ class StoodDownModeNoteOnLineTwo(BeaconTest):
                 self.beacon.write_mode(mode, "v2.5.0")
                 self.beacon.render()
                 self.assertEqual(
-                    self._line_two(), ["\n  perms"],
+                    self._line_two(), ["perms"],
                     "release / retro are working phases — the task is live "
                     "information and the note keeps its status-line home",
                 )
@@ -2143,7 +2143,7 @@ class StoodDownModeNoteOnLineTwo(BeaconTest):
         self.beacon.write_state("override.task", "perms")
         self.beacon.write_mode("pause", "")
         self.beacon.render()
-        self.assertEqual(self._line_two(), ["\n  perms"])
+        self.assertEqual(self._line_two(), ["perms"])
 
     def test_leaving_the_mode_restores_the_task(self):
         self.beacon.write_state("override.task", "perms")
@@ -2153,7 +2153,7 @@ class StoodDownModeNoteOnLineTwo(BeaconTest):
         self.beacon.write_mode(self.beacon.DEV_MODE)
         self.beacon.render()
         self.assertEqual(
-            self._line_two(), ["\n  perms"],
+            self._line_two(), ["perms"],
             "presentation-only, like STATE-12: nothing deleted the override",
         )
         self.assertEqual(self.beacon.read_state("override.task"), "perms")
@@ -2729,13 +2729,28 @@ class BadgeConfigToggle(unittest.TestCase):
 
 
 class TwoLineTitle(BeaconTest):
-    """TITLE-05: the tab / window-title Name carries the task on a second line
-    via beacon_task_nl (newline-prefixed), while BADGE_FORMAT stays a single
+    """TITLE-05: the session name is line 1 alone, and line 2 is the profile's
+    Subtitle reading beacon_subtitle, while BADGE_FORMAT stays a single
     " · "-joined line."""
 
-    def test_title_format_uses_task_nl(self):
-        self.assertIn(r"\(user.beacon_task_nl)", self.beacon.TITLE_FORMAT)
+    SUBTITLE = r"\(user.beacon_subtitle?)"
+
+    def test_title_format_is_one_line(self):
+        self.assertNotIn("subtitle", self.beacon.TITLE_FORMAT)
         self.assertNotIn(r"\(user.beacon_task)", self.beacon.TITLE_FORMAT)
+
+    def test_every_profile_reads_the_subtitle(self):
+        # SetProfile re-reads Subtitle from the profile it switches to, so a mode
+        # profile without it would drop line 2 for the length of the mode.
+        profiles_dir = self.data_dir / "DynamicProfiles"
+        with mock.patch.object(self.beacon, "_iterm_profiles_dir", return_value=profiles_dir):
+            ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        written = sorted(profiles_dir.glob("*.json"))
+        self.assertEqual(len(written), 1 + len(self.beacon.MODE_SPECS))
+        for path in written:
+            profile = json.loads(path.read_text())["Profiles"][0]
+            self.assertEqual(profile.get("Subtitle"), self.SUBTITLE, path.name)
 
     def test_title_format_leads_with_prefix(self):
         # TITLE-06: the paused mode lead prefixes line 1, ahead of the project.
@@ -2745,13 +2760,21 @@ class TwoLineTitle(BeaconTest):
             self.beacon.TITLE_FORMAT.index(r"\(user.beacon_project)"),
         )
 
-    def test_apply_publishes_newline_prefixed_task(self):
-        self.beacon.apply({**_base_state(), "task": "fix bug"})
-        self.assertIn(("uservar", "beacon_task_nl", "\n  fix bug"), self.cli_calls)
+    def test_legacy_indents_the_task(self):
+        with mock.patch.object(self.beacon, "_tab_look", return_value="legacy"):
+            self.beacon.apply({**_base_state(), "task": "fix bug"})
+        self.assertIn(("uservar", "beacon_subtitle", "  fix bug"), self.cli_calls)
+
+    def test_modern_publishes_the_task_flush(self):
+        # iTerm2 puts Claude's status ahead of the subtitle, so an indent would
+        # sit between the status dash and the task.
+        with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+            self.beacon.apply({**_base_state(), "task": "fix bug"})
+        self.assertIn(("uservar", "beacon_subtitle", "fix bug"), self.cli_calls)
 
     def test_empty_task_collapses(self):
         self.beacon.apply({**_base_state(), "task": ""})
-        self.assertIn(("uservar", "beacon_task_nl", ""), self.cli_calls)
+        self.assertIn(("uservar", "beacon_subtitle", ""), self.cli_calls)
 
 
 class MarkdownEmphasis(BeaconTest):
@@ -2768,7 +2791,7 @@ class MarkdownEmphasis(BeaconTest):
     def test_underscore_forms_need_word_boundaries(self):
         self.assertEqual(self.beacon._title_markup("__loud__ and _quiet_"),
                          "<b>loud</b> and <i>quiet</i>")
-        for plain in ("rename beacon_task_nl", "_publish_chips_ok", "2 * 3 * 4"):
+        for plain in ("rename beacon_title_prefix", "_publish_chips_ok", "2 * 3 * 4"):
             self.assertEqual(self.beacon._title_markup(plain), plain)
 
     def test_adjacent_runs_do_not_merge(self):
@@ -2785,7 +2808,7 @@ class MarkdownEmphasis(BeaconTest):
 
     def test_apply_publishes_the_marked_up_task(self):
         self.beacon.apply({**_base_state(), "task": "ship **it**"})
-        self.assertIn(("uservar", "beacon_task_nl", "\n  ship <b>it</b>"),
+        self.assertIn(("uservar", "beacon_subtitle", "ship <b>it</b>"),
                       self.cli_calls)
 
     def test_the_snapshot_keeps_the_source_text(self):
@@ -4263,7 +4286,7 @@ class SessionEndDisengages(BeaconTest):
 
     def test_exit_hands_the_session_name_back_to_the_interactive_title(self):
         # The bug: disengage blanks every user var TITLE_FORMAT interpolates
-        # (beacon_project, beacon_task_nl, beacon_title_prefix) but left the
+        # (beacon_project, beacon_subtitle, beacon_title_prefix) but left the
         # name pointing at that template, so the tab label and window title
         # rendered empty after `exit`. The shell's own source-time set-name is
         # a one-shot that already ran (and skipped, the pane being engaged), so
@@ -4300,7 +4323,7 @@ class SessionEndDisengages(BeaconTest):
             self._fire({"reason": "other"})
         handback = self.cli_calls.index(
             ("set-name", "w0t0p0:ABC-123", self.beacon.INTERACTIVE_TITLE_FORMAT))
-        for var in ("beacon_project", "beacon_task_nl", "beacon_title_prefix"):
+        for var in ("beacon_project", "beacon_subtitle", "beacon_title_prefix"):
             self.assertGreater(
                 self.cli_calls.index(("uservar", var, "")), handback,
                 f"{var} must be blanked after the name handback, not before",
@@ -4420,8 +4443,8 @@ class BadgePinnedToAnchorOnWander(BeaconTest):
         self._chdir(self.live_dir)
         self.beacon.render()
         self.assertEqual(
-            _uservar_emits(self.cli_calls, "beacon_task_nl"),
-            [("uservar", "beacon_task_nl", "\n  my-task")],
+            _uservar_emits(self.cli_calls, "beacon_subtitle"),
+            [("uservar", "beacon_subtitle", "my-task")],
             "Line 2 is the unit of work; the location is line 1's",
         )
 
@@ -4571,7 +4594,7 @@ class LinkedWorktreeIsNotAWander(BeaconTest):
     def test_the_worktree_directory_name_never_reaches_the_tab(self):
         self._chdir(self.worktree)
         self.beacon.render()
-        for call in _uservar_emits(self.cli_calls, "beacon_task_nl"):
+        for call in _uservar_emits(self.cli_calls, "beacon_subtitle"):
             self.assertNotIn(self.worktree.name, call[2],
                              "The generated worktree name must not caption the tab")
 
@@ -9729,7 +9752,7 @@ class IdleSweep(BeaconTest):
         seen = []
         self.beacon._cli.side_effect = lambda *a, **k: seen.append(a)
         self.beacon.idle_sweep(now=self.NOON)
-        line2 = [a for a in seen if a[:2] == ("uservar", "beacon_task_nl")]
+        line2 = [a for a in seen if a[:2] == ("uservar", "beacon_subtitle")]
         self.assertTrue(line2 and line2[-1][2].strip() == "inactive for >1 hr", line2)
 
     def test_note_buckets_the_elapsed_time(self):

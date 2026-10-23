@@ -246,7 +246,7 @@ def _color(code: str, s: str) -> str:
 # (STATUSLINE-01a) are the two places with a way to say what those markers meant.
 # Bold runs first: the single-delimiter rule would otherwise take one asterisk
 # off each end of a bold run and italicize what was left. The `_` forms need a
-# non-word character on both sides, so an identifier (`beacon_task_nl`) is not
+# non-word character on both sides, so an identifier (`beacon_title_prefix`) is not
 # three-quarters italic, and every form must open on a non-space, so `2 * 3 * 4`
 # stays arithmetic.
 _EMPHASIS_RULES = (
@@ -691,17 +691,16 @@ DEV_TITLE_LEAD = " "
 # (this constant and shell/beacon.zsh) must stay in sync.
 BADGE_FORMAT = r"\(user.beacon_project)\(user.beacon_task)"
 
-# Two-line tab/window-title Name (TITLE-05): the project sits on line 1, the
-# task on an indented line 2 via beacon_task_nl (a leading newline when set, ""
-# when absent) so the tab reads project over task while the single-line OS
-# window title shows line 1. beacon_title_prefix leads line 1 with the current
-# mode's glyph (MODE_SPECS, TITLE-06), "" in the dev cycle. The project is
-# wrapped in <b> as the one sparing HTML accent so the identity reads as the
-# title (needs iTerm2 HTML tab titles, CLI-18); the task stays plain. Distinct
-# from BADGE_FORMAT so the badge (when enabled, BADGE-15) keeps its single-line
-# " · " form.
+# Line 1 of the tab label and the OS window title (TITLE-05). Line 2, the task,
+# is the profile's `Subtitle` (`\(user.beacon_subtitle?)` in
+# iterm/profile.json.template), which iTerm2 draws under the name and prefixes
+# with Claude Code's OSC 7501 status. beacon_title_prefix leads with the current
+# mode's glyph (MODE_SPECS, TITLE-06). The project is wrapped in <b> as the one
+# sparing HTML accent so the identity reads as the title (needs iTerm2 HTML tab
+# titles, CLI-18). Distinct from BADGE_FORMAT so the badge (when enabled,
+# BADGE-15) keeps its single-line " · " form.
 TITLE_FORMAT = (r"<b>\(user.beacon_title_prefix)\(user.beacon_project)</b>"
-                r"\(user.beacon_location)\(user.beacon_task_nl)")
+                r"\(user.beacon_location)")
 
 # The name an *unmanaged* pane carries (TITLE-04): `beacon_title`, the shell's
 # "project else abbreviated cwd", republished every precmd and so never empty.
@@ -5892,6 +5891,10 @@ def apply(state: dict):
     # a state the merged field could not represent at all.
     color_state = _color_state_for(state)
     indent1, indent2 = _tab_indent()
+    if _tab_look() == "modern":
+        # iTerm2 puts Claude's status in front of the subtitle, so an indent
+        # would land between the status dash and the task, not at the line start.
+        indent2 = 0
     label_lead = f"{indent1},{indent2}"
     glyph = " " * indent1 + _mode_glyph_for(state)
     target_profile = _profile_for(state)
@@ -5949,16 +5952,16 @@ def apply(state: dict):
         sep = " @ " if state.get("task_provider") == "wander" else " · "
         _cli("uservar", "beacon_task", f"{sep}{task_text}" if task_text else "")
 
-    # TITLE-05: the tab/window-title Name puts the task on a second line,
-    # indented two spaces under the project. Same collapse-when-empty contract
-    # as beacon_task. The published form is markup (TITLE-05b) while the
-    # snapshot below keeps the source text, so the diff turns on what resolved
-    # rather than on how it renders.
+    # TITLE-05: the task is the profile's subtitle, line 2 of the tab, indented
+    # under the project. Empty when there is no task, which iTerm2 draws as no
+    # line at all. The published form is markup (TITLE-05b) while the snapshot
+    # below keeps the source text, so the diff turns on what resolved rather
+    # than on how it renders.
     nl_text = state.get("task_nl", state["task"])
     relead = label_lead != prev.get("label_lead", "0,2")
     if nl_text != prev.get("task_nl") or ((switched or relead) and nl_text):
         marked = _title_markup(nl_text) if nl_text else ""
-        _cli("uservar", "beacon_task_nl", f"\n{' ' * indent2}{marked}" if marked else "")
+        _cli("uservar", "beacon_subtitle", f"{' ' * indent2}{marked}" if marked else "")
 
     # PROV-02a: the location joins the project on line 1 — "beacon @ ai-sdlc" —
     # rather than the task line, where a bare " @ ai-sdlc" has no antecedent to
@@ -6172,7 +6175,7 @@ def _disengage() -> None:
     _set_session_title(INTERACTIVE_TITLE_FORMAT)
     _cli("uservar", "beacon_project", "")
     _cli("uservar", "beacon_task", "")
-    _cli("uservar", "beacon_task_nl", "")
+    _cli("uservar", "beacon_subtitle", "")
     _cli("uservar", "beacon_location", "")
     _cli("uservar", "beacon_title_prefix", "")
 

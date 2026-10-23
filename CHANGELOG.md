@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### The task line is iTerm2's tab subtitle
+
+After updating, run beacon refresh-iterm-profiles. Until you do, Claude
+tabs show the project alone.
+
+Line 2 of a Claude tab, the task, is now the tab's subtitle in iTerm2
+rather than part of the session name. It keeps its **bold** and
+*italic*, and a parked session still shows its note there.
+
+Under the modern tab look, Claude Code's status word now shows at the
+front of that line, in the status color: `<status> – <task>`. With no
+task, the status word is the whole line. The line starts at the tab's
+left edge, since iTerm2 puts the status first. The legacy look is
+unchanged, indent included.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does

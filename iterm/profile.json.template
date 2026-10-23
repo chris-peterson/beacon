@@ -16,6 +16,7 @@
       "Badge Text": "",
       "Allow Title Setting": false,
       "Title Components": 1,
+      "Subtitle": "\\(user.beacon_subtitle?)",
       "Badge Max Width": 0.9,
       "Badge Max Height": 0.06,
       "Badge Right Margin": 12,
