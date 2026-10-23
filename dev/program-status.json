@@ -1,0 +1,289 @@
+{
+  "as_of": "2026-10-22",
+  "start": "2026-09-28",
+  "spec": {
+    "name": "Program Status Protocol",
+    "status": "Revision 0.4",
+    "link": "https://www.superlogical.com/rex/docs/build/program-status",
+    "revisions": [
+      {"date": "2026-09-28", "label": "0.1 draft", "event": "Revision 0.1, initial draft", "tip": "Revision 0.1, initial draft", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"},
+      {"date": "2026-10-06", "label": "0.2 announced", "event": "Revision 0.2, announced", "tip": "Revision 0.2; Mitchell Hashimoto's announcement post", "source": "post", "url": "https://mitchellh.com/writing/program-status-osc7501"},
+      {"date": "2026-10-07", "label": "0.3", "below": true, "event": "Revision 0.3", "tip": "Revision 0.3: absent progress means indeterminate; programs may send without querying", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"},
+      {"date": "2026-10-10", "label": "0.4", "event": "Revision 0.4", "tip": "Revision 0.4: the query reply may list states and kinds", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"}
+    ]
+  },
+  "groups": [
+    {
+      "name": "Terminals",
+      "heading": "Terminals, multiplexers, and agent workspaces",
+      "note_column": "How it shows status",
+      "programs": [
+        {
+          "name": "Rex", "kind": "shipped", "start": "2026-10-06", "released": "2026-10-06",
+          "status": "Shipped with the spec", "source": "spec", "link": "https://www.superlogical.com/rex/docs/build/program-status",
+          "note": "The session picker and unfocused tab headers; a Lua event for scripts",
+          "events": [{"date": "2026-10-06", "event": "Shipped with the spec", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"}]
+        },
+        {
+          "name": "libghostty", "kind": "merged", "start": "2026-10-06",
+          "status": "Merged, for Ghostty 1.4.0", "source": "#14560", "link": "https://github.com/ghostty-org/ghostty/pull/14560",
+          "note": "The library keeps the records; the Ghostty app doesn't show them yet",
+          "events": [
+            {"date": "2026-10-06", "event": "Merged", "source": "#14560", "url": "https://github.com/ghostty-org/ghostty/pull/14560"},
+            {"date": "2026-10-10", "event": "Updated to revision 0.4", "source": "#14630", "url": "https://github.com/ghostty-org/ghostty/pull/14630"}
+          ]
+        },
+        {
+          "name": "Windows Terminal", "kind": "open", "start": "2026-10-07",
+          "status": "Sent to Intelligent Terminal", "source": "#1096", "link": "https://github.com/microsoft/intelligent-terminal/issues/1096",
+          "note": "The team moved the request to Intelligent Terminal, Microsoft's agent-focused fork, to evaluate first; it awaits triage there. ConPTY passes the sequence through, so it reaches Windows Terminal, which doesn't draw it or answer the query.",
+          "events": [
+            {"date": "2026-10-07", "event": "Requested", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"},
+            {"date": "2026-10-08", "event": "Moved to Intelligent Terminal", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"}
+          ]
+        },
+        {
+          "name": "Superset", "kind": "open", "start": "2026-10-07",
+          "status": "Requested", "source": "#8278", "link": "https://github.com/superset-sh/superset/issues/8278",
+          "note": "An agent workspace; the request is to store the records and expose them",
+          "events": [{"date": "2026-10-07", "event": "Requested", "source": "#8278", "url": "https://github.com/superset-sh/superset/issues/8278"}]
+        },
+        {
+          "name": "cmux", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-12",
+          "status": "Shipped v0.65.1", "source": "release", "link": "https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1",
+          "note": "A sidebar row per pane with the app, title, message, and progress",
+          "events": [
+            {"date": "2026-10-09", "event": "Merged", "source": "#18742", "url": "https://github.com/manaflow-ai/cmux/pull/18742"},
+            {"date": "2026-10-12", "event": "Shipped in v0.65.1", "source": "release", "url": "https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1"}
+          ]
+        },
+        {
+          "name": "iTerm2", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-12",
+          "status": "Shipped 3.7.5", "source": "downloads", "link": "https://iterm2.com/downloads.html",
+          "tip": "3.7.6 coalesces floods",
+          "note": "A dot on the tab and the status color on the tab's subtitle line; also the Session Status tool, the Cockpit window, and the dock badge",
+          "events": [
+            {"date": "2026-10-09", "event": "Merged", "source": "`49936d3a5`", "url": "https://github.com/gnachman/iTerm2/commit/49936d3a5"},
+            {"date": "2026-10-12", "event": "Shipped in 3.7.5", "source": "downloads", "url": "https://iterm2.com/downloads.html"}
+          ]
+        },
+        {
+          "name": "Herdr", "kind": "open", "start": "2026-10-11",
+          "status": "Draft pull request", "source": "#5172", "link": "https://github.com/herdrdev/herdr/pull/5172",
+          "events": [{"date": "2026-10-11", "event": "Draft pull request opened", "source": "#5172", "url": "https://github.com/herdrdev/herdr/pull/5172"}]
+        },
+        {
+          "name": "kitty", "kind": "merged", "start": "2026-10-13",
+          "status": "Merged, for 0.50.0", "source": "#10657", "link": "https://github.com/kovidgoyal/kitty/pull/10657",
+          "note": "`tab.program_status` in the tab title template; `kitten @ ls`",
+          "events": [{"date": "2026-10-13", "event": "Merged, for 0.50.0", "source": "#10657", "url": "https://github.com/kovidgoyal/kitty/pull/10657"}]
+        },
+        {
+          "name": "tmux", "kind": "declined", "start": "2026-10-13",
+          "status": "Declined for now", "source": "#5713", "link": "https://github.com/tmux/tmux/issues/5713",
+          "tip": "premature, waiting to see wider adoption",
+          "note": "Drops the sequence, so reports from inside tmux never reach the outer terminal",
+          "events": [{"date": "2026-10-13", "event": "Declined for now", "source": "#5713", "url": "https://github.com/tmux/tmux/issues/5713"}]
+        },
+        {
+          "name": "Warp", "kind": "open", "start": "2026-10-14",
+          "status": "Pull request open", "source": "#16460", "link": "https://github.com/warpdotdev/warp/pull/16460",
+          "events": [{"date": "2026-10-14", "event": "Pull request opened", "source": "#16460", "url": "https://github.com/warpdotdev/warp/pull/16460"}]
+        },
+        {
+          "name": "Paseo", "kind": "open", "start": "2026-10-15",
+          "status": "Pull request open", "source": "#6962", "link": "https://github.com/getpaseo/paseo/pull/6962",
+          "note": "An agent workspace; would take each terminal's activity from the reports",
+          "events": [{"date": "2026-10-15", "event": "Pull request opened", "source": "#6962", "url": "https://github.com/getpaseo/paseo/pull/6962"}]
+        },
+        {
+          "name": "Orca", "kind": "shipped", "start": "2026-10-19", "released": "2026-10-20",
+          "status": "Shipped v1.4.232", "source": "release", "link": "https://github.com/stablyai/orca/releases/tag/v1.4.232",
+          "note": "An agent IDE; reads the reports beside its agent hooks and shows them on session rows and tabs",
+          "events": [
+            {"date": "2026-10-19", "event": "Merged", "source": "#30262", "url": "https://github.com/stablyai/orca/pull/30262"},
+            {"date": "2026-10-20", "event": "Shipped in v1.4.232", "source": "release", "url": "https://github.com/stablyai/orca/releases/tag/v1.4.232"}
+          ]
+        },
+        {
+          "name": "Zellij", "kind": "merged", "start": "2026-10-20",
+          "status": "Merged, unreleased", "source": "#5734", "link": "https://github.com/zellij-org/zellij/pull/5734",
+          "note": "Marks on pane frames and tabs, an inbox in the session manager; forwards to the outer terminal by default",
+          "events": [{"date": "2026-10-20", "event": "Merged", "source": "#5734", "url": "https://github.com/zellij-org/zellij/pull/5734"}]
+        },
+        {
+          "name": "agterm", "kind": "open", "start": "2026-10-21",
+          "status": "Waits on libghostty", "source": "backlog", "link": "https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md",
+          "note": "A macOS terminal on libghostty, whose embedding layer drops the reports and leaves the query unanswered, so Claude Code sends none. Its own hook adapters set a status glyph per session.",
+          "events": [{"date": "2026-10-21", "event": "Backlogged, waits on libghostty", "source": "backlog", "url": "https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md"}]
+        },
+        {
+          "name": "WezTerm, Alacritty, VS Code", "kind": "none", "chart": false,
+          "status": "No support found"
+        }
+      ]
+    },
+    {
+      "name": "Coding agents",
+      "heading": "Coding agents",
+      "note_column": "Notes",
+      "programs": [
+        {
+          "name": "pi", "kind": "shipped", "start": "2026-10-07", "released": "2026-10-07",
+          "status": "Shipped v1.1.0", "source": "release", "link": "https://github.com/earendil-works/pi/releases/tag/v1.1.0",
+          "note": "`PI_PROGRAM_STATUS=0` turns it off",
+          "events": [{"date": "2026-10-07", "event": "Shipped in v1.1.0", "source": "release", "url": "https://github.com/earendil-works/pi/releases/tag/v1.1.0"}]
+        },
+        {
+          "name": "Claude Code", "kind": "shipped", "start": "2026-10-08", "released": "2026-10-08",
+          "status": "Shipped 2.1.295", "source": "release", "link": "https://github.com/anthropics/claude-code/releases/tag/v2.1.295",
+          "note": "Sends only after the terminal answers the query. `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` turns it off, along with Claude's window title.",
+          "events": [{"date": "2026-10-08", "event": "Shipped in 2.1.295", "source": "release", "url": "https://github.com/anthropics/claude-code/releases/tag/v2.1.295"}]
+        },
+        {
+          "name": "Crush", "kind": "shipped", "start": "2026-10-08", "released": "2026-10-08",
+          "status": "Shipped v0.98.0", "source": "release", "link": "https://github.com/charmbracelet/crush/releases/tag/v0.98.0",
+          "note": "Through Bubble Tea",
+          "events": [{"date": "2026-10-08", "event": "Shipped in v0.98.0", "source": "release", "url": "https://github.com/charmbracelet/crush/releases/tag/v0.98.0"}]
+        },
+        {
+          "name": "Codex CLI", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-15",
+          "status": "Shipped rust-v0.163.0", "source": "#52725", "link": "https://github.com/openai/codex/pull/52725",
+          "note": "`idle`, `working`, and `blocked`, whenever its output is a terminal",
+          "events": [
+            {"date": "2026-10-09", "event": "Merged", "source": "#52725", "url": "https://github.com/openai/codex/pull/52725"},
+            {"date": "2026-10-15", "event": "Shipped in rust-v0.163.0", "source": "#52725", "url": "https://github.com/openai/codex/pull/52725"}
+          ]
+        },
+        {
+          "name": "oh-my-pi", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-09",
+          "status": "Shipped v18.8.7", "source": "release", "link": "https://github.com/can1357/oh-my-pi/releases/tag/v18.8.7",
+          "note": "Carries the pending question or the error in `msg`; `terminal.programStatus` turns it off",
+          "events": [{"date": "2026-10-09", "event": "Shipped in v18.8.7", "source": "release", "url": "https://github.com/can1357/oh-my-pi/releases/tag/v18.8.7"}]
+        },
+        {
+          "name": "Gemini CLI", "kind": "open", "start": "2026-10-10",
+          "status": "Requested", "source": "#29710", "link": "https://github.com/google-gemini/gemini-cli/issues/29710",
+          "events": [{"date": "2026-10-10", "event": "Requested", "source": "#29710", "url": "https://github.com/google-gemini/gemini-cli/issues/29710"}]
+        },
+        {
+          "name": "Qwen Code", "kind": "open", "start": "2026-10-10",
+          "status": "Pull request open", "source": "#13994", "link": "https://github.com/QwenLM/qwen-code/pull/13994",
+          "events": [
+            {"date": "2026-10-10", "event": "Requested", "source": "#13870", "url": "https://github.com/QwenLM/qwen-code/issues/13870"},
+            {"date": "2026-10-12", "event": "Pull request opened", "source": "#13994", "url": "https://github.com/QwenLM/qwen-code/pull/13994"}
+          ]
+        },
+        {
+          "name": "MiMo Code", "kind": "open", "start": "2026-10-10",
+          "status": "Requested", "source": "#2631", "link": "https://github.com/XiaomiMiMo/MiMo-Code/issues/2631",
+          "events": [{"date": "2026-10-10", "event": "Requested", "source": "#2631", "url": "https://github.com/XiaomiMiMo/MiMo-Code/issues/2631"}]
+        },
+        {
+          "name": "GitHub Copilot CLI", "kind": "open", "start": "2026-10-10",
+          "status": "Requested", "source": "#5112", "link": "https://github.com/github/copilot-cli/issues/5112",
+          "events": [{"date": "2026-10-10", "event": "Requested", "source": "#5112", "url": "https://github.com/github/copilot-cli/issues/5112"}]
+        },
+        {
+          "name": "Kilo Code", "kind": "open", "start": "2026-10-11",
+          "status": "Requested", "source": "#14973", "link": "https://github.com/Kilo-Org/kilocode/issues/14973",
+          "events": [{"date": "2026-10-11", "event": "Requested", "source": "#14973", "url": "https://github.com/Kilo-Org/kilocode/issues/14973"}]
+        },
+        {
+          "name": "opencode", "kind": "open", "start": "2026-10-11",
+          "status": "Pull request open", "source": "#54560", "link": "https://github.com/anomalyco/opencode/pull/54560",
+          "events": [{"date": "2026-10-11", "event": "Pull request opened", "source": "#54560", "url": "https://github.com/anomalyco/opencode/pull/54560"}]
+        },
+        {
+          "name": "Mastra Code", "kind": "open", "start": "2026-10-13",
+          "status": "Requested", "source": "#26910", "link": "https://github.com/mastra-ai/mastra/issues/26910",
+          "events": [{"date": "2026-10-13", "event": "Requested", "source": "#26910", "url": "https://github.com/mastra-ai/mastra/issues/26910"}]
+        },
+        {
+          "name": "Hermes Agent", "kind": "open", "start": "2026-10-14",
+          "status": "Pull request open", "source": "#140837", "link": "https://github.com/NousResearch/hermes-agent/pull/140837",
+          "events": [
+            {"date": "2026-10-14", "event": "Requested, pull request opened", "source": "#138152", "url": "https://github.com/NousResearch/hermes-agent/pull/138152"},
+            {"date": "2026-10-18", "event": "Second pull request opened", "source": "#140837", "url": "https://github.com/NousResearch/hermes-agent/pull/140837"}
+          ]
+        },
+        {
+          "name": "goose", "kind": "merged", "start": "2026-10-16",
+          "status": "Merged, unreleased", "source": "#12928", "link": "https://github.com/aaif-goose/goose/pull/12928",
+          "events": [{"date": "2026-10-16", "event": "Merged", "source": "#12928", "url": "https://github.com/aaif-goose/goose/pull/12928"}]
+        },
+        {
+          "name": "OpenClaw", "kind": "merged", "start": "2026-10-18",
+          "status": "Merged, unreleased", "source": "#175692", "link": "https://github.com/openclaw/openclaw/pull/175692",
+          "events": [{"date": "2026-10-18", "event": "Merged", "source": "#175692", "url": "https://github.com/openclaw/openclaw/pull/175692"}]
+        }
+      ]
+    },
+    {
+      "name": "Libraries and developer tools",
+      "heading": "Libraries and developer tools",
+      "note_column": "Notes",
+      "programs": [
+        {
+          "name": "Cargo", "kind": "open", "start": "2026-10-07",
+          "status": "Requested", "source": "#17559", "link": "https://github.com/rust-lang/cargo/issues/17559",
+          "note": "Labeled as needing more information",
+          "events": [{"date": "2026-10-07", "event": "Requested", "source": "#17559", "url": "https://github.com/rust-lang/cargo/issues/17559"}]
+        },
+        {
+          "name": "Bubble Tea", "kind": "shipped", "start": "2026-10-08", "released": "2026-10-08",
+          "status": "Shipped v2.1.0", "source": "release", "link": "https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0",
+          "note": "Any Bubble Tea program can report",
+          "events": [{"date": "2026-10-08", "event": "Shipped in v2.1.0", "source": "release", "url": "https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0"}]
+        },
+        {
+          "name": "Neovim", "kind": "open", "start": "2026-10-08",
+          "status": "Requested", "source": "#42276", "link": "https://github.com/neovim/neovim/issues/42276",
+          "events": [{"date": "2026-10-08", "event": "Requested", "source": "#42276", "url": "https://github.com/neovim/neovim/issues/42276"}]
+        },
+        {
+          "name": "ratatui", "kind": "open", "start": "2026-10-08",
+          "status": "Requested", "source": "#2811", "link": "https://github.com/ratatui/ratatui/issues/2811",
+          "note": "A helper for emitting reports",
+          "events": [{"date": "2026-10-08", "event": "Requested", "source": "#2811", "url": "https://github.com/ratatui/ratatui/issues/2811"}]
+        },
+        {
+          "name": "tqdm", "kind": "open", "start": "2026-10-08",
+          "status": "Pull request open", "source": "#1884", "link": "https://github.com/tqdm/tqdm/pull/1884",
+          "note": "Optional, from its progress bars",
+          "events": [
+            {"date": "2026-10-08", "event": "Requested", "source": "#1873", "url": "https://github.com/tqdm/tqdm/issues/1873"},
+            {"date": "2026-10-16", "event": "Pull request opened", "source": "#1884", "url": "https://github.com/tqdm/tqdm/pull/1884"}
+          ]
+        },
+        {
+          "name": "Expo CLI", "kind": "open", "start": "2026-10-09",
+          "status": "Experimental pull request", "source": "#51289", "link": "https://github.com/expo/expo/pull/51289",
+          "events": [{"date": "2026-10-09", "event": "Experimental pull request opened", "source": "#51289", "url": "https://github.com/expo/expo/pull/51289"}]
+        },
+        {
+          "name": "OpenTUI", "kind": "shipped", "start": "2026-10-13", "released": "2026-10-13",
+          "status": "Shipped v0.6.3", "source": "release", "link": "https://github.com/anomalyco/opentui/releases/tag/v0.6.3",
+          "note": "Any OpenTUI program can report; the renderer sends the query at startup",
+          "events": [{"date": "2026-10-13", "event": "Shipped in v0.6.3", "source": "release", "url": "https://github.com/anomalyco/opentui/releases/tag/v0.6.3"}]
+        },
+        {
+          "name": "Gradle", "kind": "open", "start": "2026-10-14",
+          "status": "Pull request open", "source": "#39468", "link": "https://github.com/gradle/gradle/pull/39468",
+          "events": [{"date": "2026-10-14", "event": "Pull request opened", "source": "#39468", "url": "https://github.com/gradle/gradle/pull/39468"}]
+        },
+        {
+          "name": "Docker Compose", "kind": "open", "start": "2026-10-20",
+          "status": "Requested", "source": "#14365", "link": "https://github.com/docker/compose/issues/14365",
+          "note": "For its progress output",
+          "events": [{"date": "2026-10-20", "event": "Requested", "source": "#14365", "url": "https://github.com/docker/compose/issues/14365"}]
+        },
+        {
+          "name": "Terraform, Homebrew", "kind": "none", "chart": false,
+          "status": "Proof of concept", "source": "announcement", "link": "https://mitchellh.com/writing/program-status-osc7501",
+          "note": "No upstream change"
+        }
+      ]
+    }
+  ]
+}

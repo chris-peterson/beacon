@@ -74,6 +74,11 @@ doctor *args:
 generate:
     {{shipyard}} generate
 
+# rebuild the OSC 7501 adoption chart and tables in docs/program-status.md from dev/program-status.json
+[group('regenerate from source')]
+program-status *args:
+    python3 dev/program-status.py {{args}}
+
 # resync plugin.yml suite.describe from the skills/rules/hooks sources
 [group('regenerate from source')]
 describe:
