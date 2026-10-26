@@ -32,7 +32,7 @@ SPEC §4.1 lists the surfaces beacon paints, and only those. Adding one is a spe
 
 - The status bar lives in the beacon dynamic profile, never the user's profile.
 - The pane background changes only by swapping into a mode profile (RENDER-05), never by an ad-hoc background OSC.
-- The window title and tab label go through the session name (`set-name`), not an OSC title. Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
+- The window title and tab label go through the session name (`set-name`), not an OSC title or the profile's `Subtitle` (TITLE-05). Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
 - A status-bar button's `cmd` is read on the click, but its `label` is baked into the profile, so a label change needs `beacon refresh-iterm-profiles` (STATUS-BAR-09, CMD-23). Buttons run through an absolute interpreter path because an action shell has no interactive `PATH` (STATUS-BAR-07).
 - The badge is opt-in and gated at three paint sites: the profile's `Badge Text`, the plugin render, and the shell's `shell-init` block (BADGE-15). Change all three together.
 - The tab paints the activity hue through `_tab_hex`'s per-state weights (TAB-04). The badge and the sessions view take `COLOR_PALETTE` directly, since a weight tuned for a full-bleed tab erases a 10px dot.
