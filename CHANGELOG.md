@@ -27,6 +27,15 @@ delete it to get the spinner.
 `beacon layout` no longer manages iTerm2's Show activity indicator
 setting, which draws nothing different on a beacon tab either way.
 
+### A `--plugin-dir` session no longer says beacon is outdated
+
+A session started with `claude --plugin-dir <checkout>` loads that
+checkout for its own length, while the `beacon` command, the `.zshrc`
+line and the status-bar buttons keep running the marketplace install,
+which is what every other session uses. The start-of-session check now
+leaves them alone there. A surface whose target is missing is still
+reported.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does
