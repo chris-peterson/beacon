@@ -348,7 +348,6 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 | Prominence of selected tab underline indicator in the Minimal theme (Advanced) | 0.4 | at full strength the underline is brighter than the tab colors it sits under | No |
 | Tabs have close buttons (Appearance → Tabs) | off | the strip is clicked all day to switch sessions, and a stray click on the button ends one | No |
 | Disable tab bar tooltips? (Advanced) | Yes | the tooltip repeats the label and covers the neighboring tabs you're scanning | No |
-| Show activity indicator (Appearance → Tabs) | off | Claude redraws its screen the whole time it works, so the spinner never stops and repeats the working color | No |
 | Support basic HTML tags in tab titles (Appearance → Tabs) | on | the label bolds the project with `<b>`, which otherwise shows as text | No, the label needs it |
 | Title Components (Profiles → General) | Session Name | the tab and the window title show the name beacon sets | No, the label needs it |
 | Applications in terminal may change the title (Profiles → General) | off | keeps programs in the pane from overwriting that name | No, the label needs it |
@@ -382,7 +381,7 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 |---|---|---|---|
 | `statusLine` in `~/.claude/settings.json` | `beacon statusline` | it's the status line | Yes: beacon sets it only when you have none |
 
-### Alerts, progress, and the shell
+### Alerts and the shell
 
 These shape no surface of their own.
 
@@ -390,8 +389,6 @@ These shape no surface of their own.
 |---|---|---|---|
 | Notification Center alerts (Profiles → Terminal) | off | macOS delivers these unreliably, while the tab color shows the same permission and idle prompts every time and stays until you act | No |
 | Send escape sequence-generated alerts (Profiles → Terminal) | off | the same prompts, the same reason | No |
-| Show progress bars (Profiles → Session) | off | each tab animates at its own pace, so the strip is in constant motion that says nothing the tab color doesn't | No |
-| `terminalProgressBarEnabled` in `~/.claude/settings.json` | `false`, only with iTerm2 | iTerm2 spins a background tab's cell for Claude Code's progress reports, and no iTerm2 setting turns that spinner off | Yes: beacon sets it only when unset |
 | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
 | `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get their project, branch, and title from it | Yes: remove the line, and plain shell panes lose them |
 
