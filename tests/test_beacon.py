@@ -3572,6 +3572,25 @@ class OpenUrlCommand(BeaconTest):
         # compare against the platform's own rendering, not a POSIX literal.
         self.assertEqual(seen["cwd"], str(Path("/work/repo")))
 
+    def test_a_browser_it_starts_does_not_inherit_the_callers_environment(self):
+        # `open` passes the caller's environment to an app it launches, so a
+        # browser started from a Claude Code session would carry its variables.
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append((argv, kw))
+            return types.SimpleNamespace(returncode=0, stderr=b"")
+
+        with self._config(), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               return_value=("https://x.test/acme/widgets", "acme/widgets")), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        [(argv, kw)] = calls
+        self.assertEqual(argv, ["open", "https://x.test/acme/widgets"])
+        self.assertEqual(kw.get("env"), {})
+
     def test_a_configured_cmd_runs_in_that_directory(self):
         # `git web` and friends already exist on plenty of machines; beacon has
         # no business relitigating where the button should go.
@@ -7762,6 +7781,51 @@ class RemigrateProfilesLetsITermRepairItsOwn(unittest.TestCase):
         with mock.patch.object(self.iterm, "_prompt_tty", return_value=None):
             with self.assertRaises(SystemExit):
                 self._run(running=True, yes=False)
+
+class ITermRelaunchStartsClean(unittest.TestCase):
+    """`open` hands the app it launches the caller's whole environment. A
+    relaunch run from a Claude Code session would start iTerm2 carrying that
+    session's variables (`CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, its messaging
+    token), and every pane opened afterwards inherits them. An empty
+    environment gets launchd's per-user one, the same a Dock launch gets."""
+
+    def setUp(self):
+        self.iterm = _load_beacon_iterm()
+
+    @staticmethod
+    def _fake_run(launches):
+        def run(cmd, *a, **k):
+            if cmd[:2] == ["open", "-a"]:
+                launches.append(k)
+            out = ""
+            if cmd[:1] == ["osascript"] and "is running" in cmd[-1]:
+                out = "false"
+            elif cmd[:2] == ["defaults", "read"]:
+                out = "1"
+            return subprocess.CompletedProcess(cmd, 0, stdout=out, stderr="")
+        return run
+
+    def _launches(self, relaunch):
+        launches = []
+        with mock.patch.dict(os.environ, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "abc"}), \
+                mock.patch("subprocess.run", side_effect=self._fake_run(launches)), \
+                mock.patch.object(self.iterm, "_export_prefs", return_value="/backup.plist"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            relaunch()
+        self.assertEqual(len(launches), 1, "expected exactly one iTerm2 launch")
+        return launches[0]
+
+    def test_every_relaunch_passes_an_empty_environment(self):
+        paths = {
+            "configure --write": lambda: self.iterm._apply_layout([]),
+            "remigrate-profiles": lambda: self.iterm.cmd_remigrate_profiles(
+                types.SimpleNamespace(yes=True)),
+            "reset-layout --write": lambda: self.iterm._reset_write(
+                types.SimpleNamespace(write=True, yes=True)),
+        }
+        for name, relaunch in paths.items():
+            with self.subTest(name):
+                self.assertEqual(self._launches(relaunch).get("env"), {})
 
 class LayoutAdviceNamesTheFrontDoor(unittest.TestCase):
     """CLI-18/CMD-28: `beacon` is the only interface a user types, so the advice

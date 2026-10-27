@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### iTerm2 relaunched by beacon starts with a clean environment
+
+When `beacon layout --write`, `install`, `refresh-iterm-profiles
+--remigrate` or `beacon-iterm reset-layout --write` restarts iTerm2 from inside a
+Claude session, iTerm2 now starts the way it does from the Dock. Before,
+it inherited that session's variables (`CLAUDECODE`,
+`CLAUDE_CODE_SESSION_ID` and the rest), so every new tab looked like
+it was running inside Claude. The `↖ web` button and `beacon open-url`
+start a browser the same way.
+
+If iTerm2 is carrying those variables now (`env | grep CLAUDE` in a new
+tab prints them), quit it with Cmd-Q and start it from the Dock.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does

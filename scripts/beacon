@@ -2370,7 +2370,9 @@ def cmd_open_url(args):
     if not url:
         sys.exit("no URL resolved (no override, no tack route, no git remote)")
     try:
-        r = subprocess.run(["open", url], capture_output=True, timeout=10)
+        # Empty, so a browser this starts gets launchd's environment rather
+        # than the caller's (which can be a Claude Code session's).
+        r = subprocess.run(["open", url], env={}, capture_output=True, timeout=10)
         if r.returncode != 0:
             sys.exit(f"open failed (exit {r.returncode}): {r.stderr.decode().strip()}")
     except FileNotFoundError:

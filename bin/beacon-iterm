@@ -603,6 +603,16 @@ def _defaults_write_args(spec) -> list[str]:
     return [f"-{spec['type']}", spec["want"]]  # -int / -float, typed per the plist
 
 
+def _launch_iterm() -> None:
+    """Start iTerm2 the way the Dock does. `open` passes the app the caller's
+    environment, and every pane iTerm2 opens inherits it, so a relaunch run from
+    a Claude Code session would mark each new shell as inside that session. An
+    empty environment gets launchd's per-user one instead."""
+    import subprocess
+
+    subprocess.run(["open", "-a", "iTerm"], env={}, capture_output=True, timeout=10)
+
+
 def _apply_layout(specs, relaunch: bool = True) -> None:
     """Write the selected app-wide prefs, then relaunch iTerm2 unless the user
     quit it themselves (CLI-22). Only ever runs with iTerm2 not running, so the
@@ -618,7 +628,7 @@ def _apply_layout(specs, relaunch: bool = True) -> None:
         ok = "wrote" if r.returncode == 0 else f"FAILED: {r.stderr.strip()}"
         print(f"  {ok}: {s['key']} = {s['want']}")
     if relaunch:
-        subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
+        _launch_iterm()
 
 
 def _advertised_command() -> str:
@@ -894,8 +904,6 @@ def _rearm_migration() -> None:
 def cmd_remigrate_profiles(args):
     """CLI-19: re-arm iTerm2's dynamic-profile migration, so its next launch
     flags the saved profiles its first run left behind."""
-    import subprocess
-
     if _read_default(_ITERM_MIGRATION_GATE) in (None, "0"):
         print("iTerm2 runs its dynamic-profile migration on the next launch "
               "already — nothing to re-arm.")
@@ -905,7 +913,7 @@ def cmd_remigrate_profiles(args):
         _rearm_migration()
         print("Re-armed iTerm2's dynamic-profile migration; relaunching, which "
               "is when it runs.")
-        subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
+        _launch_iterm()
         return
 
     if not args.yes:
@@ -1108,7 +1116,7 @@ def _reset_write(args) -> None:
     print("\nbeacon's own recommendation is not applied by this — run "
           "`beacon layout --write`\nto put back the settings beacon asks for, "
           "and whatever still reads wrong\nafterwards is a gap in that list.")
-    subprocess.run(["open", "-a", "iTerm"], capture_output=True, timeout=10)
+    _launch_iterm()
 
 
 def cmd_reset_layout(args):
