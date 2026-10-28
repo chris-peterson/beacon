@@ -9320,6 +9320,13 @@ class InstallFreshness(unittest.TestCase):
         self.profiles = (self.home / "Library" / "Application Support"
                          / "iTerm2" / "DynamicProfiles")
 
+        # The suite loads beacon from this checkout, which is an inline root;
+        # the drift these cases describe is a marketplace session's.
+        self.inline_patcher = mock.patch.object(self.beacon, "_loaded_inline",
+                                                return_value=False)
+        self.inline = self.inline_patcher.start()
+        self.addCleanup(self.inline_patcher.stop)
+
     def _make_root(self, name, *, version="1.0.0", git=False):
         """A plugin root laid out the way a marketplace cache entry is."""
         root = self.roots / name
@@ -9429,6 +9436,33 @@ class InstallFreshness(unittest.TestCase):
         self._install_wrapper(checkout)
         shutil.rmtree(checkout)
         self.assertIn("gone, so these do nothing at all", self._message())
+
+    def test_an_inline_session_leaves_the_marketplace_install_alone(self):
+        # `claude --plugin-dir <checkout>` loads the working copy for one
+        # session; surfaces still reaching the cached install are what every
+        # other session runs, not an update left behind.
+        self.inline.return_value = True
+        marketplace = self._make_root("2.20.1")
+        self._install_wrapper(marketplace)
+        self._install_rc_line(marketplace)
+        self.assertEqual(self._message(), "")
+
+    def test_an_inline_session_still_reports_a_gone_root(self):
+        self.inline.return_value = True
+        self._install_wrapper(self.roots / "2.9.0")
+        self.assertIn("gone, so these do nothing at all", self._message())
+
+    def test_a_root_outside_the_plugin_cache_was_loaded_inline(self):
+        self.inline_patcher.stop()
+        # Under a relocated config dir, not the home directory: CLAUDE_CONFIG_DIR
+        # moves the cache, and the cache is still the cache.
+        cache_root = self.roots / "config" / "plugins" / "cache" / "mkt" / "beacon" / "2.20.1"
+        cache_root.mkdir(parents=True)
+        with mock.patch.object(self.beacon, "PLUGIN_ROOT", cache_root):
+            self.assertFalse(self.beacon._loaded_inline())
+        with mock.patch.object(self.beacon, "PLUGIN_ROOT", self.roots / "checkout"):
+            self.assertTrue(self.beacon._loaded_inline())
+        self.inline_patcher.start()
 
     def test_the_advice_names_the_slash_command_and_the_new_root(self):
         self._install_wrapper(self._make_root("2.11.0"))

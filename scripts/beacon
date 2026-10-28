@@ -7100,8 +7100,15 @@ def _freshness_drift() -> tuple[dict, dict]:
 
     A target under a git checkout is how beacon is developed, so pointing there
     from a marketplace root is deliberate and stays silent — but only while the
-    checkout is there. Gone is gone whoever installed it."""
+    checkout is there. Gone is gone whoever installed it.
+
+    A session loaded inline (`claude --plugin-dir <checkout>`) pins its own copy
+    for as long as it runs, and the marketplace install it shadows is what every
+    other session loads, so there no surviving target is stale: the surfaces
+    reach what a user has. Drift inside the cache is the next marketplace
+    session's to report."""
     this_script = (PLUGIN_ROOT / "scripts" / "beacon").resolve()
+    inline = _loaded_inline()
     gone: dict[Path, list[tuple[str, str]]] = {}
     stale: dict[Path, list[tuple[str, str]]] = {}
     for label, short, target in _pinned_surfaces():
@@ -7113,9 +7120,18 @@ def _freshness_drift() -> tuple[dict, dict]:
             continue
         if not target.is_file():
             gone.setdefault(target, []).append((label, short))
-        elif not (target.parent.parent / ".git").exists():
+        elif not inline and not (target.parent.parent / ".git").exists():
             stale.setdefault(target, []).append((label, short))
     return gone, stale
+
+
+def _loaded_inline() -> bool:
+    """Whether Claude Code loaded this plugin from a local directory rather
+    than from its marketplace cache — the same split `_default_data_dir` names
+    `<plugin>-inline`. Matched on the `plugins/cache` segment rather than a
+    path under the home directory, which `CLAUDE_CONFIG_DIR` relocates."""
+    parts = PLUGIN_ROOT.resolve().parts
+    return not any(parts[i:i + 2] == ("plugins", "cache") for i in range(len(parts) - 1))
 
 
 # Named once so the hook's advice and the reason it can't be the shell's own
