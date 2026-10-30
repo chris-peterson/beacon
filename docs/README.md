@@ -30,7 +30,7 @@ A glance across the windows tells you which session needs you:
 .sessions {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #9599a8; --sep: #7e8290;
-  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --cyan: #8be9fd; --green: #50fa7b;
+  --idle: #8b8fa0; --working: #ffb86c; --blocked: #ff5555; --cyan: #8be9fd; --green: #50fa7b;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.4rem 0 1.75rem;
   padding: 1.35rem 1.3rem 1.4rem;
@@ -69,12 +69,12 @@ A glance across the windows tells you which session needs you:
 .fl-foot { margin-top: 0.7rem; display: flex; align-items: center; gap: 0.5rem; }
 .fl-branch { font: 400 0.72rem/1 var(--mono); color: var(--cyan); }
 .fl-state { margin-left: auto; font: 600 0.68rem/1 var(--mono); letter-spacing: 0.05em; text-transform: uppercase; }
-.fl-card.busy    { border-left-color: var(--busy); }
-.fl-card.busy .fl-dot   { background: var(--busy); }
-.fl-card.busy .fl-state { color: var(--busy); }
+.fl-card.busy    { border-left-color: var(--working); }
+.fl-card.busy .fl-dot   { background: var(--working); }
+.fl-card.busy .fl-state { color: var(--working); }
 .fl-card.ready   { opacity: 0.9; }
-.fl-card.ready .fl-dot   { background: var(--ready); }
-.fl-card.ready .fl-state { color: var(--ready); }
+.fl-card.ready .fl-dot   { background: var(--idle); }
+.fl-card.ready .fl-state { color: var(--idle); }
 .fl-card.blocked {
   border-left-color: var(--blocked);
   background:
@@ -84,12 +84,12 @@ A glance across the windows tells you which session needs you:
 }
 .fl-card.blocked .fl-dot   { background: var(--blocked); animation: fl-pulse 1.8s ease-in-out infinite; }
 .fl-card.blocked .fl-state { color: var(--blocked); }
-.fl-card.blocked .fl-branch { color: var(--busy); }
+.fl-card.blocked .fl-branch { color: var(--working); }
 @keyframes fl-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255,85,85,0.55); }
   50%      { box-shadow: 0 0 0 6px rgba(255,85,85,0); }
 }
-.fl-here { margin-left: auto; padding: 0.12em 0.46em; border-radius: 5px; font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ground); background: var(--busy); white-space: nowrap; }
+.fl-here { margin-left: auto; padding: 0.12em 0.46em; border-radius: 5px; font: 700 0.6rem/1.4 var(--mono); letter-spacing: 0.07em; text-transform: uppercase; color: var(--ground); background: var(--working); white-space: nowrap; }
 .fl-cap { margin: 1.05rem 0.2rem 0; font-size: 0.86rem; line-height: 1.55; color: var(--muted); }
 .fl-cap b { color: var(--fg); font-weight: 600; }
 .fl-cap .red { color: var(--blocked); font-weight: 600; }
@@ -241,7 +241,7 @@ The label and mode commands paint the pane's tab. Color reports what Claude is d
 .cmdfig {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #9599a8;
-  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555; --paused: #6272a4; --cyan: #8be9fd;
+  --idle: #8b8fa0; --working: #ffb86c; --blocked: #ff5555; --paused: #6272a4; --cyan: #8be9fd;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.3rem 0 1.6rem;
   padding: 0.4rem 1.15rem;
@@ -270,7 +270,7 @@ The label and mode commands paint the pane's tab. Color reports what Claude is d
 .cf-out { display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; }
 .cf-tab { display: inline-flex; flex-direction: column; align-self: flex-start; font: 700 1.05rem/1.3 var(--mono); white-space: nowrap; border-radius: 6px; padding: 0.15rem 0.6rem; }
 .cf-tab .t { font-weight: 400; color: var(--muted); font-size: 0.85em; padding-left: 0.85em; }
-.cf-tab.ready { color: var(--ready); background: color-mix(in srgb, var(--ready) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ready) 32%, transparent); }
+.cf-tab.ready { color: var(--idle); background: color-mix(in srgb, var(--idle) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--idle) 32%, transparent); }
 .cf-tab.blocked { color: var(--blocked); background: color-mix(in srgb, var(--blocked) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blocked) 32%, transparent); }
 .cf-tab.paused { color: var(--paused); background: color-mix(in srgb, var(--paused) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paused) 32%, transparent); }
 .cf-cap { font: 400 0.78rem/1.4 var(--mono); color: var(--muted); }
@@ -336,7 +336,7 @@ Every command, with its flags and what each one is for, is on the [CLI reference
 If reaching for beacon's own commands feels heavier than the built-ins, beacon also picks up Claude Code's native slash commands:
 
 - **`/rename <label>`** becomes the session's `task`. It's shorthand for `beacon task`, folded into the same label slot, so the two are peers: whichever you set most recently wins (above the PR-title/branch fallbacks). It shows on the tab, under the project, and in the sessions view. beacon reads the name from the session transcript, which Claude Code writes ahead of the session registry, so the label lands even where Claude Code reports that the registry update didn't, the case where it warns that *other* sessions may keep showing the old name. Where the label you typed is already held by another live session, Claude Code settles on a different one and beacon folds the settled name.
-- **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab: that color stays the ready/busy/blocked status light.
+- **`/color <name>`** is surfaced in the sessions view (a swatch on the dashboard card) as your own tag. It does **not** repaint the tab: that color stays the idle / working / blocked status light.
 - Claude Code's auto-generated title is the weakest `task` fallback, so a session you never labeled still shows a readable headline.
 
 ## Tack integration (optional)
@@ -352,7 +352,7 @@ Prefer Linear, Jira, GitHub Issues, or a custom provider? Point the `↖ web` bu
 
 ## Standalone (no tack, no recipes)
 
-beacon works on its own. The hooks set the fields they can observe (project, branch, and the ready / busy / blocked status color) without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
+beacon works on its own. The hooks set the fields they can observe (project, branch, and the idle / working / blocked status color) without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
 
 To fill that gap standalone, beacon ships an ambient rule (`rules/keep-session-labeled.md`, emitted into context at session start) that has Claude keep the session's `task` label current as the work focus shifts. So the sessions view stays meaningful even with no tack route bound and no recipe nudging Claude to label the pane. When tack *is* tracking the work, the rule defers to it: tack supplies the route and the rule leaves the beacon task alone, so the two don't fight.
 
