@@ -8,8 +8,8 @@ isolated TACK_HOME, so your real beacon state and tack routes are untouched.
 
 The simulation mirrors how real sessions behave: they churn quietly between
 working and idle, but every so often one *stalls* — it blocks on you and turns
-red (`waiting`). Stalled sessions stay stalled and pile up; only you clear them.
-On the dashboard, a waiting card is the only kind that's clickable — clicking it
+red (`blocked`). Stalled sessions stay stalled and pile up; only you clear them.
+On the dashboard, a blocked card is the only kind that's clickable — clicking it
 **returns that session to its agent** (the demo's stand-in for raising the
 window and answering the prompt), so it flips back to working and the red ring
 clears. The `×` on hover forgets a session outright.
@@ -44,15 +44,17 @@ DASHBOARD = REPO / "dashboard" / "index.html"
 HOME = Path.home()
 
 # A fictional commerce org's concurrent work. Each entry is one dashboard card.
-# Most start working/idle; the set drifts toward `waiting` as it runs.
-#   activity: idle|working|waiting — what the hooks would observe
+# Most start working/idle; the set drifts toward `blocked` as it runs.
+#   activity: idle|working|blocked|error — what the hooks would observe
+#   ask: question|permission — what a blocked session waits on (default permission)
+#   error: the API error an `error` session's turn stopped on
 #   mode + note: a declared phase and its annotation (omit for the dev cycle)
 #   route: (slug, group) → a [slug] chip; None means unrouted.
 SESSIONS = [
     dict(project="checkout-api", task="idempotency keys for refunds", activity="working",
          age=3, route=("checkout", "payments"),
          turn=("agent", "Added the idempotency-key column and a unique index; wiring the refund handler to look it up before charging")),
-    dict(project="checkout-api", task="rebase on main", activity="waiting",
+    dict(project="checkout-api", task="rebase on main", activity="blocked", ask="question",
          age=95, route=("checkout", "payments"),
          turn=("agent", "Hit a conflict in refund_handler.py between your idempotency change and main's retry backoff — which side wins?")),
     dict(project="ledger-svc", task="double-entry migration", activity="working",
@@ -69,11 +71,11 @@ SESSIONS = [
          turn=("agent", "Reindexing batch 14 of 60 — throughput is holding at ~8k docs/s")),
     dict(project="mobile-ios", task="deep-link QA", activity="idle", age=2400),
     dict(project="data-pipeline", task="backfill stuck on warehouse quota",
-         activity="waiting", age=3600,
+         activity="blocked", ask="question", age=3600,
          turn=("human", "can you bump the slot reservation or do we need to wait?")),
     # Shipping *and* blocked on you — the state a single merged field could not
     # represent. The card keeps its release treatment and turns its dot red.
-    dict(project="auth-svc", task="passkey rollout", activity="waiting",
+    dict(project="auth-svc", task="passkey rollout", activity="blocked",
          mode="release", note="v4.2.0 — canary at 5%",
          age=300, route=("auth", "platform"),
          turn=("agent", "Canary is green at 5%; ramping to 25% needs your sign-off")),
@@ -81,6 +83,9 @@ SESSIONS = [
          activity="idle", mode="pause", age=18000,
          note="parked on a netops change ticket"),
     dict(project="notifications", task="digest email templates", activity="idle", age=900),
+    dict(project="pricing-engine", task="tiered discounts", activity="error",
+         error="rate_limit", age=420,
+         turn=("agent", "API Error: Rate limit reached")),
     dict(project="release-tooling", task="cut 3.1.0", activity="working",
          mode="release", note="Shipping\n_Phase 3: CI pipeline_", age=45),
     dict(project="beacon", task="session retro", activity="idle",
@@ -90,12 +95,12 @@ SESSIONS = [
          turn=("agent", "Rebuilt the revenue mart; reconciling the v1/v2 totals — off by $1.2k in deferred revenue")),
 ]
 
-# Next activity for a session the sim picks (waiting sessions are sticky — only a
+# Next activity for a session the sim picks (blocked sessions are sticky — only a
 # user click returns them, so they're never auto-mutated). Repeats are no-ops,
 # which keeps the board calm; `working` carries a real chance of stalling. A
 # session's mode is never simulated: a mode is declared, not observed.
 ACTIVE_NEXT = {
-    "working": ["working", "working", "idle", "waiting"],
+    "working": ["working", "working", "idle", "blocked"],
     "idle":    ["idle", "idle", "working"],
 }
 
@@ -112,15 +117,15 @@ def _write(path: Path, value: str, mtime: float | None = None) -> None:
 
 def _set_activity(state: Path, sh: str, activity: str) -> None:
     """Write the hook-owned activity file (leaving mtime at now, so the session
-    surfaces as freshly active) and sync the two waiting-only markers: the
+    surfaces as freshly active) and sync the two blocked-only markers: the
     attention ring, and the focus handle that makes the card clickable. A
-    waiting card is the only kind a user can click to return.
+    blocked card is the only kind a user can click to return.
 
     The session's mode is untouched — the simulator moves one axis, which is what
     lets a releasing card go red without losing its release treatment."""
     pend, handle = state / f"{sh}.pending-attention", state / f"{sh}.iterm_session_id"
     _write(state / f"{sh}.activity", activity)
-    if activity == "waiting":
+    if activity == "blocked":
         _write(pend, "permission")
         _write(handle, f"demo:{sh}")
     else:
@@ -158,8 +163,10 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
                    json.dumps({"role": role, "text": text,
                                "at": datetime.fromtimestamp(mt, timezone.utc).isoformat()}),
                    mt)
-        if s["activity"] == "waiting":  # waiting-only markers: ring + clickable handle
-            _write(state / f"{sh}.pending-attention", "permission", mt)
+        if s.get("error"):
+            _write(state / f"{sh}.stop_error", s["error"], mt)
+        if s["activity"] == "blocked":  # blocked-only markers: ring + clickable handle
+            _write(state / f"{sh}.pending-attention", s.get("ask", "permission"), mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
         sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
 
@@ -171,11 +178,11 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
 
 
 def simulate(state: Path, sessions: list[dict], interval: float) -> None:
-    """Every `interval` seconds, nudge one non-waiting session toward its next
-    state. Waiting sessions are left alone so they accumulate until cleared."""
+    """Every `interval` seconds, nudge one non-blocked session toward its next
+    state. Blocked sessions are left alone so they accumulate until cleared."""
     while True:
         time.sleep(interval)
-        active = [s for s in sessions if s["activity"] != "waiting"]
+        active = [s for s in sessions if s["activity"] in ACTIVE_NEXT]
         if not active:
             continue
         s = random.choice(active)

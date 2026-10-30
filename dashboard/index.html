@@ -25,13 +25,13 @@
     :root {
       /* Status hexes MIRROR COLOR_PALETTE in scripts/beacon so a card's
          dot matches the same session's iTerm2 badge — do not drift these.
-         SDLC cycles: dev (ready/busy/blocked) + the mode cycles. Green is
+         SDLC cycles: dev (idle / working / blocked) + the mode cycles. Green is
          retired from the dev activity colors (ready is gray) and pins `release`.
          `--planning` is not a state color: the permission axis takes no color
          channel (PERM-02). It tints the `plan` tag alone, in Claude Code's own
          plan-mode teal, so the tag reads as the same thing the pane says. */
-      --ready:    #8b8fa0;
-      --busy:     #ffb86c;
+      --idle:    #8b8fa0;
+      --working:     #ffb86c;
       --blocked:  #ff5555;
       --planning: #1a988c;
       /* Generic success green. Not a mode color: mode tints live in the
@@ -142,7 +142,7 @@
       content: "●"; margin-right: 0.3rem; font-size: 0.7em;
       animation: blink 2s steps(1) infinite;
     }
-    .freshness .stale { color: var(--busy); }
+    .freshness .stale { color: var(--working); }
     @keyframes blink { 50% { opacity: 0.3; } }
 
     /* ── Needs-you band: waiting / flagged sessions are hoisted out of the sessions
@@ -272,10 +272,10 @@
       background: var(--state-color, var(--line-hi));
       opacity: 0.85;
     }
-    .card.color-busy::after,
+    .card.color-working::after,
     .card.color-blocked::after { opacity: 1; box-shadow: 0 0 10px var(--state-color); }
-    .card.color-ready   { --state-color: var(--ready); }
-    .card.color-busy    { --state-color: var(--busy); }
+    .card.color-idle   { --state-color: var(--idle); }
+    .card.color-working    { --state-color: var(--working); }
     .card.color-blocked { --state-color: var(--blocked); }
 
     /* Moded cards echo their iTerm2 pane background (RENDER-05): a muted tint in
@@ -284,20 +284,18 @@
        streamed by serve at /mode-bg/<mode> — so the card and pane can never
        drift. It rides a ::before below the card content (z-index -1; the card
        isolates a stacking context) at a low opacity, the sessions analog of the
-       pane's Blend. One mix fraction serves all three: the pane hexes sit on a
-       shared luma ladder (THEME-02a), so a card inherits the tier its pane has
-       and needs no per-mode compensation of its own. */
+       pane's Blend. One mix fraction serves every tinted mode: the pane hexes sit
+       on a shared luma ladder (THEME-02a), so a card inherits the tier its pane
+       has and needs no per-mode compensation of its own. A retro pane keeps the
+       user's background, so its card stays plain. */
     .card.mode-pause   { --mode-tint: #251f35; }
     .card.mode-release { --mode-tint: #212c45; }
-    .card.mode-retro   { --mode-tint: #1e3025; }
     .card.mode-pause,
-    .card.mode-release,
-    .card.mode-retro   { background-color: color-mix(in srgb, var(--mode-tint) 34%, var(--panel)); }
+    .card.mode-release { background-color: color-mix(in srgb, var(--mode-tint) 34%, var(--panel)); }
     .card.mode-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
 
     .card.mode-pause::before,
     .card.mode-release::before,
-    .card.mode-retro::before,
     .card.mode-done::before {
       content: "";
       position: absolute; inset: 0; z-index: -1;
@@ -314,7 +312,6 @@
     }
     .card.mode-pause::before   { background-image: url("/mode-bg/pause"); }
     .card.mode-release::before { background-image: url("/mode-bg/release"); }
-    .card.mode-retro::before   { background-image: url("/mode-bg/retro"); }
     .card.mode-done::before    { background-image: url("/mode-bg/done"); }
 
     .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
@@ -330,7 +327,7 @@
       width: 0.62rem; height: 0.62rem; border-radius: 50%;
       flex: none; background: var(--state-color, var(--muted));
     }
-    .color-busy    .dot,
+    .color-working    .dot,
     .color-blocked .dot { box-shadow: 0 0 7px var(--state-color); }
     /* The permission axis in words (PERM-01) — the whole of where it surfaces.
        A card has room for a word where the tab's two channels are already spent
@@ -340,6 +337,20 @@
       flex: none; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
       text-transform: uppercase; padding: 0.1rem 0.32rem; border-radius: 0.2rem;
       color: #04211e; background: var(--planning);
+    }
+    /* What a block waits on (HOOK-03g), in OSC 7501's words, or the API error
+       a turn stopped on (HOOK-16). */
+    .ask-tag {
+      flex: none; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 0.1rem 0.32rem; border-radius: 0.2rem;
+      color: var(--bg); background: var(--blocked);
+    }
+    /* Background work still running after the turn ended (HOOK-02a): calm,
+       so outlined in the muted hue rather than filled like the asks. */
+    .bg-tag {
+      flex: none; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 0.05rem 0.28rem; border-radius: 0.2rem;
+      color: var(--muted); box-shadow: inset 0 0 0 1px var(--muted);
     }
     /* The mode's glyph sits beside the dot — the same mark the tab carries
        the plugin publishes, so a card and its tab read identically. Absent in the dev
@@ -682,9 +693,9 @@
       animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
       box-shadow: 0 0 0 1px rgba(255, 184, 108, 0.14), 0 8px 30px rgba(0, 0, 0, 0.4);
     }
-    .card.needs-you.soft-attn .attn-flag { background: var(--busy); color: #241503; }
+    .card.needs-you.soft-attn .attn-flag { background: var(--working); color: #241503; }
     .card.needs-you.soft-attn .attn-flag::before { background: #241503; }
-    .card.needs-you.soft-attn::after { background: var(--busy); }
+    .card.needs-you.soft-attn::after { background: var(--working); }
 
     /* The waiting duration rides inside the badge (e.g. "● WAITING · 5m"); the
        flex gap separates it from the label. text-transform:none keeps "5m"
@@ -767,7 +778,7 @@
     // /turn/<hash>, keyed by turn timestamp so a newer turn invalidates it.
     const turnCache = new Map();
 
-    const COLOR_STATES = ["ready", "busy", "blocked"];
+    const COLOR_STATES = ["idle", "working", "blocked"];
     const MODES = ["pause", "release", "retro", "done"];
     // Built once: updateCard strips these off every card on every poll.
     const COLOR_CLASSES = COLOR_STATES.map((x) => "color-" + x);
@@ -805,13 +816,14 @@
     }
 
     // A session lands in the attention band when Claude is blocked on the user
-    // (activity "waiting") or a sticky attention marker is set (HOOK-03b). Read
+    // (activity "blocked"), a turn stopped on an API error (activity "error"),
+    // or a sticky attention marker is set (HOOK-03b). Read
     // off the axes themselves rather than off `color_state`, which a planning
     // session spends on the permission axis instead (PERM-02) — the band asks a
     // question the color no longer answers on every card. The band is the loud
     // one — everything else is the calm rest.
     //
-    // A session in a mode is never hoisted, even when its activity is `waiting`.
+    // A session in a mode is never hoisted, even when its activity is `blocked`.
     // That isn't the mode outranking the signal — the card still turns its dot
     // and bar red, so "blocked" is visible either way. It's that the band's red
     // glow paints over the mode tint and watermark, which is the only place the
@@ -826,7 +838,7 @@
     function modeGlyph(s) { return (s.mode && s.mode.glyph) || ""; }
 
     function blockedOnUser(s) {
-      return s.activity === "waiting" || !!s.pending_attention;
+      return s.activity === "blocked" || s.activity === "error" || !!s.pending_attention;
     }
 
     function needsYou(s) {
@@ -985,6 +997,8 @@
         <div class="head">
           <span class="dot"></span>
           <span class="plan-tag" hidden>plan</span>
+          <span class="ask-tag" hidden></span>
+          <span class="bg-tag" hidden></span>
           <span class="mode-glyph" aria-hidden="true"></span>
           <img class="icon" alt="" hidden>
           <span class="label"><span class="project"></span><span class="task"></span></span>
@@ -1167,19 +1181,27 @@
       // Two independent class families, one per axis — never combined into one
       // token, so a mode and an activity can be true at the same time.
       el.classList.remove(...COLOR_CLASSES);
-      el.classList.add("color-" + (s.color_state || "ready"));
+      el.classList.add("color-" + (s.color_state || "idle"));
       el.classList.remove(...MODE_CLASSES);
       const mode = modeName(s);
       if (mode !== "dev") el.classList.add("mode-" + mode);
       setText(el, ".mode-glyph", modeGlyph(s));
       el.querySelector(".plan-tag").hidden = !s.planning;
+      const bg = el.querySelector(".bg-tag");
+      bg.hidden = !s.background;
+      bg.textContent = s.background ? "background \u00d7" + s.background : "";
+      const ask = el.querySelector(".ask-tag");
+      const asked = s.kind || s.stop_error || "";
+      ask.hidden = !asked;
+      ask.textContent = asked.replace(/_/g, " ");
       // Waiting-for-you emphasis (these cards live in the pinned needs-you band,
       // placeAttention). Amber (soft) attention = flagged but not a live block;
       // red = blocked now. Both read the activity axis, not the color the card
       // is painted, so a planning session (PERM-02) is still classified by what
       // it is actually waiting on.
       el.classList.toggle("needs-you", needsYou(s));
-      el.classList.toggle("soft-attn", s.activity !== "waiting" && !!s.pending_attention);
+      el.classList.toggle("soft-attn", s.activity !== "blocked" && s.activity !== "error"
+                                       && !!s.pending_attention);
       el.dataset.focusable = s.focusable ? "true" : "false";
       el.title = "Click to expand";
       const go = el.querySelector(".go");
@@ -1557,7 +1579,7 @@
     // each render. Chromium-only (Document PiP); elsewhere the button stays hidden.
     const PIP_CSS = `
       :root {
-        --ready:#8b8fa0; --busy:#ffb86c; --blocked:#ff5555;
+        --idle:#8b8fa0; --working:#ffb86c; --blocked:#ff5555;
         --bg:#0d0e15; --panel:#171925; --panel-hi:#1e2130; --line:#2a2e40;
         --line-hi:#39405a; --fg:#e8e8f4; --muted:#808ab4; --faint:#565f80;
         --accent:#bd93f9; --cyan:#8be9fd;
@@ -1595,8 +1617,8 @@
       @keyframes prowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
       .pip-row:hover:not(:disabled) { border-color: var(--state-color); background: var(--panel-hi); transform: translateX(2px); }
       .pip-row:disabled { cursor: default; opacity: 0.72; }
-      .pip-row.color-ready { --state-color: var(--ready); }
-      .pip-row.color-busy { --state-color: var(--busy); }
+      .pip-row.color-idle { --state-color: var(--idle); }
+      .pip-row.color-working { --state-color: var(--working); }
       .pip-row.color-blocked { --state-color: var(--blocked); }
       .pip-row.needs-you {
         border-color: rgba(255,85,85,0.5);
@@ -1721,7 +1743,7 @@
     }
 
     function updatePipRow(row, s) {
-      row.className = "pip-row color-" + (s.color_state || "ready") + (needsYou(s) ? " needs-you" : "");
+      row.className = "pip-row color-" + (s.color_state || "idle") + (needsYou(s) ? " needs-you" : "");
       row.disabled = !s.focusable;
       row.title = s.focusable ? "Raise this iTerm2 window" : "Not focusable (non-iTerm2 session)";
       const proj = row.querySelector(".pip-proj");

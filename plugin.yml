@@ -101,7 +101,7 @@ suite:
     hooks:
       cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
-      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; StopFailure→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
       pause: Park this session in beacon pause mode, with an optional note
@@ -131,7 +131,7 @@ cli:
     you hit return.
 
     Two axes resolve independently, and each has one writer. `activity` (idle /
-    working / waiting) belongs to the hooks, which observe it several times a
+    working / blocked / error) belongs to the hooks, which observe it several times a
     turn. `mode` (`dev` / `pause` / `release` / `retro` / `done`) is what you or
     a skill declares, and carries an optional note alongside it.
   groups:

@@ -2,6 +2,75 @@
 
 ## Unreleased
 
+### `retro` keeps your pane
+
+A retro no longer turns the pane green under a clipboard watermark. The
+pane keeps your own background and shows a small `retro` badge in its
+corner, and the dashboard card stays plain. The tab still leads with
+`📋`. Run `beacon refresh-iterm-profiles` to pick it up in open panes.
+
+### A blocked pane says what it's waiting for
+
+A pane blocked on you now shows a faint `?` over your background when
+Claude is asking a question or wants a plan approved, and a faint
+padlock when it wants permission to run something. The tab already turned red,
+but a split tab holds several panes and only the pane says which one.
+It applies when no mode is declared; a paused, releasing, retro, or done
+pane keeps its own look. Run `beacon refresh-iterm-profiles` to install
+the two new profiles. The dashboard card names it too: `question` or
+`permission`.
+
+### Redrawn pane marks
+
+The `pause`, `release`, and `done` watermarks are redrawn as one
+family with the new `?` and padlock: line marks at a single stroke
+weight, with no disc behind them. Run `beacon refresh-iterm-profiles` to
+pick them up in open panes.
+
+### Background work reads as waiting, not ready
+
+A turn that ends with a background shell, subagent, monitor, or
+workflow still running used to read the same as one waiting for your
+next prompt. Its tab now leads with `⏳` until the last task finishes
+and wakes the session, while the color stays the idle gray, since it
+needs nothing from you. `wip` and `json` report the count as
+`background`, and the dashboard card shows `background ×2`. A pending
+`/loop` or scheduled wakeup doesn't count.
+
+### A turn that fails says so
+
+When a turn ends on an API error (a rate limit, an overloaded server, a
+failed sign-in), Claude Code skips the hook beacon used to mark a turn
+finished, so the tab stayed orange as if the session were still working.
+beacon now reads that error: the tab turns red, the activity reads
+`error`, and the dashboard card names the error (`rate limit`,
+`authentication failed`, …). Your next prompt clears it.
+
+### `activity` reads `blocked`, not `waiting`
+
+The activity value for a session blocked on you is now `blocked`, the
+name OSC 7501 and beacon's own color state already use. `wip --json`,
+`json`, and `/wip.json` report `"activity": "blocked"`, and records
+carry a new `kind` (`question`, `permission`, or null) and
+`stop_error` (the API error type, or null). A consumer matching on
+`"waiting"` needs to match `"blocked"`, and may now also see `"error"`.
+
+### iTerm2 notifications are yours to choose
+
+beacon's profiles now follow your own iTerm2 profile for Notification
+Center and escape-sequence alerts, where they used to turn both off. If
+you liked them off:
+
+```
+beacon config iterm-notifications off
+```
+
+That writes the setting to beacon's config and re-renders the profiles,
+so it reaches every open pane without a restart. `on` turns them on, and
+`reset` hands them back to your profile. After upgrading, run
+`beacon refresh-iterm-profiles` (or the command above) so the old
+setting leaves the installed profiles.
+
 ### iTerm2 relaunched by beacon starts with a clean environment
 
 When `beacon layout --write`, `install`, `refresh-iterm-profiles

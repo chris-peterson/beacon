@@ -143,9 +143,9 @@ commands:
       arg: KEYS
 - name: config
   usages:
-  - summary: 'show or change the user config: tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, auto-pause, origins'
+  - summary: 'show or change the user config: tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins'
     args:
-    - name: tab|tab.style|tab.look|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|tab.vertical-padding|pane-title-bar|auto-pause|origins
+    - name: tab|tab.style|tab.look|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|tab.vertical-padding|pane-title-bar|iterm-notifications|auto-pause|origins
       choices:
       - tab
       - tab.style
@@ -156,6 +156,7 @@ commands:
       - tab.font-size
       - tab.vertical-padding
       - pane-title-bar
+      - iterm-notifications
       - auto-pause
       - origins
       optional: true
