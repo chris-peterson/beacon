@@ -17,5 +17,6 @@
     "macos"
   ],
   "homepage": "https://chris-peterson.github.io/beacon/#/",
+  "icon": "docs/favicon.svg",
   "documentationUrl": "https://chris-peterson.github.io/beacon/#/"
 }
