@@ -1,88 +1,175 @@
 #!/usr/bin/env python3
-"""Drawn watermark sources for the beacon mode profiles (RENDER-05).
+"""Drawn watermark sources for the beacon mode and block profiles (RENDER-05,
+RENDER-07).
 
-Most mode marks come from a found illustration committed as
-`resources/<phase>-src.png`. These are the ones drawn instead, because the shape
-wanted is a geometric primitive rather than a picture — `make-bg.py` calls the
-function named by a phase's `draw=` key and feeds the result through the same
-slate pipeline (`watermark.py`), so a drawn mark and a found one are treated
-identically downstream.
+The drawn marks are one family: monoline strokes on a shared 24-unit grid, one
+stroke weight, round caps and joins, no container, held to the same live area in
+the middle of the grid so none runs the pane's full height. Every enclosed space
+is at least as wide as the stroke, so detail (a porthole, a keyhole, a check)
+stays open instead of filling in. At watermark opacity a large
+filled area reads as a UI panel, while a stroke keeps its shape however faint it
+gets. Each mark keeps only what its tab glyph shows, so the tab and the pane say
+the same thing.
 
-Drawing them keeps the source reproducible: a committed PNG whose generator lives
-nowhere means the next tweak to a tick's weight is a redraw from memory.
-
-Marks are drawn in grayscale on transparency. `watermark.py`'s `tonal` treatment
-autocontrasts luminance onto the DARK..LIGHT slate ramp, so the *relative* tones
-here are what survive — brighter draws lighter, darker draws darker — and the
-absolute values don't matter. Flat single-tone geometry comes out flat, which is
-why each mark varies its tones deliberately.
+`make-bg.py` writes each drawing to `resources/<phase>-src.png` and paints it
+flat through `watermark.py`, so the color lives in one place and the geometry in
+another. Marks are drawn opaque black on transparency; only the alpha survives.
+The whole grid is what gets scaled to the pane, never a mark's own bounds, so
+every mark keeps the same stroke weight and optical size.
 """
+
+import math
 
 from PIL import Image, ImageDraw
 
-# Source resolution. Larger than the 1200px the pipeline emits, so curves and
-# tick joins are antialiased down rather than up.
-SIZE = 1600
+# Drawn larger than the 1200px the pipeline emits, so curves are antialiased
+# down rather than up.
+SIZE = 2400
+GRID = 24
+UNIT = SIZE / GRID
+STROKE = 1.75
+DOT = 1.3
+INK = (0, 0, 0, 255)
 
 
-def _canvas() -> Image.Image:
-    return Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
+    img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    return img, ImageDraw.Draw(img)
 
 
-def _tone(t: float) -> tuple[int, int, int, int]:
-    """An opaque gray at `t` along the ramp (0 = darkest, 1 = lightest)."""
-    v = round(40 + 215 * max(0.0, min(1.0, t)))
-    return (v, v, v, 255)
+def _px(p: tuple[float, float]) -> tuple[float, float]:
+    return (p[0] * UNIT, p[1] * UNIT)
 
 
-def clipboard() -> Image.Image:
-    """`retro` — an upright clipboard with three ticked rules.
+def _dot(d: ImageDraw.ImageDraw, center, radius: float) -> None:
+    x, y = _px(center)
+    r = radius * UNIT
+    d.ellipse([x - r, y - r, x + r, y + r], fill=INK)
 
-    Replaces a found illustration that read as noise at watermark opacity: a
-    tilted board with internal linework, a pen, and paper texture, none of which
-    survives being faded to a backdrop. This keeps only what the 📋 glyph on the
-    tab also shows, so the two surfaces say the same thing.
 
-    The board is **outlined, not filled.** A filled one is a large flat
-    rectangle, and at watermark opacity a flat rectangle reads as a UI element —
-    a panel or an input — rather than as a mark. The other marks get away with
-    solid areas because their silhouettes are *shapes* (a rocket, two bars); a
-    board's silhouette is exactly the thing a card is already made of. Linework
-    also survives fading better, which is the whole job here.
-    """
-    img = _canvas()
-    d = ImageDraw.Draw(img)
+def _stroke(d: ImageDraw.ImageDraw, points, closed: bool = False, width: float = STROKE) -> None:
+    """A round-capped, round-joined polyline through grid points, drawn as one
+    quad per segment and a disc per vertex: PIL's own `joint="curve"` seams a
+    densely sampled arc."""
+    pts = list(points) + ([points[0]] if closed else [])
+    half = width / 2
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        length = math.hypot(x1 - x0, y1 - y0)
+        if not length:
+            continue
+        nx, ny = -(y1 - y0) / length * half, (x1 - x0) / length * half
+        quad = [(x0 + nx, y0 + ny), (x1 + nx, y1 + ny), (x1 - nx, y1 - ny), (x0 - nx, y0 - ny)]
+        d.polygon([_px(p) for p in quad], fill=INK)
+    for p in pts:
+        _dot(d, p, half)
 
-    board_w, board_h = SIZE * 0.52, SIZE * 0.68
-    x0 = (SIZE - board_w) / 2
-    y0 = (SIZE - board_h) / 2 + SIZE * 0.035
-    edge = round(SIZE * 0.022)
-    d.rounded_rectangle([x0, y0, x0 + board_w, y0 + board_h],
-                        radius=SIZE * 0.045, outline=_tone(0.72), width=edge)
 
-    # The clip straddles the top edge, half on the board and half above it. Solid,
-    # because it is small and it is the mark's one point of emphasis.
-    clip_w, clip_h = board_w * 0.34, SIZE * 0.09
-    clip_x = SIZE / 2 - clip_w / 2
-    d.rounded_rectangle([clip_x, y0 - clip_h * 0.62, clip_x + clip_w, y0 + clip_h * 0.38],
-                        radius=SIZE * 0.020, fill=_tone(1.0))
+def _arc(center, radius: float, start: float, end: float, steps: int = 96):
+    """Points along a circle, angles in degrees, screen y down."""
+    cx, cy = center
+    return [
+        (cx + radius * math.cos(math.radians(a)), cy + radius * math.sin(math.radians(a)))
+        for a in (start + (end - start) * i / steps for i in range(steps + 1))
+    ]
 
-    stroke = round(SIZE * 0.026)
-    for i in range(3):
-        line_y = y0 + board_h * (0.33 + i * 0.19)
-        tick_x = x0 + board_w * 0.15
-        d.line([(tick_x, line_y + SIZE * 0.012),
-                (tick_x + SIZE * 0.030, line_y + SIZE * 0.036),
-                (tick_x + SIZE * 0.082, line_y - SIZE * 0.026)],
-               fill=_tone(0.85), width=stroke, joint="curve")
-        rule_x = tick_x + SIZE * 0.115
-        d.rounded_rectangle([rule_x, line_y + SIZE * 0.006,
-                             x0 + board_w * 0.85, line_y + SIZE * 0.030],
-                            radius=SIZE * 0.012, fill=_tone(0.55))
+
+def _cubic(p0, p1, p2, p3, steps: int = 48):
+    out = []
+    for i in range(steps + 1):
+        t = i / steps
+        u = 1 - t
+        out.append(tuple(
+            u ** 3 * a + 3 * u * u * t * b + 3 * u * t * t * c + t ** 3 * e
+            for a, b, c, e in zip(p0, p1, p2, p3)
+        ))
+    return out
+
+
+def pause() -> Image.Image:
+    """`pause`: two upright bars."""
+    img, d = _canvas()
+    _stroke(d, [(9.5, 7), (9.5, 17)])
+    _stroke(d, [(14.5, 7), (14.5, 17)])
     return img
 
 
-# phase `draw=` key -> the function that draws it.
+def release() -> Image.Image:
+    """`release`: a rocket climbing to the upper right, as 🚀 does. Drawn upright
+    and turned, so the body stays symmetric; the porthole is a dot because a ring
+    at this stroke weight closes up."""
+    img, d = _canvas()
+    body = (
+        _cubic((8.5, 15.5), (8.5, 9.5), (9.5, 5.6), (12, 3))
+        + _cubic((12, 3), (14.5, 5.6), (15.5, 9.5), (15.5, 15.5))[1:]
+    )
+    _stroke(d, body, closed=True)
+    _dot(d, (12, 9.6), 1.2)
+    _stroke(d, [(8.5, 11.6), (5, 15), (5, 18.6), (8.5, 18.2), (8.5, 15.5)])
+    _stroke(d, [(15.5, 11.6), (19, 15), (19, 18.6), (15.5, 18.2), (15.5, 15.5)])
+    _stroke(d, [(12, 18.6), (12, 20.6)])
+    return img.rotate(-45, resample=Image.BICUBIC)
+
+
+def done() -> Image.Image:
+    """`done`: a checkered flag on its pole. The checks are the one filled area,
+    small enough to read as pattern rather than panel, and tile the inside of the
+    outline so the outline never covers them."""
+    img, d = _canvas()
+    x0, x1, top, height = 5.5, 19.5, 4.5, 10.0
+    inset = STROKE / 2
+    cols, rows = 4, 3
+
+    def edge(x: float, y: float) -> tuple[float, float]:
+        return (x, y + 0.8 * math.sin(math.pi * 2 * (x - x0) / (x1 - x0)))
+
+    def span(a: float, b: float, n: int = 24):
+        return [a + (b - a) * k / n for k in range(n + 1)]
+
+    cell_w = (x1 - x0 - 2 * inset) / cols
+    cell_h = (height - 2 * inset) / rows
+    for c in range(cols):
+        for r in range(rows):
+            if (c + r) % 2:
+                continue
+            xa = x0 + inset + c * cell_w
+            ya = top + inset + r * cell_h
+            xs = span(xa, xa + cell_w)
+            poly = [edge(x, ya) for x in xs] + [edge(x, ya + cell_h) for x in reversed(xs)]
+            d.polygon([_px(p) for p in poly], fill=INK)
+
+    xs = span(x0, x1)
+    outline = [edge(x, top) for x in xs] + [edge(x, top + height) for x in reversed(xs)]
+    _stroke(d, outline, closed=True)
+    _stroke(d, [(x0, 3.5), (x0, 20.5)])
+    return img
+
+
+def question() -> Image.Image:
+    """The blocked-on-a-question mark: a geometric `?`, an arc that turns into
+    its stem, over a dot."""
+    img, d = _canvas()
+    hook = _arc((12, 8.5), 3.5, 180, 405)
+    turn = _cubic(hook[-1], (13.4, 12), (12, 12.4), (12, 13.6))
+    _stroke(d, hook + turn[1:] + [(12, 14)])
+    _dot(d, (12, 18), DOT)
+    return img
+
+
+def permission() -> Image.Image:
+    """The blocked-on-a-permission mark: a padlock, since the session is held
+    until you grant access rather than asked something."""
+    img, d = _canvas()
+    _stroke(d, [(6.5, 11), (17.5, 11), (17.5, 19.5), (6.5, 19.5)], closed=True)
+    _stroke(d, [(8.6, 11)] + _arc((12, 7.8), 3.4, 180, 360) + [(15.4, 11)])
+    _dot(d, (12, 15.25), DOT)
+    return img
+
+
+# phase -> the function that draws it.
 MARKS = {
-    "clipboard": clipboard,
+    "pause": pause,
+    "release": release,
+    "done": done,
+    "question": question,
+    "permission": permission,
 }

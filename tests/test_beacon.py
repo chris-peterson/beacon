@@ -270,7 +270,7 @@ class CmdSetPropagatesToBadge(BeaconTest):
 
 class ApplyEmitsBaseProfileAndColor(BeaconTest):
     """RENDER-04 / §6.6: the first render switches into the base `beacon`
-    profile and sets the badge format; for ready/busy/blocked, state color is
+    profile and sets the badge format; for idle / working / blocked, state color is
     delivered by OSC badge-color/tab-color with no per-state profile (paused is
     the one exception — see PausedSwapsProfile, RENDER-05). Every render repaints
     the color, so a wipe beacon did not cause recovers on the next hook."""
@@ -280,8 +280,8 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
 
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
                       "First render must switch into the base beacon-dev profile")
-        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["ready"]), self.cli_calls)
-        self.assertIn(("tab-color", self.beacon._tab_hex("ready")), self.cli_calls)
+        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["idle"]), self.cli_calls)
+        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls)
 
     def test_status_transition_emits_color_not_profile(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
@@ -289,8 +289,8 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
 
         self.beacon.apply({**_base_state(), "activity": "working"})
 
-        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["busy"]), self.cli_calls)
-        self.assertIn(("tab-color", self.beacon._tab_hex("busy")), self.cli_calls)
+        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["working"]), self.cli_calls)
+        self.assertIn(("tab-color", self.beacon._tab_hex("working")), self.cli_calls)
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-profile"], [],
             "A state transition repaints via OSC color, never a profile switch",
@@ -302,11 +302,11 @@ class ApplyEmitsBaseProfileAndColor(BeaconTest):
 
         self.beacon.apply({**_base_state(), "activity": "working"})
 
-        self.assertIn(("tab-color", self.beacon._tab_hex("busy")), self.cli_calls,
+        self.assertIn(("tab-color", self.beacon._tab_hex("working")), self.cli_calls,
                       "The color is re-emitted every render: beacon cannot see a "
                       "wipe it did not cause, so gating on the snapshot would "
                       "strand the tab unpainted")
-        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["busy"]), self.cli_calls)
+        self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["working"]), self.cli_calls)
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-profile"], [],
             "Identical logical state must not switch profiles",
@@ -454,7 +454,7 @@ class PausedSwapsProfile(BeaconTest):
                       "a swap must re-emit the badge format (SetProfile wipes it)")
         # The tab color answers to activity, not the mode: this session is idle, so
         # it stays the calm gray. The mode reaches the tab as its glyph instead.
-        self.assertIn(("tab-color", self.beacon._tab_hex("ready")), self.cli_calls)
+        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls)
         self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls,
                       "pause must mark line 1 of the tab / OS window title")
         # The user vars are re-emitted because the swap wiped them; the badge text
@@ -476,7 +476,7 @@ class PausedSwapsProfile(BeaconTest):
 
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
                       "leaving paused must swap back to the base beacon-dev profile")
-        ready = self.beacon.COLOR_PALETTE["ready"]
+        ready = self.beacon.COLOR_PALETTE["idle"]
         self.assertIn(("badge-color", ready), self.cli_calls)
 
     def test_non_mode_transitions_never_swap(self):
@@ -484,11 +484,11 @@ class PausedSwapsProfile(BeaconTest):
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "activity": "working"})
-        self.beacon.apply({**_base_state(), "activity": "waiting"})
+        self.beacon.apply({**_base_state(), "activity": "blocked"})
 
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "set-profile"], [],
-            "ready/busy/blocked (dev) stay OSC overlays on the base profile — no swap",
+            "idle / working / blocked (dev) stay OSC overlays on the base profile — no swap",
         )
 
     def test_snapshot_records_active_profile(self):
@@ -505,8 +505,9 @@ class PausedSwapsProfile(BeaconTest):
 
 class RetroMode(BeaconTest):
     """RENDER-05 / STATE-08: retro is a mode with its own profile (beacon-retro,
-    muted green + ticked clipboard), set via `retro`. It persists across a prompt
-    and marks the tab with 📋; no mode decorates the badge text (BADGE-11)."""
+    the user's background under a fixed `retro` badge), set via `retro`. It
+    persists across a prompt and marks the tab with 📋; the project text never
+    carries the glyph (BADGE-11)."""
 
     def test_retro_swaps_profile_and_marks_the_tab(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
@@ -518,7 +519,7 @@ class RetroMode(BeaconTest):
                       "entering retro must swap into the beacon-retro profile")
         self.assertIn(("uservar", "beacon_title_prefix", "📋 "), self.cli_calls,
                       "the mode's only cross-tab surface is its glyph")
-        self.assertIn(("tab-color", self.beacon._tab_hex("ready")), self.cli_calls,
+        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls,
                       "the tab color reports activity, so an idle retro stays calm")
 
     def test_retro_badge_text_has_no_glyph(self):
@@ -528,6 +529,18 @@ class RetroMode(BeaconTest):
             [("uservar", "beacon_project", "acme/widget")],
             "the glyph rides the title prefix, never the badge text (BADGE-11)",
         )
+
+    def test_an_opted_in_badge_reads_retro_and_reverts_on_leaving(self):
+        # With the badge on, the OSC outranks the profile's Badge Text, so the
+        # render has to say `retro` itself, and hand the format back on leaving.
+        with mock.patch.object(self.beacon, "_badge_enabled", return_value=True):
+            self.beacon.apply({**_base_state(), "activity": "idle"})
+            self.cli_calls.clear()
+            self.beacon.apply({**_base_state(), "mode": "retro"})
+            self.assertIn(("badge-format", "retro"), self.cli_calls)
+            self.cli_calls.clear()
+            self.beacon.apply({**_base_state(), "activity": "idle"})
+            self.assertIn(("badge-format", self.beacon.BADGE_FORMAT), self.cli_calls)
 
     def test_retro_command_sets_mode_and_note_only(self):
         # A mode writes the mode. It used to also freeze project/task into
@@ -570,7 +583,7 @@ class DoneMode(BeaconTest):
                       "entering done must swap into the beacon-done profile")
         self.assertIn(("uservar", "beacon_title_prefix", "🏁 "), self.cli_calls,
                       "the mode's only cross-tab surface is its glyph")
-        self.assertIn(("tab-color", self.beacon._tab_hex("ready")), self.cli_calls,
+        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls,
                       "the tab color reports activity, so an idle done stays calm")
 
     def test_done_badge_has_no_glyph(self):
@@ -644,8 +657,8 @@ class TabAreaWeighting(BeaconTest):
         # uniform dimming is what flattened the signal.
         for style, w in self.beacon.TAB_MUTE.items():
             with self.subTest(style=style):
-                self.assertGreater(w["blocked"], w["busy"])
-                self.assertGreater(w["busy"], w["ready"])
+                self.assertGreater(w["blocked"], w["working"])
+                self.assertGreater(w["working"], w["idle"])
 
     def test_weighting_preserves_hue_and_saturation(self):
         # Scaling every channel by the same factor moves only HSV value. If a
@@ -722,7 +735,7 @@ class TabAreaWeighting(BeaconTest):
         self.assertIn("config.tab", self.beacon._DOCTOR_ADVICE)
 
     def test_the_tab_takes_the_weighted_hue(self):
-        self.beacon.apply({**_base_state(), "activity": "waiting"})
+        self.beacon.apply({**_base_state(), "activity": "blocked"})
         self.assertIn(("tab-color", self.beacon._tab_hex("blocked")), self.cli_calls)
         self.assertNotIn(("tab-color", self.beacon.COLOR_PALETTE["blocked"]),
                          self.cli_calls,
@@ -732,13 +745,13 @@ class TabAreaWeighting(BeaconTest):
         # Small, and over terminal output — it wants full strength for the same
         # reason the tab cannot have it.
         with mock.patch.object(self.beacon, "_badge_enabled", return_value=True):
-            self.beacon.apply({**_base_state(), "activity": "waiting"})
+            self.beacon.apply({**_base_state(), "activity": "blocked"})
         self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["blocked"]),
                       self.cli_calls)
 
     def test_an_unknown_state_falls_back_without_weighting(self):
         self.assertEqual(self.beacon._tab_hex("nonesuch"),
-                         self.beacon._mute_hex(self.beacon.COLOR_PALETTE["ready"], 1.0))
+                         self.beacon._mute_hex(self.beacon.COLOR_PALETTE["idle"], 1.0))
 
 
 class ModernTabLook(BeaconTest):
@@ -773,7 +786,7 @@ class ModernTabLook(BeaconTest):
 
     def test_claude_status_text_reads_on_its_fill(self):
         # The colors iTerm2 3.7.6 draws each status in (setStatusAndColors).
-        text = {"ready": ["00d75f", "888888", "ff3b30"], "busy": ["ff9500"],
+        text = {"idle": ["00d75f", "888888", "ff3b30"], "working": ["ff9500"],
                 "blocked": ["5f87ff"]}
         for state, colors in text.items():
             fill = self.beacon.MODERN_TAB_FILL[state]
@@ -791,25 +804,25 @@ class ModernTabLook(BeaconTest):
         self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
         with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
             self._notify("idle_prompt")
-        self.assertNotEqual(self.beacon.read_state("activity"), "waiting")
+        self.assertNotEqual(self.beacon.read_state("activity"), "blocked")
         self.assertIsNone(self.beacon.read_state("pending-attention"))
 
     def test_modern_keeps_the_idle_prompt_outside_iterm2(self):
         with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
             self._notify("idle_prompt")
-        self.assertEqual(self.beacon.read_state("activity"), "waiting")
+        self.assertEqual(self.beacon.read_state("activity"), "blocked")
 
     def test_legacy_keeps_the_idle_prompt_in_an_iterm2_pane(self):
         self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
         with mock.patch.object(self.beacon, "_tab_look", return_value="legacy"):
             self._notify("idle_prompt")
-        self.assertEqual(self.beacon.read_state("activity"), "waiting")
+        self.assertEqual(self.beacon.read_state("activity"), "blocked")
 
     def test_modern_still_paints_a_permission_prompt(self):
         self.beacon.write_state("iterm_session_id", "6E1F1C1A-0000-4000-8000-000000000001")
         with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
             self._notify("permission_prompt")
-        self.assertEqual(self.beacon.read_state("activity"), "waiting")
+        self.assertEqual(self.beacon.read_state("activity"), "blocked")
 
 
 class ConfigCommand(BeaconTest):
@@ -1029,8 +1042,8 @@ class PlanModeAwareness(BeaconTest):
         # PERM-02: the activity color tells the truth about a planning session — it
         # is working while it researches and blocked on the plan card — so there
         # is nothing for the permission axis to correct.
-        for activity, state in (("idle", "ready"), ("working", "busy"),
-                                ("waiting", "blocked")):
+        for activity, state in (("idle", "idle"), ("working", "working"),
+                                ("blocked", "blocked")):
             with self.subTest(activity=activity):
                 self.cli_calls.clear()
                 self.beacon.apply({
@@ -1041,7 +1054,7 @@ class PlanModeAwareness(BeaconTest):
 
     def test_planning_leaves_the_tab_glyph_to_the_mode(self):
         self.beacon.apply({
-            **_base_state(), "mode": "release", "activity": "waiting",
+            **_base_state(), "mode": "release", "activity": "blocked",
             "planning": True,
         })
         snap = self.beacon.read_state_json("resolved", {})
@@ -1056,10 +1069,10 @@ class PlanModeAwareness(BeaconTest):
         # The observation is recorded and published; nothing about the activity
         # axis changes underneath it.
         self.beacon.write_state("permission_mode", "plan")
-        self.beacon.write_state("activity", "waiting")
+        self.beacon.write_state("activity", "blocked")
         state = self.beacon.resolve()
         self.assertTrue(state["planning"])
-        self.assertEqual(state["activity"], "waiting")
+        self.assertEqual(state["activity"], "blocked")
 
     def test_a_fresh_start_drops_a_prior_tenants_plan_mode(self):
         self.beacon.write_state("permission_mode", "plan")
@@ -1110,17 +1123,17 @@ class AxesAreIndependent(BeaconTest):
 
     def test_release_and_waiting_coexist(self):
         self.beacon.write_mode("release", "cutting v2.5")
-        self.beacon.write_state("activity", "waiting")
+        self.beacon.write_state("activity", "blocked")
         state = self.beacon.resolve()
         self.assertEqual(state["mode"], "release")
-        self.assertEqual(state["activity"], "waiting")
+        self.assertEqual(state["activity"], "blocked")
         self.assertEqual(state["note"], "cutting v2.5")
 
     def test_interrupt_reaches_the_tab_through_a_mode(self):
         # The tab color is the interrupt channel, so it has to report `blocked`
         # even while the pane sits in a mode profile.
         self.beacon.apply({
-            **_base_state(), "mode": "release", "activity": "waiting",
+            **_base_state(), "mode": "release", "activity": "blocked",
         })
         self.assertIn(("tab-color", self.beacon._tab_hex("blocked")), self.cli_calls,
                       "a moded session blocked on the user must still read as blocked")
@@ -1134,8 +1147,8 @@ class AxesAreIndependent(BeaconTest):
         # keeps its glyph — only the color moves. Asserted on the snapshot rather
         # than the emitted calls, because a profile is only *swapped* when it
         # changes (RENDER-05), so the second pass through here emits nothing.
-        for activity, hex_color in (("idle", "ready"), ("working", "busy"),
-                                    ("waiting", "blocked")):
+        for activity, hex_color in (("idle", "idle"), ("working", "working"),
+                                    ("blocked", "blocked")):
             with self.subTest(activity=activity):
                 self.beacon.apply({
                     **_base_state(), "mode": "pause", "activity": activity,
@@ -1147,9 +1160,9 @@ class AxesAreIndependent(BeaconTest):
 
     def test_activity_survives_entering_a_mode(self):
         # The merged field overwrote it; separate files cannot.
-        self.beacon.write_state("activity", "waiting")
+        self.beacon.write_state("activity", "blocked")
         self.beacon.write_mode("release", "")
-        self.assertEqual(self.beacon.read_activity(), "waiting",
+        self.assertEqual(self.beacon.read_activity(), "blocked",
                          "entering a mode must not discard what the hooks observed")
 
     def test_hook_activity_writes_through_a_mode(self):
@@ -1235,7 +1248,7 @@ class ReleaseMode(BeaconTest):
                       "entering release must swap into the beacon-release profile")
         self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
                       "the mode's only cross-tab surface is its glyph")
-        self.assertIn(("tab-color", self.beacon._tab_hex("ready")), self.cli_calls,
+        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls,
                       "the tab color reports activity, so an idle release stays calm")
 
     def test_release_badge_has_no_glyph(self):
@@ -1374,9 +1387,9 @@ class DataDirResolution(BeaconTest):
 
 class ModeProfileDerivation(unittest.TestCase):
     """RENDER-05 / §6.6: install derives one mode profile per MODE_SPECS entry
-    from the rendered base — same layout, a de-emphasized Dracula background (and,
-    for paused, a faint background image) — so they never drift. THEME-01: hexes
-    are single-sourced in MODE_SPECS."""
+    from the rendered base — same layout, differing by a de-emphasized Dracula
+    background with its faint watermark, or by a fixed badge — so they never
+    drift. THEME-01: hexes are single-sourced in MODE_SPECS."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -1408,7 +1421,7 @@ class ModeProfileDerivation(unittest.TestCase):
                          "forcing it off points a stock profile at its white "
                          "light-mode background")
         # Whichever set that switch selects, the ready-gray default has to be there.
-        ready = self.beacon.COLOR_PALETTE["ready"]
+        ready = self.beacon.COLOR_PALETTE["idle"]
         for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
             self.assertAlmostEqual(base[key]["Red Component"],
                                    int(ready[0:2], 16) / 255.0, msg=key)
@@ -1420,16 +1433,21 @@ class ModeProfileDerivation(unittest.TestCase):
             self.assertEqual(prof["Guid"], spec["guid"])
             self.assertNotIn(prof["Guid"], seen_guids, f"{mode} needs a distinct Guid")
             seen_guids.add(prof["Guid"])
-            # Same layout (single-sourced) — a mode profile differs only by background.
+            # Same layout (single-sourced) — a mode profile differs only by its
+            # background or its badge.
             self.assertEqual(prof["Status Bar Layout"], base["Status Bar Layout"])
             for key in ("Background Color", "Background Color (Light)",
                         "Background Color (Dark)"):
+                if not spec.get("background"):
+                    self.assertNotIn(key, prof, f"{mode} keeps the parent's background")
+                    continue
                 self.assertAlmostEqual(
                     prof[key]["Red Component"],
                     int(spec["background"][0:2], 16) / 255.0,
                     msg=f"{mode}: {key}",
                 )
-            if spec["image"]:
+            self.assertEqual(prof["Badge Text"], spec.get("badge", ""), mode)
+            if spec.get("image"):
                 self.assertTrue(prof["Background Image Location"].endswith(spec["image"]))
                 self.assertEqual(prof["Background Image Mode"], 3)
                 self.assertEqual(prof["Blend"], spec["blend"])
@@ -1502,23 +1520,25 @@ class ModeProfileDerivation(unittest.TestCase):
         self.assertEqual(set(self.beacon.ACTIVITY_TO_COLOR_STATE.values()),
                          set(self.beacon.COLOR_PALETTE))
 
-    def test_every_mode_carries_a_watermark(self):
-        # Every mode carries a slate watermark and a blend — pause's ||-button,
-        # release's rocket, retro's ticked clipboard, done's checkered flag — all
-        # through iterm/make-bg.py. No mode is exempt: the background is one of
-        # only two surfaces a mode has, so a mode without a mark is a mode that
-        # reads as a bare tint.
+    def test_every_mode_carries_a_pane_cue(self):
+        # The pane is one of only two surfaces a mode has, so every mode marks it:
+        # a background with its slate watermark and blend (iterm/make-bg.py), or
+        # a fixed badge. A background without a mark reads as a bare tint.
         for mode in self.beacon.MODES:
             spec = self.beacon.MODE_SPECS[mode]
-            self.assertTrue(spec["image"], f"{mode} should carry a watermark image")
-            self.assertIsNotNone(spec["blend"], f"{mode} should carry a blend")
+            if spec.get("background"):
+                self.assertTrue(spec["image"], f"{mode} should carry a watermark image")
+                self.assertIsNotNone(spec["blend"], f"{mode} should carry a blend")
+            else:
+                self.assertTrue(spec.get("badge"), f"{mode} needs a background or a badge")
 
     def test_mode_background_luma_ladder(self):
         # Brightness is Rec. 709 luma, not HSV value: value weights the channels
         # alike where the eye weights green .72 against blue .07, so hues picked
         # at one value are not panes at one brightness (THEME-02a).
-        tiers = {"release": 43.0, "retro": 43.0, "pause": 34.0, "done": 22.0}
-        self.assertEqual(set(tiers), set(self.beacon.MODES))
+        tiers = {"release": 43.0, "pause": 34.0, "done": 22.0}
+        self.assertEqual(set(tiers), {m for m, spec in self.beacon.MODE_SPECS.items()
+                                      if spec.get("background")})
         for mode, target in tiers.items():
             hexstr = self.beacon.MODE_SPECS[mode]["background"]
             r, g, b = (int(hexstr[i:i + 2], 16) for i in (0, 2, 4))
@@ -1533,14 +1553,94 @@ class ModeProfileDerivation(unittest.TestCase):
         for mode, spec in self.beacon.MODE_SPECS.items():
             self.assertTrue(spec["glyph"], f"{mode} should carry a tab glyph")
 
+    def test_install_writes_a_profile_per_block_kind(self):
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        profiles_dir = (Path(self._home.name) / "Library" / "Application Support"
+                        / "iTerm2" / "DynamicProfiles")
+        base = json.loads((profiles_dir / "beacon-dev.json").read_text())["Profiles"][0]
+        for kind, spec in self.beacon.ATTENTION_SPECS.items():
+            prof = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
+            self.assertEqual(prof["Guid"], spec["guid"])
+            self.assertEqual(prof["Status Bar Layout"], base["Status Bar Layout"])
+            self.assertNotIn("Background Color", prof, f"{kind} keeps the parent's background")
+            self.assertTrue(prof["Background Image Location"].endswith(spec["image"]))
+            self.assertEqual(prof["Blend"], spec["blend"])
+            self.assertTrue((self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]).is_file())
+
     def test_mode_image_files_exist(self):
         # The watermark assets each mode names must be present on disk: they back
         # both the profile background (install) and the /mode-bg/<state> serve
         # route the dashboard card renders (WIP-17). A rename that misses one
         # would 404 the card and blank the pane background.
         for mode, spec in self.beacon.MODE_SPECS.items():
+            if not spec.get("image"):
+                continue
             p = self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]
             self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
+
+
+class ItermNotificationsFollowTheUser(unittest.TestCase):
+    """RENDER-06 / CMD-32: the beacon profiles leave iTerm2's own alerts to the
+    parent profile until `config iterm-notifications` turns them on or off."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.beacon = _load_beacon(Path(self._tmp.name))
+        self._home = tempfile.TemporaryDirectory()
+        self.addCleanup(self._home.cleanup)
+        home_patcher = mock.patch("pathlib.Path.home", return_value=Path(self._home.name))
+        home_patcher.start()
+        self.addCleanup(home_patcher.stop)
+        cfg_dir = Path(self._tmp.name) / "cfg"
+        (cfg_dir / "beacon").mkdir(parents=True, exist_ok=True)
+        self.config = cfg_dir / "beacon" / "config.json"
+        xdg = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(cfg_dir)})
+        xdg.start()
+        self.addCleanup(xdg.stop)
+        iterm = mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True)
+        iterm.start()
+        self.addCleanup(iterm.stop)
+
+    def _profiles(self):
+        d = (Path(self._home.name) / "Library" / "Application Support"
+             / "iTerm2" / "DynamicProfiles")
+        names = [self.beacon.BASE_PROFILE_NAME] + [
+            spec["profile"] for spec in self.beacon.MODE_SPECS.values()]
+        return [json.loads((d / f"{n}.json").read_text())["Profiles"][0] for n in names]
+
+    def _config(self, *values):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.beacon.cmd_config(mock.Mock(setting="iterm-notifications", values=list(values)))
+        return out.getvalue()
+
+    def test_by_default_the_parent_profile_decides(self):
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        for prof in self._profiles():
+            for key in self.beacon.ITERM_ALERT_KEYS:
+                self.assertNotIn(key, prof, f"{prof['Name']} must inherit {key}")
+        self.assertEqual(self._config().strip(), "profile")
+
+    def test_off_turns_both_alerts_off_in_every_profile_at_once(self):
+        self._config("off")
+        self.assertEqual(json.loads(self.config.read_text()), {"iterm_notifications": False})
+        for prof in self._profiles():
+            for key in self.beacon.ITERM_ALERT_KEYS:
+                self.assertIs(prof[key], False, f"{prof['Name']}: {key}")
+
+    def test_reset_hands_them_back_to_the_parent(self):
+        self._config("off")
+        self._config("reset")
+        self.assertEqual(json.loads(self.config.read_text()), {})
+        for prof in self._profiles():
+            for key in self.beacon.ITERM_ALERT_KEYS:
+                self.assertNotIn(key, prof)
+
+    def test_a_malformed_value_reads_as_the_parents(self):
+        self.config.write_text(json.dumps({"iterm_notifications": "nope"}))
+        self.assertIsNone(self.beacon._iterm_notifications())
 
 
 class CustomizableStatusBarButtons(unittest.TestCase):
@@ -2024,7 +2124,7 @@ class PendingAttentionPaintsBlocked(BeaconTest):
 
     def test_pending_attention_emits_blocked_hex(self):
         self.beacon.apply({
-            **_base_state(), "activity": "waiting", "pending_attention": True,
+            **_base_state(), "activity": "blocked", "pending_attention": True,
         })
         self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["blocked"]), self.cli_calls)
         self.assertIn(("tab-color", self.beacon._tab_hex("blocked")), self.cli_calls)
@@ -2093,7 +2193,7 @@ class ModeNoteStaysOffLineOne(BeaconTest):
         # resolved to — a note cannot move it.
         self.assertEqual(
             [c for c in self.cli_calls if c[0] == "tab-color"],
-            [("tab-color", self.beacon._tab_hex("ready"))],
+            [("tab-color", self.beacon._tab_hex("idle"))],
         )
 
 
@@ -2191,7 +2291,7 @@ class IdlePromptOnAStoodDownSession(BeaconTest):
                 self.beacon.remove_state("activity")
                 self.beacon.write_mode(mode, "")
                 self._notify("idle_prompt")
-                self.assertEqual(self.beacon.read_activity(), "waiting")
+                self.assertEqual(self.beacon.read_activity(), "blocked")
                 self.assertEqual(self.beacon.read_state("pending-attention"), "1")
 
     def test_permission_prompt_lands_in_every_mode(self):
@@ -2201,7 +2301,7 @@ class IdlePromptOnAStoodDownSession(BeaconTest):
                 self.beacon.write_mode(mode, "")
                 self._notify("permission_prompt")
                 self.assertEqual(
-                    self.beacon.read_activity(), "waiting",
+                    self.beacon.read_activity(), "blocked",
                     "Claude is blocked on a decision the user does not know about",
                 )
 
@@ -2223,8 +2323,8 @@ class NotificationKindsAreReadFromThePayload(BeaconTest):
                 self.beacon.remove_state("activity")
                 self.beacon.remove_state("pending-attention")
                 self._notify(kind)
-                self.assertEqual(self.beacon.read_activity(), "waiting")
-                self.assertEqual(self.beacon.read_state("pending-attention"), "1")
+                self.assertEqual(self.beacon.read_activity(), "blocked")
+                self.assertIsNotNone(self.beacon.read_state("pending-attention"))
 
     def test_a_finished_event_paints_nothing(self):
         # These report something that already happened. Red is the one color
@@ -2275,6 +2375,199 @@ class NotificationKindsAreReadFromThePayload(BeaconTest):
             self.assertNotIn("--kind", h["command"])
 
 
+class BlocksRecordWhatTheyWaitOn(BeaconTest):
+    """HOOK-03g: the pending-attention marker records whether the block is a
+    question or a permission, which PermissionRequest names by tool and the
+    Notification that follows it does not."""
+
+    def _hook(self, event, **payload):
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event=event, kind=""))
+
+    def test_a_question_tool_is_a_question(self):
+        for tool in sorted(self.beacon.QUESTION_TOOLS):
+            with self.subTest(tool=tool):
+                self._hook("PermissionRequest", tool_name=tool, tool_input={})
+                self.assertEqual(self.beacon.read_attention_kind(), "question")
+
+    def test_any_other_tool_is_a_permission(self):
+        self._hook("PermissionRequest", tool_name="Bash", tool_input={"command": "ls"})
+        self.assertEqual(self.beacon.read_attention_kind(), "permission")
+
+    def test_the_late_permission_prompt_keeps_the_kind_already_named(self):
+        # Measured: a question card raises PermissionRequest(AskUserQuestion),
+        # then a `permission_prompt` Notification six seconds later.
+        self._hook("PermissionRequest", tool_name="AskUserQuestion", tool_input={})
+        self._hook("Notification", notification_type="permission_prompt")
+        self.assertEqual(self.beacon.read_attention_kind(), "question")
+
+    def test_a_permission_prompt_alone_is_a_permission(self):
+        self._hook("Notification", notification_type="permission_prompt")
+        self.assertEqual(self.beacon.read_attention_kind(), "permission")
+
+    def test_an_elicitation_is_a_question(self):
+        self._hook("Notification", notification_type="elicitation_dialog")
+        self.assertEqual(self.beacon.read_attention_kind(), "question")
+
+    def test_an_idle_prompt_blocks_with_no_kind(self):
+        with mock.patch.object(self.beacon, "_tab_look", return_value="legacy"):
+            self._hook("Notification", notification_type="idle_prompt")
+        self.assertEqual(self.beacon.read_activity(), "blocked")
+        self.assertIsNone(self.beacon.read_attention_kind())
+
+    def test_the_next_tool_clears_the_kind_with_the_marker(self):
+        self._hook("PermissionRequest", tool_name="AskUserQuestion", tool_input={})
+        self._hook("PreToolUse", tool_name="Bash", tool_input={})
+        self.assertIsNone(self.beacon.read_attention_kind())
+
+    def test_the_fleet_record_and_show_carry_the_kind(self):
+        self._hook("PermissionRequest", tool_name="Bash", tool_input={})
+        self.assertEqual(self.beacon.resolve()["kind"], "permission")
+
+
+class ATurnStoppedOnAnApiError(BeaconTest):
+    """HOOK-16: Claude Code fires StopFailure in place of Stop when a turn ends
+    on an API error. Without it the session read `working` until the next
+    prompt."""
+
+    def _hook(self, event, **payload):
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event=event, kind=""))
+
+    def test_it_reads_error_and_paints_red(self):
+        self._hook("PreToolUse", tool_name="Bash", tool_input={})
+        self._hook("StopFailure", error="rate_limit", error_details="429 Too Many Requests")
+        self.assertEqual(self.beacon.read_activity(), "error")
+        self.assertEqual(self.beacon.read_stop_error(), "rate_limit")
+        self.assertEqual(self.beacon._color_state_for({"activity": "error"}), "blocked")
+
+    def test_it_ends_a_pending_block(self):
+        self._hook("PermissionRequest", tool_name="Bash", tool_input={})
+        self._hook("StopFailure", error="overloaded")
+        self.assertIsNone(self.beacon.read_state("pending-attention"))
+
+    def test_the_next_prompt_moves_on_and_drops_the_error(self):
+        self._hook("StopFailure", error="server_error")
+        self._hook("UserPromptSubmit", prompt="try again")
+        self.assertEqual(self.beacon.read_activity(), "working")
+        self.assertIsNone(self.beacon.read_stop_error())
+
+    def test_a_missing_type_reads_unknown(self):
+        self._hook("StopFailure")
+        self.assertEqual(self.beacon.read_stop_error(), "unknown")
+
+    def test_resolve_and_the_fleet_record_carry_the_type(self):
+        self._hook("StopFailure", error="authentication_failed")
+        self.assertEqual(self.beacon.resolve()["stop_error"], "authentication_failed")
+
+    def test_clear_drops_the_sticky_red(self):
+        self._hook("StopFailure", error="rate_limit")
+        self.beacon._disengage()
+        self.assertEqual(self.beacon.read_activity(), "idle")
+
+    def test_it_is_wired(self):
+        wiring = json.loads((REPO_ROOT / "hooks" / "hooks.json").read_text())
+        commands = [h["command"] for e in wiring["hooks"]["StopFailure"] for h in e["hooks"]]
+        self.assertTrue(any(c.endswith("hook StopFailure") for c in commands))
+
+
+class ATurnEndedWithBackgroundWorkRunning(BeaconTest):
+    """HOOK-02a: a Stop whose payload lists running background tasks reads
+    `background`, painted idle, until a Stop arrives with none running."""
+
+    SHELL = {"id": "b1", "type": "shell", "status": "running", "command": "sleep 90"}
+    AGENT = {"id": "a1", "type": "subagent", "status": "running", "agent_type": "general-purpose"}
+
+    def _hook(self, event, **payload):
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event=event, kind=""))
+
+    def test_it_reads_background_and_paints_idle(self):
+        self._hook("Stop", background_tasks=[self.SHELL, self.AGENT], session_crons=[])
+        self.assertEqual(self.beacon.read_activity(), "background")
+        self.assertEqual(self.beacon.read_background_count(), 2)
+        self.assertEqual(self.beacon._color_state_for({"activity": "background"}), "idle")
+
+    def test_a_stop_with_nothing_running_reads_idle(self):
+        self._hook("Stop", background_tasks=[self.SHELL])
+        self._hook("Stop", background_tasks=[])
+        self.assertEqual(self.beacon.read_activity(), "idle")
+        self.assertIsNone(self.beacon.read_background_count())
+
+    def test_only_running_tasks_count(self):
+        self._hook("Stop", background_tasks=[self.SHELL, {**self.AGENT, "status": "completed"}])
+        self.assertEqual(self.beacon.read_background_count(), 1)
+
+    def test_a_pending_cron_alone_reads_idle(self):
+        cron = {"id": "c1", "schedule": "*/5 * * * *", "recurring": True, "prompt": "check"}
+        self._hook("Stop", background_tasks=[], session_crons=[cron])
+        self.assertEqual(self.beacon.read_activity(), "idle")
+
+    def test_the_wake_up_moves_on_and_drops_the_count(self):
+        self._hook("Stop", background_tasks=[self.SHELL])
+        self._hook("UserPromptSubmit", prompt="<task-notification>\n<task-id>b1</task-id>")
+        self.assertEqual(self.beacon.read_activity(), "working")
+        self.assertIsNone(self.beacon.read_background_count())
+
+    def test_resolve_carries_the_count(self):
+        self._hook("Stop", background_tasks=[self.SHELL])
+        self.assertEqual(self.beacon.resolve()["background"], 1)
+
+    def test_the_dev_tab_leads_with_an_hourglass(self):
+        self.beacon.apply({**_base_state(), "activity": "background"})
+        self.assertIn(("uservar", "beacon_title_prefix", self.beacon.BACKGROUND_TITLE_LEAD),
+                      self.cli_calls)
+
+    def test_a_declared_mode_keeps_its_glyph(self):
+        lead = self.beacon._mode_glyph_for({"mode": "release", "activity": "background"})
+        self.assertEqual(lead, f"{self.beacon.MODE_SPECS['release']['glyph']} ")
+
+
+class ABlockedDevPaneShowsItsKind(BeaconTest):
+    """RENDER-07: a dev-cycle pane blocked on a question or a permission swaps
+    into that kind's profile, the user's background under a faint `?` or padlock,
+    and back when the block clears. A declared mode keeps its own profile."""
+
+    def _blocked(self, kind, **extra):
+        return {**_base_state(), "activity": "blocked", "pending_attention": True,
+                "kind": kind, **extra}
+
+    def test_each_kind_swaps_into_its_profile(self):
+        for kind, spec in self.beacon.ATTENTION_SPECS.items():
+            with self.subTest(kind=kind):
+                self.beacon.apply({**_base_state(), "activity": "working"})
+                self.cli_calls.clear()
+                self.beacon.apply(self._blocked(kind))
+                self.assertIn(("set-profile", spec["profile"]), self.cli_calls)
+
+    def test_the_pane_swaps_back_when_the_block_clears(self):
+        self.beacon.apply(self._blocked("question"))
+        self.cli_calls.clear()
+        self.beacon.apply({**_base_state(), "activity": "working"})
+        self.assertIn(("set-profile", self.beacon.BASE_PROFILE_NAME), self.cli_calls)
+
+    def test_a_declared_mode_keeps_its_profile(self):
+        for mode, spec in self.beacon.MODE_SPECS.items():
+            with self.subTest(mode=mode):
+                self.beacon.apply({**_base_state(), "mode": mode})
+                self.cli_calls.clear()
+                self.beacon.apply(self._blocked("permission", mode=mode))
+                self.assertNotIn("set-profile", [c[0] for c in self.cli_calls])
+
+    def test_a_block_of_unknown_kind_keeps_the_base(self):
+        self.beacon.apply({**_base_state(), "activity": "working"})
+        self.cli_calls.clear()
+        self.beacon.apply(self._blocked(None))
+        self.assertNotIn("set-profile", [c[0] for c in self.cli_calls])
+
+    def test_the_swap_restores_what_it_wipes(self):
+        # SetProfile wipes session OSC (§6.10), so the swap re-publishes it.
+        self.beacon.apply({**_base_state(), "activity": "working"})
+        self.cli_calls.clear()
+        self.beacon.apply(self._blocked("question"))
+        self.assertIn(("uservar", "beacon_project", "acme/widget"), self.cli_calls)
+
+
 class PermissionRequestPaintsBlockedImmediately(BeaconTest):
     """HOOK-03e: the Notification that reports the same block arrives on a
     six-second timer, and PreToolUse has written `working` by then — so the tab
@@ -2296,8 +2589,8 @@ class PermissionRequestPaintsBlockedImmediately(BeaconTest):
                 self.beacon.remove_state("pending-attention")
                 self.beacon.write_mode(mode, "")
                 self._ask()
-                self.assertEqual(self.beacon.read_activity(), "waiting")
-                self.assertEqual(self.beacon.read_state("pending-attention"), "1")
+                self.assertEqual(self.beacon.read_activity(), "blocked")
+                self.assertEqual(self.beacon.read_state("pending-attention"), "question")
 
     def test_it_overrides_the_working_write_pretooluse_just_made(self):
         with mock.patch.object(sys, "stdin", io.StringIO("{}")):
@@ -2305,7 +2598,7 @@ class PermissionRequestPaintsBlockedImmediately(BeaconTest):
         self.assertEqual(self.beacon.read_activity(), "working")
         self._ask()
         self.assertEqual(
-            self.beacon.read_state("pending-attention"), "1",
+            self.beacon.read_state("pending-attention"), "question",
             "PreToolUse clears the marker on its way past; the ask re-sets it",
         )
         self.assertEqual(
@@ -5646,10 +5939,10 @@ class JsonPayload(BeaconTest):
 
     def test_axes_are_separate_keys(self):
         self.beacon.write_mode("release", "")
-        self.beacon.write_state("activity", "waiting")
+        self.beacon.write_state("activity", "blocked")
         p = self._payload()
         self.assertEqual(p["mode"]["name"], "release")
-        self.assertEqual(p["activity"], "waiting")
+        self.assertEqual(p["activity"], "blocked")
 
     def test_no_provider_key_for_either_axis(self):
         # One writer each, so naming a tier would invent a distinction (RES-06).
@@ -9712,7 +10005,7 @@ class IdleSweep(BeaconTest):
         path.write_text(json.dumps({"auto_pause": window}))
 
     def _session(self, sh=HASH, age=2 * 3600, now=None, **fields):
-        state = {"activity": "waiting", "tty": self.tty,
+        state = {"activity": "blocked", "tty": self.tty,
                  "iterm_session_id": self.GUID, **fields}
         self.beacon.STATE_DIR.mkdir(parents=True, exist_ok=True)
         stamp = (time.time() if now is None else now) - age

@@ -130,7 +130,7 @@ sequenceDiagram
     Note over H,I: the snapshot already says busy, so no CLI spawn
 
     CC->>H: Notification
-    H->>S: activity=waiting, pending-attention
+    H->>S: activity=blocked, pending-attention=<kind>
     H->>I: tab-color red
     I->>T: SetColors
 

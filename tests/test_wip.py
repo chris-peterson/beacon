@@ -139,7 +139,7 @@ class WipTest(_WipBase):
         alpha = next(s for s in sessions if s["project"] == "alpha")
         self.assertEqual(alpha["activity"], "working")
         self.assertEqual(alpha["mode"], {"name": "dev", "note": "", "glyph": ""})
-        self.assertEqual(alpha["color_state"], "busy")
+        self.assertEqual(alpha["color_state"], "working")
 
     def test_task_in_payload(self):
         # task is a first-class field (WIP-01): an explicit override surfaces,
@@ -217,24 +217,24 @@ class WipTest(_WipBase):
         self._write("s2", "anchor.project", "p2")
         self._write("s2", "activity", "working")
         self._write("s3", "anchor.project", "p3")
-        self._write("s3", "activity", "waiting")
+        self._write("s3", "activity", "blocked")
         self._write("s3", "pending-attention", "permission")
         self._write("s4", "anchor.project", "p4")
         self._write("s4", "mode", json.dumps({"name": "release", "note": "v2.5"}))
-        self._write("s4", "activity", "waiting")
+        self._write("s4", "activity", "blocked")
 
         by_proj = {s["project"]: s for s in self._sessions()}
         self.assertEqual(by_proj["p1"]["mode"],
                          {"name": "pause", "note": "brb",
                           "glyph": self.beacon.MODE_SPECS["pause"]["glyph"]})
         self.assertEqual(by_proj["p1"]["activity"], "idle")
-        self.assertEqual(by_proj["p1"]["color_state"], "ready")
-        self.assertEqual(by_proj["p2"]["color_state"], "busy")
+        self.assertEqual(by_proj["p1"]["color_state"], "idle")
+        self.assertEqual(by_proj["p2"]["color_state"], "working")
         self.assertEqual(by_proj["p3"]["color_state"], "blocked")
         self.assertTrue(by_proj["p3"]["pending_attention"])
         # The state the merged field could not represent: shipping *and* blocked.
         self.assertEqual(by_proj["p4"]["mode"]["name"], "release")
-        self.assertEqual(by_proj["p4"]["activity"], "waiting")
+        self.assertEqual(by_proj["p4"]["activity"], "blocked")
         self.assertEqual(by_proj["p4"]["color_state"], "blocked",
                          "a mode must not hide that the session needs the user")
 
@@ -244,7 +244,7 @@ class WipTest(_WipBase):
         # as blocked wherever the dot is the only signal.
         self._write("s1", "anchor.project", "p1")
         self._write("s1", "permission_mode", "plan")
-        self._write("s1", "activity", "waiting")
+        self._write("s1", "activity", "blocked")
         self._write("s1", "pending-attention", "permission")
         self._write("s2", "anchor.project", "p2")
         self._write("s2", "permission_mode", "default")
@@ -253,10 +253,10 @@ class WipTest(_WipBase):
         by_proj = {s["project"]: s for s in self._sessions()}
         self.assertTrue(by_proj["p1"]["planning"])
         self.assertEqual(by_proj["p1"]["color_state"], "blocked")
-        self.assertEqual(by_proj["p1"]["activity"], "waiting")
+        self.assertEqual(by_proj["p1"]["activity"], "blocked")
         self.assertTrue(by_proj["p1"]["pending_attention"])
         self.assertFalse(by_proj["p2"]["planning"])
-        self.assertEqual(by_proj["p2"]["color_state"], "busy")
+        self.assertEqual(by_proj["p2"]["color_state"], "working")
 
     def test_unknown_mode_name_reads_as_dev(self):
         # Live state still holds values retired in the pre-SDLC rename. A mode
@@ -659,7 +659,7 @@ class WatchViewTest(unittest.TestCase):
     def _session(self, **kw):
         """A wip record. `mode` / `note` are given flat for readability and folded
         into the nested tuple the payload actually carries (WIP-01)."""
-        base = dict(color_state="ready", mode="dev", activity="idle", project="proj",
+        base = dict(color_state="idle", mode="dev", activity="idle", project="proj",
                     branch=None, route=None, note="", age_seconds=10)
         base.update(kw)
         base["mode"] = {"name": base.pop("mode"), "note": base.pop("note")}
@@ -696,9 +696,9 @@ class WatchViewTest(unittest.TestCase):
     def test_columns_grid_aligned(self):
         rows = self._body(self._rows([
             self._session(project="x", activity="idle", age_seconds=5),
-            self._session(project="much-longer-project-name", activity="waiting", age_seconds=50),
+            self._session(project="much-longer-project-name", activity="blocked", age_seconds=50),
         ]))
-        self.assertEqual(rows[0].index("idle"), rows[1].index("waiting"))
+        self.assertEqual(rows[0].index("idle"), rows[1].index("blocked"))
 
     def test_columns_align_across_double_width_glyphs(self):
         # 🚀 📋 🏁 are one character but *two* terminal columns (East Asian `W`),
@@ -741,25 +741,25 @@ class WatchViewTest(unittest.TestCase):
         # on the user is blocked whatever mode it declared, and the merged field
         # could only ever surface the mode.
         row = self._body(self._rows([
-            self._session(mode="release", activity="waiting", color_state="blocked",
+            self._session(mode="release", activity="blocked", color_state="blocked",
                           note="cutting v2.5"),
         ], cols=200))[0]
-        self.assertIn("release·waiting", row)
+        self.assertIn("release·blocked", row)
         self.assertIn("— cutting v2.5", row)
 
     def test_planning_row_names_the_permission_axis(self):
         # WIP-12: a row has words where a tab has two channels, so `plan` is
         # spelled out rather than spending the dot color alone.
         row = self._body(self._rows([
-            self._session(mode="release", activity="waiting", planning=True,
+            self._session(mode="release", activity="blocked", planning=True,
                           color_state="blocked", note=""),
         ], cols=200))[0]
-        self.assertIn("plan·release·waiting", row)
+        self.assertIn("plan·release·blocked", row)
 
     def test_planning_dev_row_joins_plan_to_the_activity(self):
         row = self._body(self._rows([
             self._session(mode="dev", activity="working", planning=True,
-                          color_state="busy", note=""),
+                          color_state="working", note=""),
         ], cols=200))[0]
         self.assertIn("plan·working", row)
 

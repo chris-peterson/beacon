@@ -5,7 +5,7 @@ Resolves a session's signals — `project` and `task` via chain-of-responsibilit
 providers, plus the two independent state axes `mode` and `activity` — then
 invokes bin/beacon-iterm to surface them. The CLI is the only writer to iTerm2.
 
-`activity` (idle / working / waiting) is what the hooks observe, written several
+`activity` (idle / working / blocked / error) is what the hooks observe, written several
 times a turn. `mode` (pause / release / retro / done, absent = dev) is
 what a user or skill declares, and carries an optional note as a tuple with it:
 `pause [<note>]`. The two resolve independently, so entering a mode no longer
@@ -342,7 +342,7 @@ FRESH_START_RE = re.compile(
 )
 
 # Last-assistant-text idle pattern. When pending-attention or `activity =
-# waiting` would paint the tab red but the transcript shows Claude's most recent
+# blocked` would paint the tab red but the transcript shows Claude's most recent
 # reply was an idle "Ready..." (final, awaiting-user message), the markers are
 # stale (the prior Stop hook never fired or arrived after the next session
 # reused the pane). The heuristic forgives the missing Stop and clears them.
@@ -399,6 +399,17 @@ ATTENTION_NOTIFICATIONS = frozenset({
     IDLE_NOTIFICATION,           # the prompt has gone unanswered
 })
 
+# What a block is waiting on (HOOK-03g), named as OSC 7501 names its `kind`. The
+# pending-attention marker stores the kind; a block with no known kind (an
+# unanswered idle prompt) stores UNKNOWN_ATTENTION.
+UNKNOWN_ATTENTION = "1"
+
+# Tools whose ask is a question for the user rather than a permission to run
+# something. PermissionRequest names the tool; the `permission_prompt`
+# Notification that follows it names neither, so it keeps the kind already set.
+QUESTION_TOOLS = frozenset({"AskUserQuestion", "ExitPlanMode"})
+QUESTION_NOTIFICATIONS = frozenset({"elicitation_dialog", "elicitation_url_dialog"})
+
 # The absence of a mode. `dev` is not stored — it *is* the empty mode file — so
 # it names the default in argument lists and reads back out of resolve(), and
 # `beacon status dev` is how you leave a mode. The modes themselves are the keys
@@ -449,7 +460,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the session web view (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -534,7 +545,7 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab tab.style tab.look tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar auto-pause origins ;;
+        3) compadd tab tab.style tab.look tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar iterm-notifications auto-pause origins ;;
         4) [[ "${words[3]}" == tab ]] && compadd reset
            [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
            [[ "${words[3]}" == tab.look ]] && compadd modern legacy
@@ -542,6 +553,7 @@ _beacon() {
            [[ "${words[3]}" == tab.font-size ]] && compadd 14 16 18 reset
            [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
            [[ "${words[3]}" == pane-title-bar ]] && compadd on off reset
+           [[ "${words[3]}" == iterm-notifications ]] && compadd on off reset
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -570,12 +582,12 @@ _beacon "$@"
 # another tab as its glyph and, once focused, as its pane
 # background (MODE_SPECS).
 #
-# Green is deliberately absent: `ready` is a calm neutral gray so a fresh session
+# Green is deliberately absent: `idle` is a calm neutral gray so a fresh session
 # has a known default before its first turn, and green stays the "go / good" hue
 # the branch chip owns (THEME-01, THEME-03).
 COLOR_PALETTE = {
-    "ready":    "8b8fa0",
-    "busy":     "ffb86c",
+    "idle":     "8b8fa0",
+    "working":  "ffb86c",
     "blocked":  "ff5555",
 }
 
@@ -593,7 +605,7 @@ COLOR_PALETTE = {
 # "quieter" — it is *contrast between* states. Uniform dimming calmed the strip
 # and flattened it: with every row equally muted, the one session that wants the
 # user no longer stood out from the several that don't. So the weight tracks how
-# often a state is on screen: `busy` and `ready` are most of every strip and
+# often a state is on screen: `working` and `idle` are most of every strip and
 # recede furthest, `blocked` is rare and is the whole point of the channel, so it
 # keeps nearly all of its voice.
 #
@@ -605,20 +617,20 @@ COLOR_PALETTE = {
 TAB_MUTE = {
     "minimal": {
         "blocked":  0.90,
-        "busy":     0.52,
-        "ready":    0.46,
+        "working":  0.52,
+        "idle":     0.46,
     },
     "compact": {
         "blocked":  0.80,
-        "busy":     0.65,
-        "ready":    0.55,
+        "working":  0.65,
+        "idle":     0.55,
     },
     # Regular draws on macOS 26 as a pill whose color goes through the same
     # 60%-toward-gray blend as Compact (PSMTahoeTabStyle cellBackgroundColor).
     "regular": {
         "blocked":  0.80,
-        "busy":     0.65,
-        "ready":    0.55,
+        "working":  0.65,
+        "idle":     0.55,
     },
 }
 TAB_STYLES = tuple(TAB_MUTE)
@@ -648,8 +660,8 @@ DEFAULT_TAB_LOOK = "modern"
 # colored task line sits on its own hue at low strength. Dark enough that every
 # status color clears 3.3:1 and white clears 11:1. No TAB_MUTE weight applies.
 MODERN_TAB_FILL = {
-    "ready":    "282a36",
-    "busy":     "423730",
+    "idle":     "282a36",
+    "working":  "423730",
     "blocked":  "2e334a",
 }
 
@@ -664,9 +676,15 @@ DEFAULT_TAB_VERTICAL_PADDING = 0
 TAB_VERTICAL_PADDINGS = range(0, 21)
 
 ACTIVITY_TO_COLOR_STATE = {
-    "idle":     "ready",
-    "working":  "busy",
-    "waiting":  "blocked",
+    "idle":     "idle",
+    "working":  "working",
+    "blocked":  "blocked",
+    # A turn that ended on an API error (HOOK-16) won't resume until the user
+    # acts, so it claims attention the same way a block does.
+    "error":    "blocked",
+    # A turn that ended with background work still running (HOOK-02a) needs
+    # nothing from the user either; the tab lead says it isn't done (TITLE-06).
+    "background": "idle",
 }
 
 # Every activity has a color, so this mapping is also the list of valid values.
@@ -685,6 +703,9 @@ PLAN_PERMISSION_MODE = "plan"
 # phase. A mark on the ~90% of tabs that are dev would also cost the rare marks
 # the salience that is their whole job.
 DEV_TITLE_LEAD = " "
+# What leads line 1 instead, in the dev cycle, while the turn has ended with
+# background work still running (TITLE-06): the session is idle but not ready.
+BACKGROUND_TITLE_LEAD = "⏳ "
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries " · <task>" when set, "" when absent (BADGE-03). Both writers
@@ -725,11 +746,13 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 #                own; brightness sits on a shared luma ladder (THEME-02a).
 #   image      — faint background-image watermark (file under iterm/resources)
 #   blend      — iTerm2 Blend for that image (lower = fainter)
+#   badge      — fixed badge text, in place of a background (BADGE-11)
 #
 # Mode profiles exist (RENDER-05) because a mode's second cue is a pane
-# background — a color and a faint watermark — and no OSC sets one. Entering or
-# leaving a mode swaps the session's profile; the dev cycle has no profile of its
-# own and stays an OSC overlay on the base.
+# background — a color and a faint watermark — that no OSC sets, or a fixed
+# badge that the swap back to the base profile clears with nothing to track.
+# Entering or leaving a mode swaps the session's profile; the dev cycle has no
+# profile of its own and stays an OSC overlay on the base.
 #
 #   stood_down — the mode declares the session at a halt rather than in an
 #                active phase (STATE-15). Two behaviors read it, and they landed
@@ -768,18 +791,14 @@ MODE_SPECS = {
         "image": "release-bg.png",
         "blend": 0.30,
     },
-    # `retro` is the post-work follow-up phase: a muted green pane carrying a
-    # ticked-clipboard watermark — work looked back over. Blend is higher than the
-    # illustration it replaced needed: flat geometry carries far less ink, so the
-    # 0.15 that kept a detailed drawing from reading as noise left this one
-    # invisible.
+    # `retro` is the post-work follow-up phase. It keeps the user's own pane and
+    # marks itself with a small `retro` badge instead, since a retro runs long
+    # enough that a whole-pane treatment wears on whoever is writing it.
     "retro": {
         "glyph": "📋",
         "profile": f"{PROFILE_NAMESPACE}-retro",
         "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
-        "background": "1e3025",
-        "image": "retro-bg.png",
-        "blend": 0.25,
+        "badge": "retro",
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
     # closing-out skill reaches for instead of pause: a near-black "powered off"
@@ -800,6 +819,26 @@ MODE_SPECS = {
 # Every mode has a spec, so this mapping is also the list of valid values —
 # the same single-sourcing ACTIVITIES gets from ACTIVITY_TO_COLOR_STATE.
 MODES = tuple(MODE_SPECS)
+
+# The profile a dev-cycle pane swaps into while blocked on a known kind
+# (RENDER-07), keyed by the kind: the user's own background under a faint `?` or
+# padlock. Same fields as MODE_SPECS, less the glyph. A declared mode keeps its own
+# profile while blocked, since the pane is the mode's surface.
+ATTENTION_SPECS = {
+    "question": {
+        "profile": f"{PROFILE_NAMESPACE}-blocked-question",
+        "guid": "3e6b1f2a-8c4d-4b7e-a915-0d2f6c8e4a17",
+        "image": "question-bg.png",
+        "blend": 0.30,
+    },
+    "permission": {
+        "profile": f"{PROFILE_NAMESPACE}-blocked-permission",
+        "guid": "a81d5c3e-6f2b-4e9a-8c07-5b4d1e9f2a63",
+        "image": "permission-bg.png",
+        "blend": 0.30,
+    },
+}
+ATTENTION_KINDS = tuple(ATTENTION_SPECS)
 
 # Skills whose invocation declares a phase beacon already has a mode for
 # (HOOK-13). The key is the skill name as it arrives — namespaced when the agent
@@ -909,6 +948,17 @@ def _pane_title_bar() -> bool:
     return _switch(_load_config().get("pane_title_bar"), "pane_title_bar")
 
 
+def _iterm_notifications() -> bool | None:
+    """Whether the beacon profiles turn iTerm2's own alerts on or off
+    (`iterm_notifications` in the user config, RENDER-06), or None to leave them
+    to the parent profile."""
+    raw = _load_config().get("iterm_notifications")
+    if raw is None or isinstance(raw, bool):
+        return raw
+    log_error("config.iterm_notifications", f"iterm_notifications {raw!r} is not true or false")
+    return None
+
+
 def _on_off(value: bool) -> str:
     return "on" if value else "off"
 
@@ -954,8 +1004,8 @@ def _tab_hex(color_state: str) -> str:
     COLOR_PALETTE directly: a weight tuned for a full-bleed tab erases a 10px
     dashboard dot. The modern look (TAB-05) paints its own fills instead."""
     if _tab_look() == "modern":
-        return MODERN_TAB_FILL.get(color_state, MODERN_TAB_FILL["ready"])
-    base = COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"])
+        return MODERN_TAB_FILL.get(color_state, MODERN_TAB_FILL["idle"])
+    base = COLOR_PALETTE.get(color_state, COLOR_PALETTE["idle"])
     return _mute_hex(base, TAB_MUTE[_tab_style()].get(color_state, 1.0))
 
 
@@ -977,7 +1027,8 @@ def _wip_display_name(record: dict, mode: str) -> str:
     """`<glyph> project (branch)` — the identity column both fleet renderers
     show, composed once so a row and its tab carry the same mark."""
     branch = f" ({record['branch']})" if record.get("branch") else ""
-    return f"{_mode_glyph_for({'mode': mode})}{record['project']}{branch}"
+    lead = _mode_glyph_for({'mode': mode, 'activity': record.get('activity')})
+    return f"{lead}{record['project']}{branch}"
 
 
 def _first_line(text: str) -> str:
@@ -1581,6 +1632,33 @@ def read_activity() -> str:
     session moves on, and every instance of it found in three months of live
     state was contradicting the hooks it outranked."""
     return _normalize_activity(read_state("activity"))
+
+
+def read_attention_kind(sh: str | None = None) -> str | None:
+    """What the pending block waits on (HOOK-03g): one of ATTENTION_KINDS, or
+    None when nothing is pending or the kind is unknown."""
+    raw = _read_state_for(sh, "pending-attention") if sh else read_state("pending-attention")
+    return raw if raw in ATTENTION_KINDS else None
+
+
+def read_background_count(sh: str | None = None) -> int | None:
+    """How many background tasks the last turn ended with still running
+    (HOOK-02a), while the activity still says `background`; None once a later
+    hook has moved the session on."""
+    read = (lambda f: _read_state_for(sh, f)) if sh else read_state
+    if _normalize_activity(read("activity")) != "background":
+        return None
+    raw = read("background")
+    return int(raw) if raw and raw.isdigit() else None
+
+
+def read_stop_error(sh: str | None = None) -> str | None:
+    """The API error type the last turn ended on (HOOK-16), while the activity
+    still says `error`; None once a later hook has moved the session on."""
+    read = (lambda f: _read_state_for(sh, f)) if sh else read_state
+    if _normalize_activity(read("activity")) != "error":
+        return None
+    return read("stop_error")
 
 
 def _normalize_activity(raw: object) -> str:
@@ -2675,6 +2753,7 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
     activity = _normalize_activity(_read_state_for(sh, "activity"))
     planning = _is_planning(_read_state_for(sh, "permission_mode"))
     pending = (STATE_DIR / f"{sh}.pending-attention").exists()
+    attention_kind = read_attention_kind(sh) if pending else None
     # The fleet reads the axes the way a tab paints them, so a glance at either
     # surface answers the same question: color for activity, glyph for mode.
     # `planning` rides as its own field — the dashboard says it in words (WIP-12).
@@ -2746,6 +2825,9 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
         "branch": branch,
         "_epoch": epoch if epoch is not None else _session_last_activity(sh),
         "pending_attention": pending,
+        "kind": attention_kind,
+        "stop_error": read_stop_error(sh),
+        "background": read_background_count(sh),
         "focusable": bool(_read_iterm_handle(sh)),
         "agent_color": _read_state_for(sh, "cc.agent_color") or None,
     }
@@ -2786,7 +2868,7 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 AUTO_PAUSE_OFF = "off"
 PARKED_BY = "sweep"
 IDLE_SWEEP_SECONDS = 60
-PARKABLE_ACTIVITIES = ("idle", "waiting")
+PARKABLE_ACTIVITIES = ("idle", "blocked", "error")
 # Hooks that report the session asking rather than the user answering, so they
 # leave a park in place (STATE-16).
 PARK_KEEPING_HOOKS = ("Notification", "PermissionRequest")
@@ -3027,7 +3109,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
 # The fleet dot mirrors the tab, color state for color state. A mode reads as
 # its glyph in the same row, exactly as it does on a tab, and `plan` reads as a
 # word in the state cell — a row has the width for one where a tab does not.
-_WIP_DOT_COLOR = {"ready": "37", "busy": "33", "blocked": "31"}
+_WIP_DOT_COLOR = {"idle": "37", "working": "33", "blocked": "31"}
 
 
 def _record_mode(record: dict) -> tuple[str, str]:
@@ -3039,7 +3121,7 @@ def _record_mode(record: dict) -> tuple[str, str]:
 
 def _wip_state_cell(mode: str, activity: str, planning: bool = False) -> str:
     """The fleet row's state column: every axis that has something to say, joined
-    by `·` — `plan·release·waiting` at its fullest, the bare activity when
+    by `·` — `plan·release·blocked` at its fullest, the bare activity when
     nothing else is declared. All three, because a session blocked on the user is
     blocked whatever mode it declared and whatever it is permitted to do; the
     merged field could show only one, and the mode was the one that won."""
@@ -4301,9 +4383,9 @@ def resolve(cwd: Path | None = None) -> dict:
     if not project:
         project, p_proj = _local_path_at(cwd), "pwd"
 
-    # The opening command (PROV-10) sits below ai-title because Claude Code titles
-    # a session from its first prose prompt and often skips one that opens with a
-    # slash command; it names the session only when nothing else does.
+    # The opening command (PROV-10) sits below ai-title: it names the session until
+    # Claude Code writes an ai-title, which before 2.1.314 it often skipped for a
+    # session that opens with a slash command.
     #
     # A user's /rename does not appear here as its own tier: it is shorthand
     # for setting the task, so the harvest folds a new custom-title into
@@ -4359,6 +4441,9 @@ def resolve(cwd: Path | None = None) -> dict:
         "activity": activity,
         "planning": planning,
         "pending_attention": _state_path("pending-attention").exists(),
+        "kind": read_attention_kind(),
+        "stop_error": read_stop_error(),
+        "background": read_background_count(),
     }
 
 
@@ -5639,18 +5724,30 @@ def _profile_baked_paths(profile: dict) -> dict | None:
     return None
 
 
+# iTerm2's Notification Center delivery and its escape-sequence alerts, the two
+# profile switches `config iterm-notifications` sets together (RENDER-06).
+ITERM_ALERT_KEYS = ("BM Growl", "Send Terminal Generated Alerts")
+
+
 def _iterm_profiles_dir() -> Path:
     return Path.home() / "Library" / "Application Support" / "iTerm2" / "DynamicProfiles"
 
 
 def _iterm_profile_names() -> set:
-    return {BASE_PROFILE_NAME} | {s["profile"] for s in MODE_SPECS.values()}
+    return {BASE_PROFILE_NAME} | {s["profile"] for s in _derived_profile_specs()}
+
+
+def _derived_profile_specs() -> list[dict]:
+    """Every profile derived from the base: one per mode (RENDER-05) and one per
+    block kind (RENDER-07)."""
+    return [*MODE_SPECS.values(), *ATTENTION_SPECS.values()]
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
     and one derived mode profile per MODE_SPECS entry (beacon-pause,
-    beacon-release, beacon-retro, beacon-done; RENDER-05) into iTerm2's
+    beacon-release, beacon-retro, beacon-done; RENDER-05) and per ATTENTION_SPECS
+    entry (beacon-blocked-question, beacon-blocked-permission; RENDER-07) into iTerm2's
     DynamicProfiles directory. iTerm2
     watches the directory and reloads on change without restart, so the write
     needs no quit.
@@ -5704,17 +5801,21 @@ def install_dynamic_profile() -> tuple[bool, str]:
         base_profile = json.loads(content)["Profiles"][0]
     except (ValueError, KeyError, IndexError) as e:
         return False, f"failed to parse base profile template: {e}"
-    # Default the badge color to the dev-cycle gray (the `ready` state) so a
+    # Default the badge color to the dev-cycle gray (the `idle` state) so a
     # fresh pane reads gray before the first status render — and in a plain
     # shell, which emits no badge-color OSC. Without this the base inherits the
     # parent profile's badge color (e.g. Default's red). Single-sourced from
-    # COLOR_PALETTE so the profile default and the rendered `ready` color
+    # COLOR_PALETTE so the profile default and the rendered `idle` color
     # never drift. Written to all three keys for the same reason the mode
     # backgrounds are (below): which set iTerm2 reads depends on the parent
     # profile's light/dark switch.
-    badge_color = _hex_to_color_components(COLOR_PALETTE["ready"])
+    badge_color = _hex_to_color_components(COLOR_PALETTE["idle"])
     for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
         base_profile[key] = badge_color
+    notifications = _iterm_notifications()
+    if notifications is not None:
+        for key in ITERM_ALERT_KEYS:
+            base_profile[key] = notifications
     _fit_action_button_widths(base_profile)
     try:
         target.write_text(json.dumps({"Profiles": [base_profile]}, indent=2))
@@ -5723,11 +5824,11 @@ def install_dynamic_profile() -> tuple[bool, str]:
 
     # Derive each mode profile from the just-rendered base (RENDER-05): same
     # status-bar layout / badge sizing (and gray badge-color default), differing
-    # only in a de-emphasized background (and, for paused, a faint
-    # background-image watermark). Deriving rather than hand-maintaining sibling
+    # only in the mode's background and watermark, or its fixed badge text.
+    # Deriving rather than hand-maintaining sibling
     # templates keeps the layout single-sourced so the profiles never drift.
     written = [str(target)]
-    for mode, spec in MODE_SPECS.items():
+    for spec in _derived_profile_specs():
         mode_target = target_dir / f"{spec['profile']}.json"
         try:
             mode_profile = copy.deepcopy(base_profile)
@@ -5739,11 +5840,14 @@ def install_dynamic_profile() -> tuple[bool, str]:
             # profile (RENDER-05 inherits it rather than forcing a value, so a
             # user's own light/dark colors survive), so the mode background has
             # to be written for whichever set the parent turns out to read.
-            background = _hex_to_color_components(spec["background"])
-            for key in ("Background Color", "Background Color (Light)",
-                        "Background Color (Dark)"):
-                mode_profile[key] = background
-            if spec["image"]:
+            if spec.get("background"):
+                background = _hex_to_color_components(spec["background"])
+                for key in ("Background Color", "Background Color (Light)",
+                            "Background Color (Dark)"):
+                    mode_profile[key] = background
+            if spec.get("badge"):
+                mode_profile["Badge Text"] = spec["badge"]
+            if spec.get("image"):
                 # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
                 # asset stays centered and proportional on any pane size. Blend
                 # dials the watermark down so the background color still reads.
@@ -5824,7 +5928,7 @@ def remove_engagement_marker() -> None:
 
 
 def _color_state_for(state: dict) -> str:
-    """The logical color state the tab is painted (BADGE-09): `ready` / `busy` /
+    """The logical color state the tab is painted (BADGE-09): `idle` / `working` /
     `blocked`, from `activity` alone. No mode reaches this — a mode is legible
     from another tab as its glyph and, once focused, as its pane background, so
     the one always-painted channel is spent on the axis that actually varies.
@@ -5832,7 +5936,7 @@ def _color_state_for(state: dict) -> str:
     `pending_attention` (HOOK-03b) forces `blocked` over the activity mapping,
     because hook delivery isn't ordered: a late PostToolUse for an earlier tool
     can arrive after a fresh permission prompt, and without the sticky marker
-    the tab would flip back to `busy` while the user is still being asked.
+    the tab would flip back to `working` while the user is still being asked.
 
     The permission axis does not reach here (PERM-02). Colour is the only
     pre-attentive channel — the one a user reads across every tab at once
@@ -5845,18 +5949,31 @@ def _color_state_for(state: dict) -> str:
 
 def _mode_glyph_for(state: dict) -> str:
     """What leads line 1 of the session name (TITLE-06): the declared mode's
-    glyph, or `DEV_TITLE_LEAD` when there is no mode. Always non-empty, so every
+    glyph; with no mode, `BACKGROUND_TITLE_LEAD` while background work runs and
+    `DEV_TITLE_LEAD` otherwise. Always non-empty, so every
     label carries the same lead and the strip does not jitter between inset and
     flush rows. Trailing space so the glyph separates from the project without
     the template having to carry one."""
     glyph = _mode_glyph(state.get("mode"))
-    return f"{glyph} " if glyph else DEV_TITLE_LEAD
+    if glyph:
+        return f"{glyph} "
+    return BACKGROUND_TITLE_LEAD if state.get("activity") == "background" else DEV_TITLE_LEAD
+
+
+def _badge_format_for(state: dict) -> str:
+    """The badge format an opted-in badge (BADGE-15) carries: the mode's fixed
+    badge text when it declares one (BADGE-11), else BADGE_FORMAT. The same text
+    sits in the mode profile's `Badge Text`, which is what shows with the badge
+    off; with it on, the OSC this feeds outranks the profile."""
+    spec = MODE_SPECS.get(state.get("mode"))
+    return (spec or {}).get("badge") or BADGE_FORMAT
 
 
 def _profile_for(state: dict) -> str:
-    """The dynamic profile the pane sits in (RENDER-05): the mode's, or the base
-    profile in the dev cycle. Call sites never name an iTerm profile."""
-    spec = MODE_SPECS.get(state.get("mode"))
+    """The dynamic profile the pane sits in: the mode's (RENDER-05); in the dev
+    cycle, the block's while one of known kind is pending (RENDER-07); else the
+    base profile. Call sites never name an iTerm profile."""
+    spec = MODE_SPECS.get(state.get("mode")) or ATTENTION_SPECS.get(state.get("kind"))
     return spec["profile"] if spec else BASE_PROFILE_NAME
 
 
@@ -5890,7 +6007,7 @@ def apply(state: dict):
     # The two axes paint two disjoint surfaces, so nothing here arbitrates
     # between them: activity picks the tab color (BADGE-09), the mode picks the
     # glyph (TITLE-06) and the profile whose background it owns (RENDER-05).
-    # `release` + `waiting` therefore paints a red tab over the release pane —
+    # `release` + `blocked` therefore paints a red tab over the release pane —
     # a state the merged field could not represent at all.
     color_state = _color_state_for(state)
     indent1, indent2 = _tab_indent()
@@ -5898,7 +6015,7 @@ def apply(state: dict):
     glyph = " " * indent1 + _mode_glyph_for(state)
     target_profile = _profile_for(state)
 
-    # RENDER-05: switch profiles when the target changes — which also covers
+    # RENDER-05 / RENDER-07: switch profiles when the target changes — which also covers
     # the first render (prev carries no profile). set-profile must precede the
     # OSC below: SetProfile wipes the session's OSC overrides including
     # SetBadgeFormat (§6.10), so a switch re-emits the badge format here and
@@ -5910,7 +6027,7 @@ def apply(state: dict):
         # BADGE-15: the badge is opt-in (off by default). Its format is only
         # re-emitted after a profile swap wipes the OSC when the badge is on.
         if badge_on:
-            _cli("badge-format", BADGE_FORMAT)
+            _cli("badge-format", _badge_format_for(state))
         # SetProfile resets the session name to the profile's literal Name, so
         # restore the interpolated window title (WINDOW-TITLE) after every swap
         # — and on the first render, which is also a swap (prev has no profile).
@@ -5929,7 +6046,7 @@ def apply(state: dict):
     # The badge is small and sits over terminal output, so it wants full strength
     # for the same reason the tab cannot have it.
     if badge_on:
-        _cli("badge-color", COLOR_PALETTE.get(color_state, COLOR_PALETTE["ready"]))
+        _cli("badge-color", COLOR_PALETTE.get(color_state, COLOR_PALETTE["idle"]))
     _cli("tab-color", _tab_hex(color_state))
 
     # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. The badge
@@ -5991,6 +6108,7 @@ def apply(state: dict):
         "activity": state["activity"],
         "planning": state.get("planning", False),
         "pending_attention": state.get("pending_attention", False),
+        "kind": state.get("kind"),
         "color_state": color_state,
         "title_prefix": glyph,
         "label_lead": label_lead,
@@ -6039,11 +6157,11 @@ def _resolve_for_display() -> dict:
     # the last working render fired while the cwd was still away, and a session
     # that blocks or ends mid-wander never freezes a stale @marker into its
     # snapshot. The dev-cycle half of that used to come free: a mode won the
-    # merged field outright, so a moded session could never read `busy`. Now that
+    # merged field outright, so a moded session could never read `working`. Now that
     # a mode and `working` coexist, the gate has to say so.
     if (anchor_cwd is not None
             and state["mode"] == DEV_MODE
-            and _color_state_for(state) == "busy"):
+            and _color_state_for(state) == "working"):
         live_cwd = Path.cwd()
         live_root = _project_root(live_cwd)
         # A linked worktree has its own project root, so a root comparison alone
@@ -6100,10 +6218,14 @@ def cmd_show(_args):
         if state.get("note"):
             rows.append(("note", state["note"], None))
     rows.append(("activity", state["activity"], None))
+    if state.get("stop_error"):
+        rows.append(("error", state["stop_error"], None))
+    if state.get("background"):
+        rows.append(("background", str(state["background"]), None))
     if state.get("planning"):
         rows.append(("permission", PLAN_PERMISSION_MODE, None))
     if state.get("pending_attention"):
-        rows.append(("attention", "pending", None))
+        rows.append(("attention", state.get("kind") or "pending", None))
     width = max(len(v) for _, v, _ in rows)
     for field, value, provider in rows:
         suffix = f"  ({provider})" if provider else ""
@@ -6144,7 +6266,7 @@ def _disengage() -> None:
     # Drop any sticky red markers — if the session is genuinely blocked,
     # the next Notification re-asserts both.
     remove_state("pending-attention")
-    if read_activity() == "waiting":
+    if read_activity() in ("blocked", "error"):
         remove_state("activity")
     _clear_cc_signals()
     remove_state("opening_command")
@@ -6230,8 +6352,7 @@ def cmd_retro(args):
     """Enter retro mode: a post-work follow-up / retro phase a session or skill
     declares. Like release it does not auto-resume on the next prompt — it
     persists until `status dev` / `resume` / `clear` or the session ends. The tab
-    takes a 📋; the pane takes the muted green with its ticked-clipboard
-    watermark."""
+    takes a 📋; the pane keeps its background and shows a `retro` badge."""
     write_mode("retro", _note_from(args.note))
     render()
 
@@ -6329,6 +6450,14 @@ def _full_turn(text: str | None) -> str:
         lines.append(line)
     s = "\n".join(lines).strip()
     return (s[: FULL_TURN_MAX - 1] + "…") if len(s) > FULL_TURN_MAX else s
+
+
+def _running_background_tasks(payload: dict) -> int:
+    """How many of the Stop payload's `background_tasks` are running (HOOK-02a)."""
+    tasks = payload.get("background_tasks")
+    if not isinstance(tasks, list):
+        return 0
+    return sum(1 for t in tasks if isinstance(t, dict) and t.get("status") == "running")
 
 
 def _write_latest_turn(role: str, text: str | None) -> None:
@@ -6488,19 +6617,19 @@ def _looks_idle(text: str | None) -> bool:
 
 def _recover_stale_red() -> None:
     """Stop / PreToolUse / UserPromptSubmit are responsible for clearing
-    pending-attention and `activity = waiting` (HOOK-03b). When one of
+    pending-attention and `activity = blocked` (HOOK-03b). When one of
     those hooks didn't fire — typically because the prior Claude session
     was killed mid-permission-prompt — the markers outlive the actual
     blocked state. Peek at the transcript: if the last assistant message
     reads as idle ("Ready..."), drop the stale markers so resolve() and
     apply() don't render red against a session that's actually idle."""
     if not (_state_path("pending-attention").exists()
-            or read_activity() == "waiting"):
+            or read_activity() == "blocked"):
         return
     if not _looks_idle(_last_assistant_text()):
         return
     remove_state("pending-attention")
-    if read_activity() == "waiting":
+    if read_activity() == "blocked":
         remove_state("activity")
 
 
@@ -6512,6 +6641,8 @@ def _wipe_session_for_fresh_start() -> None:
         remove_state(f"override.{f}")
     write_mode(DEV_MODE)
     remove_state("activity")
+    remove_state("stop_error")
+    remove_state("background")
     remove_state("permission_mode")
     remove_state("pending-attention")
     remove_state("latest_turn")
@@ -7648,6 +7779,40 @@ def _config_pane_title_bar(values: list[str]) -> None:
                    f"tag as text. Apply it with `{LAYOUT_COMMAND} --write`.")
 
 
+def _iterm_notifications_display() -> str:
+    value = _iterm_notifications()
+    return "profile" if value is None else _on_off(value)
+
+
+def _config_iterm_notifications(values: list[str]) -> None:
+    """`iterm-notifications` turns iTerm2's own alerts on or off in the beacon
+    profiles, or `reset` leaves them to the parent profile (RENDER-06). The
+    profiles re-render at once, and iTerm2 reloads them live."""
+    usage = "usage: beacon config iterm-notifications [on | off | reset]"
+    if not values:
+        print(_iterm_notifications_display())
+        return
+    if len(values) != 1:
+        sys.exit(usage)
+    value = values[0].strip().lower()
+    if value not in ("on", "off", "reset"):
+        sys.exit(usage)
+    data = _config_for_edit()
+    if value == "reset":
+        data.pop("iterm_notifications", None)
+    else:
+        data["iterm_notifications"] = value == "on"
+    _save_config(data)
+    print(f"iterm-notifications: {_iterm_notifications_display()} (in {_config_file()})")
+    if not _is_iterm_installed():
+        print("iTerm2 not detected, so there is no profile to apply it to.")
+        return
+    ok, msg = install_dynamic_profile()
+    if not ok:
+        sys.exit(msg)
+    print(f"✓ {msg}")
+
+
 def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
     """Whether a `beacon serve` answers on its loopback port: the one process
     auto-pause runs in (WIP-21)."""
@@ -7703,6 +7868,8 @@ def cmd_config(args):
         _config_tab_vertical_padding(args.values)
     elif args.setting == "pane-title-bar":
         _config_pane_title_bar(args.values)
+    elif args.setting == "iterm-notifications":
+        _config_iterm_notifications(args.values)
     elif args.setting == "auto-pause":
         _config_auto_pause(args.values)
     elif args.setting == "origins":
@@ -7713,7 +7880,8 @@ def cmd_config(args):
         for name, value in _tab_settings():
             print(f"  {name:<22}{value}")
         print(f"  {'pane-title-bar':<22}{_on_off(_pane_title_bar())}")
-        pause = _load_config().get("auto_pause")
+        print(f"  {'iterm-notifications':<22}{_iterm_notifications_display()}")
+        pause =_load_config().get("auto_pause")
         print(f"  {'auto-pause':<22}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
         origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
         print(f"  {'origins':<22}{', '.join(origins)}")
@@ -7760,6 +7928,9 @@ _DOCTOR_ADVICE = {
     "config.pane_title_bar": f"`pane_title_bar` in {_config_file()} isn't true or false, so "
                           f"`{LAYOUT_COMMAND}` recommends split panes without title bars. "
                           "`beacon config pane-title-bar reset` clears it.",
+    "config.iterm_notifications": f"`iterm_notifications` in {_config_file()} isn't true or "
+                                  "false, so iTerm2's alerts follow your own profile. "
+                                  "`beacon config iterm-notifications reset` clears it.",
     "config.tab.style": f"`tab.style` in {_config_file()} names no tab style beacon "
                         f"knows ({', '.join(TAB_STYLES)}), so tabs paint with the "
                         f"{DEFAULT_TAB_STYLE} weights.",
@@ -8559,7 +8730,7 @@ def cmd_hook(args):
         # _session_seed), which outlives any single Claude session. A fresh
         # `claude` invocation (source=startup) or `/clear` (source=clear) in a
         # pane that hosted a prior session would otherwise inherit that
-        # session's stale `activity = waiting` / `pending-attention` and
+        # session's stale `activity = blocked` / `pending-attention` and
         # render red. The continuing sources carry prior state forward by
         # design.
         if source not in CONTINUING_SESSION_SOURCES:
@@ -8618,8 +8789,16 @@ def cmd_hook(args):
             # HOOK-02: a finished turn is calm, not blocking. Red is reserved
             # for active Notification (permission/idle prompt) so glancing
             # across many panes distinguishes calm sessions from sessions
-            # truly waiting on user input.
-            write_state("activity", "idle")
+            # truly waiting on user input. HOOK-02a: a turn that ends with
+            # background work running is calm too, but not ready; the payload
+            # lists only what is still running, so the Stop after the last
+            # task's wake-up reads empty and lands on `idle`.
+            running = _running_background_tasks(payload)
+            if running:
+                write_state("activity", "background")
+                write_state("background", str(running))
+            else:
+                write_state("activity", "idle")
         # Turn ended: any pending permission/idle notification is no longer in flight.
         remove_state("pending-attention")
         # Refresh chips that may have drifted during the turn (branch the
@@ -8631,6 +8810,14 @@ def cmd_hook(args):
         cwd_str = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
         _publish_chips(Path(cwd_str))
         _write_latest_turn("agent", _last_assistant_text())
+
+    elif event == "StopFailure":
+        # HOOK-16: Claude Code fires this *instead of* Stop when the turn ends on
+        # an API error, so without it the session would read `working` until the
+        # next prompt. The error type rides along for the sessions view.
+        write_state("activity", "error")
+        write_state("stop_error", str(payload.get("error") or "unknown"))
+        remove_state("pending-attention")
 
     elif event == "Notification":
         # One unmatched hook for every kind, told apart by the payload's
@@ -8659,14 +8846,21 @@ def cmd_hook(args):
         if (kind == IDLE_NOTIFICATION and _tab_look() == "modern"
                 and read_state("iterm_session_id")):
             return
-        write_state("activity", "waiting")
+        write_state("activity", "blocked")
         # Sticky marker: takes precedence over a stale PostToolUse working signal
         # that may arrive after this Notification due to out-of-order delivery.
-        # Only its presence matters — every attention kind reads as "needs the
-        # user" and beacon does not distinguish them on any *surface* (HOOK-03),
-        # so the marker carries a constant, not the prompt type. The kind is read
-        # above only to decide whether the observation is worth recording at all.
-        write_state("pending-attention", "1")
+        # Its value is what the block waits on (HOOK-03g). A `permission_prompt`
+        # arrives six seconds after the PermissionRequest that already named the
+        # tool, so a kind already recorded stands.
+        if kind in QUESTION_NOTIFICATIONS:
+            attention = "question"
+        elif read_attention_kind():
+            attention = read_attention_kind()
+        elif kind == "permission_prompt":
+            attention = "permission"
+        else:
+            attention = UNKNOWN_ATTENTION
+        write_state("pending-attention", attention)
 
     elif event == "PermissionRequest":
         # Same block as HOOK-03, six seconds earlier. Claude Code raises the
@@ -8678,12 +8872,14 @@ def cmd_hook(args):
         #
         # Ask path only: a call an allow rule decides outright never reaches
         # here, so this does not repaint on ordinary tool calls.
-        write_state("activity", "waiting")
-        write_state("pending-attention", "1")
+        write_state("activity", "blocked")
+        tool = payload.get("tool_name")
+        write_state("pending-attention",
+                    "question" if tool in QUESTION_TOOLS else "permission")
 
     elif event == "PreToolUse":
-        # Tool activity means the agent is working, not waiting. This
-        # transitions out of `waiting` after a permission_prompt Notification
+        # Tool activity means the agent is working, not blocked. This
+        # transitions out of `blocked` after a permission_prompt Notification
         # is granted — without this, the tab would stay red for the rest of
         # the turn.
         write_state("activity", "working")
@@ -8813,11 +9009,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp = sub.add_parser("config",
                         help="show or change the user config: tab.style, tab.look, tab.indent, "
                              "tab.font-size, tab.vertical-padding, pane-title-bar, "
-                             "auto-pause, origins")
+                             "iterm-notifications, auto-pause, origins")
     sp.add_argument("setting", nargs="?",
                     choices=("tab", "tab.style", "tab.look", "tab.indent", "tab.indent.1",
                              "tab.indent.2", "tab.font-size", "tab.vertical-padding",
-                             "pane-title-bar", "auto-pause", "origins"),
+                             "pane-title-bar", "iterm-notifications", "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
                     help="tab: reset; tab.style: minimal|compact|regular; "
@@ -8825,6 +9021,7 @@ def _build_parser() -> "argparse.ArgumentParser":
                          "tab.indent.1, tab.indent.2: <spaces> | reset; "
                          "tab.font-size, tab.vertical-padding: <points> | reset; "
                          "pane-title-bar: on | off | reset; "
+                         "iterm-notifications: on | off | reset; "
                          "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 

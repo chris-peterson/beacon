@@ -20,6 +20,9 @@ hooks:
   - event: Stop
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook Stop'
     description: Reports the Stop event to the beacon CLI for sessions-view tracking.
+  - event: StopFailure
+    command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook StopFailure'
+    description: Reports a turn that ended on an API error to the beacon CLI, which fires in place of Stop.
   - event: SessionEnd
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook SessionEnd'
     description: Reports the SessionEnd event to the beacon CLI for sessions-view tracking.
