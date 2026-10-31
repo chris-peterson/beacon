@@ -17,8 +17,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.9', '3.11', '3.13']
+        # '3.x' is the newest stable Python, so a new release is tested when it ships.
+        include:
+          - { os: ubuntu-24.04,   python-version: '3.9'  }  # newest Ubuntu with a 3.9 build
+          - { os: ubuntu-latest,  python-version: '3.11' }
+          - { os: ubuntu-latest,  python-version: '3.13' }
+          - { os: ubuntu-latest,  python-version: '3.x'  }
+          - { os: macos-latest,   python-version: '3.9'  }
+          - { os: macos-latest,   python-version: '3.11' }
+          - { os: macos-latest,   python-version: '3.13' }
+          - { os: macos-latest,   python-version: '3.x'  }
+          - { os: windows-latest, python-version: '3.9'  }
+          - { os: windows-latest, python-version: '3.11' }
+          - { os: windows-latest, python-version: '3.13' }
+          - { os: windows-latest, python-version: '3.x'  }
     steps:
       - uses: actions/checkout@v6
 
