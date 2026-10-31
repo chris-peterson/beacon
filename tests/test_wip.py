@@ -683,11 +683,11 @@ class WatchViewTest(unittest.TestCase):
     def test_route_hidden_when_it_echoes_project(self):
         text = "\n".join(self._rows([
             self._session(project="beacon", route="beacon"),
-            self._session(project="cpeterson/ai-sdlc", route="ai-sdlc"),
+            self._session(project="acme/widget", route="widget"),
             self._session(project="sextant", route="spec-status"),
         ]))
         self.assertNotIn("[beacon]", text)       # exact echo suppressed
-        self.assertNotIn("[ai-sdlc]", text)      # last-segment echo suppressed
+        self.assertNotIn("[widget]", text)       # last-segment echo suppressed
         self.assertIn("[spec-status]", text)     # distinct route kept
 
     def test_empty_feed_message(self):

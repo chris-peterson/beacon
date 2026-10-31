@@ -6,7 +6,6 @@ __pycache__
 docs/*
 !docs/README.md
 !docs/_sidebar.md
-!docs/favicon.svg
 !docs/demo.md
 !docs/iterm/
 !docs/palette.md

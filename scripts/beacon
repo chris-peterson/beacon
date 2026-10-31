@@ -5962,8 +5962,8 @@ def apply(state: dict):
         marked = _title_markup(nl_text) if nl_text else ""
         _cli("uservar", "beacon_task_nl", f"\n{' ' * indent2}{marked}" if marked else "")
 
-    # PROV-02a: the location joins the project on line 1 — "beacon @ ai-sdlc" —
-    # rather than the task line, where a bare " @ ai-sdlc" has no antecedent to
+    # PROV-02a: the location joins the project on line 1 — "beacon @ widget" —
+    # rather than the task line, where a bare " @ widget" has no antecedent to
     # attach to. The badge keeps the combined single-line form above; this is
     # the two-line surface saying the same thing with the break in the right
     # place. Not folded into beacon_project, which the status-bar chip reads as

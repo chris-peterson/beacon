@@ -234,11 +234,11 @@ class CmdSetPropagatesToBadge(BeaconTest):
         self.beacon.render()
         self.cli_calls.clear()
 
-        args = mock.Mock(field="project", value=["ai-sdlc: perms"])
+        args = mock.Mock(field="project", value=["acme-widget: perms"])
         self.beacon.cmd_set(args)
 
         emits = _uservar_emits(self.cli_calls, "beacon_project")
-        self.assertEqual(emits, [("uservar", "beacon_project", "ai-sdlc: perms")])
+        self.assertEqual(emits, [("uservar", "beacon_project", "acme-widget: perms")])
 
     def test_clear_project_reverts_badge_to_derived(self):
         self.beacon.render()
@@ -4640,13 +4640,13 @@ class EmptyItermIdIsolatesSessions(BeaconTest):
             self.beacon.cmd_hook(args)
 
     def test_distinct_claude_sessions_do_not_share_bucket(self):
-        self._fire_start_with_empty_id("sess-A", "/work/ai-sdlc")
+        self._fire_start_with_empty_id("sess-A", "/work/acme-widget")
         self._fire_start_with_empty_id("sess-B", "/work/beacon")
         anchors = sorted(
             p.read_text().replace("\\", "/") for p in self.beacon.STATE_DIR.glob("*.anchor.cwd")
         )
         self.assertEqual(
-            anchors, ["/work/ai-sdlc", "/work/beacon"],
+            anchors, ["/work/acme-widget", "/work/beacon"],
             "empty ITERM_SESSION_ID must not collapse distinct Claude sessions "
             "onto one shared state bucket",
         )

@@ -8,7 +8,7 @@ version: 2.20.1
 description: "At-a-glance awareness across concurrent Claude Code sessions: a Claude Code status line, a CLI and browser dashboard on any terminal, and painted iTerm2 chrome."
 author: chris-peterson
 repository: https://github.com/chris-peterson/beacon
-icon: docs/favicon.svg
+icon: .claude-plugin/icon.svg
 license: MIT
 keywords: [dashboard, session-management, sessions, cross-platform, workflow, iterm2, macos]
 
