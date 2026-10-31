@@ -290,10 +290,12 @@ PROJECT_MARKERS = [".git", "package.json", "Cargo.toml", "pyproject.toml",
 
 # Where a project keeps its favicon/icon (PROV-08), most-specific first. SVG
 # wins over raster for crispness; docs/ and the web framework public roots are
-# the conventional homes. Surfaced in the fleet view to distinguish work
-# streams visually — recall context only, never painted on a pane.
+# the conventional homes, and a Claude Code plugin keeps its icon in
+# .claude-plugin/. Surfaced in the fleet view to distinguish work streams
+# visually — recall context only, never painted on a pane.
 ICON_CANDIDATES = [
     "docs/favicon.svg", "docs/favicon.png", "docs/favicon.ico",
+    ".claude-plugin/icon.svg", ".claude-plugin/icon.png",
     "favicon.svg", "favicon.png", "favicon.ico",
     "public/favicon.svg", "public/favicon.ico", "public/favicon.png",
     "static/favicon.svg", "static/favicon.ico", "static/favicon.png",

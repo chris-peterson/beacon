@@ -4129,6 +4129,36 @@ class SessionAnchor(BeaconTest):
         self.assertIsNone(self.beacon.read_state("anchor.icon"))
 
 
+class ProjectIconDiscovery(BeaconTest):
+    """PROV-08: the icon is found at a conventional path under the project root,
+    a Claude Code plugin's `.claude-plugin/icon.svg` among them."""
+
+    def setUp(self):
+        super().setUp()
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        patcher = mock.patch("pathlib.Path.home", return_value=Path(home.name).resolve())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.root = Path(home.name).resolve() / "acme-widget"
+        (self.root / ".git").mkdir(parents=True)
+
+    def _place(self, rel):
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("<svg/>")
+        return str(path)
+
+    def test_a_plugin_icon_is_found(self):
+        icon = self._place(".claude-plugin/icon.svg")
+        self.assertEqual(self.beacon._discover_icon_at(self.root), icon)
+
+    def test_a_docs_favicon_comes_first(self):
+        favicon = self._place("docs/favicon.svg")
+        self._place(".claude-plugin/icon.svg")
+        self.assertEqual(self.beacon._discover_icon_at(self.root), favicon)
+
+
 class ProjectOutsideAProject(BeaconTest):
     """PROV-01 / PROV-06: the `dir` tier names a *project root*. Where no
     marker is found the chain falls through to the abbreviated path, so a

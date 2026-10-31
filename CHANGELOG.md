@@ -60,6 +60,13 @@ beacon now reads that error: the tab turns red, the activity reads
 `error`, and the dashboard card names the error (`rate limit`,
 `authentication failed`, …). Your next prompt clears it.
 
+### Plugin icons in the sessions view
+
+The sessions view and dashboard look for a project's icon at the usual
+favicon paths, and now at a Claude Code plugin's own,
+`.claude-plugin/icon.svg` (or `.png`), after `docs/`. A session picks it
+up at its next start.
+
 ### `activity` reads `blocked`, not `waiting`
 
 The activity value for a session blocked on you is now `blocked`, the
