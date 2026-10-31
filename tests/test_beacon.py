@@ -7168,11 +7168,11 @@ class DocsCiteRealPaths(unittest.TestCase):
     # Directories belonging to iTerm2, Claude Code, or other projects' layouts.
     EXTERNAL_ROOTS = {"DynamicProfiles", "public", "static", "Application Support"}
 
-    # Rendered by `shipyard build-docs` from SPEC.md, the rules, and the CLI
-    # manifest, and gitignored — so they exist after a docs build and never in a
-    # fresh checkout.
+    # Rendered by `shipyard build-docs` from SPEC.md, the rules, the CLI
+    # manifest, and the plugin icon, and gitignored — so they exist after a docs
+    # build and never in a fresh checkout.
     GENERATED = {"docs/spec.md", "docs/rules/", "docs/skills/", "docs/guides/",
-                 "docs/cli.md"}
+                 "docs/cli.md", "docs/favicon.svg"}
 
     def test_every_cited_path_exists(self):
         missing = []
