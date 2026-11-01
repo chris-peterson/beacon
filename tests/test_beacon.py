@@ -2613,13 +2613,22 @@ class AReviewBlockHoldsTheSession(BeaconTest):
         self.assertEqual(self.beacon._mode_glyph_for(self.beacon.resolve()),
                          self.beacon.BLOCKED_TITLE_LEADS["review"])
 
-    def test_no_hook_releases_it(self):
+    SHELL = {"id": "b1", "type": "shell", "status": "running", "command": "review-diff.sh"}
+
+    def test_no_hook_releases_it_while_work_runs(self):
         self._block()
         for event in ("PreToolUse", "PostToolUse", "Stop", "UserPromptSubmit"):
             with self.subTest(event=event):
                 self._hook(event, tool_name="Bash", tool_input={"command": "true"},
-                           prompt="ok", background_tasks=[])
+                           prompt="ok", background_tasks=[self.SHELL])
                 self.assertEqual(self.beacon.resolve()["kind"], "review")
+
+    def test_a_turn_ending_with_nothing_running_releases_it(self):
+        # Nothing is left running to show the review, so none is open: this is
+        # what clears a review requested and then never launched.
+        self._block()
+        self._hook("Stop", background_tasks=[])
+        self.assertIsNone(self.beacon.read_review_block())
 
     def test_unblock_releases_it_and_is_safe_to_repeat(self):
         self._block()
@@ -2671,6 +2680,60 @@ class AReviewBlockHoldsTheSession(BeaconTest):
         self.beacon.write_state("review", "{not json")
         self.assertIsNone(self.beacon.read_review_block())
         self.assertIn("state.review", [r["op"] for r in self.beacon.read_error_log()])
+
+
+class AnchorAnnouncesItsReviews(BeaconTest):
+    """HOOK-17: anchor announces `attention.requested` from a foreground step
+    before its review opens, and `attention.released` with the verdict. The
+    request holds a review (CMD-33); the release, read from whichever tool the
+    agent read the verdict with, drops it."""
+
+    TARGET = "https://x.test/acme/widget/pull/7"
+
+    def _post(self, tool, response):
+        payload = {"tool_name": tool, "tool_input": {}, "tool_response": response}
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            self.beacon.cmd_hook(mock.Mock(event="PostToolUse", kind=""))
+
+    def _request(self, **body):
+        body = body or {"target": self.TARGET, "skill": "prepare-review"}
+        self._post("Bash", {"stdout": "REVIEW_MODE=diff\n"
+                            f"codes.bridgeai.anchor/attention.requested {json.dumps(body)}\n"})
+
+    def test_a_request_holds_the_review(self):
+        self._request()
+        review = self.beacon.read_review_block()
+        self.assertEqual(review["target"], self.TARGET)
+        self.assertEqual(review["skill"], "prepare-review")
+        self.assertEqual(self.beacon.resolve()["kind"], "review")
+
+    def test_a_request_with_no_target_holds_nothing(self):
+        self._request(skill="commit")
+        self.assertIsNone(self.beacon.read_review_block())
+
+    def test_a_release_in_bash_output_drops_it(self):
+        self._request()
+        self._post("Bash", {"stdout": "codes.bridgeai.anchor/attention.released {}\n"
+                            "REVIEW_VERDICT=approved\n"})
+        self.assertIsNone(self.beacon.read_review_block())
+
+    def test_a_release_read_with_another_tool_drops_it(self):
+        self._request()
+        self._post("Read", {"type": "text", "file": {
+            "filePath": "/tmp/tasks/b1.output",
+            "content": "codes.bridgeai.anchor/attention.released {}\nREVIEW_VERDICT=approved\n"}})
+        self.assertIsNone(self.beacon.read_review_block())
+
+    def test_a_request_read_from_a_file_holds_nothing(self):
+        self._post("Read", {"type": "text", "file": {
+            "filePath": "/work/anchor/guides/x.md",
+            "content": f"codes.bridgeai.anchor/attention.requested {json.dumps({'target': self.TARGET})}\n"}})
+        self.assertIsNone(self.beacon.read_review_block())
+
+    def test_the_subscription_is_declared(self):
+        manifest = (REPO_ROOT / "plugin.yml").read_text()
+        for key in ("attention.requested", "attention.released"):
+            self.assertIn(f"codes.bridgeai.anchor/{key}", manifest)
 
 
 class PermissionRequestPaintsBlockedImmediately(BeaconTest):

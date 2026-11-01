@@ -1400,6 +1400,15 @@ ANNOUNCED_DELIVERING_KEYS = ("cr.merged",)
 # is mutable after the binding fires. `_route_doc` asks tack for that.
 TACK_SESSION_KEYS = ("session.started", "session.ended")
 
+# anchor's review span (HOOK-17): requested from a foreground step before its
+# viewer opens, so this hook paints the tab before the split copies its name, and
+# released with the verdict. The release is read from any tool's output, since an
+# agent reads a background review's result with whichever tool it likes, and a
+# stray release only clears a mark early.
+ATTENTION_SPAN_KEYS = ("attention.requested", "attention.released")
+_ATTENTION_RELEASED_RE = re.compile(
+    r"^codes\.bridgeai\.anchor/attention\.released(?=[ \t]|$)", re.MULTILINE)
+
 # Everything a terminal or an escape sequence would read as structure rather
 # than as text. The announcement is guaranteed to be one line; a value decoded
 # out of its JSON body is not, and `title` arrives from a forge.
@@ -1457,6 +1466,8 @@ def _read_announcements(payload: dict) -> None:
     subscribers, and a session can publish the same key twice."""
     response = payload.get("tool_response")
     stdout = str(response.get("stdout") or "") if isinstance(response, dict) else ""
+    if payload.get("tool_name") != "Bash" and _carries_release(response):
+        remove_state("review")
     if "codes.bridgeai." not in stdout:
         return
     announced_cr = None
@@ -1476,6 +1487,9 @@ def _read_announcements(payload: dict) -> None:
             if key in TACK_SESSION_KEYS:
                 _record_announced_route(key, body)
             continue
+        if publisher == "anchor" and key in ATTENTION_SPAN_KEYS:
+            _record_review_span(key, body)
+            continue
         if publisher != "anchor" or not body.get("uri"):
             continue
         if key in ANNOUNCED_CR_KEYS:
@@ -1488,6 +1502,37 @@ def _read_announcements(payload: dict) -> None:
         _record_announced_artifact(key, body)
     if announced_cr is not None or produced:
         _spawn_links_refresh()
+
+
+def _carries_release(response) -> bool:
+    """Whether any text in a tool's response carries anchor's
+    `attention.released` line (HOOK-17), however the tool shapes it."""
+    if isinstance(response, str):
+        return bool(_ATTENTION_RELEASED_RE.search(response))
+    if isinstance(response, dict):
+        return any(_carries_release(v) for v in response.values())
+    if isinstance(response, list):
+        return any(_carries_release(v) for v in response)
+    return False
+
+
+def _record_review_span(key: str, body: dict) -> None:
+    """HOOK-17: hold the review anchor announced, or release it. A request with
+    no target names nothing to show, so it holds nothing."""
+    if key == "attention.released":
+        remove_state("review")
+        return
+    target = _display_safe(str(body.get("target") or ""), limit=None)
+    if target:
+        _hold_review(target, body.get("skill"))
+
+
+def _hold_review(target: str, skill) -> None:
+    """The record a held review is (CMD-33, HOOK-17)."""
+    record = {"target": target, "at": _iso(time.time())}
+    if skill:
+        record["skill"] = _display_safe(str(skill))
+    write_state("review", json.dumps(record))
 
 
 def _record_announced_cr(payload: dict, announced: dict) -> None:
@@ -6290,15 +6335,12 @@ def cmd_project(args):
 def cmd_block(args):
     """CMD-33: hold the session blocked on a review of `target` until `unblock`.
     For a caller that opens something outside Claude Code and waits on the user
-    there, which no hook observes: anchor's review viewer runs in a pane of its
-    own and is read back after the turn has ended."""
+    there, which no hook observes. anchor announces its reviews instead
+    (HOOK-17); this is the same hold for any other tool, or a script."""
     target = _display_safe(" ".join(args.target), limit=None)
     if not target:
         sys.exit("beacon block: a target is required")
-    record = {"target": target, "at": _iso(time.time())}
-    if args.skill:
-        record["skill"] = _display_safe(args.skill)
-    write_state("review", json.dumps(record))
+    _hold_review(target, args.skill)
     render()
 
 
@@ -8871,6 +8913,11 @@ def cmd_hook(args):
                 write_state("background", str(running))
             else:
                 write_state("activity", "idle")
+                # CMD-33: a review is held open by something still running, so
+                # a turn that ends with nothing running has no review open. This
+                # is what clears one whose release never came, such as a review
+                # requested and then not launched.
+                remove_state("review")
         # Turn ended: any pending permission/idle notification is no longer in flight.
         remove_state("pending-attention")
         # Refresh chips that may have drifted during the turn (branch the

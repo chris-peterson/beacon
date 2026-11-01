@@ -62,6 +62,17 @@ events:
       reason: >-
         puts a freshly filed issue on the status line; an issue filed from the
         default branch has no branch to be found by
+    - key: codes.bridgeai.anchor/attention.requested
+      handled_by: scripts/beacon
+      reason: >-
+        leads the tab with 👀 and names what is under review on the status line
+        while anchor's review is open, which no hook can see: the review runs in
+        a pane of its own and is read back after the turn ends
+    - key: codes.bridgeai.anchor/attention.released
+      handled_by: scripts/beacon
+      reason: >-
+        drops the review's mark when anchor reports the verdict, read from
+        whichever tool the agent read it with
     - key: codes.bridgeai.anchor/release.created
       handled_by: scripts/beacon
       reason: >-
@@ -186,9 +197,10 @@ cli:
     block: >-
       The target is a path or a change request's URL, and the status line
       shows it whole so you can tell which checkout or CR the review is about.
-      Nothing a session does clears the block, since only the caller knows when
-      the review closes; a fresh session in the pane, the session ending, and
-      `clear` drop it.
+      Tool calls and prompts leave the block alone, since only the caller knows
+      when the review closes. A turn that ends with nothing left running drops
+      it, and so do a fresh session in the pane, the session ending, and
+      `clear`. anchor holds and releases the same block by announcement.
     resume: >-
       Two things at once: the overrides go, and any declared mode goes with
       them. To leave the mode and keep the labels, declare `dev`.

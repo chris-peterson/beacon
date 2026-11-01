@@ -306,6 +306,12 @@ When a turn ends on an API error (StopFailure hook, which Claude Code fires in p
 
 Rationale: without this hook a session whose turn failed reads `working` until the next prompt, since Stop never fires for it. A stopped turn won't resume until the user retries, waits out a limit, or signs in again, so it claims the same attention a block does. The type tells the user which of those it is.
 
+#### `HOOK-17`
+
+When the output of a Bash tool call carries anchor's `attention.requested` announcement with a `target`, the plugin shall hold a review of that target (CMD-33), with the announcement's `skill`; a request with no target holds nothing. When the response of any tool call carries anchor's `attention.released` announcement, the plugin shall drop the review it holds.
+
+Rationale: anchor states a review's span rather than painting it, and beacon renders it, so neither plugin names the other's internals. The request comes from a foreground step before the viewer opens, because a background call's output reaches a hook only once the review is over; arriving at PostToolUse, it paints the tab before the next tool call opens the split that copies the tab's name. The release comes with the verdict, which an agent reads with whichever tool it chooses (Bash, a task-output tool, Read), so it is read from every tool's response. A release seen early, in a file someone printed, only clears the mark sooner; a request is read from Bash output alone, so a document quoting one holds nothing.
+
 #### `HOOK-01a`
 
 When the user submits a prompt that begins with a fresh-start slash command (currently `/recipe`), the plugin shall apply the same wipe as HOOK-08a before processing the prompt's `activity = working` (HOOK-01). Rationale: in-session commands that re-bootstrap context are not surfaced to hooks as a SessionStart event, so without this, signals from the prior task would contaminate the new context. The set of fresh-start commands is a tunable list maintained alongside the hook handler.
@@ -636,9 +642,9 @@ An origin shall be stored in the form a browser sends it (`scheme://host[:port]`
 
 #### `CMD-33`
 
-When a caller invokes `block <target>`, with an optional `--skill <name>`, the plugin shall record a **review** held on the session: the target (a path, or a change request's URL), the skill when given, and the time, and render. When it invokes `unblock`, the plugin shall drop the record and render; an `unblock` with none held does nothing else. While a review is held, the block's `kind` is `review` unless a hook has recorded a kind of its own (HOOK-03g), the color state is `blocked` (BADGE-09a), the tab leads with `👀` (TITLE-06), and the status line names the target (STATUSLINE-04). No hook shall drop it: a fresh start (HOOK-08a), disengagement (BADGE-14), and the age sweep (WIP-06) are what end a review whose caller never released it. A record that does not parse, or carries no target, shall be recorded to the error log (`state.review`) and read as none held.
+When a caller invokes `block <target>`, with an optional `--skill <name>`, the plugin shall record a **review** held on the session: the target (a path, or a change request's URL), the skill when given, and the time, and render. When it invokes `unblock`, the plugin shall drop the record and render; an `unblock` with none held does nothing else. While a review is held, the block's `kind` is `review` unless a hook has recorded a kind of its own (HOOK-03g), the color state is `blocked` (BADGE-09a), the tab leads with `👀` (TITLE-06), and the status line names the target (STATUSLINE-04). anchor's announcements hold and release the same record (HOOK-17). The tool and prompt hooks shall leave it alone; a Stop whose payload lists no running background task (HOOK-02a) shall drop it, and so shall a fresh start (HOOK-08a), disengagement (BADGE-14), and the age sweep (WIP-06). A record that does not parse, or carries no target, shall be recorded to the error log (`state.review`) and read as none held.
 
-Rationale: some tools wait on the user somewhere no hook can see. anchor's review viewer opens in a pane of its own and is read back after the turn has ended, so the session reads `background` (HOOK-02a) for the whole span, the same as a build it is waiting on. Only the caller knows when the review opens and closes, so it states both. The hooks' clears (HOOK-03b) are right for a prompt, which any next tool call or turn boundary resolves, and wrong here: every one of them fires while a viewer is open. beacon picks the glyph from the kind rather than taking one from the caller, so no caller can put a mark on the tab that means something only to itself.
+Rationale: some tools wait on the user somewhere no hook can see. anchor's review viewer opens in a pane of its own and is read back after the turn has ended, so the session reads `background` (HOOK-02a) for the whole span, the same as a build it is waiting on. Only the caller knows when the review opens and closes, so it states both. The hooks' clears (HOOK-03b) are right for a prompt, which any next tool call or turn boundary resolves, and wrong here: every one of them fires while a viewer is open. A review is shown by something still running, though, so a turn that ends with nothing running has no review open, which is what ends one requested and never launched. beacon picks the glyph from the kind rather than taking one from the caller, so no caller can put a mark on the tab that means something only to itself.
 
 ---
 
@@ -1715,7 +1721,7 @@ state/<session-hash>.mode                   # RES-06/-07: {"name","note","by","p
 state/<session-hash>.activity               # RES-06: idle|working|waiting — hooks only, no override tier
 state/<session-hash>.permission_mode        # PERM-01: the mode Claude Code reported — `plan` is the one beacon reads
 state/<session-hash>.pending-attention
-state/<session-hash>.review             # CMD-33: {target,skill,at} of the review a caller holds the session blocked on
+state/<session-hash>.review             # CMD-33 / HOOK-17: {target,skill,at} of the review a caller holds the session blocked on
 state/<session-hash>.latest_turn        # WIP-11: most recent turn {role,text,at} for the sessions view
 state/<session-hash>.iterm_session_id   # FOCUS-02: iTerm2 session GUID (focus handle)
 state/<session-hash>.tty                # HOOK-15: the pane's terminal device, for the idle sweep's render (WIP-21)

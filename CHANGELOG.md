@@ -18,21 +18,23 @@ whether it wants an answer or a grant. The glyph stands in for a
 declared mode's (`🚀`, `⏸`, …) until you answer, then the mode's comes back.
 The dashboard card names it too: `question` or `permission`.
 
-### A tool can block the tab on a review
+### An open review marks the tab
 
-A tool that opens something for you to look at outside Claude Code, such
-as anchor's review viewer, can now say so:
+While anchor has a review open for you, the tab leads with `👀` and
+takes the blocked fill, and the status line names what's under review,
+so you can tell which checkout or CR the open viewer holds. anchor
+announces when a review opens and when its verdict comes back, and
+beacon follows along; it needs an anchor that announces them. Any other
+tool can do the same by hand:
 
 ```
 beacon block <path-or-cr-url> [--skill <name>]
 beacon unblock
 ```
 
-While it's held, the tab leads with `👀` and takes the blocked fill, and
-the status line names what's under review, so you can tell which
-checkout or CR the open viewer holds. Nothing Claude does in the
-meantime clears it; `unblock` does, and so does a new session in the
-pane. `wip --json` and `/wip.json` report it as `kind: "review"` with a
+The mark clears when the review is released, when a turn ends with
+nothing left running, or when a new session starts in the pane.
+`wip --json` and `/wip.json` report it as `kind: "review"` with a
 `review` record.
 
 ### Redrawn pane marks
