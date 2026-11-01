@@ -1675,7 +1675,7 @@ Against beacon's surfaces:
 
 | beacon surface | What beacon puts there | OSC 7501 counterpart |
 |:---|:---|:---|
-| Tab color | Activity: ready, busy, blocked | **`state`**, as the dot and subtitle color. It adds `done` vs `idle` and `error`, which beacon doesn't distinguish. |
+| Tab color | Activity: idle, working, blocked, error | **`state`**, as the dot and subtitle color. It adds `done` vs `idle`, which beacon doesn't distinguish. |
 | Tab glyph | The declared phase (⏸ 🚀 📋 🏁) | None |
 | Tab label | Project over task | None |
 | Window title | The same label | None |

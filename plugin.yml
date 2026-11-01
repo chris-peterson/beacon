@@ -62,6 +62,17 @@ events:
       reason: >-
         puts a freshly filed issue on the status line; an issue filed from the
         default branch has no branch to be found by
+    - key: codes.bridgeai.anchor/attention.requested
+      handled_by: scripts/beacon
+      reason: >-
+        leads the tab with 👀 and names what is under review on the status line
+        while anchor's review is open, which no hook can see: the review runs in
+        a pane of its own and is read back after the turn ends
+    - key: codes.bridgeai.anchor/attention.released
+      handled_by: scripts/beacon
+      reason: >-
+        drops the review's mark when anchor reports the verdict, read from
+        whichever tool the agent read it with
     - key: codes.bridgeai.anchor/release.created
       handled_by: scripts/beacon
       reason: >-
@@ -101,7 +112,7 @@ suite:
     hooks:
       cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
-      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; StopFailure→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
     commands:
       install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
       pause: Park this session in beacon pause mode, with an optional note
@@ -131,7 +142,7 @@ cli:
     you hit return.
 
     Two axes resolve independently, and each has one writer. `activity` (idle /
-    working / waiting) belongs to the hooks, which observe it several times a
+    working / blocked / error) belongs to the hooks, which observe it several times a
     turn. `mode` (`dev` / `pause` / `release` / `retro` / `done`) is what you or
     a skill declares, and carries an optional note alongside it.
   groups:
@@ -145,6 +156,13 @@ cli:
         The phase you declare. It marks the tab with a glyph, swaps the pane
         into that mode's background, and holds a note until you leave it.
       commands: [status, pause, release, retro, done]
+    - name: Blocks
+      about: >-
+        For a tool that waits on you somewhere no hook can see, such as a review
+        opened in a pane of its own. The tab leads with 👀 and takes the
+        blocked fill, and the status line names what is under review, until the
+        tool releases it.
+      commands: [block, unblock]
     - name: The sessions view
       about: >-
         Reading across every session at once. Terminal-agnostic: they paint
@@ -176,6 +194,13 @@ cli:
       `beacon release` are one declaration written two ways. `dev` is how you
       leave a mode. The note is stored with the mode and cleared with it, so it
       can't outlive what it annotates.
+    block: >-
+      The target is a path or a change request's URL, and the status line
+      shows it whole so you can tell which checkout or CR the review is about.
+      Tool calls and prompts leave the block alone, since only the caller knows
+      when the review closes. A turn that ends with nothing left running drops
+      it, and so do a fresh session in the pane, the session ending, and
+      `clear`. anchor holds and releases the same block by announcement.
     resume: >-
       Two things at once: the overrides go, and any declared mode goes with
       them. To leave the mode and keep the labels, declare `dev`.

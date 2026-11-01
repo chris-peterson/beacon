@@ -4,9 +4,11 @@ beacon paints two independent things about a session, so a glance tells you both
 
 **What's happening right now** (`activity`) is the tab **color**: gray at rest, orange working, red when Claude needs you. Three values, one meaning, on every tab. That's the legacy [tab look](/iterm/layout?id=tab-look) this page draws. The modern look, the default on iTerm2 3.7.5+, lets Claude Code's own status color the task line and puts a dark fill tinted toward the same hue behind it.
 
-**What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background**. `⏸` `🚀` `📋` `🏁` `…`.
+**What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background** (or, for `retro`, a small badge). `⏸` `🚀` `📋` `🏁` `…`.
 
-They never compete, because they never share a surface. A releasing session that needs you is a red tab beside a `🚀`. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm/layout?id=turning-the-badge-on) if you turn one on; it's off by default.)
+**What a session is waiting on**, when the color can't say it, is a tab glyph with no pane: `❓` `🔒` `👀` for what a block wants from you, `⏳` for background work still running. See [tab-only marks](#tab-only-marks-the-glyph-and-nothing-else).
+
+Color and glyph never compete, because they never share a surface. A releasing session keeps its `🚀` whatever its color; when it stops to ask you something, the `🚀` gives way to `❓` or `🔒` until you answer, and the release pane stays put. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm/layout?id=turning-the-badge-on) if you turn one on; it's off by default.)
 
 **Plan mode is watched but not painted.** beacon reads Claude Code's permission mode off every hook, and surfaces it in the [sessions view](/demo): a card has room for the word `plan` where a tab does not. The tab says nothing about it: color is the only signal you read across every tab at once, so it answers *does this need me* and nothing else.
 
@@ -14,17 +16,17 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 
 <!--
   Figures are drawn in HTML from the spec palette (COLOR_PALETTE / MODE_SPECS /
-  MODE_SPECS, THEME-02 / THEME-02a) rather than screenshotted, since the pane surfaces
-  don't exist off macOS. The mode watermarks are the real generated assets
-  (iterm/resources/<mode>-bg.png), thumbnailed to images/wm-<mode>.png by
-  iterm/make-bg.py. Keep the hexes in sync with scripts/beacon.
+  BLOCKED_TITLE_LEADS, THEME-02 / THEME-02a / THEME-02b) rather than screenshotted, since
+  the pane surfaces don't exist off macOS. The watermarks are the real generated
+  assets (iterm/resources/<phase>-bg.png), thumbnailed to images/wm-<phase>.png by
+  iterm/make-bg.py. Keep the hexes in sync with scripts/beacon and iterm/watermark.py.
 -->
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
 .pal {
   --ground: #21222c; --panel: #282a36; --line: rgba(139,233,253,0.14);
   --fg: #f8f8f2; --muted: #b8bed6; --faint: #7e8290;
-  --ready: #8b8fa0; --busy: #ffb86c; --blocked: #ff5555;
+  --idle: #8b8fa0; --working: #ffb86c; --blocked: #ff5555;
   --paused: #6272a4; --release: #50fa7b; --retro: #f8f8f2; --done: #5f6072;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   margin: 1.25rem 0;
@@ -43,8 +45,9 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 .pal-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
 .pal-card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel); }
 .pal-pane { position: relative; height: 118px; display: block; }
-.pal-pane .wm { position: absolute; inset: 0; margin: auto; width: 60px; height: 60px; object-fit: contain; opacity: 0.6; }
+.pal-pane .wm { position: absolute; inset: 0; margin: auto; width: 76px; height: 76px; object-fit: contain; opacity: 0.6; }
 .pal-pane .tab { position: absolute; top: 0.55rem; left: 0.7rem; font-size: 15px; letter-spacing: 0.01em; }
+.pal-pane .badge { position: absolute; top: 0.55rem; right: 0.7rem; font: 700 13px/1.3 Futura, var(--mono); color: var(--idle); }
 .pal-meta { padding: 0.8rem 0.9rem 0.95rem; }
 .pal-meta h4 { margin: 0 0 0.15rem; font: 600 1.05rem/1.2 var(--mono); color: var(--fg); }
 .pal-meta .cmd { font: 0.72rem var(--mono); color: var(--faint); }
@@ -60,20 +63,24 @@ Everyday development. There's no mode background (the pane stays your own profil
 
 <div class="pal pal-grid">
   <div class="pal-chip">
-    <div class="tab" style="color: var(--ready)">checkout-api<span class="t">refunds</span></div>
+    <div class="tab" style="color: var(--idle)">checkout-api<span class="t">refunds</span></div>
     <div class="cap">idle: at rest, ready for a prompt <span class="hex">#8b8fa0</span></div>
   </div>
   <div class="pal-chip">
-    <div class="tab" style="color: var(--busy)">checkout-api<span class="t">refunds</span></div>
+    <div class="tab" style="color: var(--idle)">⏳ checkout-api<span class="t">refunds</span></div>
+    <div class="cap">background: the turn ended, but a background shell or subagent is still running <span class="hex">#8b8fa0</span></div>
+  </div>
+  <div class="pal-chip">
+    <div class="tab" style="color: var(--working)">checkout-api<span class="t">refunds</span></div>
     <div class="cap">working: Claude is processing <span class="hex">#ffb86c</span></div>
   </div>
   <div class="pal-chip">
     <div class="tab" style="color: var(--blocked)">checkout-api<span class="t">refunds</span></div>
-    <div class="cap">waiting for you: a prompt or a permission <span class="hex">#ff5555</span></div>
+    <div class="cap">waiting for you: a question, a permission, or a turn stopped on an API error <span class="hex">#ff5555</span></div>
   </div>
 </div>
 
-The tab's label is the project name over the task, indented; line 2 collapses when no task is set. The hooks own these three transitions; you never set them by hand.
+The tab's label is the project name over the task, indented; line 2 collapses when no task is set. The hooks own these transitions; you never set them by hand. A turn that stops on an API error paints red too, since it won't resume until you act. A turn that ends with background work still running stays gray, because it needs nothing from you, and leads its tab with `⏳` until the last task finishes and wakes the session.
 
 ## what the tab actually paints
 
@@ -84,8 +91,8 @@ The weight is per state rather than one global dimming. Uniform dimming calms th
 | State | Weight | Tab hex | Why |
 |:---|--:|:---|:---|
 | `blocked` | 0.90 | `#e64c4c` | rare, and the reason the channel exists, so it stays loud |
-| `busy` | 0.52 | `#856038` | most of every strip, so it recedes |
-| `ready` | 0.46 | `#40424a` | most of every strip, so it recedes furthest |
+| `working` | 0.52 | `#856038` | most of every strip, so it recedes |
+| `idle` | 0.46 | `#40424a` | most of every strip, so it recedes furthest |
 
 Multiplying the channels leaves hue and saturation alone and scales only value, so a weighted state is the same color with less light behind it. It's also the transform iTerm2's own inactive-window dimming applies, which is where the numbers started.
 
@@ -104,7 +111,7 @@ Green stays reserved here too, for [`release`](#modes-the-tab-glyph-and-the-pane
 
 ## modes: the tab glyph and the pane
 
-A mode is something you (or a skill) declare. Each carries a **glyph on the tab** (its only cross-tab surface, since with many tabs open only one pane is on screen) and swaps that pane into its own dynamic profile for a background the glyph alone can't express: a distinct color plus a faint slate watermark matching the glyph. A mode never touches the tab color, so declaring one never hides whether the session needs you. They persist until you `resume` (`pause` also lifts automatically, on your next prompt).
+A mode is something you (or a skill) declare. Each carries a **glyph on the tab** (its only cross-tab surface, since with many tabs open only one pane is on screen) and swaps that pane into its own dynamic profile for a cue the glyph alone can't express: a distinct background color plus a faint slate watermark matching the glyph, or, for `retro`, a small badge naming the mode. A mode never touches the tab color, so declaring one never hides whether the session needs you. They persist until you `resume` (`pause` also lifts automatically, on your next prompt).
 
 <div class="pal pal-grid">
 
@@ -133,14 +140,14 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
   </div>
 
   <div class="pal-card">
-    <div class="pal-pane" style="background: #1e3025">
-      <img class="wm" src="images/wm-retro.png" alt="checklist clipboard watermark">
+    <div class="pal-pane" style="background: var(--ground)">
       <span class="tab" style="color: #8b8fa0">📋 checkout-api</span>
+      <span class="badge">retro</span>
     </div>
     <div class="pal-meta">
       <h4>retro <span class="cmd">beacon retro</span></h4>
-      <p>A post-work follow-up or retro phase. A muted green pane under a ticked clipboard.</p>
-      <div class="hexrow"><span>glyph 📋</span><span><span class="sw" style="background:#1e3025"></span>pane #1e3025</span></div>
+      <p>A post-work follow-up or retro phase. The pane keeps your own background and carries a small <code>retro</code> badge in its corner.</p>
+      <div class="hexrow"><span>glyph 📋</span><span>badge <code>retro</code></span></div>
     </div>
   </div>
 
@@ -153,6 +160,62 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
       <h4>done <span class="cmd">beacon done</span></h4>
       <p>Session complete, ready to hand off. The dimmest, "powered-off" pane under a checkered finish-flag. The tab shows the project alone, with no task line.</p>
       <div class="hexrow"><span>glyph 🏁</span><span><span class="sw" style="background:#1a1622"></span>pane #1a1622</span></div>
+    </div>
+  </div>
+
+</div>
+
+## tab-only marks: the glyph and nothing else
+
+Some states get a glyph on the tab and no profile of their own. They're observed rather than declared, and short-lived: a block opens and closes several times a turn, and background work flips at every turn's end. Swapping the pane for each would flicker it to say again what the tab already says, so the pane is left alone.
+
+**Blocked on you.** The color already says the session needs you; the glyph says what for, so you know before switching whether you can reply from memory, have to read what a tool is about to do, or have a review waiting in a split. It stands in for a declared mode's glyph until you answer.
+
+**Waiting on its own work.** `⏳` marks a turn that ended with a background shell, subagent, or monitor still running. The color stays idle, since it needs nothing from you, but it isn't ready for your next prompt either. A declared mode keeps its own glyph.
+
+<div class="pal pal-grid">
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: var(--blocked)">❓ checkout-api</span>
+    </div>
+    <div class="pal-meta">
+      <h4>question</h4>
+      <p>Claude is asking you something, or wants a plan approved.</p>
+      <div class="hexrow"><span>glyph ❓</span></div>
+    </div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: var(--blocked)">🔒 checkout-api</span>
+    </div>
+    <div class="pal-meta">
+      <h4>permission</h4>
+      <p>Claude wants permission to run a tool.</p>
+      <div class="hexrow"><span>glyph 🔒</span></div>
+    </div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: var(--blocked)">👀 checkout-api</span>
+    </div>
+    <div class="pal-meta">
+      <h4>review</h4>
+      <p>A tool opened something for you to review, like anchor's diff viewer, and is waiting on your verdict. The status line names what's under review.</p>
+      <div class="hexrow"><span>glyph 👀</span></div>
+    </div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: var(--idle)">⏳ checkout-api</span>
+    </div>
+    <div class="pal-meta">
+      <h4>background</h4>
+      <p>The turn ended with background work still running; it wakes the session when it finishes.</p>
+      <div class="hexrow"><span>glyph ⏳</span></div>
     </div>
   </div>
 
@@ -225,8 +288,10 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 
 - **Color means one thing.** The tab color answers "does this need me" and nothing else, on every tab, whatever the session has declared about itself. Modes are told apart by shape instead, which is also what lets you read both at once.
 - **Gray is the calm default.** A session at rest and a session that's `done` both sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
-- **Each mode owns a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `retro` a muted green, `done` a near-black purple. Each is recognizable across the whole pane, not just by the tab.
+- **Most modes own a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `done` a near-black purple. Each is recognizable across the whole pane, not just by the tab. `retro` runs long and is spent writing, so it keeps your background and names itself in a small badge instead.
+- **Only a declared phase gets a pane.** A mode is set once and held until you leave it, so it's worth a cue across the whole pane. A block or background work comes and goes within a turn, so it gets the tab glyph alone.
+- **Pane marks are one family in one slate.** Every mark is drawn at one stroke weight and painted the same slate, so none outshouts another.
 - **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the sessions list, matching the pane's watermark, so nothing has to add, and later strip, a marker inside the project name. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
 - **Painted surfaces use hex; the status line uses ANSI.** The pane is beacon's to color exactly. The footer belongs to your terminal, so beacon names a role (bold, dim, green) and lets your theme choose the shade.
 
-The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_CR_BLOCKED_SGR`, `STATUSLINE_ISSUE_BLOCKED_SGR`, `STATUSLINE_STACK_LEAD_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
+The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), the mark slate in `iterm/watermark.py`, and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_CR_BLOCKED_SGR`, `STATUSLINE_ISSUE_BLOCKED_SGR`, `STATUSLINE_STACK_LEAD_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
