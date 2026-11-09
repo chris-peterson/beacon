@@ -7889,8 +7889,8 @@ def _store_pane_title_bar(on: bool | None) -> None:
 def _config_pane_title_bar(values: list[str]) -> None:
     _config_switch("pane-title-bar", _pane_title_bar, _store_pane_title_bar, values,
                    "It is an app-wide iTerm2 setting: a split pane gets a title bar with "
-                   "a close button, showing the session name on one line with the <b> "
-                   f"tag as text. Apply it with `{LAYOUT_COMMAND} --write`.")
+                   "a close button, showing the session name on one line. "
+                   f"Apply it with `{LAYOUT_COMMAND} --write`.")
 
 
 def _iterm_notifications_display() -> str:

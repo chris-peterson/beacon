@@ -47,7 +47,7 @@ These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On 
 .pf-spring { flex: 1 1 auto; }
 .pf-branch { color: var(--green); }
 .pf-branch.diverged { color: var(--working); }
-/* dashed because it is off by default, and it shows <b> as text because that is what iTerm2 draws */
+/* dashed because it is off by default */
 .pf-ptitle { display: flex; align-items: center; gap: 0.6rem; background: var(--abyss); font: 12px var(--mono); color: var(--identity); padding: 0.25rem 0.7rem; border-bottom: 1px dashed rgba(248,248,242,0.18); }
 .pf-ptitle .x { color: var(--sep); }
 .pf-body { position: relative; font: 13px var(--mono); color: var(--fg); padding: 0.85rem 0.9rem 1.1rem; min-height: 96px; }
@@ -106,7 +106,7 @@ Each surface beacon renders through has a number here, and [Settings by surface]
     </div>
     <div class="pf-ptitle">
       <span class="x">✕</span>
-      <span>&lt;b&gt;claude-marketplace&lt;/b&gt;<span class="pf-mk">3</span></span>
+      <span><b>claude-marketplace</b><span class="pf-mk">3</span></span>
       <span class="pf-spring"></span>
       <span class="x">≡</span>
     </div>
@@ -118,7 +118,7 @@ Each surface beacon renders through has a number here, and [Settings by surface]
   <ol class="pf-legend">
     <li><span><b>Tab</b>: the project, with the task indented under it, colored by the session's <em>activity</em> and led by the <em>mode</em>'s glyph when one is declared, or by <code>❓</code>, <code>🔒</code>, or <code>👀</code> while it's blocked on a question, a permission, or a review (see <a href="#/palette?id=tab-only-marks-the-glyph-and-nothing-else">tab-only marks</a>). Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b>Status bar</b>: along the top of the window: the <code>↖ web</code> button, the project's name, the branch colored by its git sync state, and the <code>↗ code</code> button. <a href="#/iterm/layout?id=the-status-bar">The status bar</a> covers each.</span></li>
-    <li><span><b>Per-pane title bar</b>: iTerm2's bar across the top of a pane, with the pane's close button and menu. Off by default, because it shows the session name on one line with <code>&lt;b&gt;</code> as text; <a href="#/iterm/layout?id=per-pane-title-bars">Per-pane title bars</a> turns it on.</span></li>
+    <li><span><b>Per-pane title bar</b>: iTerm2's bar across the top of a pane, with the pane's close button and menu. Off by default, because it shows the session name on one line, without the task line; <a href="#/iterm/layout?id=per-pane-title-bars">Per-pane title bars</a> turns it on.</span></li>
     <li><span><b>Pane</b>: left to Claude Code and your profile, except while a mode is declared, when it takes the mode's background color and a faint watermark.</span></li>
     <li><span><b>Status line</b>: Claude Code's footer rows, where beacon lists the mode's note and the session's PRs and issues.</span></li>
   </ol>
@@ -234,7 +234,7 @@ The padding (0 to 20 points, 0 by default) goes both above and below the label, 
 
 ### Per-pane title bars
 
-iTerm2's per-pane title bar carries the pane's close button and menu, and beacon's layout turns it off: the bar shows the session name on one line, with the `<b>` tag as text and no task line. If you close panes with the mouse, turn it back on:
+iTerm2's per-pane title bar carries the pane's close button and menu, and beacon's layout turns it off: the bar shows the session name on one line, with no task line. If you close panes with the mouse, turn it back on:
 
 ```
 beacon config pane-title-bar on
@@ -287,6 +287,19 @@ Whether the links are clickable is your terminal's call. iTerm2 renders them, an
 beacon paints the tab's color and label, the status bar, and (in a mode cycle only) the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. The behavior it does change, such as where a split opens, is listed under [Settings by surface](#settings-by-surface).
 
 The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, so Claude Code's own title doesn't show.
+
+## iTerm2's Claude Code integration
+
+iTerm2 offers its own Claude Code integration (**iTerm2 → Install Claude Code Integration**). beacon covers what it's for, so we recommend leaving it uninstalled:
+
+| Piece | Why skip it |
+|---|---|
+| Session Status toolbelt | It lists each session's state in a side panel, which the tab strip already shows in color, and it shows beacon's `<b>` tag as text. |
+| Workgroup bar: Diff | In iTerm2 3.7.7 the diff session exits at once with `fatal: difftool requires worktree or --no-index`. |
+| Workgroup bar: Code Review | It opens a separate review session that doesn't connect to the review tools you already use, such as anchor's `/anchor:review`. |
+| The install itself | It requires iTerm2's Python API to be turned on. Nothing else in beacon's setup needs it. |
+
+If it's installed, **iTerm2 → Uninstall Claude Code Integration** removes its hooks from `~/.claude/settings.json`, the workgroup, and the Enter/Exit Workgroup triggers from every profile. The toolbelt stays open in each window until you hide it with **Toolbelt → Show Toolbelt** (⇧⌘B).
 
 ## Recommended layout
 
@@ -365,7 +378,7 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 
 | Setting | beacon sets | Why | Can you change it? |
 |---|---|---|---|
-| Show per-pane title bars (Appearance → Panes) | off | the bar shows the session name on one line, with `<b>` as text and no task line | Yes: `beacon config pane-title-bar on` ([Per-pane title bars](#per-pane-title-bars)) |
+| Show per-pane title bars (Appearance → Panes) | off | the bar shows the session name on one line, with no task line | Yes: `beacon config pane-title-bar on` ([Per-pane title bars](#per-pane-title-bars)) |
 | …even if there is only one pane (Appearance → Panes) | on, while the bar is on | without it the only pane in a tab has no bar, and so no close button | Follows the setting above |
 
 ### ④ Pane
