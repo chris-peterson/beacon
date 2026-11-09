@@ -91,6 +91,7 @@ class BeaconTest(unittest.TestCase):
         self.beacon = _load_beacon(self.data_dir)
 
         self.cli_calls: list[tuple] = []
+        self.real_cli = self.beacon._cli
         patcher = mock.patch.object(
             self.beacon, "_cli",
             side_effect=lambda *args, **kwargs: self.cli_calls.append(args),
@@ -4559,6 +4560,54 @@ class ANestedSessionDoesNotTakeThePane(BeaconTest):
         self._start_host()
         self.assertEqual(self._host("anchor.cwd"), str(self.host_cwd))
         self.assertIsNone(self._host("guest_of"))
+
+    def _pane_writes(self, run, own_tty: bool) -> list[tuple]:
+        """The beacon-iterm invocations `run()` makes through the real `_cli`,
+        with whether this process has a terminal of its own pinned."""
+        writes = []
+        real_run = subprocess.run
+        iterm = ["python3", str(self.beacon.BEACON_ITERM)]
+
+        def fake_run(cmd, *a, **k):
+            if list(cmd[:2]) == iterm:
+                writes.append(tuple(cmd[2:]))
+                return subprocess.CompletedProcess(cmd, 0, stdout=b"", stderr=b"")
+            return real_run(cmd, *a, **k)
+        with mock.patch.object(self.beacon, "_cli", side_effect=self.real_cli), \
+                mock.patch.object(self.beacon, "_has_own_tty", return_value=own_tty), \
+                mock.patch("subprocess.run", side_effect=fake_run):
+            run()
+        return writes
+
+    def _guest_turn(self):
+        self._start_guest()
+        self._fire("UserPromptSubmit", {"prompt": "say hi", "session_id": self.GUEST})
+        self._fire("Stop", {"session_id": self.GUEST})
+        self._fire("SessionEnd", {"reason": "other", "session_id": self.GUEST})
+
+    def test_a_guest_without_a_terminal_writes_nothing_to_the_pane(self):
+        # #72: its writes would reach the pane only through the ancestor
+        # fallback, which is the host's terminal, and the host's diff gate
+        # would never repaint what they overwrote.
+        self._start_host()
+        writes = self._pane_writes(self._guest_turn, own_tty=False)
+        self.assertEqual(writes, [])
+
+    def test_a_guest_with_its_own_terminal_still_paints(self):
+        # A real session in a pane whose last session died without a SessionEnd
+        # reads as a guest, and the pane is its own to paint.
+        self._start_host()
+        writes = self._pane_writes(self._guest_turn, own_tty=True)
+        self.assertIn("uservar-batch", [w[0] for w in writes])
+
+    def test_the_host_paints_without_a_terminal_of_its_own(self):
+        def host_turn():
+            self._start_host()
+            self._fire("UserPromptSubmit", {"prompt": "go", "session_id": self.HOST})
+            self._fire("Stop", {"session_id": self.HOST})
+        writes = self._pane_writes(host_turn, own_tty=False)
+        self.assertIn("uservar-batch", [w[0] for w in writes])
+        self.assertIn("tab-color", [w[0] for w in writes])
 
 
 class LatestTurn(BeaconTest):

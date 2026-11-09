@@ -4543,11 +4543,32 @@ def _task_display(location: str, task: str) -> str:
 OSC_VERBS = frozenset({"badge-color", "tab-color", "uservar", "uservar-batch",
                        "badge-format", "set-profile", "clear", "clear-screen"})
 
+def _has_own_tty() -> bool:
+    """Whether this process has a controlling terminal. Without one, beacon-iterm
+    reaches a pane only by writing to the nearest ancestor's terminal
+    (`_ancestor_tty`)."""
+    try:
+        with open("/dev/tty", "w"):
+            return True
+    except OSError:
+        return False
+
+
+def _guest_without_tty() -> bool:
+    """HOOK-12: a guest whose writes would reach a pane only through an
+    ancestor's terminal, which is the host's pane. A guest with a terminal of its
+    own is a real session in a pane whose last session left a stale marker, and
+    it paints that pane."""
+    return _guest_seed() is not None and not _has_own_tty()
+
+
 def _cli(*args, timeout: float = 5.0) -> None:
     """Invoke beacon-iterm. Failures are swallowed so the plugin never crashes
     a hook on display issues."""
-    cmd = ["python3", str(BEACON_ITERM), *map(str, args)]
     tty = getattr(_PANE, "tty", None)
+    if not tty and _guest_without_tty():
+        return
+    cmd = ["python3", str(BEACON_ITERM), *map(str, args)]
     if tty and args and args[0] in OSC_VERBS:
         cmd[2:3] = [str(args[0]), "--tty", tty]
     op = f"cli.{args[0]}" if args else "cli"

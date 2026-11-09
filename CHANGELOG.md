@@ -128,6 +128,15 @@ which is what every other session uses. The start-of-session check now
 leaves them alone there. A surface whose target is missing is still
 reported.
 
+### A nested `claude` leaves its host's tab alone
+
+A `claude` started from inside a session, such as a skill that runs
+`claude -p`, no longer repaints the tab of the session it runs inside.
+Before, its project and task replaced the host's on the tab and stayed
+there until the host's own project or task changed. A real session in a
+pane whose previous session exited without ending still paints that
+pane.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does
