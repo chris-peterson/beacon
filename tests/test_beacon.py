@@ -2406,6 +2406,39 @@ class BlocksRecordWhatTheyWaitOn(BeaconTest):
         self._hook("PreToolUse", tool_name="Bash", tool_input={})
         self.assertIsNone(self.beacon.read_attention_kind())
 
+    def _rejected_then_idle(self, look: str):
+        # Rejecting the prompt interrupts the turn, which fires no hook; the
+        # idle timer's Notification about a minute later is the next one.
+        self.beacon.write_state("iterm_session_id", "PANE-GUID")
+        self._hook("PermissionRequest", tool_name="Bash", tool_input={"command": "rm -rf build"})
+        with mock.patch.object(self.beacon, "_tab_look", return_value=look):
+            self._hook("Notification", notification_type="idle_prompt")
+
+    def test_an_idle_prompt_ends_a_rejected_permission_under_the_modern_look(self):
+        self._rejected_then_idle("modern")
+        self.assertIsNone(self.beacon.read_state("pending-attention"))
+        self.assertEqual(self.beacon.read_activity(), "idle")
+        self.assertNotEqual(self.beacon.resolve()["kind"], "permission")
+
+    def test_an_idle_prompt_ends_a_rejected_permission_under_the_legacy_look(self):
+        self._rejected_then_idle("legacy")
+        self.assertIsNone(self.beacon.read_attention_kind())
+        self.assertEqual(self.beacon.read_state("pending-attention"), self.beacon.UNKNOWN_ATTENTION)
+
+    def test_an_idle_prompt_with_nothing_pending_changes_nothing_under_the_modern_look(self):
+        self.beacon.write_state("iterm_session_id", "PANE-GUID")
+        self.beacon.write_state("activity", "idle")
+        with mock.patch.object(self.beacon, "_tab_look", return_value="modern"):
+            self._hook("Notification", notification_type="idle_prompt")
+        self.assertEqual(self.beacon.read_activity(), "idle")
+        self.assertEqual(self.cli_calls, [])
+
+    def test_a_permission_prompt_after_a_permission_request_keeps_its_kind(self):
+        self._hook("PermissionRequest", tool_name="Bash", tool_input={})
+        self._hook("Notification", notification_type="permission_prompt")
+        self.assertEqual(self.beacon.read_attention_kind(), "permission")
+        self.assertEqual(self.beacon.read_activity(), "blocked")
+
     def test_the_fleet_record_and_show_carry_the_kind(self):
         self._hook("PermissionRequest", tool_name="Bash", tool_input={})
         self.assertEqual(self.beacon.resolve()["kind"], "permission")
@@ -2730,6 +2763,38 @@ class AnchorAnnouncesItsReviews(BeaconTest):
             "filePath": "/work/anchor/guides/x.md",
             "content": f"codes.bridgeai.anchor/attention.requested {json.dumps({'target': self.TARGET})}\n"}})
         self.assertIsNone(self.beacon.read_review_block())
+
+    def _notified(self, output: str | None) -> Path:
+        """A prompt that wakes the agent for a finished background review whose
+        output it never reads. None leaves the named file missing."""
+        path = self.data_dir / "tasks" / "b1.output"
+        if output is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(output)
+        prompt = ("<task-notification>\n<task-id>b1</task-id>\n"
+                  f"<output-file>{path}</output-file>\n<status>completed</status>\n"
+                  "</task-notification>")
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": prompt}))):
+            self.beacon.cmd_hook(mock.Mock(event="UserPromptSubmit", kind=""))
+        return path
+
+    def test_a_finished_tasks_output_file_releases_the_review(self):
+        self._request()
+        self._notified("x" * (2 * self.beacon._RELEASE_SCAN_BYTES)
+                       + "\nREVIEW_VERDICT=approved\n"
+                       "codes.bridgeai.anchor/attention.released {}\n\n[exited with code 0]\n")
+        self.assertIsNone(self.beacon.read_review_block())
+
+    def test_an_output_file_without_the_release_keeps_the_review(self):
+        self._request()
+        self._notified("REVIEW_MODE=diff\nstill open\n")
+        self.assertEqual(self.beacon.read_review_block()["target"], self.TARGET)
+
+    def test_a_missing_output_file_is_logged_and_keeps_the_review(self):
+        self._request()
+        self._notified(None)
+        self.assertEqual(self.beacon.read_review_block()["target"], self.TARGET)
+        self.assertEqual(self.beacon.read_error_log()[-1]["op"], "review.output-file")
 
     def test_the_subscription_is_declared(self):
         manifest = (REPO_ROOT / "plugin.yml").read_text()

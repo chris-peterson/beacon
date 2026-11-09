@@ -137,6 +137,16 @@ there until the host's own project or task changed. A real session in a
 pane whose previous session exited without ending still paints that
 pane.
 
+### A 👀 or 🔒 that outlived its review or prompt now clears
+
+A `👀` that stayed on the tab after its review closed now clears when
+Claude is told the background review finished, even if it never reads
+the result. Before, it could hold while any other background work ran.
+
+A `🔒` or `❓` left by a permission prompt you rejected, or a turn you
+interrupted with Esc, now clears when Claude's idle prompt comes back,
+about a minute later. Before, it held until your next prompt.
+
 ## 2.20.1
 
 ### The status-bar project chip names the repo the way the tab does

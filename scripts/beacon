@@ -1519,6 +1519,48 @@ def _carries_release(response) -> bool:
     return False
 
 
+# A finished task's output file can run to megabytes and is read on a hook;
+# anchor prints the release as the review's last line.
+_RELEASE_SCAN_BYTES = 64 * 1024
+_TASK_NOTIFICATION_RE = re.compile(r"<task-notification>(.*?)</task-notification>", re.DOTALL)
+_OUTPUT_FILE_RE = re.compile(r"<output-file>([^<\n]+)</output-file>")
+
+
+def _task_output_files(prompt: str) -> list[str]:
+    """The output files the prompt's `<task-notification>` blocks name."""
+    files = []
+    for block in _TASK_NOTIFICATION_RE.finditer(prompt):
+        named = _OUTPUT_FILE_RE.search(block.group(1))
+        if named:
+            files.append(named.group(1).strip())
+    return files
+
+
+def _output_file_releases(path: str) -> bool:
+    """Whether the tail of a finished task's output file carries anchor's
+    `attention.released` line (HOOK-17)."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - _RELEASE_SCAN_BYTES))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError as exc:
+        log_error("review.output-file", f"{type(exc).__name__}: {exc}")
+        return False
+    return bool(_ATTENTION_RELEASED_RE.search(tail))
+
+
+def _release_from_task_notifications(prompt: str) -> None:
+    """HOOK-17: drop the held review when a finished background task's output
+    carries its release. The agent is told the task finished, but nothing
+    obliges it to read the output, so no tool response may ever carry the
+    release, and a Stop with other work still running keeps the review held."""
+    if not read_state("review"):
+        return
+    if any(_output_file_releases(path) for path in _task_output_files(prompt)):
+        remove_state("review")
+
+
 def _record_review_span(key: str, body: dict) -> None:
     """HOOK-17: hold the review anchor announced, or release it. A request with
     no target names nothing to show, so it holds nothing."""
@@ -8921,6 +8963,7 @@ def cmd_hook(args):
         write_state("activity", "working")
         # The user just submitted, so any pending Notification is resolved.
         remove_state("pending-attention")
+        _release_from_task_notifications(prompt_text)
 
     elif event == "Stop":
         if not payload.get("stop_hook_active"):
@@ -8969,6 +9012,14 @@ def cmd_hook(args):
         kind = str(payload.get("notification_type") or "")
         if kind not in ATTENTION_NOTIFICATIONS:
             return
+        # HOOK-03g: an `idle_prompt` means the prompt is back with no dialog
+        # open, so a recorded question or permission is stale. Claude Code fires
+        # no hook when a turn is interrupted, and rejecting a permission prompt
+        # interrupts it, so this is the first hook to arrive after a rejection.
+        stale_block = False
+        if kind == IDLE_NOTIFICATION:
+            stale_block = _state_path("pending-attention").exists()
+            remove_state("pending-attention")
         # HOOK-03d: an `idle_prompt` on a session that was stood down on purpose
         # (`pause`, `done` — STATE-15) reports nothing its user doesn't already
         # know: it is idle *because* they parked or finished it. Since a halted
@@ -8980,30 +9031,33 @@ def cmd_hook(args):
         # This is not a mode-beats-activity precedence rule (RES-06): the two
         # axes stay independent, and what is dropped is one uninformative
         # observation, not the activity axis losing an argument to the mode.
-        if kind == IDLE_NOTIFICATION and _mode_stood_down(read_mode()[0]):
-            return
         # HOOK-03f: under the modern look, iTerm2 already shows a finished turn
         # as Claude's green `done` until the user types, so the idle timer adds
         # nothing to an iTerm2 pane but red. Outside iTerm2 there is no tab
         # showing `done`, so the observation still counts there.
-        if (kind == IDLE_NOTIFICATION and _tab_look() == "modern"
-                and read_state("iterm_session_id")):
-            return
-        write_state("activity", "blocked")
-        # Sticky marker: takes precedence over a stale PostToolUse working signal
-        # that may arrive after this Notification due to out-of-order delivery.
-        # Its value is what the block waits on (HOOK-03g). A `permission_prompt`
-        # arrives six seconds after the PermissionRequest that already named the
-        # tool, so a kind already recorded stands.
-        if kind in QUESTION_NOTIFICATIONS:
-            attention = "question"
-        elif read_attention_kind():
-            attention = read_attention_kind()
-        elif kind == "permission_prompt":
-            attention = "permission"
+        quiet_idle = kind == IDLE_NOTIFICATION and (
+            _mode_stood_down(read_mode()[0])
+            or (_tab_look() == "modern" and read_state("iterm_session_id")))
+        if quiet_idle:
+            if not stale_block:
+                return
+            # The block this idle prompt ended still holds the tab, and no
+            # other hook is coming to move it.
+            write_state("activity", "idle")
         else:
-            attention = UNKNOWN_ATTENTION
-        write_state("pending-attention", attention)
+            write_state("activity", "blocked")
+            # Sticky marker: takes precedence over a stale PostToolUse working
+            # signal that may arrive after this Notification due to out-of-order
+            # delivery. Its value is what the block waits on (HOOK-03g). A
+            # `permission_prompt` arrives six seconds after the PermissionRequest
+            # that already named the tool, so a kind already recorded stands.
+            if kind in QUESTION_NOTIFICATIONS:
+                attention = "question"
+            elif kind == "permission_prompt":
+                attention = read_attention_kind() or "permission"
+            else:
+                attention = UNKNOWN_ATTENTION
+            write_state("pending-attention", attention)
 
     elif event == "PermissionRequest":
         # Same block as HOOK-03, six seconds earlier. Claude Code raises the
