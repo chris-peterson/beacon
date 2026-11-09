@@ -9043,6 +9043,71 @@ class DevInstallMarker(unittest.TestCase):
             self.assertEqual(self.beacon._version_display(), "2.6.1-dev")
         self.assertEqual(self.beacon.read_error_log()[0]["op"], "git.rev-parse")
 
+    def test_git_probes_run_without_optional_locks(self):
+        """#79: a probe the timeout kills must have taken no lock to leave behind."""
+        envs = []
+
+        def fake_run(cmd, *a, **k):
+            envs.append(k.get("env") or {})
+            return subprocess.CompletedProcess(cmd, 0, stdout="da64585\n", stderr="")
+        with mock.patch.object(self.beacon, "_is_dev_install", return_value=True), \
+                mock.patch.object(self.beacon, "_plugin_version", return_value="2.6.1"), \
+                mock.patch("subprocess.run", side_effect=fake_run):
+            self.beacon._version_display()
+        self.assertEqual(len(envs), 2)
+        for env in envs:
+            self.assertEqual(env.get("GIT_OPTIONAL_LOCKS"), "0")
+
+    def test_the_status_probe_writes_no_index(self):
+        """`git status` writes its index refresh back under .git/index.lock, which
+        is the lock a killed probe leaves behind. The probe must not write it."""
+        repo = self.data_dir / "repo"
+        repo.mkdir()
+
+        def git(*args, env=None):
+            subprocess.run(["git", "-C", str(repo), *args], check=True,
+                           capture_output=True, text=True, env=env)
+        git("init", "-q")
+        (repo / "f").write_text("a\n")
+        git("add", "f")
+        git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qm", "init")
+        index = repo / ".git" / "index"
+
+        def stale_index():
+            later = time.time_ns() + 10**9
+            os.utime(repo / "f", ns=(later, later))
+            return index.stat().st_mtime_ns
+
+        before = stale_index()
+        with mock.patch.object(self.beacon, "PLUGIN_ROOT", repo):
+            self.beacon._git_read(["status", "--porcelain"], "git.status")
+        self.assertEqual(index.stat().st_mtime_ns, before)
+
+        before = stale_index()
+        git("status", "--porcelain", env={k: v for k, v in os.environ.items()
+                                          if k != "GIT_OPTIONAL_LOCKS"})
+        self.assertNotEqual(index.stat().st_mtime_ns, before,
+                            "a plain git status should refresh the index, or the "
+                            "assertion above proves nothing")
+
+    def test_parsing_a_subcommand_runs_no_version_probe(self):
+        """#79: argparse's stock version action takes its string when the parser
+        is built, which would put two git probes on every hook and every
+        status-line render."""
+        with mock.patch.object(self.beacon, "_version_display",
+                               side_effect=AssertionError("version probed")) as probe:
+            self.beacon._build_parser().parse_args(["show"])
+        probe.assert_not_called()
+
+    def test_the_version_flag_prints_the_version(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon, "_version_display", return_value="2.6.1-dev.gda64585"), \
+                contextlib.redirect_stdout(buf), \
+                self.assertRaises(SystemExit) as exited:
+            self.beacon._build_parser().parse_args(["--version"])
+        self.assertEqual(exited.exception.code, 0)
+        self.assertEqual(buf.getvalue(), "beacon 2.6.1-dev.gda64585\n")
+
 
 class SubscribedSkillEntersItsMode(BeaconTest):
     """HOOK-13: a subscribed skill's invocation declares the phase, on both

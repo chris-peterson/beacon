@@ -55,9 +55,12 @@ def _git_read(args: list[str], op: str) -> str:
     """One git read against the plugin root, empty where it could not be made.
     The caller decides what an empty answer means; every failure is logged, so a
     marker that comes back short has a recorded reason."""
+    # A probe killed on its timeout must not leave .git/index.lock behind: `git
+    # status` takes that lock to write back its index refresh (#79).
+    env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     try:
         r = subprocess.run(["git", "-C", str(PLUGIN_ROOT), *args],
-                           capture_output=True, text=True, timeout=2, check=False)
+                           capture_output=True, text=True, timeout=2, check=False, env=env)
     except Exception as exc:
         log_error(op, f"{type(exc).__name__}: {exc}")
         return ""
@@ -9038,10 +9041,26 @@ def cmd_hook(args):
 
 # --- argparse ---
 
+class _VersionAction(argparse.Action):
+    """argparse's `version` action, with the string built when the flag is read.
+    The stock action takes the string when the parser is built, which is every
+    invocation, hooks and status-line renders included, and on a dev install
+    the string costs two git probes (#79)."""
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS,
+                 default=argparse.SUPPRESS,
+                 help="show program's version number and exit"):
+        super().__init__(option_strings=option_strings, dest=dest,
+                         default=default, nargs=0, help=help)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser._print_message(f"beacon {_version_display()}\n", sys.stdout)
+        parser.exit()
+
+
 def _build_parser() -> "argparse.ArgumentParser":
     parser = argparse.ArgumentParser(prog="beacon", description=__doc__)
-    parser.add_argument("--version", "-v", action="version",
-                        version=f"beacon {_version_display()}")
+    parser.add_argument("--version", "-v", action=_VersionAction)
     parser.add_argument("--color", choices=["auto", "always", "never"], default="auto",
                         help="colorize output: auto (TTY-detect, the default), always, or never. "
                              "Use --color=always to keep color through a pipe (e.g. `watch --color`).")
