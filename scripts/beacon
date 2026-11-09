@@ -22,6 +22,7 @@ import plistlib
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -1539,14 +1540,25 @@ def _task_output_files(prompt: str) -> list[str]:
 def _output_file_releases(path: str) -> bool:
     """Whether the tail of a finished task's output file carries anchor's
     `attention.released` line (HOOK-17)."""
+    # The path comes from prompt text, so a FIFO or a device would block the
+    # open or read without end, and the prompt with it.
     try:
-        with open(path, "rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            fh.seek(max(0, fh.tell() - _RELEASE_SCAN_BYTES))
-            tail = fh.read().decode("utf-8", "replace")
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
     except OSError as exc:
         log_error("review.output-file", f"{type(exc).__name__}: {exc}")
         return False
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            log_error("review.output-file", f"not a regular file: {path}")
+            return False
+        os.lseek(fd, max(0, info.st_size - _RELEASE_SCAN_BYTES), os.SEEK_SET)
+        tail = os.read(fd, _RELEASE_SCAN_BYTES).decode("utf-8", "replace")
+    except OSError as exc:
+        log_error("review.output-file", f"{type(exc).__name__}: {exc}")
+        return False
+    finally:
+        os.close(fd)
     return bool(_ATTENTION_RELEASED_RE.search(tail))
 
 
@@ -4600,8 +4612,12 @@ def _guest_without_tty() -> bool:
     """HOOK-12: a guest whose writes would reach a pane only through an
     ancestor's terminal, which is the host's pane. A guest with a terminal of its
     own is a real session in a pane whose last session left a stale marker, and
-    it paints that pane."""
-    return _guest_seed() is not None and not _has_own_tty()
+    it paints that pane.
+
+    Read from what SessionStart recorded, not probed here: a `beacon set` from
+    the session's Bash tool never has a terminal, whichever session it serves."""
+    seed = _guest_seed()
+    return seed is not None and not (STATE_DIR / f"{_hash_seed(seed)}.guest_tty").exists()
 
 
 def _cli(*args, timeout: float = 5.0) -> None:
@@ -6181,9 +6197,7 @@ def apply(state: dict):
     # RENDER-04: tab color for the logical color state (and the badge color too
     # when the badge is enabled). Emitted every render, deliberately not gated on
     # the snapshot the way the identity vars below are: the color is session OSC
-    # state beacon does not own exclusively. `SetProfile` wipes it (§6.10) — and
-    # so does a `claude` nested in this pane disengaging on its way out, whose
-    # OSC reaches this tty while its state lands in its own bucket (HOOK-12). A
+    # state beacon does not own exclusively. `SetProfile` wipes it (§6.10). A
     # persisted gate cannot see a wipe it did not cause, so it suppresses the one
     # repaint that would recover the tab and leaves it unpainted for the rest of
     # the session. Same argument _publish_chips makes for the chip user vars.
@@ -8817,6 +8831,8 @@ def _claim_guest_bucket(claude_sid: str, pane: str) -> None:
     since it owns no pane to raise."""
     seed = f"claude-session:{claude_sid}"
     _mkdir_private(STATE_DIR)
+    if _has_own_tty():
+        _write_private(STATE_DIR / f"{_hash_seed(seed)}.guest_tty", "1")
     _write_private(STATE_DIR / f"{_hash_seed(seed)}.guest_of", pane)
     os.environ["ITERM_SESSION_ID"] = seed
 

@@ -16,6 +16,8 @@ or wants a plan approved, and `🔒` when it wants permission to run
 something. The red already says the session needs you; the glyph says
 whether it wants an answer or a grant. The glyph stands in for a
 declared mode's (`🚀`, `⏸`, …) until you answer, then the mode's comes back.
+If you reject the prompt, or interrupt the turn with Esc, the glyph clears
+when Claude's idle prompt comes back.
 The dashboard card names it too: `question` or `permission`.
 
 ### An open review marks the tab
@@ -32,7 +34,8 @@ beacon block <path-or-cr-url> [--skill <name>]
 beacon unblock
 ```
 
-The mark clears when the review is released, when a turn ends with
+The mark clears when the review is released, even if Claude never reads
+the result of a review it ran in the background, when a turn ends with
 nothing left running, or when a new session starts in the pane.
 `wip --json` and `/wip.json` report it as `kind: "review"` with a
 `review` record.
@@ -137,15 +140,21 @@ there until the host's own project or task changed. A real session in a
 pane whose previous session exited without ending still paints that
 pane.
 
-### A 👀 or 🔒 that outlived its review or prompt now clears
+### A rejected permission prompt no longer leaves the tab red
 
-A `👀` that stayed on the tab after its review closed now clears when
-Claude is told the background review finished, even if it never reads
-the result. Before, it could hold while any other background work ran.
+When you reject a permission prompt, Claude Code stops the turn without
+telling any hook, so the tab stayed red until your next prompt. Under the
+modern tab look, and in a paused or done session, it now turns idle when
+Claude's idle prompt comes back.
 
-A `🔒` or `❓` left by a permission prompt you rejected, or a turn you
-interrupted with Esc, now clears when Claude's idle prompt comes back,
-about a minute later. Before, it held until your next prompt.
+### A working copy no longer locks its own git index
+
+With a working copy in use (`just trial-on`, or `--plugin-dir`), every
+hook ran `git status` in the checkout to build the version string. A
+slow one was killed after two seconds and could leave `.git/index.lock`
+behind, which blocked every later commit there until it was removed by
+hand. The version is now worked out only for `beacon --version` and
+`beacon doctor`, and its git reads take no lock.
 
 ## 2.20.1
 

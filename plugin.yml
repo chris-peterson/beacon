@@ -72,7 +72,8 @@ events:
       handled_by: scripts/beacon
       reason: >-
         drops the review's mark when anchor reports the verdict, read from
-        whichever tool the agent read it with
+        whichever tool the agent read it with, or from the output file a
+        finished background task's notification names
     - key: codes.bridgeai.anchor/release.created
       handled_by: scripts/beacon
       reason: >-
@@ -200,7 +201,9 @@ cli:
       Tool calls and prompts leave the block alone, since only the caller knows
       when the review closes. A turn that ends with nothing left running drops
       it, and so do a fresh session in the pane, the session ending, and
-      `clear`. anchor holds and releases the same block by announcement.
+      `clear`. anchor holds and releases the same block by announcement, and
+      its release counts whether the agent reads it in a tool's output or a
+      finished task's output file carries it.
     resume: >-
       Two things at once: the overrides go, and any declared mode goes with
       them. To leave the mode and keep the labels, declare `dev`.

@@ -2796,6 +2796,18 @@ class AnchorAnnouncesItsReviews(BeaconTest):
         self.assertEqual(self.beacon.read_review_block()["target"], self.TARGET)
         self.assertEqual(self.beacon.read_error_log()[-1]["op"], "review.output-file")
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "needs a FIFO")
+    def test_an_output_file_that_is_a_fifo_is_skipped_without_blocking(self):
+        # The path comes from prompt text; opening a FIFO with no writer would
+        # hold the prompt hook open.
+        self._request()
+        fifo = self.data_dir / "tasks" / "b1.output"
+        fifo.parent.mkdir(parents=True, exist_ok=True)
+        os.mkfifo(fifo)
+        self._notified(None)
+        self.assertEqual(self.beacon.read_review_block()["target"], self.TARGET)
+        self.assertEqual(self.beacon.read_error_log()[-1]["op"], "review.output-file")
+
     def test_the_subscription_is_declared(self):
         manifest = (REPO_ROOT / "plugin.yml").read_text()
         for key in ("attention.requested", "attention.released"):
@@ -4664,6 +4676,18 @@ class ANestedSessionDoesNotTakeThePane(BeaconTest):
         self._start_host()
         writes = self._pane_writes(self._guest_turn, own_tty=True)
         self.assertIn("uservar-batch", [w[0] for w in writes])
+
+    def test_a_guest_with_its_own_terminal_paints_from_its_bash_tool(self):
+        # The terminal is decided at SessionStart: a `beacon set task` from the
+        # session's Bash tool has none, and still serves the session's own pane.
+        self._start_host()
+        self._pane_writes(self._start_guest, own_tty=True)
+        os.environ["CLAUDE_CODE_SESSION_ID"] = self.GUEST
+
+        def set_task():
+            self.beacon.cmd_set(mock.Mock(field="task", value=["ship it"]))
+        writes = self._pane_writes(set_task, own_tty=False)
+        self.assertIn("uservar", [w[0] for w in writes])
 
     def test_the_host_paints_without_a_terminal_of_its_own(self):
         def host_turn():
