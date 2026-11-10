@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.21.0
 
 ### Breaking: `activity` reads `blocked`, not `waiting`
 
