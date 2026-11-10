@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Breaking: `activity` reads `blocked`, not `waiting`
+
+The state names now follow OSC 7501. A script that reads `wip --json` or
+`/wip.json` must match the new names, and should expect the new values
+(`beacon json` carries `activity` only):
+
+| Field | Was | Now |
+|---|---|---|
+| `activity` | `idle`, `working`, `waiting` | `idle`, `working`, `blocked`, `error`, `background` |
+| `color_state` | `ready`, `busy`, `blocked` | `idle`, `working`, `blocked` |
+| `kind` | not present | `question`, `permission`, `review`, or null |
+| `stop_error` | not present | the API error type, or null |
+
 ### `retro` keeps your pane
 
 A retro no longer turns the pane green under a clipboard watermark. The
@@ -79,19 +92,8 @@ beacon now reads that error: the tab turns red, the activity reads
 The sessions view and dashboard look for a project's icon at the usual
 favicon paths, and now at a Claude Code plugin's own,
 `.claude-plugin/icon.svg` (or `.png`), after `docs/`. A session picks it
-up at its next start.
-
-### `activity` reads `blocked`, not `waiting`
-
-The state names now follow OSC 7501. What changes for a consumer of
-`wip --json` or `/wip.json` (`beacon json` carries `activity` only):
-
-| Field | Was | Now |
-|---|---|---|
-| `activity` | `idle`, `working`, `waiting` | `idle`, `working`, `blocked`, `error`, `background` |
-| `color_state` | `ready`, `busy`, `blocked` | `idle`, `working`, `blocked` |
-| `kind` | not present | `question`, `permission`, `review`, or null |
-| `stop_error` | not present | the API error type, or null |
+up at its next start. The dashboard serves an icon sandboxed, so an SVG
+icon from a repo can't run script alongside the session data.
 
 ### iTerm2 notifications are yours to choose
 
