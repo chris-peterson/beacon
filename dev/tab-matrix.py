@@ -35,11 +35,11 @@ SAMPLE_PROJECT = "acme-widget"
 # (task, mode, color state): two-line, one-line, a moded label, a blocked one,
 # and a task long enough to truncate.
 SAMPLE_TABS = (
-    ("ship the uploader retry", None, "ready"),
-    ("", None, "busy"),
-    ("cut 1.2.3", "release", "ready"),
+    ("ship the uploader retry", None, "idle"),
+    ("", None, "working"),
+    ("cut 1.2.3", "release", "idle"),
     ("waiting on a permission prompt", None, "blocked"),
-    ("a task long enough to run past the edge of the strip", None, "busy"),
+    ("a task long enough to run past the edge of the strip", None, "working"),
 )
 
 # Where the first tab starts in a capture: Regular keeps a title bar above the

@@ -143,7 +143,7 @@ cli:
     you hit return.
 
     Two axes resolve independently, and each has one writer. `activity` (idle /
-    working / blocked / error) belongs to the hooks, which observe it several times a
+    working / blocked / error / background) belongs to the hooks, which observe it several times a
     turn. `mode` (`dev` / `pause` / `release` / `retro` / `done`) is what you or
     a skill declares, and carries an optional note alongside it.
   groups:
@@ -155,7 +155,8 @@ cli:
     - name: Modes
       about: >-
         The phase you declare. It marks the tab with a glyph, swaps the pane
-        into that mode's background, and holds a note until you leave it.
+        into that mode's background (for `retro`, a badge on your own), and
+        holds a note until you leave it.
       commands: [status, pause, release, retro, done]
     - name: Blocks
       about: >-

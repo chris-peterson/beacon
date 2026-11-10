@@ -4689,6 +4689,20 @@ class ANestedSessionDoesNotTakeThePane(BeaconTest):
         writes = self._pane_writes(set_task, own_tty=False)
         self.assertIn("uservar", [w[0] for w in writes])
 
+    def test_a_guest_resumed_in_a_pane_of_its_own_paints_again(self):
+        # Run first from the host's Bash tool, then resumed interactively: the
+        # terminal is decided again at the resume's SessionStart.
+        self._start_host()
+        self._pane_writes(self._start_guest, own_tty=False)
+        self._pane_writes(lambda: self._start(self.GUEST, self.guest_cwd, source="resume"),
+                          own_tty=True)
+        os.environ["CLAUDE_CODE_SESSION_ID"] = self.GUEST
+
+        def set_task():
+            self.beacon.cmd_set(mock.Mock(field="task", value=["ship it"]))
+        writes = self._pane_writes(set_task, own_tty=False)
+        self.assertIn("uservar", [w[0] for w in writes])
+
     def test_the_host_paints_without_a_terminal_of_its_own(self):
         def host_turn():
             self._start_host()

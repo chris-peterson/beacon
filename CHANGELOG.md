@@ -74,12 +74,15 @@ up at its next start.
 
 ### `activity` reads `blocked`, not `waiting`
 
-The activity value for a session blocked on you is now `blocked`, the
-name OSC 7501 and beacon's own color state already use. `wip --json`,
-`json`, and `/wip.json` report `"activity": "blocked"`, and records
-carry a new `kind` (`question`, `permission`, or null) and
-`stop_error` (the API error type, or null). A consumer matching on
-`"waiting"` needs to match `"blocked"`, and may now also see `"error"`.
+The state names now follow OSC 7501. What changes for a consumer of
+`wip --json` or `/wip.json` (`beacon json` carries `activity` only):
+
+| Field | Was | Now |
+|---|---|---|
+| `activity` | `idle`, `working`, `waiting` | `idle`, `working`, `blocked`, `error`, `background` |
+| `color_state` | `ready`, `busy`, `blocked` | `idle`, `working`, `blocked` |
+| `kind` | not present | `question`, `permission`, `review`, or null |
+| `stop_error` | not present | the API error type, or null |
 
 ### iTerm2 notifications are yours to choose
 

@@ -136,7 +136,7 @@ what picks the level.
 | Render the Claude Code status-line row (mode note + deliverable links) | `echo '{}' \| python3 scripts/beacon statusline` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
-| Regenerate the mode watermarks after changing their source art | `python3 iterm/make-bg.py [<mode>...]` |
+| Regenerate the mode watermarks after editing `iterm/marks.py` | `python3 iterm/make-bg.py [<mode>...]` |
 | Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |
 | Re-record the CLI grammar + reference page | `just generate` (writes `spec/cli.yml`, renders `docs/cli.md`) |
 | Read a new iTerm2 release against the surfaces beacon renders through | `just iterm-release` (`--ack` records it) |

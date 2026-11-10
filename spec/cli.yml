@@ -68,7 +68,7 @@ commands:
       optional: true
 - name: block
   usages:
-  - summary: hold the session blocked on a review of <target> (a path or a change request's URL) until `unblock`
+  - summary: hold the session blocked on a review of <target> (a path or a change request's URL) until `unblock`, or until a turn ends with nothing running in the background
     args:
     - name: target
     - name: target

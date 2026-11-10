@@ -631,6 +631,8 @@ class IconTest(_WipBase):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/icon/served", timeout=3) as resp:
             self.assertEqual(resp.headers["Content-Type"], "image/svg+xml")
             self.assertIsNone(resp.headers["Access-Control-Allow-Origin"])
+            self.assertIn("sandbox", resp.headers["Content-Security-Policy"])
+            self.assertEqual(resp.headers["X-Content-Type-Options"], "nosniff")
             self.assertEqual(resp.read(), b"<svg/>")
 
     def test_serve_icon_route_404_unknown(self):

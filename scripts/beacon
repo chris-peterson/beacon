@@ -5,7 +5,7 @@ Resolves a session's signals — `project` and `task` via chain-of-responsibilit
 providers, plus the two independent state axes `mode` and `activity` — then
 invokes bin/beacon-iterm to surface them. The CLI is the only writer to iTerm2.
 
-`activity` (idle / working / blocked / error) is what the hooks observe, written several
+`activity` (idle / working / blocked / error / background) is what the hooks observe, written several
 times a turn. `mode` (pause / release / retro / done, absent = dev) is
 what a user or skill declares, and carries an optional note as a tuple with it:
 `pause [<note>]`. The two resolve independently, so entering a mode no longer
@@ -322,6 +322,14 @@ ICON_CONTENT_TYPES = {
     ".gif": "image/gif",
     ".webp": "image/webp",
 }
+# An icon is a file from whichever repo a session runs in, and an SVG opened as
+# a page would run its scripts on the dashboard's origin, where /wip.json holds
+# every session's turn text. A sandboxed response gets an opaque origin, whose
+# requests carry `Origin: null`, which WIP-18 refuses.
+ICON_HEADERS = (
+    ("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'"),
+    ("X-Content-Type-Options", "nosniff"),
+)
 
 # SessionStart's `source` is one of `startup`, `clear`, `resume`, `compact`,
 # `fork`. The first two begin a session, and only those drop the prior tenant's
@@ -446,7 +454,7 @@ _beacon() {
     'status:enter a mode with an optional note, or dev to leave one'
     'project:set project override'
     'clear:clear one or all overrides'
-    'block:hold the session blocked on a review of a target until unblock'
+    'block:hold the session blocked on a review of a target until unblock or a quiet turn end'
     'unblock:release the review block holds'
     'pause:enter pause mode with an optional note'
     'release:enter release mode (ship-it flow in progress) with an optional note'
@@ -4043,7 +4051,7 @@ def wip_http_server(port: int):
                 self.send_header("Access-Control-Allow-Origin", origin)
                 self.send_header("Vary", "Origin")
 
-        def _respond(self, code: int, ctype: str, data: bytes) -> None:
+        def _respond(self, code: int, ctype: str, data: bytes, headers=()) -> None:
             """The one response emitter. Every route lands here, so a header
             the model depends on can't be present on three routes and absent
             on the fourth."""
@@ -4052,6 +4060,8 @@ def wip_http_server(port: int):
             self.send_header("Content-Length", str(len(data)))
             self._send_cors()
             self.send_header("Cache-Control", "no-store")
+            for name, value in headers:
+                self.send_header(name, value)
             self.end_headers()
             self.wfile.write(data)
 
@@ -4103,7 +4113,7 @@ def wip_http_server(port: int):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
             ctype = ICON_CONTENT_TYPES.get(p.suffix.lower(), "application/octet-stream")
-            self._respond(200, ctype, data)
+            self._respond(200, ctype, data, ICON_HEADERS)
 
         def _send_mode_bg(self, mode: str) -> None:
             # The mark file comes from our own MODE_SPECS constant keyed by the
@@ -6413,7 +6423,8 @@ def cmd_project(args):
 
 
 def cmd_block(args):
-    """CMD-33: hold the session blocked on a review of `target` until `unblock`.
+    """CMD-33: hold the session blocked on a review of `target` until `unblock`,
+    or until a turn ends with nothing running in the background.
     For a caller that opens something outside Claude Code and waits on the user
     there, which no hook observes. anchor announces its reviews instead
     (HOOK-17); this is the same hold for any other tool, or a script."""
@@ -8820,6 +8831,17 @@ def _pane_held_by_other(claude_sid: str, source: str) -> bool:
     return bool(incumbent) and incumbent != claude_sid
 
 
+def _record_guest_tty(seed: str) -> None:
+    """HOOK-12: whether a guest has a terminal of its own, decided at each of its
+    SessionStarts, since a session first run from a Bash tool can later be
+    resumed in a pane of its own."""
+    flag = STATE_DIR / f"{_hash_seed(seed)}.guest_tty"
+    if _has_own_tty():
+        _write_private(flag, "1")
+    else:
+        flag.unlink(missing_ok=True)
+
+
 def _claim_guest_bucket(claude_sid: str, pane: str) -> None:
     """Give a guest (HOOK-12) its own bucket and re-key this process onto it.
 
@@ -8831,8 +8853,7 @@ def _claim_guest_bucket(claude_sid: str, pane: str) -> None:
     since it owns no pane to raise."""
     seed = f"claude-session:{claude_sid}"
     _mkdir_private(STATE_DIR)
-    if _has_own_tty():
-        _write_private(STATE_DIR / f"{_hash_seed(seed)}.guest_tty", "1")
+    _record_guest_tty(seed)
     _write_private(STATE_DIR / f"{_hash_seed(seed)}.guest_of", pane)
     os.environ["ITERM_SESSION_ID"] = seed
 
@@ -8883,6 +8904,8 @@ def cmd_hook(args):
             guest = _guest_seed()
             if guest:
                 os.environ["ITERM_SESSION_ID"] = guest
+                if event == "SessionStart":
+                    _record_guest_tty(guest)
         write_state("claude_session_id", claude_sid)
     # STATE-16: a park ends on the first hook that isn't the session asking,
     # because answering a question or a permission prompt is a tool result and
@@ -9181,7 +9204,8 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("field", nargs="?", choices=list(VALID_FIELDS))
 
     sp = sub.add_parser("block", help="hold the session blocked on a review of <target> "
-                                      "(a path or a change request's URL) until `unblock`")
+                                      "(a path or a change request's URL) until `unblock`, "
+                                      "or until a turn ends with nothing running in the background")
     sp.add_argument("target", nargs="+")
     sp.add_argument("--skill", help="the skill that opened the review")
 
