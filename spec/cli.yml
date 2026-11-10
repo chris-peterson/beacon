@@ -182,7 +182,7 @@ commands:
   - summary: copy the resolved URL to the clipboard via pbcopy
 - name: open-url
   usages:
-  - summary: 'open the session''s web view (config: statusbar.buttons.web.cmd)'
+  - summary: 'open the project page (config: statusbar.buttons.web.cmd)'
     args:
     - name: dir
       optional: true

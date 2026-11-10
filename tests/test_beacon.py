@@ -4082,9 +4082,9 @@ class WebButton(unittest.TestCase):
 
 
 class OpenUrlCommand(BeaconTest):
-    """STATUS-BAR-08 / CMD-14: `open-url [dir]` resolves at click time against
-    the directory it is given, so it is correct in a pane beacon isn't
-    tracking."""
+    """STATUS-BAR-08 / CMD-14: `open-url [dir]` opens the project page of the
+    directory it is given, resolved at click time, so it is correct in a pane
+    beacon isn't tracking."""
 
     def _config(self, **keys):
         d = Path(self._tmp.name) / "webcfg"
@@ -4098,18 +4098,67 @@ class OpenUrlCommand(BeaconTest):
     def test_resolves_against_the_directory_argument(self):
         seen = {}
 
-        def fake_resolve(cwd=None):
+        def fake_remote(cwd):
             seen["cwd"] = str(cwd)
-            return ("https://x.test/acme/widgets/pull/7", "acme/widgets#7")
+            return "https://x.test/acme/widgets"
 
         with self._config(), \
-             mock.patch.object(self.beacon, "resolve_url", fake_resolve), \
+             mock.patch.object(self.beacon, "_git_remote_url_normalized", fake_remote), \
              mock.patch.object(self.beacon.subprocess, "run",
-                               lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b"")):
+                               lambda a, **k: types.SimpleNamespace(returncode=0, stderr=b"")), \
+             contextlib.redirect_stdout(io.StringIO()):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
         # The arg round-trips through Path, which normalizes separators — so
         # compare against the platform's own rendering, not a POSIX literal.
         self.assertEqual(seen["cwd"], str(Path("/work/repo")))
+
+    def _opened(self):
+        """The argv `open-url` hands to `open` for /work/repo, with no button cmd."""
+        calls = []
+
+        def fake_run(argv, **kw):
+            calls.append(argv)
+            return types.SimpleNamespace(returncode=0, stderr=b"")
+
+        with self._config(), \
+             mock.patch.object(self.beacon.subprocess, "run", fake_run), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        return calls[-1]
+
+    def test_opens_the_project_page_while_the_branch_has_an_open_pr(self):
+        # The open PR is the status line's link (STATUSLINE-02); the button
+        # opens the repo's front page whatever the session is working on (#63).
+        with mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://x.test/acme/widgets"), \
+             mock.patch.object(self.beacon, "_forge_url",
+                               return_value=("https://x.test/acme/widgets/pull/7", "#7")):
+            self.assertEqual(self._opened(), ["open", "https://x.test/acme/widgets"])
+
+    def test_opens_the_project_page_with_a_tack_deliverable_in_progress(self):
+        route = {"tacks": [{"status": "in_progress",
+                            "deliverable": {"url": "https://x.test/acme/widgets/pull/9"}}]}
+        with mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://x.test/acme/widgets"), \
+             mock.patch.object(self.beacon, "_route_doc", return_value=route):
+            self.assertEqual(self._opened(), ["open", "https://x.test/acme/widgets"])
+
+    def test_the_default_does_not_consult_prov_07(self):
+        with mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://x.test/acme/widgets"), \
+             mock.patch.object(self.beacon, "resolve_url",
+                               side_effect=AssertionError("must not resolve PROV-07")):
+            self._opened()
+
+    def test_a_directory_with_no_origin_exits_through_the_alert_path(self):
+        with self._config(), \
+             mock.patch.object(self.beacon, "_git_remote_url_normalized", return_value=""), \
+             mock.patch.object(self.beacon.subprocess, "run",
+                               side_effect=AssertionError("must not open anything")):
+            with self.assertRaises(SystemExit) as cm:
+                self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
+        self.assertIn(str(Path("/work/repo")), str(cm.exception))
+        self.assertIn("origin", str(cm.exception))
 
     def test_a_browser_it_starts_does_not_inherit_the_callers_environment(self):
         # `open` passes the caller's environment to an app it launches, so a
@@ -4121,8 +4170,8 @@ class OpenUrlCommand(BeaconTest):
             return types.SimpleNamespace(returncode=0, stderr=b"")
 
         with self._config(), \
-             mock.patch.object(self.beacon, "resolve_url",
-                               return_value=("https://x.test/acme/widgets", "acme/widgets")), \
+             mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://x.test/acme/widgets"), \
              mock.patch.object(self.beacon.subprocess, "run", fake_run), \
              contextlib.redirect_stdout(io.StringIO()):
             self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
@@ -9423,7 +9472,7 @@ class AnnouncedCrUrl(BeaconTest):
     # --- scope --------------------------------------------------------------
 
     def test_does_not_answer_for_another_project(self):
-        # `open-url <dir>` resolves against the directory it is handed, so a
+        # PROV-07 resolves against the directory it is handed, so a
         # session-scoped CR must not answer for an unrelated checkout.
         self._observe(self._line(), cwd="/tmp/proj")
         self.assertEqual(self._resolve(cwd="/tmp/other"), ("", ""))

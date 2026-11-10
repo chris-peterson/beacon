@@ -40,6 +40,15 @@ nothing left running, or when a new session starts in the pane.
 `wip --json` and `/wip.json` report it as `kind: "review"` with a
 `review` record.
 
+### `↖ web` opens the project page
+
+The `↖ web` button on the iTerm2 status bar opens the repo's project page
+(the web URL of the pane directory's `origin` remote), even while the
+branch has an open PR or a tack deliverable is in progress. The PRs,
+issues, and releases a session touched stay one click away in the Claude
+Code status line. `beacon open-url` opens the same page from a shell. A
+`statusbar.buttons.web.cmd` in your config still replaces it.
+
 ### Redrawn pane marks
 
 The `pause`, `release`, and `done` watermarks are redrawn as one

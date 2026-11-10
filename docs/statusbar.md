@@ -74,9 +74,9 @@ After a **plugin upgrade**, use `/beacon:install-beacon` instead. The profiles e
 
 ## What `↖ web` opens
 
-Left alone (`cmd` blank), it opens whatever beacon resolves for the session: the PR/MR/issue when there is one, else the branch or repo page. Resolution happens when you click, against that pane's directory, so the button is right even in a pane beacon isn't tracking, such as a plain shell, and there's no cached URL to go stale.
+Left alone (`cmd` blank), it opens the repo's project page: the web URL of the pane directory's `origin` remote. It lands in the same place whatever the session is working on, so the PRs, issues, and releases a session touched are the [status line's](/statusline) links instead. Resolution happens when you click, against that pane's directory, so the button is right even in a pane beacon isn't tracking, such as a plain shell, and there's no cached URL to go stale.
 
-Set a `cmd` and you get the repo's front page instead, or wherever else you point it:
+Set a `cmd` and you get wherever you point it:
 
 ```json
 { "statusbar": { "buttons": { "web": { "cmd": "git web" } } } }

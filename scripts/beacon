@@ -478,7 +478,7 @@ _beacon() {
     'layout:audit or apply the app-wide iTerm2 fleet layout'
     'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
-    'open-url:open the session web view (statusbar.buttons.web.cmd)'
+    'open-url:open the project page (statusbar.buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
     'doctor:check the install and report recorded errors'
@@ -1604,9 +1604,8 @@ def _record_announced_cr(payload: dict, announced: dict) -> None:
     """PROV-07 tier 0 — the CR this session is about.
 
     The project root is stored with the URL because PROV-07 resolves against a
-    directory it is handed, not against the session (`open-url <dir>` is correct
-    in a pane beacon isn't tracking). Session-scoped state alone would answer for
-    an unrelated checkout."""
+    directory it is handed, not against the session. Session-scoped state alone
+    would answer for an unrelated checkout."""
     try:
         root = str(find_project_root(Path(payload.get("cwd") or Path.cwd())))
     except OSError:
@@ -2183,8 +2182,8 @@ def _url_delivered_before_session(url: str) -> bool:
     PROV-07 answers *where this session's work lives* and falls back to the
     most-recently-completed deliverable when no tack is active (`_tack_url_for`
     step b), so on a route with nothing open it keeps naming something that
-    shipped in an earlier session. That is a serviceable click target for
-    `↖ web`, but it is not an accomplishment: recording it on the row credits
+    shipped in an earlier session. That still names where the project's work
+    lives, but it is not an accomplishment: recording it on the row credits
     this session with work it never touched."""
     if not url:
         return False
@@ -2544,15 +2543,16 @@ def cmd_open_code(args):
 
 
 def cmd_open_url(args):
-    """Open the session's web view. Backs the `↖ web` status-bar button
+    """Open the project page. Backs the `↖ web` status-bar button
     (STATUS-BAR-08) and is usable from any shell.
 
     Two paths, chosen by config. The button's `cmd` runs the user's own command
     in the target directory — the point being that plenty of people already have
     one (`git web` and friends), and beacon has no business relitigating where it
-    should go. Unset, beacon resolves the URL itself through PROV-07, which
-    knows about tack deliverables and open CRs and so lands on the *thing you
-    are working on* rather than the repo's front page.
+    should go. Unset, beacon opens the web URL of the directory's `origin`
+    remote. The page stays put while the session's work moves: the CRs, issues,
+    and releases are the status line's job (STATUSLINE-02/03), which a pane with
+    an open PR would otherwise reach twice.
 
     Resolution happens at click time against the directory it is given. That is
     what makes this correct in a pane beacon isn't tracking — a shell you are
@@ -2581,9 +2581,9 @@ def cmd_open_url(args):
         print(f"ran: {cmd}")
         return
 
-    url, _ = resolve_url(target)
+    url = _git_remote_url_normalized(target)
     if not url:
-        sys.exit("no URL resolved (no override, no tack route, no git remote)")
+        sys.exit(f"no project page: {target} has no git remote named origin")
     try:
         # Empty, so a browser this starts gets launchd's environment rather
         # than the caller's (which can be a Claude Code session's).
@@ -5639,9 +5639,9 @@ def _publish_chips(cwd: Path) -> None:
     # STATUSLINE-02: `_tack_url_for` falls back to the newest completed
     # deliverable when the route has nothing open, so a fresh session on an idle
     # route would lead its row with a PR that shipped in an earlier session. The
-    # `↖ web` button still wants that target and resolves at click time, so the
-    # substitution is scoped to the persisted link: the location tiers answer
-    # instead — an open PR for the branch, else the branch tree, else the project.
+    # substitution is scoped to the persisted link, leaving PROV-07's chain as is
+    # for `copy-url`: the location tiers answer instead — an open PR for the
+    # branch, else the branch tree, else the project.
     if _url_delivered_before_session(url):
         url, label = _location_url_at(cwd)
 
@@ -9288,7 +9288,7 @@ def _build_parser() -> "argparse.ArgumentParser":
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
     sp = sub.add_parser("open-url",
-                        help="open the session's web view (config: statusbar.buttons.web.cmd)")
+                        help="open the project page (config: statusbar.buttons.web.cmd)")
     sp.add_argument("dir", nargs="?", help="directory to resolve from (default: cwd)")
 
     sp = sub.add_parser("open-code",

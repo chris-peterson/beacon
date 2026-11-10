@@ -185,7 +185,7 @@ The default is closed because the payload carries each session's most recent tur
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's web view and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's project page and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
 See **[Layout](/iterm/layout)** for the anatomy, the tab states, and what the status-bar chips mean.
 
@@ -341,14 +341,11 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 
 ## Tack integration (optional)
 
-beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon names each session's project by tack's repo label, the shortest name unique among the repos tack knows, so two checkouts that share a basename read apart. When a tack route is bound to the session, beacon asks tack for that route's most relevant URL and surfaces it in two places:
-
-- The status-line link points at it instead of the bare project URL.
-- The `↖ web` button opens it instead of the repo's front page.
+beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon names each session's project by tack's repo label, the shortest name unique among the repos tack knows, so two checkouts that share a basename read apart. When a tack route is bound to the session, beacon asks tack for that route's most relevant URL, and the status-line link points at it instead of the bare project URL.
 
 The dependency is **soft**: if tack isn't installed or no route is bound to the session, beacon probes the forge directly (`gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts) and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-Prefer Linear, Jira, GitHub Issues, or a custom provider? Point the `↖ web` button at any command you like (see [Status-bar buttons](/statusbar)).
+The `↖ web` button opens the repo's project page on every path. Prefer Linear, Jira, GitHub Issues, or a custom provider? Point it at any command you like (see [Status-bar buttons](/statusbar)).
 
 ## Standalone (no tack, no recipes)
 

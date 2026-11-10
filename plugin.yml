@@ -255,10 +255,10 @@ cli:
       preferences in memory and overwrites the file on quit, so a write while it
       runs is discarded.
     open-url: >-
-      Resolves the URL at click time from the directory it is given: the open
-      PR/MR for the branch when tack or the forge CLI can name one, else the
-      branch tree, else the project. The command it runs is
-      `statusbar.buttons.web.cmd` in `~/.config/beacon/config.json`.
+      Resolves the project page at click time from the directory it is given:
+      the web URL of its `origin` remote. `statusbar.buttons.web.cmd` in
+      `~/.config/beacon/config.json` replaces it with a command of your own,
+      run in that directory.
     import: >-
       Merges into whatever state is already on disk. `--force` lets the file's
       fields replace a session's.
