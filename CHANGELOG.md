@@ -2,6 +2,104 @@
 
 ## Unreleased
 
+### `retro` keeps your pane
+
+A retro no longer turns the pane green under a clipboard watermark. The
+pane keeps your own background and shows a small `retro` badge in its
+corner, and the dashboard card stays plain. The tab still leads with
+`📋`. Run `beacon refresh-iterm-profiles` to pick it up in open panes.
+
+### A blocked tab says what it's waiting for
+
+A tab blocked on you now leads with `❓` when Claude is asking a question
+or wants a plan approved, and `🔒` when it wants permission to run
+something. The red already says the session needs you; the glyph says
+whether it wants an answer or a grant. The glyph stands in for a
+declared mode's (`🚀`, `⏸`, …) until you answer, then the mode's comes back.
+If you reject the prompt, or interrupt the turn with Esc, the glyph clears
+when Claude's idle prompt comes back.
+The dashboard card names it too: `question` or `permission`.
+
+### An open review marks the tab
+
+While anchor has a review open for you, the tab leads with `👀` and
+takes the blocked fill, and the status line names what's under review,
+so you can tell which checkout or CR the open viewer holds. anchor
+announces when a review opens and when its verdict comes back, and
+beacon follows along; it needs an anchor that announces them. Any other
+tool can do the same by hand:
+
+```
+beacon block <path-or-cr-url> [--skill <name>]
+beacon unblock
+```
+
+The mark clears when the review is released, even if Claude never reads
+the result of a review it ran in the background, when a turn ends with
+nothing left running, or when a new session starts in the pane.
+`wip --json` and `/wip.json` report it as `kind: "review"` with a
+`review` record.
+
+### Redrawn pane marks
+
+The `pause`, `release`, and `done` watermarks are redrawn as one
+family: line marks at a single stroke weight, with no disc behind them. Run `beacon refresh-iterm-profiles` to
+pick them up in open panes.
+
+### Background work reads as waiting, not ready
+
+A turn that ends with a background shell, subagent, monitor, or
+workflow still running used to read the same as one waiting for your
+next prompt. Its tab now leads with `⏳` until the last task finishes
+and wakes the session, while the color stays the idle gray, since it
+needs nothing from you. `wip` and `json` report the count as
+`background`, and the dashboard card shows `background ×2`. A pending
+`/loop` or scheduled wakeup doesn't count.
+
+### A turn that fails says so
+
+When a turn ends on an API error (a rate limit, an overloaded server, a
+failed sign-in), Claude Code skips the hook beacon used to mark a turn
+finished, so the tab stayed orange as if the session were still working.
+beacon now reads that error: the tab turns red, the activity reads
+`error`, and the dashboard card names the error (`rate limit`,
+`authentication failed`, …). Your next prompt clears it.
+
+### Plugin icons in the sessions view
+
+The sessions view and dashboard look for a project's icon at the usual
+favicon paths, and now at a Claude Code plugin's own,
+`.claude-plugin/icon.svg` (or `.png`), after `docs/`. A session picks it
+up at its next start.
+
+### `activity` reads `blocked`, not `waiting`
+
+The state names now follow OSC 7501. What changes for a consumer of
+`wip --json` or `/wip.json` (`beacon json` carries `activity` only):
+
+| Field | Was | Now |
+|---|---|---|
+| `activity` | `idle`, `working`, `waiting` | `idle`, `working`, `blocked`, `error`, `background` |
+| `color_state` | `ready`, `busy`, `blocked` | `idle`, `working`, `blocked` |
+| `kind` | not present | `question`, `permission`, `review`, or null |
+| `stop_error` | not present | the API error type, or null |
+
+### iTerm2 notifications are yours to choose
+
+beacon's profiles now follow your own iTerm2 profile for Notification
+Center and escape-sequence alerts, where they used to turn both off. If
+you liked them off:
+
+```
+beacon config iterm-notifications off
+```
+
+That writes the setting to beacon's config and re-renders the profiles,
+so it reaches every open pane without a restart. `on` turns them on, and
+`reset` hands them back to your profile. After upgrading, run
+`beacon refresh-iterm-profiles` (or the command above) so the old
+setting leaves the installed profiles.
+
 ### iTerm2 relaunched by beacon starts with a clean environment
 
 When `beacon layout --write`, `install`, `refresh-iterm-profiles
@@ -35,6 +133,31 @@ line and the status-bar buttons keep running the marketplace install,
 which is what every other session uses. The start-of-session check now
 leaves them alone there. A surface whose target is missing is still
 reported.
+
+### A nested `claude` leaves its host's tab alone
+
+A `claude` started from inside a session, such as a skill that runs
+`claude -p`, no longer repaints the tab of the session it runs inside.
+Before, its project and task replaced the host's on the tab and stayed
+there until the host's own project or task changed. A real session in a
+pane whose previous session exited without ending still paints that
+pane.
+
+### A rejected permission prompt no longer leaves the tab red
+
+When you reject a permission prompt, Claude Code stops the turn without
+telling any hook, so the tab stayed red until your next prompt. Under the
+modern tab look, and in a paused or done session, it now turns idle when
+Claude's idle prompt comes back.
+
+### A working copy no longer locks its own git index
+
+With a working copy in use (`just trial-on`, or `--plugin-dir`), every
+hook ran `git status` in the checkout to build the version string. A
+slow one was killed after two seconds and could leave `.git/index.lock`
+behind, which blocked every later commit there until it was removed by
+hand. The version is now worked out only for `beacon --version` and
+`beacon doctor`, and its git reads take no lock.
 
 ## 2.20.1
 

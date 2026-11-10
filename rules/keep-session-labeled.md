@@ -1,6 +1,6 @@
 # Keep this session's beacon work label current
 
-beacon shows every concurrent Claude Code session in one sessions view: `beacon wip`, or the dashboard `beacon serve` opens at `http://127.0.0.1:8787/`. Its label is what tells one session from another there. The hooks already set the fields they can observe on any platform: the project, the git branch, the ready / busy / blocked activity color, and the most recent turn (the `latest_turn` play-by-play, derived from the transcript with no help from you). What they can't observe is *the durable headline*: the unit of work this session is on, which outlives any single turn. Keep that current so a glance at the sessions view tells the user which window is doing what, without them having to ask you to label it.
+beacon shows every concurrent Claude Code session in one sessions view: `beacon wip`, or the dashboard `beacon serve` opens at `http://127.0.0.1:8787/`. Its label is what tells one session from another there. The hooks already set the fields they can observe on any platform: the project, the git branch, the idle / working / blocked activity color, and the most recent turn (the `latest_turn` play-by-play, derived from the transcript with no help from you). What they can't observe is *the durable headline*: the unit of work this session is on, which outlives any single turn. Keep that current so a glance at the sessions view tells the user which window is doing what, without them having to ask you to label it.
 
 - `task` is the headline, not a turn-by-turn log; `latest_turn` already carries the play-by-play. When the focus of your work becomes clear or **meaningfully shifts** (a new feature, bug, file, or phase), set the work label:
 
@@ -16,7 +16,7 @@ beacon shows every concurrent Claude Code session in one sessions view: `beacon 
 
 - **`project` is the other slot.** `task` is the unit of work; `project` is the place it happens: tab label line 1, the window title, and the status-bar project chip. When the user asks you to label the *session* or the *tab* without separating the two, they mean `project` (`set project "<name>"`, `clear project` to fall back to the git-derived name).
 
-- **Don't set `activity`.** The hooks own the ready / busy / blocked transitions, and `activity` takes no override: a pinned value would outrank what the hooks observe and go stale the moment the session moves on.
+- **Don't set `activity`.** The hooks own the idle / working / blocked transitions, and `activity` takes no override: a pinned value would outrank what the hooks observe and go stale the moment the session moves on.
 
 - **Set a `mode` only when a phase genuinely starts**, and prefer the named verb: `beacon retro`, `beacon done`. A mode marks the tab with its glyph and persists until it is left, so it is a declaration, not a status update. `release` sets itself off the release skill's invocation, so leave it alone. The user parks a session themselves with `/beacon:pause`.
 

@@ -31,7 +31,7 @@ The CLI must remain unaware of Claude. It's usable from CI, ad-hoc terminal scri
 SPEC §4.1 lists the surfaces beacon paints, and only those. Adding one is a spec change, not an implementation choice. The rules call sites have to keep:
 
 - The status bar lives in the beacon dynamic profile, never the user's profile.
-- The pane background changes only by swapping into a mode profile (RENDER-05), never by an ad-hoc background OSC.
+- The pane background changes only by swapping into a mode profile (RENDER-05), never by an ad-hoc background OSC. A block swaps nothing; what it waits on reaches the tab as a glyph (TITLE-06).
 - The window title and tab label go through the session name (`set-name`), not an OSC title or the profile's `Subtitle` (TITLE-05). Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
 - A status-bar button's `cmd` is read on the click, but its `label` is baked into the profile, so a label change needs `beacon refresh-iterm-profiles` (STATUS-BAR-09, CMD-23). Buttons run through an absolute interpreter path because an action shell has no interactive `PATH` (STATUS-BAR-07).
 - The badge is opt-in and gated at three paint sites: the profile's `Badge Text`, the plugin render, and the shell's `shell-init` block (BADGE-15). Change all three together.
@@ -48,7 +48,7 @@ The axes resolve independently, each owning its own surfaces (SPEC §1.3). No ca
 | | | `MODE_SPECS` | dynamic profile + pane background + watermark |
 | `permission` | hooks only, from the payload's `permission_mode` | `_is_planning` | the sessions view only, **no terminal surface** (PERM-02) |
 
-The indirection through a logical name (`ready` / `busy` / `blocked`) is the contract, so the palette retunes in one place. Don't reintroduce a precedence rule between mode and activity; the design is that they don't need one.
+The indirection through a logical name (`idle` / `working` / `blocked`) is the contract, so the palette retunes in one place. Don't reintroduce a precedence rule between mode and activity; the design is that they don't need one.
 
 ## How beacon reaches tack
 

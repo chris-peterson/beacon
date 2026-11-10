@@ -444,9 +444,8 @@ RECOMMENDED_LAYOUT = (
      "where": "Appearance → Tabs"},
     {"key": "ShowPaneTitles", "want": "0", "type": "bool",
      "label": "No per-pane title bars",
-     "why": "a split pane's title bar is a plain single-line text field fed by "
-            "the same session name, so it renders the <b> accent as a literal "
-            "tag and drops line 2 (TITLE-05); the tab label carries both",
+     "why": "a split pane's title bar shows the same session name on one line, "
+            "so it drops line 2 (TITLE-05); the tab label carries both lines",
      "where": "Appearance → Panes"},
 )
 
@@ -502,7 +501,7 @@ _PANE_TITLE_BAR_ON = (
     {"key": "ShowPaneTitles", "want": "1", "type": "bool",
      "label": "Per-pane title bars",
      "why": "pane-title-bar is on: a pane can be closed with a click, and its "
-            "title bar shows the session name on one line with <b> as text",
+            "title bar shows the session name on one line",
      "where": "Appearance → Panes"},
     {"key": "ShowPaneTitlesEvenIfOnlyOnePane", "want": "1", "type": "bool",
      "label": "Title bar with one pane",

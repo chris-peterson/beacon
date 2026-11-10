@@ -10,6 +10,7 @@ One line per kind of thing, and a kind with nothing in it takes no line:
 
 | Line | Shows |
 |:---|:---|
+| review | what a review open for you is about (a checkout or a CR), shown alone in place of the other lines until the review is released |
 | mode note | why the session is paused, in release, and so on, led by the mode's glyph |
 | delivered | what merged, closed, or released during this session, struck through, in green |
 | open CRs | each with its title and the issues it closes |
