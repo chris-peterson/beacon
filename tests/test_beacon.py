@@ -6827,6 +6827,17 @@ class StatusLineLinks(BeaconTest):
         self.assertIn(f"\033[{b.STATUSLINE_ISSUE_BLOCKED_SGR}m\033]8;;{_gl_issue('site', 2)}\a#2",
                       out)
 
+    def test_a_conflicting_cr_is_marked_ahead_of_its_title(self):
+        self._touch(_mr("site", 5), title="Add a settings page", conflicts=True)
+        self._touch(_mr("site", 6), title="Refactor", conflicts=None)
+        self.assertEqual(self._lines(),
+                         ["!6 Refactor · !5 ⚠ Add a settings page"])
+        self.assertIn(f"\033[{self.beacon.STATUSLINE_CONFLICT_SGR}m⚠", self._raw())
+
+    def test_the_conflict_mark_outlasts_the_title_when_fitted(self):
+        self._touch(_mr("site", 5), title="C" * 80, conflicts=True)
+        self.assertEqual(self._lines(columns=12), ["!5 ⚠"])
+
     def test_an_indented_line_does_not_start_with_whitespace(self):
         # Claude Code strips a row's leading whitespace; the indent has to
         # follow something that isn't.
@@ -6952,6 +6963,122 @@ class LinksExpansion(BeaconTest):
         self.beacon._wipe_session_for_fresh_start()
         self.assertEqual(self.beacon._read_links(), {})
         self.assertEqual(self.beacon.read_state_json("deliverables.expanded", []), [])
+
+
+class StackExpansion(BeaconTest):
+    """STATUSLINE-03 *Expansion*, stacks: a CR the session touched brings the
+    open CRs it is stacked on, down to the bottom of the stack, so the row draws
+    the whole tree rather than the top of it."""
+
+    def setUp(self):
+        super().setUp()
+        landed = mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set())
+        landed.start()
+        self.addCleanup(landed.stop)
+
+    def _touch(self, url):
+        self.beacon._record_deliverable(self.beacon._deliverable_suffix(url), url,
+                                        self.beacon._project_id_from_url(url))
+
+    def _stack(self, *numbers):
+        """Records a stack bottom first: each MR is stacked on the one before."""
+        mrs = [_mr("site", n) for n in numbers]
+        self.beacon._update_links(mrs[0], state="open", stacked_on=[])
+        for below, above in zip(mrs, mrs[1:]):
+            self.beacon._update_links(above, state="open", stacked_on=[below])
+        return mrs
+
+    def _urls(self):
+        return [e["url"] for e in self.beacon.read_state_json("deliverables", [])]
+
+    def _lines(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+        plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", buf.getvalue())
+        return [line.replace(self.beacon.STATUSLINE_INDENT_GUARD, "")
+                for line in plain.rstrip("\n").split("\n")]
+
+    def test_a_chain_deeper_than_one_hop_joins_and_draws_as_a_tree(self):
+        bottom, b, c, top = self._stack(3, 4, 5, 6)
+        self._touch(top)
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [bottom, b, c, top])
+        self.assertEqual(self._lines(), ["!3", "  └ !4", "    └ !5", "      └ !6"])
+
+    def test_a_base_learned_later_is_placed_under_the_nearer_one(self):
+        top, near, far = _mr("site", 6), _mr("site", 5), _mr("site", 4)
+        self.beacon._update_links(top, state="open", stacked_on=[near])
+        self._touch(top)
+        self.beacon._expand_linked_items()
+        self.beacon._update_links(near, state="open", stacked_on=[far])
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [far, near, top])
+
+    def test_a_settled_row_records_nothing(self):
+        mrs = self._stack(3, 4, 5)
+        self._touch(mrs[-1])
+        self.beacon._expand_linked_items()
+        with mock.patch.object(self.beacon, "_record_deliverable") as record:
+            self.beacon._expand_linked_items()
+        record.assert_not_called()
+
+    def test_the_cap_keeps_the_bases_nearest_the_session_cr(self):
+        mrs = self._stack(1, 2, 3, 4, 5)
+        for n in range(self.beacon.DELIVERABLES_MAX - 3):
+            self._touch(_gl_issue("site", 100 + n))
+        self._touch(mrs[-1])
+        self.beacon._expand_linked_items()
+        urls = self._urls()
+        self.assertEqual(len(urls), self.beacon.DELIVERABLES_MAX)
+        self.assertEqual(urls[:2], [mrs[2], mrs[3]])
+        self.assertNotIn(mrs[0], urls)
+        self.assertNotIn(mrs[1], urls)
+        self.assertNotIn(mrs[0], self.beacon._stale_link_urls(),
+                         "a base past the cap costs no forge read")
+
+    def test_a_direct_entry_evicts_the_farthest_base(self):
+        mrs = self._stack(1, 2, 3, 4)
+        for n in range(self.beacon.DELIVERABLES_MAX - 4):
+            self._touch(_gl_issue("site", 100 + n))
+        self._touch(mrs[-1])
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls()[:3], mrs[:3])
+        self._touch(_gl_issue("site", 99))
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls()[:2], mrs[1:3])
+        self.assertNotIn(mrs[0], self._urls())
+
+    def test_a_merged_base_ends_the_walk(self):
+        far, merged, top = self._stack(3, 4, 5)
+        self.beacon._update_links(merged, state="merged", landed_at="2026-10-13T10:00:00Z")
+        self._touch(top)
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [top])
+        self.assertNotIn(far, self.beacon._stale_link_urls())
+
+    def test_a_dropped_base_stays_off_and_ends_the_walk(self):
+        far, dropped, top = self._stack(3, 4, 5)
+        self.beacon.write_state("deliverables.dropped", json.dumps([dropped]))
+        self._touch(top)
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [top])
+
+    def test_only_a_directly_touched_cr_brings_its_stack(self):
+        issue = _gl_issue("site", 1)
+        base, cr = self._stack(4, 5)
+        self._touch(issue)
+        self.beacon._update_links(issue, expand=[cr])
+        self.beacon._expand_linked_items()
+        self.assertEqual(self._urls(), [cr, issue])
+
+    def test_the_refresher_reads_the_next_base_down(self):
+        top, unread = _mr("site", 6), _mr("site", 5)
+        self.beacon._update_links(top, state="open", stacked_on=[unread],
+                                  fetched_at=datetime.now().astimezone().isoformat())
+        self._touch(top)
+        self.assertEqual(self.beacon._stale_link_urls(), [unread])
 
 
 class RefreshLinks(BeaconTest):
@@ -7205,6 +7332,45 @@ class RefreshLinks(BeaconTest):
             "projects/acme%2Fsite": {"default_branch": "main"},
         })
         self.assertEqual(self.beacon._read_links()[url]["stacked_on"], [])
+
+    def _github_pr(self, mergeable, state="OPEN"):
+        url = "https://github.com/acme/widgets/pull/42"
+        self._record(url)
+        self._refresh({
+            "graphql": {"data": {"repository": {"issueOrPullRequest": {
+                "__typename": "PullRequest", "title": "x", "state": state,
+                "mergeable": mergeable, "closingIssuesReferences": {"nodes": []}}}}},
+            "dependencies/blocked_by": [],
+        })
+        return self.beacon._read_links()[url]
+
+    def test_a_conflicting_github_pr_records_its_conflicts(self):
+        self.assertIs(self._github_pr("CONFLICTING")["conflicts"], True)
+
+    def test_a_mergeable_github_pr_records_no_conflicts(self):
+        self.assertIs(self._github_pr("MERGEABLE")["conflicts"], False)
+
+    def test_an_unknown_github_mergeability_clears_what_was_known(self):
+        self.beacon._update_links("https://github.com/acme/widgets/pull/42", conflicts=True)
+        self.assertIsNone(self._github_pr("UNKNOWN")["conflicts"])
+
+    def test_a_merged_github_pr_records_no_mergeability(self):
+        self.assertNotIn("conflicts", self._github_pr("UNKNOWN", state="MERGED"))
+
+    def _gitlab_mr(self, **mr):
+        url = _mr("site", 5)
+        self._record(url)
+        self._refresh({"merge_requests/5/closes_issues": [], "merge_requests/5/blocks": [],
+                       "merge_requests/5": {"title": "x", "state": "opened", **mr}})
+        return self.beacon._read_links()[url]
+
+    def test_a_conflicting_gitlab_mr_records_its_conflicts(self):
+        record = self._gitlab_mr(has_conflicts=True, detailed_merge_status="conflict")
+        self.assertIs(record["conflicts"], True)
+
+    def test_a_gitlab_mr_still_being_checked_records_unknown(self):
+        record = self._gitlab_mr(has_conflicts=False, detailed_merge_status="checking")
+        self.assertIsNone(record["conflicts"])
 
     def test_a_change_in_a_tree_rereads_the_rest_of_it(self):
         base, tip, other = _mr("site", 4), _mr("site", 5), _mr("site", 9)

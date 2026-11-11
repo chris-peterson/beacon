@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### The status line draws a CR's whole stack
+
+A session on a stacked CR used to show only that CR, because the CRs it is
+stacked on weren't on the row to draw it under. Now the open CRs beneath it
+join the row, down to the one that targets the default branch, and draw as
+the stack's tree with what can merge first on top. The CRs stacked above
+yours stay off. When the row is full, the bases nearest your CR are the
+ones kept.
+
+### A CR with conflicts is marked
+
+A CR the forge says conflicts with its target now shows a red `⚠` before
+its title on the status line. The mark comes from the same background
+forge read as the title, so it can trail a conflict, or its fix, by up to
+ten minutes. Right after a push, while the forge is still
+checking, the CR shows no mark.
+
 ## 2.21.0
 
 ### Breaking: `activity` reads `blocked`, not `waiting`

@@ -4928,13 +4928,14 @@ def _record_deliverable(ref: str, url: str, project_id: str, expanded: bool = Fa
     URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
     oldest dropped, so the footer can't grow without bound.
 
-    `expanded` marks an entry that reached the row only because an issue on it
-    links there (STATUSLINE-03 *Expansion*). Expansion is one hop, so such an
-    entry is not expanded in turn, and it never displaces a direct one: an
-    expanded record of a URL already on the row changes nothing, it goes in
-    older than every direct entry so the cap evicts it first, and it is skipped
-    when direct entries fill the row. A direct record of an expanded URL makes
-    it direct.
+    `expanded` marks an entry that reached the row only because something on it
+    links there (STATUSLINE-03 *Expansion*). It never displaces a direct one: an
+    expanded record of a URL the session touched directly changes nothing, it
+    goes in older than every direct entry so the cap evicts it first, and it is
+    skipped when direct entries fill the row. An expanded record of a URL
+    already there by expansion moves it to the newest expanded place, which is
+    how `_expand_linked_items` restores the order the cap evicts in. A direct
+    record of an expanded URL makes it direct.
 
     Every entry is re-stamped against the landed sources on each call, so a CR
     that merged (or a release that shipped) mid-session moves to the delivered
@@ -4949,10 +4950,13 @@ def _record_deliverable(ref: str, url: str, project_id: str, expanded: bool = Fa
     marked = set(read_state_json("deliverables.expanded", []))
     entry = {"ref": ref, "url": url, "project": project_id}
     if expanded:
-        if any(_canonical_item_url(e.get("url", "")) == canonical for e in current):
+        if any(_canonical_item_url(e.get("url", "")) == canonical and e.get("url") not in marked
+               for e in current):
             return
         if sum(e.get("url") not in marked for e in current) >= DELIVERABLES_MAX:
             return
+        marked = {u for u in marked if _canonical_item_url(u) != canonical}
+        current = [e for e in current if _canonical_item_url(e.get("url", "")) != canonical]
         first_direct = next((i for i, e in enumerate(current) if e.get("url") not in marked),
                             len(current))
         marked.add(url)
@@ -4994,7 +4998,8 @@ class ForgeError(Exception):
 
 def _read_links() -> dict:
     """STATUSLINE-03's per-item forge record, keyed by URL: `{title, state,
-    landed_at, closes, waits_on, stacked_on, expand, fetched_at, error}`. Held
+    landed_at, conflicts, closes, waits_on, stacked_on, expand, fetched_at,
+    error}`. Held
     apart from `deliverables` because the entry for the branch's own CR is
     rebuilt on every publish, and a field stored on it would be dropped each
     time."""
@@ -5054,16 +5059,54 @@ def _links_stale(record: dict | None, now: float) -> bool:
 
 
 def _expansion_targets(entries: list[dict], links: dict) -> list[str]:
-    """What the forge links to each open issue on the row: the CRs that close
-    it, the issues it blocks or is blocked by, and what its description opens
-    by referencing (STATUSLINE-03 *Expansion*). One hop: an entry that is itself
-    on the row by expansion is not expanded."""
+    """What the row expands to (STATUSLINE-03 *Expansion*), in the order to
+    record it, so the last is the furthest from the cap's eviction edge: what
+    the forge links to each open issue on the row (the CRs that close it, the
+    issues it blocks or is blocked by, and what its description opens by
+    referencing), then the stacks under the row's CRs (`_stack_bases`). One
+    hop: an entry that is itself on the row by expansion is not expanded."""
     marked = set(read_state_json("deliverables.expanded", []))
     issues = [e["url"] for e in entries
               if e.get("url") and not e.get("delivered")
               and _deliverable_kind(e["url"]) == "issue" and e["url"] not in marked]
-    return [url for issue in issues for url in (links.get(issue) or {}).get("expand") or []
-            if _deliverable_suffix(url)]
+    linked = [url for issue in issues for url in (links.get(issue) or {}).get("expand") or []
+              if _deliverable_suffix(url)]
+    return [*linked, *reversed(_stack_bases(entries, links, marked))]
+
+
+def _stack_bases(entries: list[dict], links: dict, marked: set[str]) -> list[str]:
+    """STATUSLINE-03 *Expansion*, stacks: the open CRs under each open CR the
+    session touched directly, followed down `stacked_on` to the bottom of its
+    stack, nearest first and the newest CR's stack first. A merged or closed
+    base, or a dropped one (CMD-24), ends the walk down its side.
+
+    Held to the room direct entries leave on the row, so a stack deeper than
+    that keeps the bases nearest the session's CR: those carry the `└` edges
+    that place it, and the part of the stack that does show stays joined."""
+    dropped = {_canonical_item_url(u) for u in read_state_json("deliverables.dropped", [])}
+    raw = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    room = DELIVERABLES_MAX - sum(e.get("url") not in marked for e in raw)
+    tops = [e["url"] for e in reversed(entries)
+            if e["url"] not in marked and not e.get("delivered")
+            and _deliverable_kind(e["url"]) == "cr"]
+    seen = {_canonical_item_url(e["url"]) for e in entries if e["url"] not in marked}
+    bases = []
+    for top in tops:
+        frontier = [top]
+        while frontier:
+            below = []
+            for url in frontier:
+                for base in (links.get(url) or {}).get("stacked_on") or []:
+                    canonical = _canonical_item_url(base)
+                    if canonical in seen or not _deliverable_suffix(base):
+                        continue
+                    seen.add(canonical)
+                    if canonical in dropped or (links.get(base) or {}).get("state") in ("merged", "closed"):
+                        continue
+                    bases.append(base)
+                    below.append(base)
+            frontier = below
+    return bases[:max(room, 0)]
 
 
 def _stale_link_urls() -> list[str]:
@@ -5087,11 +5130,27 @@ def _stale_link_urls() -> list[str]:
 
 
 def _expand_linked_items() -> None:
-    """STATUSLINE-03 *Expansion*: put the row's expansion targets on the row.
-    Reads only the cached forge record, so it is cheap enough for the per-turn
-    publish."""
+    """STATUSLINE-03 *Expansion*: put the row's expansion targets on the row, in
+    `_expansion_targets`' order. A stack is learned a base per refresher pass,
+    so a deeper base reaches the row after a nearer one and would otherwise sit
+    on the newer side of it, where the cap would cut the stack in the middle.
+    Re-recording the targets puts the order back; it is skipped when the
+    expanded entries already end in that order, so a settled row costs no
+    write. Reads only the cached forge record, so it is cheap enough for the
+    per-turn publish."""
     links = _read_links()
-    for url in _expansion_targets(_row_entries(links), links):
+    targets = list(dict.fromkeys(_expansion_targets(_row_entries(links), links)))
+    marked = set(read_state_json("deliverables.expanded", []))
+    raw = [e for e in read_state_json("deliverables", []) if isinstance(e, dict)]
+    direct = {_canonical_item_url(e.get("url", "")) for e in raw if e.get("url") not in marked}
+    dropped = {_canonical_item_url(u) for u in read_state_json("deliverables.dropped", [])}
+    wanted = [_canonical_item_url(u) for u in targets
+              if _canonical_item_url(u) not in direct | dropped]
+    wanted = wanted[max(len(wanted) - (DELIVERABLES_MAX - len(direct)), 0):]
+    placed = [_canonical_item_url(e["url"]) for e in raw if e.get("url") in marked]
+    if wanted and placed[-len(wanted):] == wanted:
+        return
+    for url in targets:
         _record_deliverable(_deliverable_suffix(url), url, _project_id_from_url(url), expanded=True)
 
 
@@ -5119,7 +5178,7 @@ _GITHUB_ITEM_QUERY = (
     "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){defaultBranchRef{name} "
     "issueOrPullRequest(number:$n){__typename "
     "... on Issue{title state closedAt body closedByPullRequestsReferences(first:50){nodes{url state}}} "
-    "... on PullRequest{title state mergedAt closedAt baseRefName "
+    "... on PullRequest{title state mergedAt closedAt mergeable baseRefName "
     "baseRef{associatedPullRequests(states:OPEN,first:5){nodes{url}}} "
     "closingIssuesReferences(first:50){nodes{url}}}}}}")
 _GITHUB_ISSUE_DEPENDENCIES_QUERY = (
@@ -5189,6 +5248,9 @@ def _fetch_github_links(m: re.Match) -> dict:
         record["stacked_on"] = [] if on_default else [
             u for u in _node_urls((item.get("baseRef") or {}).get("associatedPullRequests"))
             if u != m.group(0)]
+        if record.get("state") == "open":
+            # GitHub computes this after a push, and answers UNKNOWN until then.
+            record["conflicts"] = {"CONFLICTING": True, "MERGEABLE": False}.get(item.get("mergeable"))
         return {**record, "error": "; ".join(errors)}
     deps_doc = _dependency_json(["gh", "api", *hostname, "graphql",
                                  "-f", f"query={_GITHUB_ISSUE_DEPENDENCIES_QUERY}", *variables],
@@ -5205,6 +5267,11 @@ def _fetch_github_links(m: re.Match) -> dict:
     if deps_doc is not None:
         record["waits_on"] = _node_urls(deps.get("blockedBy"))
     return {**record, "error": "; ".join(errors)}
+
+
+# GitLab recomputes mergeability after a push, and `has_conflicts` reads false
+# until it has.
+_GITLAB_MERGE_STATUS_PENDING = frozenset({"unchecked", "checking", "preparing", "approvals_syncing"})
 
 
 def _fetch_gitlab_links(m: re.Match) -> dict:
@@ -5226,6 +5293,10 @@ def _fetch_gitlab_links(m: re.Match) -> dict:
             record["waits_on"] = [(b.get("blocking_merge_request") or {}).get("web_url")
                                   for b in blocks if isinstance(b, dict)
                                   and (b.get("blocking_merge_request") or {}).get("web_url")]
+        if record.get("state") == "open":
+            record["conflicts"] = (None if mr.get("detailed_merge_status") in _GITLAB_MERGE_STATUS_PENDING
+                                   or not isinstance(mr.get("has_conflicts"), bool)
+                                   else mr["has_conflicts"])
         target = (mr or {}).get("target_branch")
         if target and record.get("state") == "open":
             heads = _dependency_json(
@@ -5446,6 +5517,8 @@ def _safe_links_record(record: dict) -> dict:
     title = _display_safe(str(record.get("title") or ""))
     if title:
         out["title"] = title
+    if "conflicts" in record:
+        out["conflicts"] = record["conflicts"] if isinstance(record["conflicts"], bool) else None
     if record.get("state") in ("open", "merged", "closed"):
         out["state"] = record["state"]
         landed = str(record.get("landed_at") or "")
@@ -6919,6 +6992,11 @@ STATUSLINE_DELIVERED = {
 }
 # A CR closed without merging left the open lines but shipped nothing.
 STATUSLINE_ABANDONED = ("closed", "✗")
+# A CR the forge says can't merge as it stands. Red is beacon's "needs you"
+# (THEME-02), and the mark sits before the title so the width fitting, which
+# trims titles first, never takes it.
+STATUSLINE_CONFLICT = "⚠"
+STATUSLINE_CONFLICT_SGR = "31"
 
 
 def _osc8(url: str, text: str) -> str:
@@ -7119,6 +7197,8 @@ def _statusline_item(entry: dict, ref: str, record: dict, sgr: str, cap: int, qu
     out = f"\033[{sgr}m{_osc8(url, ref)}\033[0m"
     if _deliverable_kind(url) != "cr":
         return out
+    if record.get("conflicts") is True:
+        out += f" \033[{STATUSLINE_CONFLICT_SGR}m{STATUSLINE_CONFLICT}\033[0m"
     title = " ".join(str(record.get("title") or "").split())
     if title and cap:
         if len(title) > cap:
