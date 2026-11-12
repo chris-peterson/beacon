@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Another tool can put a line on the badge
+
+`beacon badge "<text>" [--color <hex>]` puts one line of text on the
+session's iTerm2 badge, and `beacon badge --clear` takes it down. Without
+`--color` the badge is a neutral gray. The text shows whether or not
+the badge is turned on in your config, and survives a mode change, which
+swaps the pane's profile and would wipe a badge written straight to the
+terminal. Ending the session, or `beacon clear`, drops it.
+
+### `retro` no longer badges the pane
+
+A retro is marked by its `📋` tab glyph alone. The pane keeps your profile
+and no longer shows a `retro` badge, and the `beacon-retro` profile is
+gone: the next `beacon install` or `beacon refresh-iterm-profiles` removes
+it.
+
 ### The status line draws a CR's whole stack
 
 A session on a stacked CR used to show only that CR, because the CRs it is

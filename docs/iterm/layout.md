@@ -119,7 +119,7 @@ Each surface beacon renders through has a number here, and [Settings by surface]
     <li><span><b>Tab</b>: the project, with the task indented under it, colored by the session's <em>activity</em> and led by the <em>mode</em>'s glyph when one is declared, or by <code>❓</code>, <code>🔒</code>, or <code>👀</code> while it's blocked on a question, a permission, or a review (see <a href="#/palette?id=tab-only-marks-the-glyph-and-nothing-else">tab-only marks</a>). Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b>Status bar</b>: along the top of the window: the <code>↖ web</code> button, the project's name, the branch colored by its git sync state, and the <code>↗ code</code> button. <a href="#/iterm/layout?id=the-status-bar">The status bar</a> covers each.</span></li>
     <li><span><b>Per-pane title bar</b>: iTerm2's bar across the top of a pane, with the pane's close button and menu. Off by default, because it shows the session name on one line, without the task line; <a href="#/iterm/layout?id=per-pane-title-bars">Per-pane title bars</a> turns it on.</span></li>
-    <li><span><b>Pane</b>: left to Claude Code and your profile, except while a mode is declared, when it takes the mode's background color and a faint watermark, or for <code>retro</code> a badge.</span></li>
+    <li><span><b>Pane</b>: left to Claude Code and your profile, except while a mode is declared, when it takes the mode's background color and a faint watermark.</span></li>
     <li><span><b>Status line</b>: Claude Code's footer rows, where beacon lists the mode's note and the session's PRs and issues.</span></li>
   </ol>
 </div>
@@ -186,6 +186,8 @@ beacon can also paint an iTerm2 **badge**: the large project/task overlay in the
 ```
 
 Re-run `beacon refresh-iterm-profiles` to pick it up; the color follows the same states as the tab.
+
+Another tool can put a line of its own on the badge with `beacon badge`, on or off; while it's set, it takes the place of the project and task. See [the badge](/palette?id=the-beacon-palette).
 
 ### Compact and Regular tabs
 
@@ -386,7 +388,6 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 | Setting | beacon sets | Why | Can you change it? |
 |---|---|---|---|
 | Background color and image, in the mode profiles only (Profiles → Colors, Window) | a color and a faint watermark for `pause`, `release`, and `done` | a declared mode reads across the whole focused pane, not only in the tab's glyph | No |
-| Badge text, in the `beacon-retro` profile only (Profiles → General) | `retro` | marks a retro without repainting the pane you spend it writing in | No |
 | Working Directory for New Split Panes (Profiles → General → Advanced Configuration) | Reuse previous session's directory | a split is usually more work in the same project; new tabs and windows follow your profile | No |
 
 ### ⑤ Status line

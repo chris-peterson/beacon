@@ -80,6 +80,17 @@ commands:
 - name: unblock
   usages:
   - summary: release the review `block` holds
+- name: badge
+  usages:
+  - summary: put one line of text on the pane badge, optionally in a color of its own, until `badge --clear`
+    args:
+    - name: text
+      optional: true
+      repeatable: true
+    flags:
+    - name: --color
+      arg: COLOR
+    - name: --clear
 - name: pause
   usages:
   - summary: enter pause mode with an optional note

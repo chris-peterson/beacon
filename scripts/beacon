@@ -456,6 +456,7 @@ _beacon() {
     'clear:clear one or all overrides'
     'block:hold the session blocked on a review of a target until unblock or a quiet turn end'
     'unblock:release the review block holds'
+    'badge:put one line of text on the pane badge until badge --clear'
     'pause:enter pause mode with an optional note'
     'release:enter release mode (ship-it flow in progress) with an optional note'
     'retro:enter retro mode (post-work follow-up) with an optional note'
@@ -510,6 +511,10 @@ _beacon() {
     block)
       (( CURRENT == 3 )) && _message 'path or change request URL'
       compadd -- --skill
+      ;;
+    badge)
+      (( CURRENT == 3 )) && _message 'text'
+      compadd -- --color --clear
       ;;
     pause)
       (( CURRENT == 3 )) && _message 'note (optional)'
@@ -781,13 +786,12 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 #                own; brightness sits on a shared luma ladder (THEME-02a).
 #   image      — faint background-image watermark (file under iterm/resources)
 #   blend      — iTerm2 Blend for that image (lower = fainter)
-#   badge      — fixed badge text, in place of a background (BADGE-11)
 #
 # Mode profiles exist (RENDER-05) because a mode's second cue is a pane
-# background — a color and a faint watermark — that no OSC sets, or a fixed
-# badge that the swap back to the base profile clears with nothing to track.
-# Entering or leaving a mode swaps the session's profile; the dev cycle has no
-# profile of its own and stays an OSC overlay on the base.
+# background — a color and a faint watermark — that no OSC sets. Entering or
+# leaving such a mode swaps the session's profile; a mode without a background
+# (`retro`) and the dev cycle have no profile of their own and stay an OSC
+# overlay on the base.
 #
 #   stood_down — the mode declares the session at a halt rather than in an
 #                active phase (STATE-15). Two behaviors read it, and they landed
@@ -826,14 +830,11 @@ MODE_SPECS = {
         "image": "release-bg.png",
         "blend": 0.30,
     },
-    # `retro` is the post-work follow-up phase. It keeps the user's own pane and
-    # marks itself with a small `retro` badge instead, since a retro runs long
-    # enough that a whole-pane treatment wears on whoever is writing it.
+    # `retro` is the post-work follow-up phase. It keeps the user's own pane,
+    # since a retro runs long enough that a whole-pane treatment wears on whoever
+    # is writing it, so its glyph is its only mark.
     "retro": {
         "glyph": "📋",
-        "profile": f"{PROFILE_NAMESPACE}-retro",
-        "guid": "9c1e7b42-5a3d-4e8f-b06c-1d2a4f7e9b30",
-        "badge": "retro",
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
     # closing-out skill reaches for instead of pause: a near-black "powered off"
@@ -4589,6 +4590,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "review": review,
         "stop_error": read_stop_error(),
         "background": read_background_count(),
+        "badge": read_badge(),
     }
 
 
@@ -5981,14 +5983,15 @@ def _iterm_profile_names() -> set:
 
 
 def _derived_profile_specs() -> list[dict]:
-    """Every profile derived from the base: one per mode (RENDER-05)."""
-    return list(MODE_SPECS.values())
+    """Every profile derived from the base: one per mode that paints the pane
+    (RENDER-05)."""
+    return [spec for spec in MODE_SPECS.values() if spec.get("profile")]
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
     """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
-    and one derived mode profile per MODE_SPECS entry (beacon-pause,
-    beacon-release, beacon-retro, beacon-done; RENDER-05) into iTerm2's
+    and one derived mode profile per MODE_SPECS entry that paints the pane
+    (beacon-pause, beacon-release, beacon-done; RENDER-05) into iTerm2's
     DynamicProfiles directory. iTerm2
     watches the directory and reloads on change without restart, so the write
     needs no quit.
@@ -6065,7 +6068,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
 
     # Derive each mode profile from the just-rendered base (RENDER-05): same
     # status-bar layout / badge sizing (and gray badge-color default), differing
-    # only in the mode's background and watermark, or its fixed badge text.
+    # only in the mode's background and watermark.
     # Deriving rather than hand-maintaining sibling
     # templates keeps the layout single-sourced so the profiles never drift.
     written = [str(target)]
@@ -6086,8 +6089,6 @@ def install_dynamic_profile() -> tuple[bool, str]:
                 for key in ("Background Color", "Background Color (Light)",
                             "Background Color (Dark)"):
                     mode_profile[key] = background
-            if spec.get("badge"):
-                mode_profile["Badge Text"] = spec["badge"]
             if spec.get("image"):
                 # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
                 # asset stays centered and proportional on any pane size. Blend
@@ -6205,20 +6206,39 @@ def _mode_glyph_for(state: dict) -> str:
     return BACKGROUND_TITLE_LEAD if state.get("activity") == "background" else DEV_TITLE_LEAD
 
 
-def _badge_format_for(state: dict) -> str:
-    """The badge format an opted-in badge (BADGE-15) carries: the mode's fixed
-    badge text when it declares one (BADGE-11), else BADGE_FORMAT. The same text
-    sits in the mode profile's `Badge Text`, which is what shows with the badge
-    off; with it on, the OSC this feeds outranks the profile."""
-    spec = MODE_SPECS.get(state.get("mode"))
-    return (spec or {}).get("badge") or BADGE_FORMAT
+def _badge_literal(text: str) -> str:
+    """`text` as a badge format that renders verbatim. The format is an iTerm2
+    interpolated string, where a backslash escapes and `\\(` opens a variable, so
+    a caller's text could otherwise read a user var or vanish."""
+    return text.replace("\\", "\\\\")
+
+
+def _badge_format_for(state: dict, badge_on: bool) -> str:
+    """The badge format the pane carries: a caller's badge (BADGE-16) whatever
+    the toggle, else BADGE_FORMAT when the badge is opted in (BADGE-15), else
+    empty, which is the base profile's own `Badge Text`."""
+    custom = state.get("badge") or {}
+    if custom.get("text"):
+        return _badge_literal(custom["text"])
+    return BADGE_FORMAT if badge_on else ""
+
+
+def _badge_hex_for(state: dict, color_state: str) -> str:
+    """A caller's badge holds its color (BADGE-16): the one it named, else the
+    at-rest gray. It is a label, not a status, and the tab already reports the
+    activity. beacon's own badge takes the activity hue at full strength
+    (BADGE-09)."""
+    custom = state.get("badge") or {}
+    if custom.get("text"):
+        return custom.get("color") or COLOR_PALETTE["idle"]
+    return COLOR_PALETTE.get(color_state, COLOR_PALETTE["idle"])
 
 
 def _profile_for(state: dict) -> str:
     """The dynamic profile the pane sits in: the mode's (RENDER-05), else the
     base profile. Call sites never name an iTerm profile."""
-    spec = MODE_SPECS.get(state.get("mode"))
-    return spec["profile"] if spec else BASE_PROFILE_NAME
+    spec = MODE_SPECS.get(state.get("mode")) or {}
+    return spec.get("profile") or BASE_PROFILE_NAME
 
 
 def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
@@ -6268,10 +6288,6 @@ def apply(state: dict):
     badge_on = _badge_enabled()
     if switched:
         _cli("set-profile", target_profile)
-        # BADGE-15: the badge is opt-in (off by default). Its format is only
-        # re-emitted after a profile swap wipes the OSC when the badge is on.
-        if badge_on:
-            _cli("badge-format", _badge_format_for(state))
         # SetProfile resets the session name to the profile's literal Name, so
         # restore the interpolated window title (WINDOW-TITLE) after every swap
         # — and on the first render, which is also a swap (prev has no profile).
@@ -6287,8 +6303,15 @@ def apply(state: dict):
     # TAB-04: the tab takes the area-weighted hue, the badge the canonical one.
     # The badge is small and sits over terminal output, so it wants full strength
     # for the same reason the tab cannot have it.
-    if badge_on:
-        _cli("badge-color", COLOR_PALETTE.get(color_state, COLOR_PALETTE["idle"]))
+    # BADGE-15 / -16: the format is re-emitted when it changes, and after a swap
+    # wipes it; an empty one already matches the base profile's `Badge Text`.
+    # Clearing a caller's badge with the toggle off is a change to empty, so it
+    # emits the blank format that takes the text down.
+    badge_format = _badge_format_for(state, badge_on)
+    if badge_format != prev.get("badge_format", "") or (switched and badge_format):
+        _cli("badge-format", badge_format)
+    if badge_format:
+        _cli("badge-color", _badge_hex_for(state, color_state))
     _cli("tab-color", _tab_hex(color_state))
 
     # BADGE-02 / -11 / -12: plugin is sole writer of beacon_project. The badge
@@ -6355,6 +6378,7 @@ def apply(state: dict):
         "title_prefix": glyph,
         "label_lead": label_lead,
         "profile": target_profile,
+        "badge_format": badge_format,
     }
     write_state("resolved", json.dumps(snapshot, indent=2))
 
@@ -6514,6 +6538,36 @@ def cmd_unblock(_args):
     render()
 
 
+_BADGE_HEX_RE = re.compile(r"#?([0-9a-fA-F]{6})")
+
+
+def read_badge() -> dict:
+    """The caller's badge (BADGE-16): `{"text": ..., "color": ...}`, or {}."""
+    badge = read_state_json("badge", {})
+    return badge if isinstance(badge, dict) else {}
+
+
+def cmd_badge(args):
+    """BADGE-16: put one line of a caller's text on the pane badge, optionally
+    in a color of its own, until `badge --clear`. For another tool that wants a
+    corner of the pane; beacon's own badge text (BADGE-15) yields to it."""
+    if args.clear:
+        remove_state("badge")
+        render()
+        return
+    text = _display_safe(" ".join(args.text), limit=None)
+    if not text:
+        sys.exit("beacon badge: give the text, or --clear")
+    badge = {"text": text}
+    if args.color:
+        m = _BADGE_HEX_RE.fullmatch(args.color.strip())
+        if not m:
+            sys.exit(f"beacon badge: --color takes a 6-digit hex, got: {args.color}")
+        badge["color"] = m.group(1).lower()
+    write_state("badge", json.dumps(badge))
+    render()
+
+
 def _disengage() -> None:
     """BADGE-14 disengagement: return the pane to its unpainted, unmanaged
     look. Clears overrides, the mode, and sticky red markers, drops the
@@ -6528,6 +6582,7 @@ def _disengage() -> None:
     # the next Notification re-asserts both.
     remove_state("pending-attention")
     remove_state("review")
+    remove_state("badge")
     if read_activity() in ("blocked", "error"):
         remove_state("activity")
     _clear_cc_signals()
@@ -6614,7 +6669,7 @@ def cmd_retro(args):
     """Enter retro mode: a post-work follow-up / retro phase a session or skill
     declares. Like release it does not auto-resume on the next prompt — it
     persists until `status dev` / `resume` / `clear` or the session ends. The tab
-    takes a 📋; the pane keeps its background and shows a `retro` badge."""
+    takes a 📋; the pane is left as it is."""
     write_mode("retro", _note_from(args.note))
     render()
 
@@ -9291,6 +9346,12 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sub.add_parser("unblock", help="release the review `block` holds")
 
+    sp = sub.add_parser("badge", help="put one line of text on the pane badge, "
+                                      "optionally in a color of its own, until `badge --clear`")
+    sp.add_argument("text", nargs="*")
+    sp.add_argument("--color", help="the badge color, as a 6-digit hex (default: a neutral gray)")
+    sp.add_argument("--clear", action="store_true", help="take the text down")
+
     sp = sub.add_parser("pause", help="enter pause mode with an optional note")
     sp.add_argument("note", nargs="*")
     sp.add_argument("--clear-screen", action="store_true",
@@ -9474,7 +9535,7 @@ def main(argv=None):
         "show": cmd_show, "set": cmd_set, "task": cmd_task,
         "status": cmd_status, "project": cmd_project,
         "clear": cmd_clear,
-        "block": cmd_block, "unblock": cmd_unblock,
+        "block": cmd_block, "unblock": cmd_unblock, "badge": cmd_badge,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
         "resume": cmd_resume, "reset": cmd_reset,
         "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,

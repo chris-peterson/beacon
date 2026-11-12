@@ -155,7 +155,7 @@ cli:
     - name: Modes
       about: >-
         The phase you declare. It marks the tab with a glyph, swaps the pane
-        into that mode's background (for `retro`, a badge on your own), and
+        into that mode's background (`retro` leaves your pane alone), and
         holds a note until you leave it.
       commands: [status, pause, release, retro, done]
     - name: Blocks
@@ -165,6 +165,13 @@ cli:
         blocked fill, and the status line names what is under review, until the
         tool releases it.
       commands: [block, unblock]
+    - name: The badge
+      about: >-
+        For a tool that wants a corner of the pane: one line of its own text on
+        the iTerm2 badge, in its own color if it names one, until it takes the
+        text down. It shows whether or not the badge is turned on, and survives
+        a mode's profile swap.
+      commands: [badge]
     - name: The sessions view
       about: >-
         Reading across every session at once. Terminal-agnostic: they paint

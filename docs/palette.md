@@ -4,11 +4,39 @@ beacon paints two independent things about a session, so a glance tells you both
 
 **What's happening right now** (`activity`) is the tab **color**: gray at rest, orange working, red when Claude needs you. Three values, one meaning, on every tab. That's the legacy [tab look](/iterm/layout?id=tab-look) this page draws. The modern look, the default on iTerm2 3.7.5+, lets Claude Code's own status color the task line and puts a dark fill tinted toward the same hue behind it.
 
-**What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background** (or, for `retro`, a small badge). `⏸` `🚀` `📋` `🏁` `…`.
+**What phase you've declared** (`mode`) is the tab **glyph** and, once you focus the pane, its **background** (`retro` leaves the pane alone). `⏸` `🚀` `📋` `🏁` `…`.
 
 **What a session is waiting on**, when the color can't say it, is a tab glyph with no pane: `❓` `🔒` `👀` for what a block wants from you, `⏳` for background work still running. See [tab-only marks](#tab-only-marks-the-glyph-and-nothing-else).
 
-Color and glyph never compete, because they never share a surface. A releasing session keeps its `🚀` whatever its color; when it stops to ask you something, the `🚀` gives way to `❓` or `🔒` until you answer, and the release pane stays put. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree. (The color also paints the [badge](/iterm/layout?id=turning-the-badge-on) if you turn one on; it's off by default.)
+Color and glyph never compete, because they never share a surface. A releasing session keeps its `🚀` whatever its color; when it stops to ask you something, the `🚀` gives way to `❓` or `🔒` until you answer, and the release pane stays put. The same split rides the [dashboard](/demo) cards, so the pane and the browser view always agree.
+
+**The badge**, the text in the pane's top-right corner, is for other tools to set. By default beacon puts nothing of its own there: a tool that wants to name something about a session writes one line with `beacon badge "<text>"`, in a color of its own with `--color <hex>` or a neutral gray without one, and takes it down with `beacon badge --clear`. (beacon's project and task can sit there too if you [turn that on](/iterm/layout?id=turning-the-badge-on); it's off by default.)
+
+<div class="pal pal-grid">
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: #8b8fa0">checkout-api</span>
+      <span class="badge" style="color: #ff79c6">rig: web</span>
+    </div>
+    <div class="pal-meta">
+      <h4>its own color <span class="cmd">beacon badge "rig: web" --color ff79c6</span></h4>
+      <p>The badge holds the color it was given, whatever the session is doing.</p>
+    </div>
+  </div>
+
+  <div class="pal-card">
+    <div class="pal-pane" style="background: var(--ground)">
+      <span class="tab" style="color: #ffb86c">checkout-api</span>
+      <span class="badge" style="color: #8b8fa0">rig: web</span>
+    </div>
+    <div class="pal-meta">
+      <h4>neutral gray <span class="cmd">beacon badge "rig: web"</span></h4>
+      <p>With no color named, the badge stays gray. The tab reports what the session is doing.</p>
+    </div>
+  </div>
+
+</div>
 
 **Plan mode is watched but not painted.** beacon reads Claude Code's permission mode off every hook, and surfaces it in the [sessions view](/demo): a card has room for the word `plan` where a tab does not. The tab says nothing about it: color is the only signal you read across every tab at once, so it answers *does this need me* and nothing else.
 
@@ -47,7 +75,7 @@ Colors are drawn from the [Dracula palette](https://draculatheme.com/contribute)
 .pal-pane { position: relative; height: 118px; display: block; }
 .pal-pane .wm { position: absolute; inset: 0; margin: auto; width: 76px; height: 76px; object-fit: contain; opacity: 0.6; }
 .pal-pane .tab { position: absolute; top: 0.55rem; left: 0.7rem; font-size: 15px; letter-spacing: 0.01em; }
-.pal-pane .badge { position: absolute; top: 0.55rem; right: 0.7rem; font: 700 13px/1.3 Futura, var(--mono); color: var(--idle); }
+.pal-pane .badge { position: absolute; top: 0.55rem; right: 0.7rem; font: 700 15px/1.3 var(--mono); }
 .pal-meta { padding: 0.8rem 0.9rem 0.95rem; }
 .pal-meta h4 { margin: 0 0 0.15rem; font: 600 1.05rem/1.2 var(--mono); color: var(--fg); }
 .pal-meta .cmd { font: 0.72rem var(--mono); color: var(--faint); }
@@ -111,7 +139,7 @@ Green stays reserved here too, for [`release`](#modes-the-tab-glyph-and-the-pane
 
 ## modes: the tab glyph and the pane
 
-A mode is something you (or a skill) declare. Each carries a **glyph on the tab** (its only cross-tab surface, since with many tabs open only one pane is on screen) and swaps that pane into its own dynamic profile for a cue the glyph alone can't express: a distinct background color plus a faint slate watermark matching the glyph, or, for `retro`, a small badge naming the mode. A mode never touches the tab color, so declaring one never hides whether the session needs you. They persist until you `resume` (`pause` also lifts automatically, on your next prompt).
+A mode is something you (or a skill) declare. Each carries a **glyph on the tab** (its only cross-tab surface, since with many tabs open only one pane is on screen) and swaps that pane into its own dynamic profile for a cue the glyph alone can't express: a distinct background color plus a faint slate watermark matching the glyph. `retro` is the exception: it keeps your pane as it is. A mode never touches the tab color, so declaring one never hides whether the session needs you. They persist until you `resume` (`pause` also lifts automatically, on your next prompt).
 
 <div class="pal pal-grid">
 
@@ -142,12 +170,11 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
   <div class="pal-card">
     <div class="pal-pane" style="background: var(--ground)">
       <span class="tab" style="color: #8b8fa0">📋 checkout-api</span>
-      <span class="badge">retro</span>
     </div>
     <div class="pal-meta">
       <h4>retro <span class="cmd">beacon retro</span></h4>
-      <p>A post-work follow-up or retro phase. The pane keeps your own background and carries a small <code>retro</code> badge in its corner.</p>
-      <div class="hexrow"><span>glyph 📋</span><span>badge <code>retro</code></span></div>
+      <p>A post-work follow-up or retro phase.</p>
+      <div class="hexrow"><span>glyph 📋</span></div>
     </div>
   </div>
 
@@ -288,7 +315,7 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 
 - **Color means one thing.** The tab color answers "does this need me" and nothing else, on every tab, whatever the session has declared about itself. Modes are told apart by shape instead, which is also what lets you read both at once.
 - **Gray is the calm default.** A session at rest and a session that's `done` both sit in neutral grays that recede, so the loud colors (orange, red, green) are the ones that pull your eye.
-- **Most modes own a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `done` a near-black purple. Each is recognizable across the whole pane, not just by the tab. `retro` runs long and is spent writing, so it keeps your background and names itself in a small badge instead.
+- **Most modes own a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `done` a near-black purple. Each is recognizable across the whole pane, not just by the tab. `retro` runs long and is spent writing, so it keeps your background and is marked by its glyph alone.
 - **Only a declared phase gets a pane.** A mode is set once and held until you leave it, so it's worth a cue across the whole pane. A block or background work comes and goes within a turn, so it gets the tab glyph alone.
 - **Pane marks are one family in one slate.** Every mark is drawn at one stroke weight and painted the same slate, so none outshouts another.
 - **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the sessions list, matching the pane's watermark, so nothing has to add, and later strip, a marker inside the project name. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
