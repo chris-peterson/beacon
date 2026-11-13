@@ -361,6 +361,8 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 | Use custom font size for tab labels? (Advanced) | Yes | the switch the size above needs | No, the size needs it |
 | Default tab bar height, and Tab bar height (points) for the Minimal theme (Advanced) | derived from the font size | iTerm2's heights clip the task line | Yes, through the font size and `beacon config tab.vertical-padding`, 0 to 20 ([Larger tabs with small text](#larger-tabs-with-small-text)) |
 | Prominence of selected tab underline indicator in the Minimal theme (Advanced) | 0.4 | at full strength the underline is brighter than the tab colors it sits under | No |
+| In the Minimal theme, how prominent should the tab outline be? (Advanced) | 0.8 | the selected tab's fill matches every tab in the same state, so the lines above and below it are what mark it | No |
+| How prominent should the text in a non-selected tab be when there are colored tabs in a window? (Advanced) | 0.3 | leaves the selected tab's white label the brightest in the strip | No |
 | Tabs have close buttons (Appearance → Tabs) | off | the strip is clicked all day to switch sessions, and a stray click on the button ends one | No |
 | Disable tab bar tooltips? (Advanced) | Yes | the tooltip repeats the label and covers the neighboring tabs you're scanning | No |
 | Support basic HTML tags in tab titles (Appearance → Tabs) | on | the label bolds the project with `<b>`, which otherwise shows as text | No, the label needs it |

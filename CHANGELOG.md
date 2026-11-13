@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### The selected tab stands out in a Minimal strip
+
+A tab's fill says what its session is doing, so the selected tab used to
+share its fill with every tab in the same state and was hard to find.
+`beacon layout` now recommends a stronger outline above and below the
+selected tab (`MinimalTabStyleOutlineStrength` 0.8) and dimmer labels on
+the other tabs (`ColoredUnselectedTabTextProminence` 0.3), which leaves
+the selected label the brightest in the strip. Run `beacon layout` to see
+whether yours differ.
+
 ### Another tool can put a line on the badge
 
 `beacon badge "<text>" [--color <hex>]` puts one line of text on the

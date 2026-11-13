@@ -417,6 +417,23 @@ RECOMMENDED_LAYOUT = (
             "brighter than the tab colors it sits under; softened it still "
             "marks the selected tab",
      "where": "Advanced → Tabs"},
+    # In a left strip Minimal draws a line above and below the selected tab,
+    # across the strip, at this alpha. A beacon tab's fill says what its session
+    # is doing, so a selected tab shares its fill with every tab in the same
+    # state, and these lines are what single it out.
+    {"key": "MinimalTabStyleOutlineStrength", "want": "0.8", "type": "float",
+     "label": "Stronger selected-tab outline",
+     "why": "the selected tab's fill matches every other tab in its state, so "
+            "the lines above and below it are what mark it; at 0.2 they are "
+            "too faint to find",
+     "where": "Advanced → Tabs"},
+    # With any tab colored, the selected label is drawn pure white and the rest
+    # white at this alpha (PSMYosemiteTabStyle textColorForCell). Claude Code's
+    # colored task line is drawn apart from it and keeps its color.
+    {"key": "ColoredUnselectedTabTextProminence", "want": "0.3", "type": "float",
+     "label": "Dimmer unselected tab labels",
+     "why": "leaves the selected tab's white label the brightest in the strip",
+     "where": "Advanced → Tabs"},
     {"key": "TabsHaveCloseButton", "want": "0", "type": "bool",
      "label": "No close button on a tab",
      "why": "the strip is clicked all day to focus a session, and an errant "
@@ -493,7 +510,8 @@ _REGULAR_TAB_STYLE = {
     "where": "Appearance → General → Theme",
 }
 _STYLE_SPECS = {"compact": _COMPACT_TAB_STYLE, "regular": _REGULAR_TAB_STYLE}
-_MINIMAL_ONLY_KEYS = {"CompactMinimalTabBarHeight", "MinimalSelectedTabUnderlineProminence"}
+_MINIMAL_ONLY_KEYS = {"CompactMinimalTabBarHeight", "MinimalSelectedTabUnderlineProminence",
+                      "MinimalTabStyleOutlineStrength", "ColoredUnselectedTabTextProminence"}
 # The per-pane title bar (CLI-18c), which carries the pane's close button. These
 # rows stand in for the ShowPaneTitles row; iTerm2 reads the second only while
 # the first is on, so the off case audits nothing beyond ShowPaneTitles.
@@ -967,6 +985,7 @@ RESET_FAMILIES = (
      "keys": ("MinimalDeslectedColoredTabAlpha",
               "NonMinimalDeselectedColoredTabAlpha",
               "MinimalSelectedTabUnderlineProminence",
+              "MinimalTabStyleOutlineStrength",
               "MinimalTextLegibilityAdjustment",
               "ColoredSelectedTabOutlineStrength",
               "ColoredUnselectedTabTextProminence",

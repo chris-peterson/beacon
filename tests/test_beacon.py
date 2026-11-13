@@ -8342,13 +8342,21 @@ class ConfigureLayoutAudit(unittest.TestCase):
         layout = {s["key"]: s for s in self.iterm._recommended_layout("compact")}
         self.assertEqual(layout["TabStyleWithAutomaticOption"]["want"], "6")
         self.assertNotIn("CompactMinimalTabBarHeight", layout)
-        self.assertNotIn("MinimalSelectedTabUnderlineProminence", layout)
+        for key in ("MinimalSelectedTabUnderlineProminence", "MinimalTabStyleOutlineStrength",
+                    "ColoredUnselectedTabTextProminence"):
+            self.assertNotIn(key, layout, "tuned on Minimal only")
         self.assertEqual(self.iterm._recommended_layout("minimal"), self.iterm.RECOMMENDED_LAYOUT)
         regular = {s["key"]: s for s in self.iterm._recommended_layout("regular")}
         self.assertEqual(regular["TabStyleWithAutomaticOption"]["want"], "4")
         self.assertNotIn("MinimalSelectedTabUnderlineProminence", regular)
         with self.assertRaises(ValueError):
             self.iterm._recommended_layout("tahoe")
+
+    def test_the_selected_tab_is_marked_by_its_outline_and_label(self):
+        # Every tab in a state shares its fill, so the selected one is found by
+        # the outline and its white label.
+        self.assertEqual(self._spec("MinimalTabStyleOutlineStrength")["want"], "0.8")
+        self.assertEqual(self._spec("ColoredUnselectedTabTextProminence")["want"], "0.3")
 
     def test_status_bar_sits_at_the_top(self):
         # The bottom of the pane is Claude Code's, where beacon renders its own
