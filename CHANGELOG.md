@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.22.0
 
 ### The selected tab stands out in a Minimal strip
 
