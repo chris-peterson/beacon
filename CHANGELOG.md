@@ -45,6 +45,11 @@ forge read as the title, so it can trail a conflict, or its fix, by up to
 ten minutes. Right after a push, while the forge is still
 checking, the CR shows no mark.
 
+### A lighthouse icon
+
+beacon's plugin icon is now a lighthouse, so it no longer resembles the
+radar scope another plugin in the catalog uses.
+
 ## 2.21.0
 
 ### Breaking: `activity` reads `blocked`, not `waiting`
