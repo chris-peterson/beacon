@@ -7845,6 +7845,40 @@ def cmd_layout(args):
     sys.exit(r.returncode)
 
 
+def _confirm_on_tty(question: str) -> bool:
+    """A y/N answer read from the controlling terminal; no terminal is a no."""
+    try:
+        with open("/dev/tty") as tty:
+            sys.stdout.write(f"{question} [y/N] ")
+            sys.stdout.flush()
+            return tty.readline().strip().lower() in ("y", "yes")
+    except OSError:
+        return False
+
+
+def _offer_layout_restart() -> None:
+    """CMD-32: after a `config` change to a setting the layout carries, ask the
+    one question applying it involves rather than naming `layout --write` for the
+    user to type. A no, a closed iTerm2, or no terminal to ask on all take
+    CLI-22's deferred write, so the layout converges whatever the answer."""
+    if not _is_iterm_installed():
+        return
+    configure = ["python3", str(BEACON_ITERM), "configure"]
+    try:
+        audit = subprocess.run([*configure, *_layout_args()], capture_output=True, text=True,
+                               timeout=10, env=_layout_env())
+    except Exception as exc:
+        log_error("layout.audit", f"{type(exc).__name__}: {exc}")
+        print(_color("33", f"Could not read iTerm2's layout; `{LAYOUT_COMMAND} --write` applies it."))
+        return
+    if audit.returncode == 0:
+        return
+    restart = (_is_iterm_running()
+               and _confirm_on_tty("NOTE: this requires restarting iTerm2, do that now?"))
+    subprocess.run([*configure, *(["--write", "--yes"] if restart else ["--defer"]),
+                    *_layout_args()], env=_layout_env())
+
+
 # An origin is scheme + host (+ port): what a browser sends in `Origin`, and so
 # the only shape the allowlist can ever match (WIP-18). A path or a trailing slash
 # would be stored and never match anything.
@@ -7926,8 +7960,8 @@ def _config_tab(values: list[str]) -> None:
     data = _config_for_edit()
     _save_tab_config(data, {})
     print(f"tab settings reset to their defaults (in {_config_file()})")
-    print(f"Tabs repaint on their next hook; `{LAYOUT_COMMAND} --write` applies the "
-          "default font size, padding, and tab height.")
+    print("Tabs repaint on their next hook.")
+    _offer_layout_restart()
 
 
 def _config_tab_style(values: list[str]) -> None:
@@ -7944,8 +7978,8 @@ def _config_tab_style(values: list[str]) -> None:
     tab["style"] = style
     _save_tab_config(data, tab)
     print(f"tab.style: {style} (in {_config_file()})")
-    print(f"Tabs repaint with the {style} weights on their next hook. "
-          f"Switch iTerm2's theme to match with `{LAYOUT_COMMAND} --write`.")
+    print(f"Tabs repaint with the {style} weights on their next hook.")
+    _offer_layout_restart()
 
 
 def _config_tab_look(values: list[str]) -> None:
@@ -8046,9 +8080,9 @@ def _config_tab_indent(line: int | None, values: list[str]) -> None:
     print("Tabs repaint with it on their next hook.")
 
 
-def _config_tab_points(name: str, key: str, allowed: range, read, values: list[str],
-                       note: str) -> None:
-    """Read, set, or reset a whole-number tab setting measured in points."""
+def _config_tab_points(name: str, key: str, allowed: range, read, values: list[str]) -> None:
+    """Read, set, or reset a whole-number tab setting measured in points, each
+    of which sizes the tab through the layout."""
     usage = f"usage: beacon config {name} [<points> | reset], {allowed.start}..{allowed.stop - 1}"
     if not values:
         print(read())
@@ -8070,25 +8104,21 @@ def _config_tab_points(name: str, key: str, allowed: range, read, values: list[s
         tab[key] = n
     _save_tab_config(data, tab)
     print(f"{name}: {read()}pt (in {_config_file()})")
-    print(note)
+    _offer_layout_restart()
 
 
 def _config_tab_font_size(values: list[str]) -> None:
-    _config_tab_points("tab.font-size", "font_size", TAB_FONT_SIZES, _tab_font_size, values,
-                       "It is an app-wide iTerm2 setting, and the tab height follows it. "
-                       f"Apply both with `{LAYOUT_COMMAND} --write`.")
+    _config_tab_points("tab.font-size", "font_size", TAB_FONT_SIZES, _tab_font_size, values)
 
 
 def _config_tab_vertical_padding(values: list[str]) -> None:
     _config_tab_points("tab.vertical-padding", "vertical_padding", TAB_VERTICAL_PADDINGS,
-                       _tab_vertical_padding, values,
-                       "It adds to the tab height above and below the label, leaving the "
-                       f"text size alone. Apply it with `{LAYOUT_COMMAND} --write`.")
+                       _tab_vertical_padding, values)
 
 
-def _config_switch(name: str, read, store, values: list[str], note: str) -> None:
-    """Read, set, or reset an on/off setting. `store` takes True, False, or None
-    to remove the key so the default applies."""
+def _config_switch(name: str, read, store, values: list[str]) -> None:
+    """Read, set, or reset an on/off setting the layout carries. `store` takes
+    True, False, or None to remove the key so the default applies."""
     usage = f"usage: beacon config {name} [on | off | reset]"
     if not values:
         print(_on_off(read()))
@@ -8100,7 +8130,7 @@ def _config_switch(name: str, read, store, values: list[str], note: str) -> None
         sys.exit(usage)
     store(None if value == "reset" else value == "on")
     print(f"{name}: {_on_off(read())} (in {_config_file()})")
-    print(note)
+    _offer_layout_restart()
 
 
 def _store_pane_title_bar(on: bool | None) -> None:
@@ -8113,10 +8143,7 @@ def _store_pane_title_bar(on: bool | None) -> None:
 
 
 def _config_pane_title_bar(values: list[str]) -> None:
-    _config_switch("pane-title-bar", _pane_title_bar, _store_pane_title_bar, values,
-                   "It is an app-wide iTerm2 setting: a split pane gets a title bar with "
-                   "a close button, showing the session name on one line. "
-                   f"Apply it with `{LAYOUT_COMMAND} --write`.")
+    _config_switch("pane-title-bar", _pane_title_bar, _store_pane_title_bar, values)
 
 
 def _iterm_notifications_display() -> str:
