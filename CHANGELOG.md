@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### `config` offers the iTerm2 restart itself
+
+Changing a tab setting or the per-pane title bars with `beacon config`
+used to save the value and tell you to run `beacon layout --write`. It now
+asks the one question that involves, `NOTE: this requires restarting
+iTerm2, do that now? [y/N]`. Yes restarts iTerm2 with the new layout; no
+applies it the next time you quit iTerm2, with nothing closed. With iTerm2
+closed it's written straight away, and from a slash command with no
+terminal it's queued for the next quit. Nothing is asked when the layout
+already matches. Covers `pane-title-bar`, `tab.font-size`,
+`tab.vertical-padding`, `tab.style`, and `tab reset`.
+
 ## 2.22.0
 
 ### The selected tab stands out in a Minimal strip
