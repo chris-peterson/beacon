@@ -12,6 +12,75 @@ At-a-glance awareness across concurrent Claude Code sessions: a Claude Code stat
 
 This README covers working *on* beacon. To install or use the released plugin, follow the docs site.
 
+## Render surfaces
+
+Every place beacon shows state has one name, and the code, the spec, commits, and the docs all use it. The tab strip runs down the left, as beacon's iTerm2 layout puts it.
+
+<table>
+  <tr>
+    <td rowspan="3" style="background:#21222c;vertical-align:top;padding:16px" width="25%">
+      <table width="100%" cellspacing="8" cellpadding="12">
+        <tr><td style="background:#bd93f9;color:#282a36;text-align:center;font-size:1.2em"><b>Tab</b></td></tr>
+        <tr><td style="background:#bd93f9;color:#282a36;font-size:1.2em">🚀 project<br>&nbsp;&nbsp;task</td></tr>
+        <tr><td style="background:#bd93f9;color:#282a36;font-size:1.2em">project<br>&nbsp;&nbsp;task</td></tr>
+      </table>
+    </td>
+    <td style="background:#21222c;padding:0" width="75%">
+      <table width="100%" cellspacing="8" cellpadding="12">
+        <tr>
+          <td style="background:#bd93f9;color:#282a36;text-align:center;font-size:1.2em">↖ web</td>
+          <td style="background:#21222c;color:#f8f8f2;text-align:center;font-size:1.2em"><b>Status bar</b></td>
+          <td style="background:#bd93f9;color:#282a36;text-align:center;font-size:1.2em">project</td>
+          <td style="background:#bd93f9;color:#282a36;text-align:center;font-size:1.2em">branch</td>
+          <td style="background:#bd93f9;color:#282a36;text-align:center;font-size:1.2em">↗ code</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#21222c;padding:0">
+      <table width="100%" cellspacing="8" cellpadding="12">
+        <tr>
+          <td style="background:#bd93f9;color:#282a36;vertical-align:middle;text-align:center;font-size:1.2em" width="80%"><b>Pane</b><br>mode background + watermark</td>
+          <td style="background:#bd93f9;color:#282a36;vertical-align:top;text-align:center;font-size:1.2em"><b>Badge</b><br>opt-in</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#21222c;padding:0">
+      <table width="100%" cellspacing="8" cellpadding="12">
+        <tr><td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><b>Status line</b><br>mode note · delivered · open CRs · open issues</td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" style="background:#21222c;padding:0">
+      <table width="100%" cellspacing="8" cellpadding="12">
+        <tr>
+          <td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><b>Sessions view</b></td>
+          <td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><code>wip</code><br>snapshot</td>
+          <td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><code>watch</code><br>live terminal</td>
+          <td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><code>serve</code><br>browser dashboard</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<sup><span style="display:inline-block;width:12px;height:12px;background:#bd93f9;border-radius:2px"></span> iTerm2 render adapter (macOS + iTerm2 only) · <span style="display:inline-block;width:12px;height:12px;background:#8be9fd;border-radius:2px"></span> Any terminal (read straight from the state files)</sup>
+
+| Surface | Carries | Spec | Docs |
+|:---|:---|:---|:---|
+| **Tab** | Label: `project` over `task`, led by the mode glyph or a block glyph. Color: `activity`. Line 1 doubles as the OS window title | §4.6 `TAB`, §4.8 `TITLE` | [Layout](https://chris-peterson.github.io/beacon/#/iterm/layout) |
+| **Status bar** | `↖ web`, project, branch, `↗ code`, in the beacon dynamic profile | §4.4 `STATUS-BAR` | [Status-bar buttons](https://chris-peterson.github.io/beacon/#/statusbar) |
+| **Pane** | The mode's background and watermark, by profile swap; untouched outside a mode | §4.5 `RENDER` | [Layout](https://chris-peterson.github.io/beacon/#/iterm/layout) |
+| **Badge** | Project and activity color, or one line another tool sets; off by default | §4.3 `BADGE` | [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm/layout?id=turning-the-badge-on) |
+| **Status line** | Claude Code's footer rows, rendered by `beacon statusline` | §4.9 `STATUSLINE` | [The status line](https://chris-peterson.github.io/beacon/#/statusline) |
+| **Sessions view** | Every session at once: `wip` / `watch` / `serve` | §3.8 `WIP` | [The sessions view](https://chris-peterson.github.io/beacon/#/cli?id=the-sessions-view), [demo](https://chris-peterson.github.io/beacon/#/demo) |
+
+Adding a surface is a spec change (§4.1), not an implementation choice.
+
 ## Develop / install from a clone
 
 Working on beacon directly (no marketplace):
