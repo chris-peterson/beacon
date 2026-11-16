@@ -9713,6 +9713,43 @@ class AnnouncedCrUrl(BeaconTest):
         self._observe(self._line(uri="https://x/1\x1b]8;;evil\x07"))
         self.assertNotIn("\x1b", self._resolve()[0])
 
+    def test_c1_control_characters_are_stripped_too(self):
+        # A terminal reads U+009B as CSI and U+009D as OSC, the same as ESC
+        # followed by `[` or `]` (bridge.ai SUB-09).
+        self._observe(self._line(title="ok\x9b31mCSI\x9d8;;OSC"))
+        self.assertEqual(self._resolve()[1], "ok31mCSI8;;OSC")
+
+    # --- the off switches (bridge.ai SWITCH-01..03, SWITCH-06) --------------
+
+    def _repo(self, **config):
+        repo = Path(self._tmp.name) / f"repo-{len(config)}-{'-'.join(config)}"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        for name, value in config.items():
+            subprocess.run(["git", "-C", str(repo), "config", name, value], check=True)
+        return str(repo)
+
+    def test_a_publisher_switch_turns_off_its_keys(self):
+        cwd = self._repo(**{"beacon.subscribe.anchor": "false"})
+        self._observe(self._line("cr.created", title=self.TITLE), cwd=cwd)
+        self.assertEqual(self._resolve(cwd), ("", ""))
+
+    def test_a_key_switch_turns_off_that_key_only(self):
+        cwd = self._repo(**{"beacon.subscribe.anchor.cr-created": "false"})
+        self._observe(self._line("cr.created", title=self.TITLE), cwd=cwd)
+        self.assertEqual(self._resolve(cwd), ("", ""))
+        self._observe(self._line("cr.updated", title=self.TITLE), cwd=cwd)
+        self.assertEqual(self._resolve(cwd), (self.URL, self.TITLE))
+
+    def test_a_switch_reading_true_leaves_it_on(self):
+        cwd = self._repo(**{"beacon.subscribe.anchor": "true"})
+        self._observe(self._line("cr.created", title=self.TITLE), cwd=cwd)
+        self.assertEqual(self._resolve(cwd), (self.URL, self.TITLE))
+
+    def test_a_directory_outside_any_repository_is_on(self):
+        self._observe(self._line("cr.created", title=self.TITLE))
+        self.assertEqual(self._resolve(), (self.URL, self.TITLE))
+
     def test_a_very_long_title_is_capped(self):
         self._observe(self._line(title="x" * 500))
         self.assertLessEqual(len(self._resolve()[1]), 120)

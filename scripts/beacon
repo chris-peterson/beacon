@@ -1423,9 +1423,43 @@ _ATTENTION_RELEASED_RE = re.compile(
     r"^codes\.bridgeai\.anchor/attention\.released(?=[ \t]|$)", re.MULTILINE)
 
 # Everything a terminal or an escape sequence would read as structure rather
-# than as text. The announcement is guaranteed to be one line; a value decoded
-# out of its JSON body is not, and `title` arrives from a forge.
-_DISPLAY_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f]")
+# than as text: C0, DEL, and C1 (bridge.ai SUB-09). The announcement is
+# guaranteed to be one line; a value decoded out of its JSON body is not, and
+# `title` arrives from a forge. C1 counts because a terminal reads U+009B as
+# CSI and U+009D as OSC, the same as ESC followed by `[` or `]`.
+_DISPLAY_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _switched_off(cwd) -> set[str]:
+    """The subscriptions the user turned off for `cwd`'s repository (bridge.ai
+    SWITCH-01..03), as `<publisher>` or `<publisher>.<entity>-<event>`.
+
+    The switches are git config booleans, `beacon.subscribe.<publisher>` for
+    everything one plugin announces and
+    `beacon.subscribe.<publisher>.<entity>-<event>` for one key, read in the
+    repository the tool call ran in so a repository's own value overrides the
+    global one. One `git config` call lists them all, in the order git applies
+    them, so the last value for a name is the one in force. Anything but
+    `false`, unset included, leaves the subscription on, and so does a git that
+    can't be asked."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(cwd or "."), "config", "--type=bool",
+             "--get-regexp", r"^beacon\.subscribe\."],
+            capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError):
+        return set()
+    values: dict[str, str] = {}
+    for line in out.stdout.splitlines():
+        name, _, value = line.partition(" ")
+        values[name[len("beacon.subscribe."):]] = value.strip()
+    return {name for name, value in values.items() if value == "false"}
+
+
+def _subscribed(off: set[str], publisher: str, key: str) -> bool:
+    """Whether neither switch for `publisher`'s `key` is off (SWITCH-06: a
+    handler reading several keys checks each)."""
+    return publisher not in off and f"{publisher}.{key.replace('.', '-')}" not in off
 
 
 def _display_safe(text: str, limit: int | None = 120) -> str:
@@ -1479,10 +1513,13 @@ def _read_announcements(payload: dict) -> None:
     subscribers, and a session can publish the same key twice."""
     response = payload.get("tool_response")
     stdout = str(response.get("stdout") or "") if isinstance(response, dict) else ""
-    if payload.get("tool_name") != "Bash" and _carries_release(response):
+    cwd = payload.get("cwd")
+    if payload.get("tool_name") != "Bash" and _carries_release(response) \
+            and _subscribed(_switched_off(cwd), "anchor", "attention.released"):
         remove_state("review")
     if "codes.bridgeai." not in stdout:
         return
+    off = _switched_off(cwd)
     announced_cr = None
     produced = []
     for match in ANNOUNCEMENT_RE.finditer(stdout):
@@ -1496,6 +1533,8 @@ def _read_announcements(payload: dict) -> None:
         if not isinstance(body, dict):
             continue
         publisher, key = match.group(1), match.group(2)
+        if not _subscribed(off, publisher, key):
+            continue
         if publisher == "tack":
             if key in TACK_SESSION_KEYS:
                 _record_announced_route(key, body)
@@ -1571,14 +1610,15 @@ def _output_file_releases(path: str) -> bool:
     return bool(_ATTENTION_RELEASED_RE.search(tail))
 
 
-def _release_from_task_notifications(prompt: str) -> None:
+def _release_from_task_notifications(prompt: str, cwd=None) -> None:
     """HOOK-17: drop the held review when a finished background task's output
     carries its release. The agent is told the task finished, but nothing
     obliges it to read the output, so no tool response may ever carry the
     release, and a Stop with other work still running keeps the review held."""
     if not read_state("review"):
         return
-    if any(_output_file_releases(path) for path in _task_output_files(prompt)):
+    if any(_output_file_releases(path) for path in _task_output_files(prompt)) \
+            and _subscribed(_switched_off(cwd), "anchor", "attention.released"):
         remove_state("review")
 
 
@@ -9137,7 +9177,7 @@ def cmd_hook(args):
         write_state("activity", "working")
         # The user just submitted, so any pending Notification is resolved.
         remove_state("pending-attention")
-        _release_from_task_notifications(prompt_text)
+        _release_from_task_notifications(prompt_text, payload.get("cwd"))
 
     elif event == "Stop":
         if not payload.get("stop_hook_active"):
