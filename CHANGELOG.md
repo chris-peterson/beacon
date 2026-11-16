@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Turn off what beacon does with a sibling's announcement
+
+`git config --global beacon.subscribe.anchor false` stops beacon acting on
+anchor's announcements: the change request on the status line, the delivered
+work it shows, and the review span that marks the tab. `beacon.subscribe.tack
+false` does the same for tack's route binding, and
+`beacon.subscribe.<plugin>.<entity>-<event>` turns off one at a time, such as
+`beacon.subscribe.anchor.attention-requested`. Set it without `--global` in a
+repository where it doesn't fit.
+
+### Fixed
+
+A C1 control character in an announced title or URL no longer reaches the
+status line, where a terminal can read one as the start of an escape sequence.
+
 ## 2.22.0
 
 ### The selected tab stands out in a Minimal strip
