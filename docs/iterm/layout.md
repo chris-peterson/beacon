@@ -199,7 +199,7 @@ beacon is tuned for iTerm2's **Minimal** tab style by default, which fills each 
 beacon config tab.style regular
 ```
 
-Then run `beacon layout --write` to switch iTerm2's theme. `beacon config tab.style minimal` switches back.
+It then asks whether to restart iTerm2 to switch its theme; no switches it the next time you quit iTerm2. `beacon config tab.style minimal` switches back.
 
 If the label sits too close to the tab's edge, set how many spaces lead each line (project, then task):
 
@@ -218,10 +218,9 @@ beacon recommends 16pt tab labels. To change it:
 
 ```
 beacon config tab.font-size 14
-beacon layout --write
 ```
 
-The size is an app-wide iTerm2 setting, so `beacon layout --write` applies it, and the tab height changes with it. iTerm2 centers the project line on the tab and hangs the task line below it, so a two-line label sits a little below center, more so at larger sizes. A taller tab doesn't change that; a smaller size does. `beacon config tab.font-size reset` returns to 16pt. `beacon config tab` lists every tab setting, and `beacon config tab reset` returns them all to their defaults.
+The size is an app-wide iTerm2 setting, and the tab height changes with it, so applying them needs iTerm2 to restart. `config` asks whether to do that now; no applies them the next time you quit iTerm2, with nothing closed. iTerm2 centers the project line on the tab and hangs the task line below it, so a two-line label sits a little below center, more so at larger sizes. A taller tab doesn't change that; a smaller size does. `beacon config tab.font-size reset` returns to 16pt. `beacon config tab` lists every tab setting, and `beacon config tab reset` returns them all to their defaults.
 
 ### Larger tabs with small text
 
@@ -229,7 +228,6 @@ Small labels fit more of the task on line 2, but the tab shrinks with them and g
 
 ```
 beacon config tab.vertical-padding <points>
-beacon layout --write
 ```
 
 The padding (0 to 20 points, 0 by default) goes both above and below the label, so the tab grows by twice the value. `beacon config tab.vertical-padding reset` removes it.
@@ -240,7 +238,6 @@ iTerm2's per-pane title bar carries the pane's close button and menu, and beacon
 
 ```
 beacon config pane-title-bar on
-beacon layout --write
 ```
 
 Every pane gets the bar, including the only pane in a tab, so every pane has its close button. `beacon config pane-title-bar reset` turns the bars off again.

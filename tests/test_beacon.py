@@ -910,6 +910,11 @@ class ConfigCommand(BeaconTest):
         patcher = mock.patch.object(self.beacon, "_config_file", return_value=self.config)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The real offer audits this machine's iTerm2 prefs and can quit iTerm2;
+        # LayoutRestartOffer covers it with the CLI stubbed.
+        offer = mock.patch.object(self.beacon, "_offer_layout_restart")
+        self.offered = offer.start()
+        self.addCleanup(offer.stop)
 
     def _run(self, *argv):
         args = self.beacon.argparse.Namespace(setting=argv[0] if argv else None,
@@ -927,8 +932,32 @@ class ConfigCommand(BeaconTest):
         self.config.write_text(json.dumps({"badge": "on"}))
         out = self._run("tab.style", "Compact")
         self.assertEqual(self._saved(), {"badge": "on", "tab": {"style": "compact"}})
-        self.assertIn("layout --write", out)
+        self.assertNotIn("layout --write", out)
+        self.assertEqual(self.offered.call_count, 1)
         self.assertEqual(self._run("tab.style").strip(), "compact")
+        self.assertEqual(self.offered.call_count, 1, "reading a setting must not offer a restart")
+
+    def test_each_layout_setting_offers_the_restart_instead_of_naming_layout_write(self):
+        # #69: the restart is the only decision applying these involves, so
+        # `config` asks it rather than pointing at a second command.
+        for argv in (("pane-title-bar", "off"), ("pane-title-bar", "reset"),
+                     ("tab.font-size", "18"), ("tab.font-size", "reset"),
+                     ("tab.vertical-padding", "4"), ("tab.vertical-padding", "reset"),
+                     ("tab.style", "regular"), ("tab", "reset")):
+            with self.subTest(argv=argv):
+                self.offered.reset_mock()
+                out = self._run(*argv)
+                self.offered.assert_called_once_with()
+                self.assertNotIn("layout --write", out)
+
+    def test_reading_or_a_refused_value_offers_nothing(self):
+        for argv in (("pane-title-bar",), ("tab.font-size",), ("tab.vertical-padding",),
+                     ("tab.style",), ("tab",)):
+            with self.subTest(argv=argv):
+                self._run(*argv)
+        with self.assertRaises(SystemExit):
+            self._run("tab.font-size", "99")
+        self.offered.assert_not_called()
 
     def test_an_unknown_tab_style_is_refused(self):
         with self.assertRaises(SystemExit):
@@ -5658,6 +5687,73 @@ class InstallGating(unittest.TestCase):
         self.assertNotIn("no iTerm2 restart required", out)
         self.assertIn("need an iTerm2 restart", out)
         self.assertIn("beacon layout --write", out)
+
+
+class LayoutRestartOffer(BeaconTest):
+    """CMD-32 / #69: a `config` change the layout carries asks whether to
+    restart iTerm2 now, and every other outcome queues the write (CLI-22)."""
+
+    def _offer(self, audit_rc: int = 1, running: bool = True, answer: str | None = "y",
+               installed: bool = True):
+        calls = []
+
+        def fake_run(cmd, *a, **k):
+            calls.append(cmd[cmd.index("configure"):])
+            return subprocess.CompletedProcess(cmd, audit_rc if len(calls) == 1 else 0,
+                                               stdout="", stderr="")
+
+        real_open = open
+
+        def fake_open(path, *a, **k):
+            if path != "/dev/tty":
+                return real_open(path, *a, **k)
+            if answer is None:
+                raise OSError(6, "Device not configured")
+            return io.StringIO(f"{answer}\n")
+
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=installed), \
+                mock.patch.object(self.beacon, "_is_iterm_running", return_value=running), \
+                mock.patch.object(self.beacon.subprocess, "run", side_effect=fake_run), \
+                mock.patch("builtins.open", side_effect=fake_open), \
+                contextlib.redirect_stdout(buf):
+            self.beacon._offer_layout_restart()
+        return buf.getvalue(), [c[1:] for c in calls]
+
+    LAYOUT = ["--tab-style", "minimal", "--tab-font-size", "16",
+              "--tab-vertical-padding", "0", "--pane-title-bar", "off"]
+
+    def test_yes_restarts_iterm2_with_the_layout(self):
+        out, calls = self._offer(answer="y")
+        self.assertIn("NOTE: this requires restarting iTerm2, do that now? [y/N]", out)
+        self.assertEqual(calls, [self.LAYOUT, ["--write", "--yes", *self.LAYOUT]])
+
+    def test_no_or_enter_queues_the_write_for_the_next_quit(self):
+        for answer in ("n", ""):
+            with self.subTest(answer=answer):
+                out, calls = self._offer(answer=answer)
+                self.assertIn("NOTE:", out)
+                self.assertEqual(calls, [self.LAYOUT, ["--defer", *self.LAYOUT]])
+
+    def test_no_terminal_queues_the_write_without_asking(self):
+        out, calls = self._offer(answer=None)
+        self.assertEqual(calls, [self.LAYOUT, ["--defer", *self.LAYOUT]])
+
+    def test_a_closed_iterm2_is_written_without_asking(self):
+        # `--defer` writes at once when iTerm2 is down and relaunches nothing,
+        # so there is no restart to ask about.
+        out, calls = self._offer(running=False)
+        self.assertNotIn("NOTE:", out)
+        self.assertEqual(calls, [self.LAYOUT, ["--defer", *self.LAYOUT]])
+
+    def test_an_aligned_layout_asks_nothing(self):
+        out, calls = self._offer(audit_rc=0)
+        self.assertEqual(out, "")
+        self.assertEqual(calls, [self.LAYOUT])
+
+    def test_without_iterm2_nothing_runs(self):
+        out, calls = self._offer(installed=False)
+        self.assertEqual((out, calls), ("", []))
 
 
 class StatuslineWiring(unittest.TestCase):
