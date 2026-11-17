@@ -1659,7 +1659,7 @@ Checked against each project's own releases, pull requests, and changelogs on **
 
 Read as a list of keys, the protocol looks like it covers much of what beacon paints: a state, a reason, a message, a title. In practice the two share one axis, for three reasons.
 
-1. **The spec describes what a program can send.** Claude Code sends less of it. As of 2.1.306, `msg` carries the question or the command awaiting approval while `blocked`, a task headline while `working` only in fullscreen mode, and nothing on `done`. `title` is set only on sub-agent records.
+1. **The spec describes what a program can send.** Claude Code sends less of it. As of 2.1.306, `msg` carries the question or the command awaiting approval while `blocked`, a task headline while `working` only in fullscreen mode, and nothing on `done`. `title` is set only on sub-agent records. As of 2.1.326, the reports also list background commands, monitors and MCP tasks, and a session waiting on them reports `working` rather than `done`.
 2. **iTerm2 puts only `state` on the tab.** `msg` and `title` appear in the Session Status tool and the Cockpit window, not in the tab label.
 3. **The spec doesn't model what most of beacon's surfaces carry.** It has no project, branch, task, phase, or deliverable; `app` names the program, not the work.
 
