@@ -7392,7 +7392,30 @@ def _statusline_delivered_line(entries: list[dict], links: dict, qualify: bool) 
     return STATUSLINE_SEPARATOR.join(parts)
 
 
-def cmd_statusline(_args):
+# STATUSLINE-05: the panel beats every 15s, so a minute of silence means it is
+# gone (the mod unloaded, or Claude restarted without it) and the row returns.
+PANEL_FRESH_SECONDS = 60
+
+
+def _panel_is_drawing() -> bool:
+    raw = read_state("panel")
+    try:
+        return raw is not None and time.time() - float(raw) < PANEL_FRESH_SECONDS
+    except ValueError:
+        return False
+
+
+def cmd_panel(args):
+    """STATUSLINE-05: the panel mod's heartbeat. While it beats, the status
+    line prints nothing, since the panel draws the same lines above the
+    prompt and nothing a mod can do takes the `statusLine` row away."""
+    if args.off:
+        remove_state("panel")
+    else:
+        write_state("panel", str(time.time()))
+
+
+def cmd_statusline(args):
     """STATUSLINE-01: Claude Code status-line provider. Claude runs this per
     prompt (and on its other status-line events) and renders stdout as a footer
     row it owns — above its built-in badges, never overlapping terminal output,
@@ -7409,6 +7432,8 @@ def cmd_statusline(_args):
         sys.stdin.read()
     except Exception:
         pass
+    if not getattr(args, "panel", False) and _panel_is_drawing():
+        return
     # One line per class, most urgent first: what mode the session declared and
     # why, what it has shipped, then the open work split by kind. Shipping is
     # rare, and burying it among the open refs is what made it unreadable on a
@@ -9424,8 +9449,15 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--clear-screen", action="store_true",
                     help="also clear the iTerm2 session's screen + scrollback for a clean stand-down")
 
-    sub.add_parser("statusline",
-                   help="(internal) Claude Code status-line provider: the mode note + deliverable links")
+    sp = sub.add_parser("statusline",
+                        help="(internal) Claude Code status-line provider: the mode note + deliverable links")
+    sp.add_argument("--panel", action="store_true",
+                    help="print the lines even while the panel draws them (the panel's own read)")
+
+    sp = sub.add_parser("panel",
+                        help="(internal) the panel mod's heartbeat: the status line stays empty while it beats")
+    sp.add_argument("--off", action="store_true",
+                    help="stop at once, rather than when the heartbeat goes stale")
 
     sp = sub.add_parser("release",
                         help="enter release mode (ship-it flow in progress) with an optional note")
@@ -9583,7 +9615,7 @@ def _build_parser() -> "argparse.ArgumentParser":
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
 _UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init", "statusline",
-                         "freshness"}
+                         "freshness", "panel"}
 
 
 def main(argv=None):
@@ -9605,7 +9637,7 @@ def main(argv=None):
         "block": cmd_block, "unblock": cmd_unblock, "badge": cmd_badge,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
         "resume": cmd_resume, "reset": cmd_reset,
-        "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
+        "render": cmd_render, "statusline": cmd_statusline, "panel": cmd_panel,"hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "refresh-iterm-profiles": cmd_refresh_iterm_profiles,
         "layout": cmd_layout,

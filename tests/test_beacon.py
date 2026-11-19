@@ -2698,6 +2698,52 @@ class ABlockedTabShowsItsKind(BeaconTest):
                 self.assertNotIn("set-profile", [c[0] for c in self.cli_calls])
 
 
+class ThePanelTakesTheStatusLinesRow(BeaconTest):
+    """STATUSLINE-05: while the panel mod beats, `beacon statusline` prints
+    nothing, so Claude Code drops the row the panel now draws above the prompt.
+    The panel's own read (`--panel`) still gets the lines."""
+
+    def setUp(self):
+        super().setUp()
+        self.beacon.write_mode("pause", "back after standup")
+
+    def _statusline(self, panel=False):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_statusline(types.SimpleNamespace(panel=panel))
+        return buf.getvalue()
+
+    def _beat(self, off=False):
+        self.beacon.cmd_panel(types.SimpleNamespace(off=off))
+
+    def test_the_row_prints_with_no_panel(self):
+        self.assertIn("back after standup", self._statusline())
+
+    def test_a_beating_panel_empties_the_row(self):
+        self._beat()
+        self.assertEqual(self._statusline(), "")
+
+    def test_the_panel_still_reads_the_lines(self):
+        self._beat()
+        self.assertIn("back after standup", self._statusline(panel=True))
+
+    def test_a_stale_heartbeat_gives_the_row_back(self):
+        self._beat()
+        later = time.time() + self.beacon.PANEL_FRESH_SECONDS + 1
+        with mock.patch.object(self.beacon.time, "time", return_value=later):
+            self.assertIn("back after standup", self._statusline())
+
+    def test_off_gives_the_row_back_at_once(self):
+        self._beat()
+        self._beat(off=True)
+        self.assertIn("back after standup", self._statusline())
+
+    def test_a_garbled_heartbeat_reads_as_no_panel(self):
+        self.beacon.write_state("panel", "not-a-time")
+        self.assertIn("back after standup", self._statusline())
+
+
 class AReviewBlockHoldsTheSession(BeaconTest):
     """CMD-33: `beacon block <target>` holds the session blocked on a review its
     caller opened outside Claude Code, until `beacon unblock`. The tab leads with

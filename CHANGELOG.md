@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### The status line steps aside for a panel
+
+A Claude Code mod that draws beacon's status lines above the prompt can now
+take the `statusLine` row away while it does: `beacon panel` records that it is
+drawing, and the row stays empty for a minute after each beat. It reads the
+lines itself with `beacon statusline --panel`. Nothing changes until a panel
+beats, and the row comes back on its own when one stops.
+
 ### Turn off what beacon does with a sibling's announcement
 
 `git config --global beacon.subscribe.anchor false` stops beacon acting on

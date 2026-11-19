@@ -1674,6 +1674,12 @@ While a review is held (CMD-33), `beacon statusline` shall print one line in pla
 
 Rationale: the tab says a window wants the user; it can't say what the review is of, and a session that has moved between checkouts or written several commits leaves the user unsure which changeset, drafted note, or CR the open viewer holds. A path is too long for either tab line, and the status line is the per-session surface with room for one. It displaces the usual lines rather than joining them because the review is what the user has to act on before anything those lines list.
 
+#### `STATUSLINE-05`
+
+`beacon panel` shall record a heartbeat for the session (`panel`, the epoch it beat at), and `beacon panel --off` shall remove it. While the heartbeat is under `PANEL_FRESH_SECONDS` (60) old, `beacon statusline` shall print nothing; `beacon statusline --panel` shall print the usual lines regardless.
+
+Rationale: a Claude Code mod can draw the same lines in the band above the prompt, beside the session's own state, which the `statusLine` row has no room for (#57). Two copies of one row read as two things, but nothing a mod can do removes the row: Claude Code draws it from the `statusLine` setting, which no mod event reads or rewrites. An empty command output is the one thing that makes the row go away, and it keeps the `statusLine` key in place as the fallback for a Claude Code that loads no mod. The heartbeat expires rather than waiting to be cleared, because a mod that unloads or a Claude restarted without it sends no `--off`, and a cleared-only flag would leave the row hidden with nothing drawing in its place. `--panel` is how the panel reads the lines it draws without being silenced by its own heartbeat.
+
 ---
 
 ## 5. Non-functional Requirements (NFR)
@@ -1798,6 +1804,7 @@ state/<session-hash>.announced.delivered # STATUSLINE-03: URLs a sibling announc
 state/<session-hash>.announced.route    # WIP-02: {session,route,tacks[],ended} of the binding tack announced
 state/<session-hash>.session_started_at # STATUSLINE-03: the window acquisition is scoped to (HOOK-08a)
 state/<session-hash>.guest_of           # HOOK-12: the pane this session was refused, and what re-keys its later hooks
+state/<session-hash>.panel              # STATUSLINE-05: epoch of the panel mod's last heartbeat; the status line is empty while it is fresh
 ```
 
 Session hash is SHA-1 (truncated to 12–16 chars; collisions are not a security concern) of the session seed. On iTerm2 the seed is the pane **GUID** (the segment of `$ITERM_SESSION_ID` after the last colon), which is stable for the pane's life; the full `$ITERM_SESSION_ID` is *not*: iTerm2 rewrites its `wNtNpN` positional prefix when a pane is moved between windows, tabs, or splits, so seeding on the full id fragmented a pane's state into a fresh bucket on each move. Off iTerm2 the seed is `claude-session:$CLAUDE_CODE_SESSION_ID` (kept whole), then the tty name, then `default`. A `claude` started from inside a live session inherits that pane's id, so a SessionStart that finds the pane held by another session takes the `claude-session:` seed instead (HOOK-12).

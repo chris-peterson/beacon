@@ -193,9 +193,10 @@ cli:
       commands: [doctor, data-dir]
     - name: Internal
       about: >-
-        Called by the hooks, the Claude Code status line, and the shell snippet.
-        Listed because they are part of the grammar, not because you type them.
-      commands: [hook, statusline, shell-init, freshness]
+        Called by the hooks, the Claude Code status line, the shell snippet,
+        and the panel mod. Listed because they are part of the grammar, not
+        because you type them.
+      commands: [hook, statusline, panel, shell-init, freshness]
   notes:
     status: >-
       The mode name is the shared vocabulary across the CLI, the tab glyph, the

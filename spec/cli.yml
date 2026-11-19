@@ -103,6 +103,13 @@ commands:
 - name: statusline
   usages:
   - summary: '(internal) Claude Code status-line provider: the mode note + deliverable links'
+    flags:
+    - name: --panel
+- name: panel
+  usages:
+  - summary: '(internal) the panel mod''s heartbeat: the status line stays empty while it beats'
+    flags:
+    - name: --off
 - name: release
   usages:
   - summary: enter release mode (ship-it flow in progress) with an optional note
