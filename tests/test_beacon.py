@@ -65,7 +65,6 @@ def _uservar_emits(calls, slot):
 PROFILE_SUBSTITUTIONS = {
     "__BEACON_SCRIPT__": "/x/scripts/beacon",
     "__BEACON_PYTHON__": "/x/python3",
-    "__BEACON_CACHE_DIR__": "/x/cache",
     "__BEACON_WEB_LABEL__": "↖ web",
     "__BEACON_CODE_LABEL__": "↗ code",
 }
@@ -1538,9 +1537,9 @@ class ModeProfileDerivation(unittest.TestCase):
             self.assertEqual(prof["Guid"], spec["guid"])
             self.assertNotIn(prof["Guid"], seen_guids, f"{mode} needs a distinct Guid")
             seen_guids.add(prof["Guid"])
-            # Same layout (single-sourced) — a mode profile differs only by its
-            # background.
-            self.assertEqual(prof["Status Bar Layout"], base["Status Bar Layout"])
+            # Same key bindings (single-sourced) — a mode profile differs only by
+            # its background.
+            self.assertEqual(prof["Keyboard Map"], base["Keyboard Map"])
             for key in ("Background Color", "Background Color (Light)",
                         "Background Color (Dark)"):
                 self.assertAlmostEqual(
@@ -1575,33 +1574,6 @@ class ModeProfileDerivation(unittest.TestCase):
             mode = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
             self.assertEqual(mode["AWDS Pane Option"], "Recycle",
                              f"{spec['profile']} must not change where a split opens")
-
-    def test_a_long_button_label_grows_its_width_cap(self):
-        # iTerm2 draws an action title inside `maxwidth` and the layout removes
-        # components that come out empty, so a label wider than the cap blanks
-        # the button instead of truncating it.
-        profile = {"Status Bar Layout": {"components": [
-            {"configuration": {"knobs": {"maxwidth": 90,
-                                         "action": {"title": "↗ code"}}}},
-            {"configuration": {"knobs": {"maxwidth": 90,
-                                         "action": {"title": "jetbrains-ultimate"}}}},
-            {"configuration": {"knobs": {"maxwidth": 240}}},
-        ]}}
-        self.beacon._fit_action_button_widths(profile)
-        caps = [c["configuration"]["knobs"]["maxwidth"]
-                for c in profile["Status Bar Layout"]["components"]]
-        self.assertEqual(caps[0], 90, "a default-length label keeps the template's cap")
-        self.assertGreater(caps[1], 90, "a longer label needs a wider cap")
-        self.assertEqual(caps[2], 240, "a non-action component is left alone")
-
-    def test_default_button_labels_fit_the_template_caps(self):
-        # The template's caps are the floor, so the shipped labels must already
-        # fit them — otherwise the default install blanks its own buttons.
-        for name in self.beacon.STATUSBAR_BUTTON_DEFAULTS:
-            label = self.beacon.STATUSBAR_BUTTON_DEFAULTS[name]["label"]
-            needed = (int(len(label) * self.beacon.STATUSBAR_TITLE_ADVANCE)
-                      + self.beacon.STATUSBAR_TITLE_PADDING)
-            self.assertLessEqual(needed, 90, f"{name}: {label!r}")
 
     def test_dev_is_never_a_mode(self):
         # `dev` is the absence of a mode — the empty mode file — so it must not
@@ -1732,10 +1704,9 @@ class ItermNotificationsFollowTheUser(unittest.TestCase):
         self.assertIsNone(self.beacon._iterm_notifications())
 
 
-class CustomizableStatusBarButtons(unittest.TestCase):
-    """STATUS-BAR-09 / CMD-23: the `↖ web` and `↗ code` buttons take their label
-    and their command from `statusbar.buttons.<name>`. The command is read on the
-    click; the label is baked into the profile, so it applies on a re-render."""
+class CustomizableButtons(unittest.TestCase):
+    """STATUS-06: the status panel's web and code buttons take their
+    command from `buttons.<name>.cmd`, read on the press."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -1754,70 +1725,33 @@ class CustomizableStatusBarButtons(unittest.TestCase):
         return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(self._cfg_dir)})
 
     def _buttons(self, **by_name):
-        return self._config(statusbar={"buttons": by_name})
+        return self._config(buttons=by_name)
 
     def _profiles_dir(self):
         return (Path(self._home.name) / "Library" / "Application Support"
                 / "iTerm2" / "DynamicProfiles")
 
-    def _rendered_titles(self):
-        base = json.loads((self._profiles_dir() / "beacon-dev.json").read_text())["Profiles"][0]
-        return [c["configuration"]["knobs"]["action"]["title"]
-                for c in base["Status Bar Layout"]["components"]
-                if c["class"] == "iTermStatusBarActionComponent"]
-
     def test_defaults_when_no_config_is_present(self):
         with self._config():
-            self.assertEqual(self.beacon._statusbar_button("web"),
-                             {"label": "↖ web", "cmd": ""})
-            self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ code", "cmd": "code"})
+            self.assertEqual(self.beacon._button_cmd("web"), "")
+            self.assertEqual(self.beacon._button_cmd("code"), "code")
 
-    def test_label_and_cmd_are_read_from_the_block(self):
-        with self._buttons(web={"label": "↖ repo", "cmd": "git web"}):
-            self.assertEqual(self.beacon._statusbar_button("web"),
-                             {"label": "↖ repo", "cmd": "git web"})
-
-    def test_one_field_set_leaves_the_other_at_its_default(self):
-        with self._buttons(code={"label": "↗ edit"}):
-            self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ edit", "cmd": "code"})
+    def test_the_cmd_is_read_from_the_block(self):
+        with self._buttons(web={"cmd": "git web"}):
+            self.assertEqual(self.beacon._button_cmd("web"), "git web")
 
     def test_a_blank_value_falls_back_rather_than_disabling(self):
-        # A whitespace-only label would render an invisible button, and a blank
-        # code cmd has nothing to launch — both mean "the default" instead.
-        with self._buttons(code={"label": "   ", "cmd": ""}):
-            self.assertEqual(self.beacon._statusbar_button("code"),
-                             {"label": "↗ code", "cmd": "code"})
+        # A blank code cmd has nothing to launch, so it means "the default".
+        with self._buttons(code={"cmd": "   "}):
+            self.assertEqual(self.beacon._button_cmd("code"), "code")
 
     def test_a_non_dict_block_is_ignored(self):
         # A hand-edited config can put a string where the block goes; defaults
         # are the answer, not a crash on a click.
-        with self._config(statusbar={"buttons": {"web": "git web"}}):
-            self.assertEqual(self.beacon._statusbar_button("web")["label"], "↖ web")
-        with self._config(statusbar="buttons"):
-            self.assertEqual(self.beacon._statusbar_button("web")["label"], "↖ web")
-
-    def test_rendered_profile_carries_the_configured_labels(self):
-        with self._buttons(web={"label": "↖ repo"}, code={"label": "↗ edit"}):
-            ok, msg = self.beacon.install_dynamic_profile()
-        self.assertTrue(ok, msg)
-        self.assertEqual(self._rendered_titles(), ["↖ repo", "↗ edit"])
-
-    def test_every_mode_profile_carries_the_configured_labels(self):
-        # The mode profiles are deep copies of the base, so a customized label
-        # must survive into each of them — otherwise a paused pane silently
-        # reverts to the shipped title.
-        with self._buttons(web={"label": "↖ repo"}):
-            ok, msg = self.beacon.install_dynamic_profile()
-        self.assertTrue(ok, msg)
-        for spec in self.beacon._derived_profile_specs():
-            prof = json.loads(
-                (self._profiles_dir() / f"{spec['profile']}.json").read_text())["Profiles"][0]
-            titles = [c["configuration"]["knobs"]["action"]["title"]
-                      for c in prof["Status Bar Layout"]["components"]
-                      if c["class"] == "iTermStatusBarActionComponent"]
-            self.assertEqual(titles, ["↖ repo", "↗ code"])
+        with self._config(buttons={"web": "git web"}):
+            self.assertEqual(self.beacon._button_cmd("web"), "")
+        with self._config(buttons="web"):
+            self.assertEqual(self.beacon._button_cmd("web"), "")
 
     def test_no_placeholder_survives_into_the_written_profile(self):
         # An unsubstituted placeholder still parses as JSON, so it ships as a
@@ -2093,69 +2027,13 @@ class CustomizableStatusBarButtons(unittest.TestCase):
         self.assertEqual(self._layout(rc=0)["code"], 0)
 
 
-class ProjectChipIsTheProjectName(BeaconTest):
-    """STATUS-BAR-02: the chip carries the project's name, not a forge identity
-    and not a deliverable ref — so it reads the same in a plain shell as under
-    Claude, in a git repo or out of one."""
-
-    def test_the_chip_is_the_project_name(self):
-        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"):
-            self.assertEqual(self.beacon._project_chip_at(Path("/work/widgets")), "widgets")
-
-    def test_outside_a_project_the_chip_names_the_directory(self):
-        # The old chip collapsed to empty here, which is the case the rewrite
-        # exists to fix: a plain shell had no identity on the strip at all.
-        with mock.patch.object(self.beacon, "_project_name_at", return_value=""):
-            self.assertEqual(self.beacon._project_chip_at(Path("/tmp/scratch")), "scratch")
-
-    def test_the_chip_carries_no_deliverable_ref(self):
-        published = {}
-        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
-             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widgets"), \
-             mock.patch.object(self.beacon, "_detect_branch_info",
-                               return_value=("topic", "clean", "", "feature")), \
-             mock.patch.object(self.beacon, "resolve_url",
-                               return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
-             mock.patch.object(self.beacon, "_cli",
-                               side_effect=lambda *a: published.update({"args": a})):
-            self.beacon._publish_chips(Path("/work/widgets"))
-        pairs = published["args"][1:]
-        self.assertIn("beacon_project_name=widgets", pairs)
-        self.assertFalse([p for p in pairs if "#42" in p],
-                         "the deliverable ref belongs to the status line, not the chip")
-
-    def test_the_forge_identity_still_qualifies_deliverables(self):
-        # `_project_full_at` outlives the chip that rendered it: STATUSLINE-03
-        # qualifies every deliverable with it.
-        recorded = {}
-        with mock.patch.object(self.beacon, "_project_name_at", return_value="widgets"), \
-             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widgets"), \
-             mock.patch.object(self.beacon, "_detect_branch_info",
-                               return_value=("topic", "clean", "", "feature")), \
-             mock.patch.object(self.beacon, "resolve_url",
-                               return_value=("https://github.com/acme/widgets/pull/42", "acme/widgets#42")), \
-             mock.patch.object(self.beacon, "_tack_route_urls", return_value=[]), \
-             mock.patch.object(self.beacon, "_record_deliverable",
-                               side_effect=lambda *a: recorded.update({"args": a})), \
-             mock.patch.object(self.beacon, "_cli"):
-            self.beacon._publish_chips(Path("/work/widgets"))
-        self.assertEqual(recorded["args"][0], "#42")
-        self.assertEqual(recorded["args"][2], "gh:acme/widgets")
-
-
-class ShellMirrorsTheChipContract(unittest.TestCase):
+class ShellLeavesThePluginItsSlots(unittest.TestCase):
     """§6.5: the shell's precmd and the plugin publish the same slot, so a
     Claude pane and an interactive pane agree. These assert the shell source
     kept its half of the contract — it can't be imported and run here."""
 
     def setUp(self):
         self.shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
-
-    def test_the_shell_publishes_the_project_name_slot(self):
-        # Slots go out as raw OSC from zsh, so the publish call is what
-        # carries the contract now.
-        self.assertIn("_beacon_publish beacon_project_name", self.shell)
-        self.assertNotIn("beacon_project_full", self.shell)
 
     def test_the_shell_never_publishes_the_plugin_owned_slot(self):
         # BADGE-02: beacon_project is the plugin's alone. The trailing space
@@ -2183,29 +2061,6 @@ class ShellDefersTheSessionNameToClaude(unittest.TestCase):
         self.assertIn('-z "${CLAUDECODE:-}"', gate)
 
 
-class TemplatePlaceholdersAreAllSubstituted(unittest.TestCase):
-    """Every `__BEACON_*__` in the profile template needs a matching `.replace`
-    in `install_dynamic_profile`. A placeholder added to the template alone
-    parses fine and ships as a literal button title or shell path, so nothing
-    else catches it."""
-
-    def test_template_and_installer_agree_on_the_placeholder_set(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
-        in_template = set(re.findall(r"__BEACON_[A-Z_]+__", template))
-        self.assertTrue(in_template, "template has no placeholders — did they move?")
-        for name in sorted(in_template):
-            with self.subTest(placeholder=name):
-                self.assertIn(f'.replace("{name}"', src,
-                              f"{name} is in the template but never substituted")
-
-    def test_the_test_helper_covers_every_placeholder(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        in_template = set(re.findall(r"__BEACON_[A-Z_]+__", template))
-        self.assertEqual(in_template, set(PROFILE_SUBSTITUTIONS),
-                         "PROFILE_SUBSTITUTIONS is out of step with the template")
-
-
 class PendingAttentionPaintsBlocked(BeaconTest):
     """BADGE-09a: the pending-attention marker forces the blocked (red) color
     state via OSC, regardless of the prompt subtype — beacon no longer
@@ -2227,7 +2082,7 @@ class PendingAttentionPaintsBlocked(BeaconTest):
 class ModeNoteStaysOffLineOne(BeaconTest):
     """Line 1 of the tab carries the mode's glyph and nothing more: it is shared
     with the OS window title and cannot differ between them, so a note has no
-    room there (TITLE-06). The note's surfaces are the status line (STATUSLINE-01)
+    room there (TITLE-06). The note's surfaces are the status line (STATUS-01)
     and, while the session is stood down, line 2 (TITLE-05a — see
     StoodDownModeNoteOnLineTwo). The pane paints the mode's profile and the
     activity's color, and no retired bg-image/note/clear-screen overlay."""
@@ -2698,11 +2553,216 @@ class ABlockedTabShowsItsKind(BeaconTest):
                 self.assertNotIn("set-profile", [c[0] for c in self.cli_calls])
 
 
+class TheStatusPanelDrawsThisSession(BeaconTest):
+    """STATUS-01/06: the status panel reads this session's head row from
+    `beacon status-panel`, the head row and the lines in one JSON object, so
+    a poll costs one process."""
+
+    def setUp(self):
+        super().setUp()
+        self.beacon.write_mode("pause", "back after standup")
+
+    def _statusline(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
+             contextlib.redirect_stdout(buf):
+            sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
+        return buf.getvalue()
+
+    def test_the_lines_print_with_nothing_to_turn_on(self):
+        self.assertIn("back after standup", self._statusline())
+
+    def test_the_head_row_names_this_session_alone(self):
+        """STATUS-06: the head row comes from this session's own record,
+        with no scan of the others and no `tack tree` read for its route."""
+        self.beacon.write_state("anchor.project", "acme")
+        self.beacon.write_state("anchor.cwd", "/src/acme")
+        self.beacon.write_state("override.task", "widgets")
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon, "collect_sessions") as scan, \
+             mock.patch.object(self.beacon, "_bound_route_record", return_value={"route": "acme"}), \
+             mock.patch.object(self.beacon, "_route_doc_for") as route, \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_status_panel(types.SimpleNamespace())
+        [head] = buf.getvalue().splitlines()
+        self.assertEqual(json.loads(head)["project"], "acme")
+        self.assertEqual(json.loads(head)["task"], "widgets")
+        self.assertEqual(json.loads(head)["mode"]["name"], "pause")
+        self.assertIn("back after standup", " ".join(json.loads(head)["lines"]))
+        self.assertEqual(json.loads(head)["anchor_cwd"], self.beacon.read_state("anchor.cwd"))
+        scan.assert_not_called()
+        route.assert_not_called()
+
+    def test_the_head_links_and_colors_the_branch(self):
+        """STATUS-06: the project and branch pages, and the branch's sync
+        glyphs and sync slot, from local git at the anchor."""
+        anchor = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, anchor, True)
+        self.beacon.write_state("anchor.cwd", anchor)
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("↑2 fix-widget", "diverged", "↑2", "feature")), \
+             mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://github.com/acme/widgets"):
+            head = self.beacon._status_panel_head()
+        self.assertEqual(head["branch"], "fix-widget")
+        self.assertEqual(head["branch_sync"], "↑2")
+        self.assertEqual(head["branch_slot"], "diverged")
+        self.assertEqual(head["branch_url"], "https://github.com/acme/widgets/tree/fix-widget")
+        self.assertNotIn("project_url", head)
+        self.assertEqual(head["forge"], "github")
+        self.assertEqual(head["code_label"], "code")
+
+    def test_the_web_button_is_named_for_its_forge(self):
+        name = self.beacon._forge_name
+        self.assertEqual(name("https://github.com/acme/widgets"), "github")
+        self.assertEqual(name("https://gitlab.example.io/acme/widgets"), "gitlab")
+        self.assertEqual(name("https://bitbucket.org/acme/widgets"), "bitbucket")
+        self.assertIsNone(name(""))
+
+    def test_the_code_button_says_the_editor_it_runs(self):
+        with mock.patch.object(self.beacon, "_button_cmd", return_value="/usr/local/bin/subl -n"):
+            self.assertEqual(self.beacon._code_button_label(), "subl")
+
+    def test_an_untracked_branch_has_no_link(self):
+        anchor = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, anchor, True)
+        self.beacon.write_state("anchor.cwd", anchor)
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("fix-widget", "untracked", "", "feature")), \
+             mock.patch.object(self.beacon, "_git_remote_url_normalized",
+                               return_value="https://github.com/acme/widgets"):
+            head = self.beacon._status_panel_head()
+        self.assertEqual(head["branch"], "fix-widget")
+        self.assertIsNone(head["branch_url"])
+
+
+class SwitchWalksTheOtherSessions(BeaconTest):
+    """FOCUS-06..08: Command-Option-] / [ raise the next or previous other
+    session, the ones waiting on you first; a session that can't be raised
+    opens the picker instead of guessing again."""
+
+    SESSIONS = [
+        {"hash": "aaaaaaaa", "project": "here", "color_state": "idle", "age_seconds": 1, "focusable": True},
+        {"hash": "bbbbbbbb", "project": "fresh", "color_state": "working", "age_seconds": 5, "focusable": True},
+        {"hash": "cccccccc", "project": "long-wait", "color_state": "blocked", "age_seconds": 900, "focusable": True},
+        {"hash": "dddddddd", "project": "short-wait", "color_state": "blocked", "age_seconds": 30, "focusable": True},
+        {"hash": "eeeeeeee", "project": "headless", "color_state": "blocked", "age_seconds": 2, "focusable": False},
+    ]
+
+    def _press(self, **flags):
+        focused = []
+        args = types.SimpleNamespace(**{"next": False, "prev": False, "pick": False, "list": False, **flags})
+        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": self.SESSIONS}), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID-aaaaaaaa"), \
+             mock.patch.object(self.beacon, "_read_iterm_handle", side_effect=lambda h: f"GUID-{h}"), \
+             mock.patch.object(self.beacon, "_focus_session",
+                               side_effect=lambda h: focused.append(h) or (True, "focused")):
+            self.beacon.cmd_switch(args)
+        return focused
+
+    def test_the_order_is_needs_you_first_longest_wait_first(self):
+        order = [s["hash"] for s in self.beacon._switch_order(self.SESSIONS)]
+        self.assertEqual(order, ["cccccccc", "dddddddd", "aaaaaaaa", "bbbbbbbb"])
+
+    def test_next_and_prev_step_from_this_pane_and_wrap(self):
+        self.assertEqual(self._press(next=True), ["bbbbbbbb"])
+        self.assertEqual(self._press(prev=True), ["dddddddd"])
+
+    def test_a_run_of_presses_walks_one_held_order(self):
+        self._press(next=True)
+        reordered = [dict(s, age_seconds=0 if s["hash"] == "bbbbbbbb" else s["age_seconds"]) for s in self.SESSIONS]
+        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": reordered}):
+            ring = [s["hash"] for s in self.beacon._switch_ring()]
+        self.assertEqual(ring, ["cccccccc", "dddddddd", "aaaaaaaa", "bbbbbbbb"])
+
+    def test_a_session_that_cannot_be_raised_opens_the_picker(self):
+        args = types.SimpleNamespace(next=True, prev=False, pick=False, list=False)
+        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": self.SESSIONS}), \
+             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID-aaaaaaaa"), \
+             mock.patch.object(self.beacon, "_read_iterm_handle", side_effect=lambda h: f"GUID-{h}"), \
+             mock.patch.object(self.beacon, "_focus_session", return_value=(False, "not found")), \
+             mock.patch.object(self.beacon, "_switch_pick") as picked:
+            self.beacon.cmd_switch(args)
+        picked.assert_called_once()
+
+    def test_alone_says_so(self):
+        self.SESSIONS = [self.SESSIONS[0]]
+        with self.assertRaises(SystemExit) as cm:
+            self._press(next=True)
+        self.assertIn("No other beacon session", str(cm.exception))
+
+    def test_list_names_the_others_for_the_band(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self._press(list=True)
+        listed = json.loads(buf.getvalue())
+        self.assertEqual([s["hash"] for s in listed], ["cccccccc", "dddddddd", "bbbbbbbb"])
+        self.assertEqual(listed[0]["label"], "long-wait (needs you)")
+
+    def test_a_label_leads_with_the_tabs_glyph(self):
+        label = self.beacon._switch_label
+        self.assertEqual(label({"project": "p", "kind": "question", "mode": {"name": "release"},
+                                "color_state": "blocked"}), "❓ p (needs you)")
+        self.assertEqual(label({"project": "p", "mode": {"name": "release"}, "color_state": "idle"}),
+                         "🚀 p (idle)")
+        self.assertEqual(label({"project": "p", "activity": "background", "color_state": "idle"}), "⏳ p (idle)")
+
+
+class SwitchKeysInProfile(unittest.TestCase):
+    """FOCUS-07: the beacon profiles bind Command-Option-] / [ / / to `beacon
+    switch`, and carry the parent profile's own bindings alongside, since
+    iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.beacon = _load_beacon(Path(tmp.name))
+
+    def test_the_parents_bindings_survive_beside_the_switch_keys(self):
+        prefs = {"New Bookmarks": [
+            {"Name": "Other", "Keyboard Map": {"0x1-0x0": {"Action": 1}}},
+            {"Name": "Default", "Keyboard Map": {"0xf702-0x280000": {"Action": 2, "Text": ""}}},
+        ]}
+        keymap = self.beacon._switch_key_map(prefs, "Default")
+        self.assertEqual(keymap["0xf702-0x280000"], {"Action": 2, "Text": ""})
+        self.assertNotIn("0x1-0x0", keymap)
+        for key, flag in (("0x5d-0x180000-0x1e-0x1", "--next"), ("0x5b-0x180000-0x21-0x1", "--prev"),
+                          ("0x2f-0x180000-0x2c-0x1", "--pick")):
+            binding = keymap[key]
+            self.assertEqual(binding["Action"], 35)
+            self.assertIn(f"switch {flag} 2>&1 >/dev/null", binding["Text"])
+
+    def test_no_prefs_still_binds_the_keys(self):
+        self.assertEqual(len(self.beacon._switch_key_map(None, "Default")), 3)
+
+
+class FocusByHash(BeaconTest):
+    """FOCUS-05: `beacon focus <hash>` raises a session the way serve's
+    `POST /focus` does, and fails with the reason when it can't."""
+
+    def _focus(self, sh):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.beacon.cmd_focus(types.SimpleNamespace(hash=sh))
+        return err.getvalue()
+
+    def test_a_focused_session_exits_zero(self):
+        with mock.patch.object(self.beacon, "_focus_session", return_value=(True, "focused")) as f:
+            self.assertEqual(self._focus("abcdef01"), "")
+        f.assert_called_once_with("abcdef01")
+
+    def test_a_refusal_exits_non_zero_with_the_reason(self):
+        with mock.patch.object(self.beacon, "_focus_session", return_value=(False, "not focusable")):
+            with self.assertRaises(SystemExit) as cm:
+                self._focus("abcdef01")
+        self.assertEqual(cm.exception.code, 1)
+
+
 class AReviewBlockHoldsTheSession(BeaconTest):
     """CMD-33: `beacon block <target>` holds the session blocked on a review its
     caller opened outside Claude Code, until `beacon unblock`. The tab leads with
     `👀` and takes the blocked fill (TITLE-06, BADGE-09a), the status line names
-    the target (STATUSLINE-04), and no hook releases it."""
+    the target (STATUS-04), and no hook releases it."""
 
     TARGET = "/work/acme-widget/CHANGELOG.md"
 
@@ -2726,7 +2786,7 @@ class AReviewBlockHoldsTheSession(BeaconTest):
         buf = io.StringIO()
         with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(types.SimpleNamespace())
+            sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
         return buf.getvalue()
 
     def test_block_records_the_target_and_skill(self):
@@ -3397,7 +3457,7 @@ class TwoLineTitle(BeaconTest):
 
 
 class MarkdownEmphasis(BeaconTest):
-    """TITLE-05b / STATUSLINE-01a: the emphasis a person writes into a task or a
+    """TITLE-05b / STATUS-01a: the emphasis a person writes into a task or a
     mode note becomes markup on the two surfaces that have any — HTML on the
     tab's line 2, SGR on the status line — and stays literal text everywhere
     else."""
@@ -3410,7 +3470,7 @@ class MarkdownEmphasis(BeaconTest):
     def test_underscore_forms_need_word_boundaries(self):
         self.assertEqual(self.beacon._title_markup("__loud__ and _quiet_"),
                          "<b>loud</b> and <i>quiet</i>")
-        for plain in ("rename beacon_task_nl", "_publish_chips_ok", "2 * 3 * 4"):
+        for plain in ("rename beacon_task_nl", "_publish_links_ok", "2 * 3 * 4"):
             self.assertEqual(self.beacon._title_markup(plain), plain)
 
     def test_adjacent_runs_do_not_merge(self):
@@ -3436,36 +3496,8 @@ class MarkdownEmphasis(BeaconTest):
         self.assertEqual(snapshot["task_nl"], "ship **it**")
 
 
-class HybridBranchSlots(BeaconTest):
-    """STATUS-BAR-03 (#20): _publish_chips routes the branch to exactly one
-    slot — the de-emphasized default slot for the repo's default branch, else
-    the feature branch's sync-state slot — so the profile's fixed-color
-    components resolve to a single visible chip."""
-
-    def _publish(self, detected):
-        with mock.patch.object(self.beacon, "_detect_branch_info", return_value=detected), \
-             mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
-             mock.patch.object(self.beacon, "resolve_url", return_value=("", "")):
-            self.beacon._publish_chips(Path("/x"))
-        batch = next(c for c in self.cli_calls if c[0] == "uservar-batch")
-        return dict(p.split("=", 1) for p in batch[1:])
-
-    def test_default_branch_fills_default_slot_only(self):
-        slots = self._publish(("main", "clean", "", "default"))
-        self.assertEqual(slots["beacon_branch_default"], "main")
-        self.assertEqual(slots["beacon_branch_clean"], "")
-        self.assertEqual(slots["beacon_branch_diverged"], "")
-        self.assertEqual(slots["beacon_branch_untracked"], "")
-
-    def test_feature_branch_routes_to_state_slot(self):
-        slots = self._publish(("↑1 topic", "diverged", "↑1", "feature"))
-        self.assertEqual(slots["beacon_branch_default"], "")
-        self.assertEqual(slots["beacon_branch_diverged"], "↑1 topic")
-        self.assertEqual(slots["beacon_branch_clean"], "")
-
-
 class ResolvedUrlPersistence(BeaconTest):
-    """STATUSLINE-02: _publish_chips persists the resolved URL so the status line
+    """STATUS-02: _publish_links persists the resolved URL so the status line
     can render it without re-running resolve_url (git, and possibly gh/glab) on
     every prompt. The `url-<pane-guid>.txt` handoff file the `↖ web` button read
     is retired with the button — the persisted state is the single source."""
@@ -3476,7 +3508,7 @@ class ResolvedUrlPersistence(BeaconTest):
              mock.patch.object(self.beacon, "_project_full_at", return_value="gh:acme/widget"), \
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, label)):
-            self.beacon._publish_chips(Path(cwd))
+            self.beacon._publish_links(Path(cwd))
 
     def test_resolution_is_persisted(self):
         self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
@@ -3484,16 +3516,11 @@ class ResolvedUrlPersistence(BeaconTest):
                          "https://gh.test/acme/widget/pull/7")
         self.assertEqual(self.beacon.read_state("resolved.url_label"), "acme/widget#7")
 
-    def test_url_handoff_file_is_not_written(self):
+    def test_no_handoff_file_is_written(self):
+        # The status-bar buttons that read them are gone (3.0).
         self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
         self.assertFalse((self.beacon.CACHE_DIR / "url-GUID.txt").exists())
-        # The `↗ code` button still needs its cwd handoff file.
-        self.assertTrue((self.beacon.CACHE_DIR / "cwd-GUID.txt").exists())
-
-    def test_beacon_url_uservar_is_not_published(self):
-        self._publish("https://gh.test/acme/widget/pull/7", "acme/widget#7")
-        batch = next(c for c in self.cli_calls if c[0] == "uservar-batch")
-        self.assertFalse([p for p in batch[1:] if p.startswith("beacon_url=")])
+        self.assertFalse((self.beacon.CACHE_DIR / "cwd-GUID.txt").exists())
 
     def test_url_only_change_still_republishes(self):
         # The URL rides the last-value gate's signature but not the uservar
@@ -3507,13 +3534,13 @@ class ResolvedUrlPersistence(BeaconTest):
              mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID"), \
              mock.patch.object(self.beacon, "resolve_url",
                                return_value=("https://gh.test/acme/widget/tree/b", "acme/widget")):
-            self.beacon._publish_chips(Path("/x"))
+            self.beacon._publish_links(Path("/x"))
         self.assertEqual(self.beacon.read_state("resolved.url"),
                          "https://gh.test/acme/widget/tree/b")
 
 
 class DeliverableAccumulation(BeaconTest):
-    """STATUSLINE-03: _publish_chips records each deliverable the URL resolver
+    """STATUS-03: _publish_links records each deliverable the URL resolver
     lands on, so the status line can show what the session has crossed. Only
     forge issue/PR/MR URLs count — a branch or repo page is not a deliverable."""
 
@@ -3525,7 +3552,7 @@ class DeliverableAccumulation(BeaconTest):
              mock.patch.object(self.beacon, "_tack_landed_urls", return_value=set()), \
              mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
-            self.beacon._publish_chips(Path("/x"))
+            self.beacon._publish_links(Path("/x"))
 
     def _refs(self):
         return [e["ref"] for e in self.beacon.read_state_json("deliverables", [])]
@@ -3582,7 +3609,7 @@ class DeliverableAccumulation(BeaconTest):
 
 
 class TackRouteAcquisition(BeaconTest):
-    """STATUSLINE-03 (#31): the bound tack route — not the branch resolver — is
+    """STATUS-03 (#31): the bound tack route — not the branch resolver — is
     what feeds the row. PROV-07 answers "what does this branch point at", so
     work with no branch to be found by (an issue filed from the default branch,
     another project's deliverable the session crossed) reached it not at all.
@@ -3681,7 +3708,7 @@ class TackRouteAcquisition(BeaconTest):
              mock.patch.object(self.beacon, "_tack_route_urls", return_value=list(route)), \
              mock.patch.object(self.beacon, "_location_url_at", return_value=location), \
              mock.patch.object(self.beacon, "resolve_url", return_value=(url, "label")):
-            self.beacon._publish_chips(Path("/x"))
+            self.beacon._publish_links(Path("/x"))
 
     def _entries(self):
         return self.beacon.read_state_json("deliverables", [])
@@ -3801,7 +3828,7 @@ class TackRouteAcquisition(BeaconTest):
 
 
 class ProjectIdentityFromUrl(BeaconTest):
-    """STATUSLINE-03 (#31): an entry's project is derived from its own URL, so a
+    """STATUS-03 (#31): an entry's project is derived from its own URL, so a
     ref from another project renders qualified."""
 
     def test_github(self):
@@ -3825,7 +3852,7 @@ class ProjectIdentityFromUrl(BeaconTest):
 
 
 class WorkItemAndTrackerRefs(BeaconTest):
-    """STATUSLINE-03 (#31): GitLab renamed `/-/issues/<n>` to `/-/work_items/<n>`
+    """STATUS-03 (#31): GitLab renamed `/-/issues/<n>` to `/-/work_items/<n>`
     and the API hands back the new form; epics and milestones are the same class
     of thing a session crosses. Sigils follow GitLab's own reference syntax."""
 
@@ -3845,7 +3872,7 @@ class WorkItemAndTrackerRefs(BeaconTest):
 
 
 class QualifyDeliverable(BeaconTest):
-    """STATUSLINE-03: every ref carries its project, in GitLab's short reference
+    """STATUS-03: every ref carries its project, in GitLab's short reference
     form, because one row spans several projects."""
 
     CASES = (
@@ -3865,7 +3892,7 @@ class QualifyDeliverable(BeaconTest):
 
 
 class OriginUrlMemo(BeaconTest):
-    """A single `_publish_chips` resolves the origin four times over. The remote
+    """A single `_publish_links` resolves the origin four times over. The remote
     cannot change inside a hook process, so the lookup is memoized per root."""
 
     def test_repeated_lookups_shell_out_once(self):
@@ -4025,7 +4052,7 @@ class ConfigurableCodeButton(BeaconTest):
         return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
 
     def _button(self, name, **fields):
-        return self._config(statusbar={"buttons": {name: fields}})
+        return self._config(buttons={name: fields})
 
     def test_default_is_a_bare_code_invocation(self):
         with self._config():
@@ -4087,7 +4114,7 @@ class ConfigurableCodeButton(BeaconTest):
                 self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
         msg = str(cm.exception)
         self.assertIn("beacon-no-such-editor", msg)
-        self.assertIn("statusbar.buttons.code.cmd", msg)
+        self.assertIn("buttons.code.cmd", msg)
 
     def test_launch_passes_args_then_directory(self):
         calls = []
@@ -4110,33 +4137,6 @@ class ConfigurableCodeButton(BeaconTest):
             with self.assertRaises(SystemExit) as cm:
                 self.beacon.cmd_open_code(self.beacon.argparse.Namespace(dir="/tmp"))
         self.assertIn("boom", str(cm.exception))
-
-class CodeButtonInProfile(unittest.TestCase):
-    """STATUS-BAR-07: the button delegates to `beacon open-code` rather than
-    launching the editor from its own shell — an iTerm2 action shell has no
-    interactive PATH (§6.10 caveat 3), so it invokes an absolute interpreter."""
-
-    def _code_action(self):
-        layout = _render_profile_template()["Status Bar Layout"]["components"]
-        return next(c["configuration"]["knobs"]["action"] for c in layout
-                    if c["class"] == "iTermStatusBarActionComponent"
-                    and c["configuration"]["knobs"]["action"]["title"] == "↗ code")
-
-    def test_button_calls_open_code_by_absolute_interpreter(self):
-        param = self._code_action()["parameter"]
-        self.assertIn('"/x/python3" "/x/scripts/beacon" open-code', param)
-        self.assertNotIn("open -a", param)
-
-    def test_button_strips_quotes_before_building_the_alert(self):
-        # The alert interpolates the error text into AppleScript; an unescaped
-        # quote there would break the script instead of showing the message.
-        param = self._code_action()["parameter"]
-        self.assertIn("tr -d", param)
-
-    def test_python_placeholder_is_substituted_at_install(self):
-        src = (REPO_ROOT / "scripts" / "beacon").read_text(encoding="utf-8")
-        self.assertIn('"__BEACON_PYTHON__", _json_inner(sys.executable', src)
-
 
 class PaletteDocMatchesCode(unittest.TestCase):
     """docs/palette.md documents the status line's SGR roles and names the
@@ -4165,25 +4165,6 @@ class PaletteDocMatchesCode(unittest.TestCase):
                 self.assertIn(f"SGR {getattr(beacon, name)}", palette)
 
 
-class WebButton(unittest.TestCase):
-    """STATUS-BAR-08: the `↖ web` chip resolves at click time through
-    `beacon open-url`. What was retired in 2.0 is the *URL handoff file* — the
-    second source that drifted from the chip (#5) — not the affordance, which a
-    pane not running Claude has no other way to reach."""
-
-    def test_chip_calls_open_url_and_reads_no_url_handoff(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        self.assertIn("__BEACON_WEB_LABEL__", template)
-        self.assertIn("open-url", template)
-        # The cwd handoff survives; a URL handoff would reintroduce the drift.
-        self.assertNotIn("url-${ITERM_SESSION_ID", template)
-
-    def test_shell_publishes_no_url_var_or_handoff(self):
-        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
-        self.assertNotIn("uservar beacon_url", shell)
-        self.assertNotIn("_beacon_write_session_file url", shell)
-
-
 class OpenUrlCommand(BeaconTest):
     """STATUS-BAR-08 / CMD-14: `open-url [dir]` opens the project page of the
     directory it is given, resolved at click time, so it is correct in a pane
@@ -4196,7 +4177,7 @@ class OpenUrlCommand(BeaconTest):
         return mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": str(d)})
 
     def _web_button(self, cmd):
-        return self._config(statusbar={"buttons": {"web": {"cmd": cmd}}})
+        return self._config(buttons={"web": {"cmd": cmd}})
 
     def test_resolves_against_the_directory_argument(self):
         seen = {}
@@ -4230,7 +4211,7 @@ class OpenUrlCommand(BeaconTest):
         return calls[-1]
 
     def test_opens_the_project_page_while_the_branch_has_an_open_pr(self):
-        # The open PR is the status line's link (STATUSLINE-02); the button
+        # The open PR is the status line's link (STATUS-02); the button
         # opens the repo's front page whatever the session is working on (#63).
         with mock.patch.object(self.beacon, "_git_remote_url_normalized",
                                return_value="https://x.test/acme/widgets"), \
@@ -4311,18 +4292,7 @@ class OpenUrlCommand(BeaconTest):
              mock.patch.object(self.beacon, "_resolve_editor", return_value=None):
             with self.assertRaises(SystemExit) as cm:
                 self.beacon.cmd_open_url(self.beacon.argparse.Namespace(dir="/work/repo"))
-        self.assertIn("statusbar.buttons.web.cmd", str(cm.exception))
-
-
-class HybridBranchProfileSlots(unittest.TestCase):
-    """STATUS-BAR-03: the profile carries one fixed-color branch component per
-    bucket — the default slot plus the three feature-state slots."""
-
-    def test_four_branch_slots_present(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        for var in ("beacon_branch_default", "beacon_branch_clean",
-                    "beacon_branch_diverged", "beacon_branch_untracked"):
-            self.assertIn(rf"\\(user.{var}?)", template)
+        self.assertIn("buttons.web.cmd", str(cm.exception))
 
 
 class BranchIdentity(unittest.TestCase):
@@ -4370,7 +4340,7 @@ class SessionAnchor(BeaconTest):
         super().setUp()
         self.chip_cwds: list[str] = []
         p = mock.patch.object(
-            self.beacon, "_publish_chips",
+            self.beacon, "_publish_links",
             # Normalize separators: str(Path("/x")) is "\\x" on Windows, and the
             # fixtures below use POSIX paths. The tests verify anchor logic, not
             # path formatting.
@@ -4539,38 +4509,17 @@ class ProjectFromTackRepoLabel(BeaconTest):
         root = self._root("web")
         self.beacon._tack_repo_label.return_value = "acme/web"
         with self._home(root), \
-             mock.patch.object(self.beacon, "_publish_chips"), \
+             mock.patch.object(self.beacon, "_publish_links"), \
              mock.patch.object(self.beacon, "_discover_icon_at", return_value=None):
             self.beacon._publish_anchor(root)
         self.assertEqual(self.beacon.read_state("anchor.slug"), "acme/web")
         self.assertEqual(self.beacon.read_state("anchor.project"), "acme/web")
 
-    def test_the_project_chip_reads_the_anchored_slug(self):
-        # STATUS-BAR-02: the chip and the tab's line 1 name the project alike.
-        root = self._root("web")
-        self.beacon._tack_repo_label.return_value = "acme/web"
-        published = []
-        with self._home(root), \
-             mock.patch.object(self.beacon, "_detect_branch_info",
-                               return_value=("main", "clean", "", "default")), \
-             mock.patch.object(self.beacon, "resolve_url", return_value=("", "")), \
-             mock.patch.object(self.beacon, "_tack_route_urls", return_value=[]), \
-             mock.patch.object(self.beacon, "_discover_icon_at", return_value=None), \
-             mock.patch.object(self.beacon, "_cli", side_effect=lambda *a: published.append(a)):
-            self.beacon._publish_anchor(root)
-            self.beacon._tack_repo_label.reset_mock()
-            self.beacon._publish_chips(root)
-        chips = [a for a in published if any(str(p).startswith("beacon_project_name=") for p in a)]
-        self.assertEqual(len(chips), 2)
-        for args in chips:
-            self.assertIn("beacon_project_name=acme/web", args)
-        self.beacon._tack_repo_label.assert_not_called()
-
     def test_session_start_clears_a_prior_tenants_slug(self):
         root = self._root("widget")
         self.beacon.write_state("anchor.slug", "acme/web")
         with self._home(root), \
-             mock.patch.object(self.beacon, "_publish_chips"), \
+             mock.patch.object(self.beacon, "_publish_links"), \
              mock.patch.object(self.beacon, "_discover_icon_at", return_value=None):
             self.beacon._publish_anchor(root)
         self.assertIsNone(self.beacon.read_state("anchor.slug"))
@@ -4622,7 +4571,7 @@ class CompactionIsNotAFreshStart(BeaconTest):
         super().setUp()
         self.chip_cwds: list[str] = []
         p = mock.patch.object(
-            self.beacon, "_publish_chips",
+            self.beacon, "_publish_links",
             side_effect=lambda cwd: self.chip_cwds.append(str(cwd).replace("\\", "/")),
         )
         p.start()
@@ -4692,7 +4641,7 @@ class ANestedSessionDoesNotTakeThePane(BeaconTest):
         super().setUp()
         os.environ["ITERM_SESSION_ID"] = self.PANE
         self.addCleanup(os.environ.pop, "CLAUDE_CODE_SESSION_ID", None)
-        chips = mock.patch.object(self.beacon, "_publish_chips")
+        chips = mock.patch.object(self.beacon, "_publish_links")
         chips.start()
         self.addCleanup(chips.stop)
         # Real directories: the wander check (HOOK-08c) shells to git against
@@ -4887,7 +4836,7 @@ class LatestTurn(BeaconTest):
         self.assertIn("at", t)
 
     def test_stop_records_agent_turn_from_transcript(self):
-        with mock.patch.object(self.beacon, "_publish_chips"), \
+        with mock.patch.object(self.beacon, "_publish_links"), \
                 mock.patch.object(self.beacon, "_last_assistant_text",
                                   return_value="Done — all green."):
             self._fire("Stop", {})
@@ -4899,7 +4848,7 @@ class LatestTurn(BeaconTest):
         # A pure tool-use turn yields no assistant text; the prior turn stands
         # rather than the signal blanking.
         self._fire("UserPromptSubmit", {"prompt": "go"})
-        with mock.patch.object(self.beacon, "_publish_chips"), \
+        with mock.patch.object(self.beacon, "_publish_links"), \
                 mock.patch.object(self.beacon, "_last_assistant_text", return_value=None):
             self._fire("Stop", {})
         self.assertEqual(self._turn()["text"], "go")
@@ -4939,7 +4888,7 @@ class LatestTurn(BeaconTest):
     def test_fresh_start_clears_latest_turn(self):
         self.beacon.write_state("latest_turn", json.dumps(
             {"role": "agent", "text": "stale", "at": "x"}))
-        with mock.patch.object(self.beacon, "_publish_chips"):
+        with mock.patch.object(self.beacon, "_publish_links"):
             self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
         self.assertIsNone(self.beacon.read_state("latest_turn"))
 
@@ -4947,7 +4896,7 @@ class LatestTurn(BeaconTest):
         # WIP-14: the full multi-line text is persisted for on-demand fetch,
         # while latest_turn keeps only the single-line excerpt (WIP-11).
         long_turn = "First line of the reply.\nSecond line with detail.\nThird."
-        with mock.patch.object(self.beacon, "_publish_chips"), \
+        with mock.patch.object(self.beacon, "_publish_links"), \
                 mock.patch.object(self.beacon, "_last_assistant_text",
                                   return_value=long_turn):
             self._fire("Stop", {})
@@ -4956,7 +4905,7 @@ class LatestTurn(BeaconTest):
 
     def test_fresh_start_clears_full_turn(self):
         self.beacon.write_state("latest_turn_full", "stale full text")
-        with mock.patch.object(self.beacon, "_publish_chips"):
+        with mock.patch.object(self.beacon, "_publish_links"):
             self._fire("SessionStart", {"cwd": "/work/acme/widget", "source": "startup"})
         self.assertIsNone(self.beacon.read_state("latest_turn_full"))
 
@@ -5420,8 +5369,8 @@ class EmptyItermIdIsolatesSessions(BeaconTest):
 
     def setUp(self):
         super().setUp()
-        # _publish_anchor → _publish_chips would otherwise shell out to git.
-        p = mock.patch.object(self.beacon, "_publish_chips", side_effect=lambda cwd: None)
+        # _publish_anchor → _publish_links would otherwise shell out to git.
+        p = mock.patch.object(self.beacon, "_publish_links", side_effect=lambda cwd: None)
         p.start()
         self.addCleanup(p.stop)
 
@@ -5483,7 +5432,7 @@ class SessionSeedFallback(BeaconTest):
         os.environ["CLAUDE_CODE_SESSION_ID"] = "sess-Y"
         args = mock.Mock(event="SessionStart")
         payload = {"session_id": "sess-Y", "cwd": "/work/widget", "source": "startup"}
-        with mock.patch.object(self.beacon, "_publish_chips", side_effect=lambda cwd: None):
+        with mock.patch.object(self.beacon, "_publish_links", side_effect=lambda cwd: None):
             with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
                 self.beacon.cmd_hook(args)
         os.environ.pop("ITERM_SESSION_ID", None)
@@ -5523,7 +5472,7 @@ class InstallGating(unittest.TestCase):
         returns = {
             "_install_cli_wrapper": Path("/tmp/beacon"),
             "_install_completions": None,
-            "_install_statusline": None,
+            "_retire_statusline": None,
             "_install_shell_source": None,
             "_service_install": True,
             "_restart_installed_service": None,
@@ -5560,7 +5509,7 @@ class InstallGating(unittest.TestCase):
 
     _ITERM_STEPS = ("_install_shell_source", "install_dynamic_profile", "_sync_claude_status")
     _ALWAYS_STEPS = ("_install_cli_wrapper", "_restart_installed_service",
-                     "_install_completions", "_install_statusline")
+                     "_install_completions", "_retire_statusline")
 
     def test_dashboard_only_skips_iterm_steps(self):
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
@@ -5756,12 +5705,11 @@ class LayoutRestartOffer(BeaconTest):
         self.assertEqual((out, calls), ("", []))
 
 
-class StatuslineWiring(unittest.TestCase):
-    """STATUSLINE-01: install wires `statusLine` into Claude Code's user
-    settings.json, since nothing else makes the footer row exist. Left as a
-    printed block, the step was skipped or applied to one project's
-    settings.local.json, so the row was absent everywhere else. The write is
-    scoped to that one key and never replaces a statusLine the user chose."""
+class StatuslineRetirement(unittest.TestCase):
+    """STATUS-06: install takes beacon's own `statusLine` out of Claude
+    Code's user settings, where a 2.x install wrote it, since the status panel
+    draws those lines above the prompt and the row would repeat them. A
+    `statusLine` that runs anything else is the user's, and stays."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -5773,45 +5721,30 @@ class StatuslineWiring(unittest.TestCase):
     def _install(self):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            self.beacon._install_statusline(self.settings)
+            self.beacon._retire_statusline(self.settings)
         return buf.getvalue()
 
-    def _written(self):
-        return json.loads(self.settings.read_text())
-
-    def test_writes_the_block_when_absent(self):
-        self.settings.write_text(json.dumps({"model": "opus"}))
-        self._install()
-        data = self._written()
-        self.assertEqual(data["statusLine"]["command"], "beacon statusline")
-        self.assertEqual(data["model"], "opus", "unrelated settings must survive")
-
-    def test_creates_the_file_when_missing(self):
-        self._install()
-        self.assertEqual(self._written()["statusLine"]["command"], "beacon statusline")
-
-    def test_writes_only_the_keys_naming_the_command(self):
-        self._install()
-        self.assertEqual(set(self._written()["statusLine"]), {"type", "command"})
-
-    def test_an_existing_statusline_is_left_alone(self):
-        mine = {"type": "command", "command": "my-own-prompt"}
-        self.settings.write_text(json.dumps({"statusLine": mine}))
+    def test_beacons_own_statusline_is_removed(self):
+        self.settings.write_text(json.dumps({
+            "model": "opus", "statusLine": {"type": "command", "command": "beacon statusline"}}))
         out = self._install()
-        self.assertEqual(self._written()["statusLine"], mine)
-        self.assertIn("already defines a statusLine", out)
-        self.assertIn("beacon statusline", out, "the block to paste is still shown")
+        self.assertEqual(json.loads(self.settings.read_text()), {"model": "opus"})
+        self.assertIn("removed beacon's statusLine", out)
 
-    def test_rerun_is_a_no_op(self):
+    def test_someone_elses_statusline_is_left_alone(self):
+        mine = {"statusLine": {"type": "command", "command": "my-own-prompt"}}
+        self.settings.write_text(json.dumps(mine))
+        self.assertEqual(self._install(), "")
+        self.assertEqual(json.loads(self.settings.read_text()), mine)
+
+    def test_no_settings_file_is_left_absent(self):
         self._install()
-        out = self._install()
-        self.assertIn("already wired", out)
+        self.assertFalse(self.settings.exists())
 
     def test_unparseable_settings_are_not_clobbered(self):
         self.settings.write_text("{ not json")
-        out = self._install()
+        self._install()
         self.assertEqual(self.settings.read_text(), "{ not json")
-        self.assertIn("unreadable", out)
 
 
 class ClaudeStatusFollowsTabLook(unittest.TestCase):
@@ -6544,7 +6477,7 @@ class JsonPayload(BeaconTest):
 
 
 class StatusLineProvider(BeaconTest):
-    """STATUSLINE-01: the Claude Code status-line provider (the footer row Claude
+    """STATUS-01: the Claude Code status-line provider (the footer row Claude
     owns, no terminal overlap) prints the pause reason and the resolved URL as an
     OSC-8 link — empty otherwise, since project/task/status are carried by the
     tab."""
@@ -6553,11 +6486,11 @@ class StatusLineProvider(BeaconTest):
         buf = io.StringIO()
         with mock.patch.object(self.beacon.sys, "stdin", io.StringIO('{"cwd":"/x"}')), \
              contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+            sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
         return buf.getvalue()
 
     def test_a_note_renders_its_markdown_emphasis(self):
-        # STATUSLINE-01a: the same note reaches line 2 of the tab (TITLE-05a),
+        # STATUS-01a: the same note reaches line 2 of the tab (TITLE-05a),
         # so the two surfaces must not disagree about what its markers meant.
         self.beacon.write_mode("pause", "pick this up with **anchor**")
         out = self._run()
@@ -6767,7 +6700,7 @@ def _gl_issue(project, n):
 
 
 class StatusLineLinks(BeaconTest):
-    """STATUSLINE-03 (#66): each CR is titled from its own forge record, CRs
+    """STATUS-03 (#66): each CR is titled from its own forge record, CRs
     that wait on each other render as a tree, a CR names the issues it closes,
     and an issue brings what it links to onto the row."""
 
@@ -6789,7 +6722,7 @@ class StatusLineLinks(BeaconTest):
         with mock.patch.dict(os.environ, env), \
              mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+            sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
         return buf.getvalue()
 
     def _lines(self, columns=None):
@@ -7026,7 +6959,7 @@ class StatusLineLinks(BeaconTest):
 
 
 class LinksExpansion(BeaconTest):
-    """STATUSLINE-03 *Expansion*: one hop out from each issue the session put on
+    """STATUS-03 *Expansion*: one hop out from each issue the session put on
     the row, never displacing what the session touched itself."""
 
     def setUp(self):
@@ -7136,7 +7069,7 @@ class LinksExpansion(BeaconTest):
 
 
 class StackExpansion(BeaconTest):
-    """STATUSLINE-03 *Expansion*, stacks: a CR the session touched brings the
+    """STATUS-03 *Expansion*, stacks: a CR the session touched brings the
     open CRs it is stacked on, down to the bottom of the stack, so the row draws
     the whole tree rather than the top of it."""
 
@@ -7165,7 +7098,7 @@ class StackExpansion(BeaconTest):
         buf = io.StringIO()
         with mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(buf):
-            self.beacon.cmd_statusline(self.beacon.argparse.Namespace())
+            sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
         plain = re.sub(r"\x1b\]8;;[^\a]*\a|\x1b\[[0-9;]*m", "", buf.getvalue())
         return [line.replace(self.beacon.STATUSLINE_INDENT_GUARD, "")
                 for line in plain.rstrip("\n").split("\n")]
@@ -7684,52 +7617,6 @@ class SpawnLinksRefresh(unittest.TestCase):
         self._spawn().assert_not_called()
 
 
-class StatusBarLayout(unittest.TestCase):
-    """STATUS-BAR-02: the strip is `↖ web · project ←spring→ branch ↗ code`.
-    Each edge pairs an action with the data it acts on; the review chip was
-    dropped for lack of use, and with nothing centred one spring suffices."""
-
-    def _layout(self):
-        return _render_profile_template()["Status Bar Layout"]["components"]
-
-    def _action_titles(self):
-        return [c["configuration"]["knobs"]["action"]["title"]
-                for c in self._layout()
-                if c["class"] == "iTermStatusBarActionComponent"]
-
-    def test_the_two_action_chips_bookend_the_strip(self):
-        self.assertEqual(self._action_titles(), ["↖ web", "↗ code"])
-
-    def test_the_spring_sits_behind_web_leaving_one_right_hand_cluster(self):
-        # `↖ web` alone at the left edge; the spring then pushes project, its
-        # branch, and `↗ code` together on the right, so the identity sits
-        # beside the branch it belongs to rather than across the strip from it.
-        comps = self._layout()
-        classes = [c["class"] for c in comps]
-        self.assertEqual(classes.count("iTermStatusBarSpringComponent"), 1)
-        self.assertEqual(comps[0]["configuration"]["knobs"]["action"]["title"], "↖ web")
-        self.assertEqual(classes.index("iTermStatusBarSpringComponent"), 1)
-        self.assertEqual(
-            comps[2]["configuration"]["knobs"]["expression"],
-            r"\(user.beacon_project_name?)")
-        self.assertEqual(comps[-1]["configuration"]["knobs"]["action"]["title"], "↗ code")
-
-    def test_every_chip_expression_renders_blank_when_unset(self):
-        # iTerm2 3.7.5+ prints `[undef: <var>]` in an Interpolated String
-        # component for a variable nothing set, which is every beacon var in a
-        # pane the shell integration never ran in. `?` keeps those blank.
-        for comp in self._layout():
-            expr = comp["configuration"]["knobs"].get("expression")
-            if expr is not None:
-                with self.subTest(expr=expr):
-                    self.assertRegex(expr, r"^\\\(user\.beacon_[a-z_]+\?\)$")
-
-    def test_review_chip_is_gone(self):
-        template = (REPO_ROOT / "iterm" / "profile.json.template").read_text(encoding="utf-8")
-        self.assertNotIn("⇄ review", template)
-        self.assertNotIn("beacon review", template)
-
-
 class ReviewFeatureRemoved(BeaconTest):
     """CMD-16 retired: the branch-review subcommand goes with its chip. Reviewing
     a diff is a job other tools own; beacon's is reporting session state."""
@@ -8186,7 +8073,7 @@ class DocsCiteRealPaths(unittest.TestCase):
     claim a reader trusts and no test was watching."""
 
     DOCS = ("README.md", "AGENTS.md", "docs/README.md", "docs/iterm/layout.md",
-            "docs/statusbar.md", "docs/palette.md", "docs/why.md", "docs/demo.md")
+            "docs/statusline.md", "docs/palette.md", "docs/why.md", "docs/demo.md")
 
     # A backticked repo-relative path: it must carry a slash, which is what
     # separates `hooks/` and `iterm/make-bg.py` from a bare `config.json` that
@@ -8268,6 +8155,19 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
                     re.search(rf"--{state}:\s*#{hex6}\b", html),
                     f"dashboard/index.html: --{state} is not #{hex6}")
 
+    def test_the_spec_color_table_matches_the_status_panel(self):
+        """THEME-03 calls its hexes authoritative, so the hooks module that draws
+        them is compared to the table rather than trusted to agree."""
+        documented = dict(re.findall(
+            r"\| `((?:WEB|CODE)_HUE|BRANCH_HUE\.\w+)`\s*\| `(#[0-9a-f]{6})`",
+            (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")))
+        module = (REPO_ROOT / "hooks" / "status-panel.tsx").read_text(encoding="utf-8")
+        drawn = dict(re.findall(r"const ((?:WEB|CODE)_HUE) = '(#[0-9a-f]{6})'", module))
+        branch = re.search(r"const BRANCH_HUE[^{]*\{([^}]*)\}", module).group(1)
+        drawn.update({f"BRANCH_HUE.{k}": v for k, v in re.findall(r"(\w+): '(#[0-9a-f]{6})'", branch)})
+        self.assertEqual(len(documented), 6, documented)
+        self.assertEqual(documented, drawn)
+
     def test_the_palette_doc_shows_each_hue(self):
         doc = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
         for state, hex6 in self.beacon.COLOR_PALETTE.items():
@@ -8275,40 +8175,6 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
                 self.assertTrue(
                     f"#{hex6}" in doc,
                     f"docs/palette.md does not show #{hex6} for {state}")
-
-    def test_the_spec_chip_table_matches_the_profile_it_documents(self):
-        """THEME-03 calls its hexes authoritative and the template derived from
-        them, so nothing caught the table going stale: the branch rows named
-        green/orange/comment for a whole revision while the profile rendered
-        cyan/yellow/orange. Reading both and comparing is what the claim of
-        authority was resting on."""
-        documented = dict(re.findall(
-            r"\| `(beacon_branch_\w+)`\s*\| `#([0-9a-f]{6})`",
-            (REPO_ROOT / "SPEC.md").read_text(encoding="utf-8")))
-        self.assertTrue(documented, "SPEC.md documents no branch chips")
-
-        seen = 0
-        for comp in _render_profile_template()["Status Bar Layout"]["components"]:
-            knobs = comp["configuration"].get("knobs", {})
-            expr = str(knobs.get("expression", ""))
-            color = knobs.get("shared text color")
-            if "beacon_branch" not in expr or not color:
-                continue
-            seen += 1
-            slot = expr.split("user.")[-1].rstrip(")?")
-            with self.subTest(slot=slot):
-                hex6 = documented.get(slot)
-                self.assertIsNotNone(hex6, f"SPEC.md documents no {slot}")
-                want = self.beacon._hex_to_color_components(hex6)
-                for channel in ("Red Component", "Green Component",
-                                "Blue Component"):
-                    self.assertAlmostEqual(
-                        color[channel], want[channel], places=3,
-                        msg=f"SPEC.md documents {slot} as #{hex6}, but the "
-                            f"profile's {channel} is {color[channel]}")
-        self.assertEqual(seen, len(documented),
-                         "the profile and SPEC.md carry different branch chips")
-
 
 def _load_beacon_iterm():
     path = REPO_ROOT / "bin" / "beacon-iterm"
@@ -8352,10 +8218,10 @@ class ConfigureLayoutAudit(unittest.TestCase):
 
     def test_drift_exits_nonzero_and_names_setting(self):
         vals = self._aligned()
-        del vals["StatusBarPosition"]
+        del vals["HTMLTabTitles"]
         code, out = self._run(vals)
         self.assertEqual(code, 1)
-        self.assertIn("StatusBarPosition", out)
+        self.assertIn("HTMLTabTitles", out)
         self.assertIn("1 of", out)
 
     def test_tab_bar_stays_visible_at_one_tab(self):
@@ -8453,11 +8319,6 @@ class ConfigureLayoutAudit(unittest.TestCase):
         # the outline and its white label.
         self.assertEqual(self._spec("MinimalTabStyleOutlineStrength")["want"], "0.8")
         self.assertEqual(self._spec("ColoredUnselectedTabTextProminence")["want"], "0.3")
-
-    def test_status_bar_sits_at_the_top(self):
-        # The bottom of the pane is Claude Code's, where beacon renders its own
-        # status line.
-        self.assertEqual(self._spec("StatusBarPosition")["want"], "0")
 
     def _spec(self, key):
         for s in self.iterm.RECOMMENDED_LAYOUT:
@@ -8613,11 +8474,11 @@ class ConfigureLayoutWrite(unittest.TestCase):
                 mock.patch("subprocess.Popen",
                                   side_effect=lambda cmd, *a, **k: popen.append(cmd) or mock.Mock()), \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.iterm.cmd_configure(self._args(keys="StatusBarPosition"))
+            self.iterm.cmd_configure(self._args(keys="HTMLTabTitles"))
         self.assertEqual(len(popen), 1)
         helper = popen[0][-1]
         self.assertIn("configure --write --yes --tab-style minimal --tab-font-size 16 --tab-vertical-padding 0 --pane-title-bar off --keys", helper)
-        self.assertIn("StatusBarPosition", helper)
+        self.assertIn("HTMLTabTitles", helper)
         self.assertNotIn("pgrep", helper,
                          "the helper would fall through before iTerm2 finished quitting")
         self.assertIn("is running", helper)
@@ -9299,12 +9160,11 @@ class ItermHandleGuard(unittest.TestCase):
 
 
 class ProfileBakedPaths(unittest.TestCase):
-    """A status-bar button reads the pane's cwd out of a directory baked into
-    the profile when it was rendered, so beacon moving (a reinstall from a
-    different marketplace, a version bump) leaves the buttons reading a
-    directory nothing writes. The button then alerts that the session has no
-    working directory — indistinguishable, from the user's side, from a pane
-    beacon really isn't tracking. `doctor` is where the two are told apart."""
+    """A switcher key (FOCUS-07) runs an interpreter and script baked into the
+    profile when it was rendered, so beacon moving (a reinstall from a
+    different marketplace, a version bump) leaves the keys pointing at a path
+    that may be gone, and a press alerts with an error that reads as a switcher
+    bug. `doctor` is where the two are told apart."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -9336,45 +9196,32 @@ class ProfileBakedPaths(unittest.TestCase):
     def _check(self):
         return self.beacon._doctor_profile_paths(self.profiles, self.want)
 
-    def test_the_values_read_back_are_the_ones_the_template_carries(self):
-        # Against the template rather than a rendered file: this is the assert
-        # that fails if the button's shell one-liner is reshaped, which is what
-        # the values are recovered by.
-        baked = self.beacon._profile_baked_paths(_render_profile_template())
-        self.assertEqual(baked, {"cache_dir": "/x/cache", "python": "/x/python3",
-                                 "script": "/x/scripts/beacon"})
+    def test_the_values_read_back_are_the_ones_the_keys_carry(self):
+        # Against the key map the installer builds: this is the assert that
+        # fails if the binding's shell one-liner is reshaped, which is what the
+        # values are recovered by.
+        profile = {"Keyboard Map": self.beacon._switch_key_map(None, "Default")}
+        self.assertEqual(self.beacon._profile_baked_paths(profile),
+                         {"python": sys.executable,
+                          "script": str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")})
 
-    def test_a_profile_carrying_no_action_button_reads_back_as_nothing(self):
-        profile = _render_profile_template()
-        profile["Status Bar Layout"]["components"] = []
-        self.assertIsNone(self.beacon._profile_baked_paths(profile))
+    def test_a_profile_binding_no_switcher_key_reads_back_as_nothing(self):
+        self.assertIsNone(self.beacon._profile_baked_paths({"Keyboard Map": {"0x1-0x0": {"Action": 1}}}))
 
     def test_a_fresh_render_is_clean(self):
         status, detail = self._check()
         self.assertEqual(status, self.beacon._DOCTOR_OK, detail)
-        self.assertIn(str(self.beacon.CACHE_DIR), detail)
-
-    def test_a_cache_dir_from_another_install_is_a_fault(self):
-        for stem in self.want:
-            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_BAD)
-        # Both halves: which directory the buttons read, and which one hooks
-        # write — the mismatch is the finding, neither path alone.
-        self.assertIn("/gone/beacon-other/cache", detail)
-        self.assertIn(str(self.beacon.CACHE_DIR), detail)
-        self.assertIn("refresh-iterm-profiles", detail)
 
     def test_a_finding_every_profile_shares_is_reported_once(self):
         for stem in self.want:
-            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
+            self._rewrite(stem, sys.executable, "/gone/python3")
         _, detail = self._check()
-        self.assertEqual(detail.count("/gone/beacon-other/cache"), 1)
+        self.assertEqual(detail.count("/gone/python3"), 1)
         for stem in self.want:
             self.assertNotIn(stem, detail)
 
     def test_only_the_profile_that_drifted_is_named(self):
-        self._rewrite("beacon-done", str(self.beacon.CACHE_DIR), "/gone/other/cache")
+        self._rewrite("beacon-done", sys.executable, "/gone/python3")
         status, detail = self._check()
         self.assertEqual(status, self.beacon._DOCTOR_BAD)
         self.assertIn("beacon-done", detail)
@@ -9419,7 +9266,7 @@ class ProfileBakedPaths(unittest.TestCase):
 
     def test_doctor_reports_the_check_beside_the_profiles_it_covers(self):
         for stem in self.want:
-            self._rewrite(stem, str(self.beacon.CACHE_DIR), "/gone/beacon-other/cache")
+            self._rewrite(stem, sys.executable, "/gone/python3")
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
                 mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
                 mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
@@ -9574,7 +9421,7 @@ class DevInstallMarker(unittest.TestCase):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf), \
                     mock.patch.object(self.beacon.sys, "stdin", io.StringIO("{}")):
-                self.beacon.cmd_statusline(types.SimpleNamespace())
+                sys.stdout.write("".join(line + "\n" for line in self.beacon._status_lines()))
         self.assertNotIn("dev", buf.getvalue())
 
     def test_an_unreadable_ref_still_says_dev(self):
@@ -9925,7 +9772,7 @@ class AnnouncedCrUrl(BeaconTest):
 
 
 class AnnouncedArtifacts(BeaconTest):
-    """STATUSLINE-03: the artifacts a sibling announces reach the row directly.
+    """STATUS-03: the artifacts a sibling announces reach the row directly.
 
     The row's other sources answer narrower questions — which URL this branch
     points at, what the bound route holds — so a merge, a filed issue, and a
@@ -10083,111 +9930,8 @@ class AnnouncedArtifacts(BeaconTest):
         self.assertEqual(self._entries()[0]["url"], url)
 
 
-class MidTurnBranchRefresh(BeaconTest):
-    """HOOK-08c: a tool call that moved the branch republishes the branch slots
-    without waiting for Stop.
-
-    The gate is what makes it affordable — read-only git is most of what a
-    session runs, and each refresh is three subprocesses."""
-
-    def _post(self, command, tool_name="Bash"):
-        """Run the PostToolUse branch refresh over one tool call, returning the
-        uservar-batch argv the CLI was handed (empty when it was skipped)."""
-        calls = []
-        with mock.patch.object(self.beacon, "_cli",
-                               side_effect=lambda *a: calls.append(a)), \
-             mock.patch.object(self.beacon, "_detect_branch_info",
-                               return_value=("a-branch", "clean", "", "feature")):
-            self.beacon._refresh_branch_chips_if_git(
-                {"tool_name": tool_name, "cwd": "/x",
-                 "tool_input": {"command": command}})
-        return calls
-
-    def _slots(self, calls):
-        return dict(p.split("=", 1) for p in calls[0][1:])
-
-    # --- what moves the chip ------------------------------------------------
-
-    def test_a_push_refreshes_the_slots(self):
-        calls = self._post("git push")
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][0], "uservar-batch")
-        self.assertEqual(self._slots(calls)["beacon_branch_clean"], "a-branch")
-
-    def test_a_commit_and_push_chain_refreshes(self):
-        self.assertEqual(len(self._post("git add -A; git commit -m x; git push")), 1)
-
-    def test_a_checkout_refreshes(self):
-        self.assertEqual(len(self._post("git checkout -b feature/x")), 1)
-
-    def test_a_force_push_with_lease_refreshes(self):
-        self.assertEqual(len(self._post("git push --force-with-lease")), 1)
-
-    def test_a_fetch_refreshes(self):
-        # Someone else's push only reaches the ahead/behind count via a fetch.
-        self.assertEqual(len(self._post("git fetch origin")), 1)
-
-    # --- what does not -----------------------------------------------------
-
-    def test_read_only_git_is_skipped(self):
-        for command in ("git status", "git log --oneline -5",
-                        "git diff HEAD~1", "git show abc123"):
-            self.assertEqual(self._post(command), [], command)
-
-    def test_a_log_flag_naming_branches_is_skipped(self):
-        # `--branches` is not the `branch` subcommand; the word boundary is what
-        # keeps a read-only listing off the refresh path.
-        self.assertEqual(self._post("git log --branches --oneline"), [])
-
-    def test_a_non_git_command_is_skipped(self):
-        self.assertEqual(self._post("ls -la"), [])
-
-    def test_a_forge_cli_merge_is_skipped(self):
-        # A forge-side merge changes the forge, not the local refs the chip
-        # reads — nothing moves until a fetch or pull, which has its own trigger.
-        self.assertEqual(self._post("gh pr merge 88 --squash"), [])
-
-    def test_another_tool_is_skipped(self):
-        self.assertEqual(self._post("git push", tool_name="Edit"), [])
-
-    def test_a_payload_with_no_command_is_skipped(self):
-        with mock.patch.object(self.beacon, "_cli",
-                               side_effect=AssertionError("CLI invoked")):
-            self.beacon._refresh_branch_chips_if_git(
-                {"tool_name": "Bash", "cwd": "/x", "tool_input": None})
-
-    # --- where it resolves from --------------------------------------------
-
-    def test_it_resolves_from_the_session_anchor(self):
-        # HOOK-08b's rule: the chip names the session's project, not a scratch
-        # directory the agent stepped into mid-turn.
-        self.beacon.write_state("anchor.cwd", "/anchored")
-        seen = []
-        with mock.patch.object(self.beacon, "_cli"), \
-             mock.patch.object(self.beacon, "_detect_branch_info",
-                               side_effect=lambda p: seen.append(p) or ("b", "clean", "", "feature")):
-            self.beacon._refresh_branch_chips_if_git(
-                {"tool_name": "Bash", "cwd": "/elsewhere",
-                 "tool_input": {"command": "git push"}})
-        self.assertEqual(seen, [Path("/anchored")])
-
-    # --- the two publishers agree ------------------------------------------
-
-    def test_the_slots_match_what_the_per_turn_publish_emits(self):
-        # One classifier, so a mid-turn refresh cannot paint a branch a state
-        # the end-of-turn publish would then contradict.
-        for identity, state, slot in (("default", "diverged", "beacon_branch_default"),
-                                      ("feature", "clean", "beacon_branch_clean"),
-                                      ("feature", "diverged", "beacon_branch_diverged"),
-                                      ("feature", "untracked", "beacon_branch_untracked")):
-            pairs = dict(p.split("=", 1) for p in
-                         self.beacon._branch_slot_pairs("b", state, identity))
-            self.assertEqual(pairs[slot], "b", (identity, state))
-            self.assertEqual(pairs["beacon_branch_state"], state)
-
-
 class AnnouncedLinkReachesTheRow(BeaconTest):
-    """STATUSLINE-02: an announced CR reaches the status line on the hook that
+    """STATUS-02: an announced CR reaches the status line on the hook that
     read it, not at the end of the turn.
 
     `resolved.url` is what the row renders; its other writer is the per-turn
@@ -10536,7 +10280,7 @@ class InstallFreshness(unittest.TestCase):
         self.assertIn(str(old / "scripts" / "beacon"), message)
         self.assertIn("the `beacon` command on $PATH", message)
         self.assertIn("the .zshrc shell integration", message)
-        self.assertIn("status-bar buttons", message)
+        self.assertIn("switcher keys", message)
         # One `install` writes every surface from one root, so they drift
         # together — the path is named once, not once per surface.
         self.assertEqual(message.count(str(old / "scripts" / "beacon")), 1)
@@ -10668,9 +10412,9 @@ class InstallFreshness(unittest.TestCase):
             self.assertNotIn(absent, banner)
         message = self.beacon._freshness_message(gone, stale)
         for stem in self.beacon._iterm_profile_names():
-            self.assertIn(f"the {stem} status-bar buttons", message)
+            self.assertIn(f"the {stem} switcher keys", message)
         summary = self.beacon._freshness_summary(gone, stale)
-        self.assertIn("the .zshrc line and the iTerm2 buttons "
+        self.assertIn("the .zshrc line and the iTerm2 switcher keys "
                       "run an older install", summary)
         self.assertIn("the $PATH command reaches a plugin root that is gone",
                       summary)
@@ -10747,7 +10491,7 @@ class ResetLayoutToStock(unittest.TestCase):
 
     def test_only_keys_with_a_value_are_cleared(self):
         calls = []
-        set_keys = {"TabViewType", "StatusBarHeight"}
+        set_keys = {"TabViewType", "HTMLTabTitles"}
         with mock.patch("subprocess.run",
                         side_effect=self._fake_run(calls, False, set_keys)), \
                 contextlib.redirect_stdout(io.StringIO()):

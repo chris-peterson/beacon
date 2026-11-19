@@ -51,13 +51,13 @@ Let the board run for a minute and you'll watch it drift redder as work stalls, 
 
 ## On Windows or a non-iTerm terminal
 
-The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does; the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab and status-bar painting is an iTerm2 adapter and is skipped automatically off iTerm2.
+The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does; the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab painting is an iTerm2 adapter and is skipped automatically off iTerm2.
 
 See [On Windows or a non-iTerm terminal](/?id=on-windows-or-a-non-iterm-terminal) for the install steps.
 
 ## On macOS + iTerm2: per-pane painting
 
-iTerm2 gets everything the demo shows, plus the same state painted onto each pane (the tab's label and color, and the status bar), so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [Layout](/iterm/layout) for the full anatomy.
+iTerm2 gets everything the demo shows, plus the same state painted onto each pane (the tab's label and color, and a mode's background), so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [Layout](/iterm/layout) for the full anatomy.
 
 ## Next steps
 

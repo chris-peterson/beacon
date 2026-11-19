@@ -247,7 +247,7 @@ def _color(code: str, s: str) -> str:
 # Markdown emphasis, for the two beacon surfaces that can render it. A task and
 # a mode note are prose a person wrote, so `**anchor**` arrives with its markers
 # intact — and the tab's line 2 (TITLE-05b) and the status line's note
-# (STATUSLINE-01a) are the two places with a way to say what those markers meant.
+# (STATUS-01a) are the two places with a way to say what those markers meant.
 # Bold runs first: the single-delimiter rule would otherwise take one asterisk
 # off each end of a bold run and italicize what was left. The `_` forms need a
 # non-word character on both sides, so an identifier (`beacon_task_nl`) is not
@@ -469,6 +469,8 @@ _beacon() {
     'serve:serve the wip payload over localhost, or manage the always-on unit'
     'prune:remove per-session state for long-idle sessions'
     'forget:remove per-session state for one session, by its per-pane hash'
+    'focus:raise the iTerm2 window holding a session, by its per-pane hash'
+    'switch:raise the next or previous other session, needs-you first, or pick one'
     'drop:remove one deliverable from the status-line row'
     'refresh-links:read titles, dependencies, and linked issues for the status-line row'
     'export:emit a lossless JSON backup of all per-session state'
@@ -479,7 +481,7 @@ _beacon() {
     'layout:audit or apply the app-wide iTerm2 fleet layout'
     'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
-    'open-url:open the project page (statusbar.buttons.web.cmd)'
+    'open-url:open the project page (buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
     'json:print the resolved session state as JSON'
     'doctor:check the install and report recorded errors'
@@ -526,6 +528,9 @@ _beacon() {
     wip)
       compadd -- --json --since --all --timing
       ;;
+    switch)
+      compadd -- --next --prev --pick --list
+      ;;
     watch)
       compadd -- --interval --since --all
       ;;
@@ -536,7 +541,7 @@ _beacon() {
     prune)
       compadd -- --since --keep
       ;;
-    forget)
+    forget|focus)
       (( CURRENT == 3 )) && _message 'session hash'
       ;;
     drop)
@@ -1127,13 +1132,11 @@ def _tty_name() -> str | None:
 
 
 def _iterm_cache_key() -> str | None:
-    """Stable per-pane key for the handoff cache files (cwd / url) and the
-    engagement marker. ITERM_SESSION_ID is `wNtNpN:GUID`; the `wNtNpN`
+    """Stable per-pane key for the engagement marker and the switcher's idea of
+    "this pane" (FOCUS-06). ITERM_SESSION_ID is `wNtNpN:GUID`; the `wNtNpN`
     positional prefix changes when the pane is moved between windows, tabs, or
-    splits, but the GUID after the last colon is stable for the pane's life.
-    Keying on the full id meant a moved pane's status-bar buttons read a file
-    the hook had written under the old prefix — so the ↖ web button hit its
-    fallback and the ↗ code button silently no-op'd. Mirror the GUID the CLI's
+    splits, but the GUID after the last colon is stable for the pane's life, so
+    keying on the full id loses a pane that moved. Mirror the GUID the CLI's
     focus / set-name already target (rsplit on ':'), and the focus handle keyed
     on (FOCUS-02). None when no pane id is set. The synthesized non-iTerm form
     `claude-session:<id>` has no positional prefix, so the same strip leaves it
@@ -1395,7 +1398,7 @@ ANNOUNCEMENT_RE = re.compile(
 # never both — watching only `cr.updated` would miss every freshly opened CR.
 ANNOUNCED_CR_KEYS = ("cr.created", "cr.updated")
 
-# Artifacts an announcement puts on the status-line row (STATUSLINE-03). The
+# Artifacts an announcement puts on the status-line row (STATUS-03). The
 # row's other sources answer "what does this branch point at" (PROV-07) and
 # "what does the bound route hold" (tack); these answer neither and are the only
 # source that knows — an issue filed from the default branch, a release that
@@ -1403,7 +1406,7 @@ ANNOUNCED_CR_KEYS = ("cr.created", "cr.updated")
 ANNOUNCED_ARTIFACT_KEYS = ("cr.merged", "issue.created", "release.created")
 
 # The announced keys that also settle the delivered flag. A release tag URL only
-# exists once published, so its kind settles it (STATUSLINE-03 *Kind*), and an
+# exists once published, so its kind settles it (STATUS-03 *Kind*), and an
 # issue is open by definition — a merge is the one that has to be recorded.
 ANNOUNCED_DELIVERING_KEYS = ("cr.merged",)
 
@@ -1465,7 +1468,7 @@ def _subscribed(off: set[str], publisher: str, key: str) -> bool:
 def _display_safe(text: str, limit: int | None = 120) -> str:
     """A value from an announcement, made safe to render.
 
-    `resolved.url_label` becomes OSC-8 link text (STATUSLINE-02), and `_osc8`
+    `resolved.url_label` becomes OSC-8 link text (STATUS-02), and `_osc8`
     interpolates it straight into an escape sequence — so a BEL would terminate
     that sequence early and an ESC would start another one, both from a string
     a forge supplied. Control characters go rather than being escaped: there is
@@ -1654,7 +1657,7 @@ def _record_announced_cr(payload: dict, announced: dict) -> None:
     uri = _safe_uri(announced["uri"])
     title = _display_safe(str(announced.get("title") or ""))
     write_state("announced.cr", json.dumps({"uri": uri, "title": title, "root": root}))
-    # The row titles a CR from the CR itself (STATUSLINE-03 *Titles*), and the
+    # The row titles a CR from the CR itself (STATUS-03 *Titles*), and the
     # announcement is the first source to know it. Its forge record is marked
     # stale as well: an update can have changed what the CR closes or waits on.
     if _deliverable_suffix(uri):
@@ -1664,9 +1667,9 @@ def _record_announced_cr(payload: dict, announced: dict) -> None:
 
 def _publish_announced_link() -> None:
     """Put the announced CR on the status line now, rather than at the end of
-    the turn (STATUSLINE-02).
+    the turn (STATUS-02).
 
-    `resolved.url` has one other writer, the per-turn chip publish, and PROV-07
+    `resolved.url` has one other writer, the per-turn link publish, and PROV-07
     resolves tier 0 to this same CR when it runs — so this writes the value that
     publish would, one hook earlier. Without it the row keeps naming the branch
     tree for the rest of a turn in which a change request was opened, which is
@@ -1731,7 +1734,7 @@ def _record_announced_route(key: str, body: dict) -> None:
 
 
 def _record_announced_artifact(key: str, body: dict) -> None:
-    """STATUSLINE-03 — put an artifact a sibling announced on this session's row.
+    """STATUS-03 — put an artifact a sibling announced on this session's row.
 
     A merge records the URL as delivered *before* the entry, so the re-stamp
     every `_record_deliverable` performs sees it. The flag has to persist apart
@@ -1907,8 +1910,8 @@ def _origin_url_at(root) -> str:
     """`remote.origin.url` for `root`, memoized for the process. Empty when
     there's no repo or no origin.
 
-    A single `_publish_chips` wants it four times over — the route lookup's
-    project name, the chip's, the forge identity, and the URL resolver's — and
+    A single `_publish_links` wants it more than once — the route lookup's
+    project name, the forge identity, and the URL resolver's — and
     every caller runs in a short-lived hook process, far too short for the
     remote to change underneath them. Only the one-shot command paths reach
     this; `serve`'s request loop reads state files and never resolves a URL."""
@@ -1925,7 +1928,7 @@ def _origin_url_at(root) -> str:
 def p_git_remote(cwd: Path):
     """Repo basename from git remote (e.g. `beacon`, `auth-svc`) — the last
     path segment of the remote URL, dropping owner/group prefixes. The full
-    owner-bearing identity lives in `_project_full_at` (status-bar chip);
+    owner-bearing identity lives in `_project_full_at` (a deliverable's qualifier);
     the badge wants a short, scannable label. Returns None when not in a
     git repo or no origin is configured."""
     url = _origin_url_at(find_project_root(cwd))
@@ -2144,7 +2147,7 @@ def _route_doc() -> dict | None:
 
 
 def _tack_landed_urls() -> set[str]:
-    """Deliverable URLs whose tack is `done` or `dropped`. STATUSLINE-03
+    """Deliverable URLs whose tack is `done` or `dropped`. STATUS-03
     promotes these to the delivered line — shipping is rare enough to be worth
     keeping on screen, and it is what the session has to show for itself.
 
@@ -2186,7 +2189,7 @@ def _session_started_at() -> str:
     boundary (SessionStart other than `resume`, and the in-session commands that
     re-bootstrap context).
 
-    STATUSLINE-03's row is scoped to one Claude session while the tack route it
+    STATUS-03's row is scoped to one Claude session while the tack route it
     reads from is scoped to the project, so the row needs a window of its own
     rather than inheriting the route's lifetime. Held in beacon's own state
     rather than read from the route's `sessions[]`: tack records a session only
@@ -2196,7 +2199,7 @@ def _session_started_at() -> str:
 
 
 def _tack_in_session_scope(tack: dict, started_at: float | None) -> bool:
-    """Whether a tack belongs on *this* session's row (STATUSLINE-03): the
+    """Whether a tack belongs on *this* session's row (STATUS-03): the
     route's open work, plus whatever it landed since the session started.
 
     What the scope exists to exclude is the project's shipping log — a route
@@ -2240,7 +2243,7 @@ def _url_delivered_before_session(url: str) -> bool:
 
 def _tack_route_urls() -> list[str]:
     """Every deliverable and tracker link the bound route holds, in route
-    order, deduped. STATUSLINE-03's acquisition path.
+    order, deduped. STATUS-03's acquisition path.
 
     PROV-07 answers a narrower question — *which one* URL this branch points at
     — so it surfaces a single ref out of everything a well-kept route records.
@@ -2351,7 +2354,7 @@ def _location_url(cwd: Path, branch: str, remote: str) -> tuple[str, str]:
     """PROV-07's location tiers — an open PR/MR for the branch, else the branch
     tree, else the project. Named separately from `resolve_url` because the
     status line substitutes them when the tack tier answers with a delivery that
-    predates the session (STATUSLINE-02)."""
+    predates the session (STATUS-02)."""
     # 3. forge probe — cached by the shell's `cwd@branch` signal, so this
     # fires once per branch change, not per prompt.
     url, label = _forge_url(cwd, branch, remote)
@@ -2415,9 +2418,9 @@ def cmd_copy_url(_args):
     print(f"copied: {url}")
 
 
-# The two status-bar action buttons and their defaults (STATUS-BAR-09). An
-# empty `web` cmd is not a missing value — it selects beacon's own PROV-07
-# resolution, which is the default the button ships with.
+# The status panel's two buttons and their defaults (STATUS-06). An empty
+# `web` cmd is not a missing value — it selects the `origin` remote's page,
+# which is the default the button ships with.
 #
 # The `code` default carries no startup option on purpose. VS Code's CLI
 # forwards an option it doesn't recognize to Electron/Chromium, and on a cold
@@ -2425,44 +2428,28 @@ def cmd_copy_url(_args):
 # open a Welcome window — the button lands nowhere. `--maximized`, the 2.0
 # default, was such an option, and it never maximized either: VS Code has no CLI
 # flag for window state, only the `window.newWindowDimensions` setting.
-STATUSBAR_BUTTON_DEFAULTS = {
-    "web": {"label": "↖ web", "cmd": ""},
-    "code": {"label": "↗ code", "cmd": "code"},
-}
+BUTTON_DEFAULTS = {"web": "", "code": "code"}
 
 
-def _statusbar_button(name: str) -> dict:
-    """One action button's `label` and `cmd` — the user's
-    `statusbar.buttons.<name>` block layered over the defaults above.
+def _button_cmd(name: str) -> str:
+    """The command behind one of the status panel's buttons: the user's
+    `buttons.<name>.cmd` over the default above, read on the press, so a new
+    command applies with no reinstall.
 
-    The two halves reach the button by different routes, which is why they read
-    at different times despite living in one config block. `cmd` is read here,
-    on the click, so a new command applies with no reinstall. `label` is baked
-    into the dynamic profile at render time: an action component's title is a
-    static knob and cannot interpolate a user var the way the text chips do
-    (§6.10), so a changed label needs a `refresh-iterm-profiles` re-render.
-
-    A blank or absent `cmd` means the button's default — for `code` that is a
-    bare `code`, and for `web` it is the empty string that selects PROV-07. One
-    rule covers both, so there is no third "explicitly disabled" state for a
-    caller to interpret."""
-    default = STATUSBAR_BUTTON_DEFAULTS[name]
-    section = _load_config().get("statusbar")
-    buttons = section.get("buttons") if isinstance(section, dict) else None
-    cfg = buttons.get(name) if isinstance(buttons, dict) else None
-    if not isinstance(cfg, dict):
-        return dict(default)
-    label, cmd = cfg.get("label"), cfg.get("cmd")
-    return {
-        "label": label.strip() if isinstance(label, str) and label.strip() else default["label"],
-        "cmd": cmd.strip() if isinstance(cmd, str) and cmd.strip() else default["cmd"],
-    }
+    A blank or absent `cmd` means the default: a bare `code` for `code`, and for
+    `web` the empty string that opens the `origin` remote's page. One rule
+    covers both, so there is no third "explicitly disabled" state for a caller
+    to interpret."""
+    section = _load_config().get("buttons")
+    cfg = section.get(name) if isinstance(section, dict) else None
+    cmd = cfg.get("cmd") if isinstance(cfg, dict) else None
+    return cmd.strip() if isinstance(cmd, str) and cmd.strip() else BUTTON_DEFAULTS[name]
 
 
 def _code_launch_argv() -> list[str]:
     """STATUS-BAR-07: the editor invocation for the `↗ code` button — its
     configured `cmd`, shell-split, else a bare `code`."""
-    return shlex.split(_statusbar_button("code")["cmd"])
+    return shlex.split(_button_cmd("code"))
 
 
 # Placeholders a button's `cmd` may position (STATUS-BAR-09). `{{` / `}}` are
@@ -2558,19 +2545,18 @@ def _resolve_editor(app: str) -> str | None:
 
 
 def cmd_open_code(args):
-    """STATUS-BAR-07: open a directory in the configured editor. Backs the
-    `↗ code` status-bar button, which invokes this rather than launching the
-    editor from its own shell: an iTerm2 action shell has no interactive `PATH`
-    (§6.10 caveat 3), and resolving the binary is exactly what that costs. It
-    also puts the config read at click time, so changing editors needs no
-    reinstall."""
+    """Open a directory in the configured editor. Backs the status panel's code
+    button (STATUS-06), which invokes this rather than launching the editor
+    itself: a hooks module's process has no interactive `PATH`, and resolving
+    the binary is exactly what that costs. It also puts the config read at press
+    time, so changing editors needs no reinstall."""
     target = args.dir or str(Path.cwd())
     argv, positioned = _substitute_cmd_tokens(_code_launch_argv(), Path(target))
     exe = _resolve_editor(argv[0])
     if not exe:
         sys.exit(f"editor not found: {argv[0]!r} is not on PATH, and your login "
                  f'shell could not find it either — set an absolute path in '
-                 f'"statusbar.buttons.code.cmd" in {_config_file()}')
+                 f'"buttons.code.cmd" in {_config_file()}')
     # `{dir}` in the cmd means the user placed the path themselves (STATUS-BAR-09).
     tail = [] if positioned else [target]
     try:
@@ -2584,24 +2570,22 @@ def cmd_open_code(args):
 
 
 def cmd_open_url(args):
-    """Open the project page. Backs the `↖ web` status-bar button
-    (STATUS-BAR-08) and is usable from any shell.
+    """Open the project page. Backs the status panel's web button
+    (STATUS-06) and is usable from any shell.
 
     Two paths, chosen by config. The button's `cmd` runs the user's own command
     in the target directory — the point being that plenty of people already have
     one (`git web` and friends), and beacon has no business relitigating where it
     should go. Unset, beacon opens the web URL of the directory's `origin`
     remote. The page stays put while the session's work moves: the CRs, issues,
-    and releases are the status line's job (STATUSLINE-02/03), which a pane with
+    and releases are the status lines' job (STATUS-02/03), which a pane with
     an open PR would otherwise reach twice.
 
-    Resolution happens at click time against the directory it is given. That is
-    what makes this correct in a pane beacon isn't tracking — a shell you are
-    just poking around in — and it is why there is no URL handoff file: nothing
-    is cached, so nothing can go stale (the #5 failure)."""
+    Resolution happens at press time against the directory it is given, so
+    nothing is cached and nothing can go stale (the #5 failure)."""
     target = Path(args.dir) if getattr(args, "dir", None) else Path.cwd()
 
-    cmd = _statusbar_button("web")["cmd"]
+    cmd = _button_cmd("web")
     if cmd:
         # No append to suppress here — the directory reaches this command as its
         # cwd — so the `{dir}` flag is not consulted, only the expansion.
@@ -2610,7 +2594,7 @@ def cmd_open_url(args):
         if not exe:
             sys.exit(f"web command not found: {argv[0]!r} is not on PATH, and your "
                      f"login shell could not find it either — check "
-                     f'"statusbar.buttons.web.cmd" in {_config_file()}')
+                     f'"buttons.web.cmd" in {_config_file()}')
         try:
             r = subprocess.run([exe, *argv[1:]], cwd=str(target),
                                capture_output=True, text=True, timeout=20)
@@ -2904,7 +2888,8 @@ def _session_icon_ref(sh: str) -> str | None:
 
 def _resolve_session(sh: str, branch_cache: dict | None = None,
                      epoch: float | None = None,
-                     compute_branch: bool = True) -> dict | None:
+                     compute_branch: bool = True,
+                     compute_route: bool = True) -> dict | None:
     """Point-in-time state for one session from stored fields only (no live
     providers). None when the hash carries no real beacon session.
     branch_cache memoizes the per-cwd git branch probe across a fleet scan;
@@ -2912,7 +2897,8 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
     so a fleet scan needn't re-glob per hash. compute_branch=False skips the git
     branch probe — used for the cheap first pass of a fleet scan, since branch
     feeds neither the dedup nor the activity window, so it is filled in only for
-    the sessions actually emitted."""
+    the sessions actually emitted. compute_route=False skips the `tack tree`
+    read behind the route's group and tacks, for a caller that draws neither."""
     # Override first, as the render chain reads it (RES-01/OVR-01). Reading the
     # anchor first meant `beacon set project` repaired the tab and left the row
     # showing the anchored name — one session, two answers.
@@ -2949,7 +2935,7 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
     bound = _bound_route_record(sh)
     route = str(bound.get("route") or "") or None
     route_group, tacks = None, []
-    if route:
+    if route and compute_route:
         doc = _route_doc_for(route)
         route_group = (doc or {}).get("group") or None
         tacks = _bound_tack_records(route, bound.get("tacks") or [], doc)
@@ -3214,7 +3200,11 @@ def _run_idle_sweep(stop: threading.Event, interval: float = IDLE_SWEEP_SECONDS)
             log_error("serve.park", f"{type(exc).__name__}: {exc}")
 
 
-def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> dict:
+def collect_sessions(since_epoch: float | None = None, timing: bool = False,
+                     full: bool = True) -> dict:
+    # full=False skips the git branch and the `tack tree` read per route, for a
+    # caller on a key press (FOCUS-06) that needs which sessions exist and their
+    # state, not where their work stands.
     # Sessions in a mode are exempt from the activity window: a declared mode is
     # deliberate and stays relevant however long it sits, so it
     # survives past since_epoch where an idle/working session of the same age
@@ -3231,7 +3221,7 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     # subprocess spawns to surface a handful of recent sessions.
     resolved = []
     for sh, epoch in mtimes.items():
-        s = _resolve_session(sh, epoch=epoch, compute_branch=False)
+        s = _resolve_session(sh, epoch=epoch, compute_branch=False, compute_route=full)
         if s:
             resolved.append(s)
     t_cheap = t()
@@ -3263,12 +3253,12 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False) -> 
     sessions = []
     for s in survivors:
         epoch = s.pop("_epoch", 0.0)
-        full = _resolve_session(s["hash"], branch_cache=branch_cache,
-                                epoch=epoch, compute_branch=True) or s
-        full.pop("_epoch", None)
-        full["last_activity"] = _iso(epoch) if epoch else None
-        full["age_seconds"] = int(now - epoch) if epoch else None
-        sessions.append(full)
+        record = (_resolve_session(s["hash"], branch_cache=branch_cache,
+                                   epoch=epoch, compute_branch=True) if full else None) or s
+        record.pop("_epoch", None)
+        record["last_activity"] = _iso(epoch) if epoch else None
+        record["age_seconds"] = int(now - epoch) if epoch else None
+        sessions.append(record)
     sessions.sort(key=lambda s: (s["route"] or "~", s["project"] or "", s["session"]))
     t_done = t()
     if timing:
@@ -3742,6 +3732,156 @@ def cmd_forget(args):
         print(f"not a session hash: {sh!r}", file=sys.stderr)
         sys.exit(2)
     print(f"forgot session {sh} ({files} state file(s) removed)")
+
+
+def cmd_focus(args):
+    """FOCUS-05: the CLI form of serve's `POST /focus`, for a caller with no
+    browser in the loop (a script, or a terminal with no dashboard open)."""
+    ok, msg = _focus_session((getattr(args, "hash", "") or "").strip())
+    if not ok:
+        print(msg, file=sys.stderr)
+        sys.exit(1)
+
+
+# FOCUS-06: a walk holds its order for this long after the last press, so the
+# ring doesn't reshuffle under a run of presses as the sessions' ages move.
+SWITCH_RING_SECONDS = 30
+SWITCH_WINDOW = "1d"
+# FOCUS-07: iTerm2 keystroke keys, `<char>-<modifiers>-<keycode>-0x1` as iTerm2
+# writes them itself; 0x180000 is Command (0x100000) with Option (0x80000).
+SWITCH_KEYS = {
+    "0x5d-0x180000-0x1e-0x1": "--next",  # ]
+    "0x5b-0x180000-0x21-0x1": "--prev",  # [
+    "0x2f-0x180000-0x2c-0x1": "--pick",  # /
+}
+_SWITCH_STATE_WORD = {"blocked": "needs you", "working": "working", "idle": "idle"}
+
+
+def _switch_order(sessions: list[dict]) -> list[dict]:
+    """FOCUS-06: the focusable sessions, the ones that need you first (longest
+    wait first), then the rest most recently active first."""
+    focusable = [s for s in sessions if s.get("focusable")]
+    age = lambda s: s.get("age_seconds") or 0
+    blocked = sorted((s for s in focusable if s.get("color_state") == "blocked"), key=age, reverse=True)
+    rest = sorted((s for s in focusable if s.get("color_state") != "blocked"), key=age)
+    return blocked + rest
+
+
+def _switch_label(s: dict) -> str:
+    # The tab's own line-1 lead (TITLE-06), so a session reads the same here as on its tab.
+    glyph = _mode_glyph_for({"kind": s.get("kind"), "mode": (s.get("mode") or {}).get("name"),
+                             "activity": s.get("activity")}).strip()
+    name = " ".join(p for p in (glyph, s.get("project") or "?") if p)
+    task = s.get("task")
+    state = _SWITCH_STATE_WORD.get(s.get("color_state"), s.get("color_state") or "")
+    return f"{name}: {task} ({state})" if task else f"{name} ({state})"
+
+
+def _switch_ring() -> list[dict]:
+    """The sessions a press walks, in FOCUS-06's order, held for
+    SWITCH_RING_SECONDS after the last press so a run of presses walks one
+    list. A session that appeared since joins at the end; one that left drops."""
+    since = _window_since(False, SWITCH_WINDOW, strict=True)
+    current = {s["hash"]: s for s in _switch_order(collect_sessions(since, full=False)["sessions"])}
+    ring_file = CACHE_DIR / "switch-ring.json"
+    held = []
+    try:
+        cached = json.loads(ring_file.read_text(encoding="utf-8"))
+        if time.time() - float(cached.get("at", 0)) < SWITCH_RING_SECONDS:
+            held = [h for h in cached.get("hashes") or [] if h in current]
+    except (OSError, ValueError, TypeError):
+        held = []
+    order = held + [h for h in current if h not in held]
+    _mkdir_private(CACHE_DIR)
+    _write_private(ring_file, json.dumps({"at": time.time(), "hashes": order}))
+    return [current[h] for h in order]
+
+
+def _switch_pick(ring: list[dict], here_hash: str | None) -> None:
+    """FOCUS-08: a list dialog of the other sessions, for when beacon can't
+    tell which one is meant. osascript, since the key press runs outside any
+    Claude Code session and so has no band to draw in."""
+    others = [s for s in ring if s["hash"] != here_hash]
+    if not others:
+        sys.exit("No other beacon session to switch to.")
+    items = [f"{i}. {_switch_label(s)}" for i, s in enumerate(others, 1)]
+    quoted = ", ".join('"' + item.replace("\\", "").replace('"', "'") + '"' for item in items)
+    script = (f'set picked to choose from list {{{quoted}}} with title "beacon" '
+              f'with prompt "Switch to a session" OK button name "Switch" '
+              f'default items {{"{items[0].replace(chr(34), chr(39))}"}}\n'
+              f'if picked is false then return ""\nreturn item 1 of picked')
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as e:
+        sys.exit(f"picker failed: {e}")
+    if r.returncode != 0:
+        sys.exit(f"picker failed: {r.stderr.strip()}")
+    choice = r.stdout.strip()
+    if not choice:
+        return
+    target = others[int(choice.split(".", 1)[0]) - 1]
+    ok, msg = _focus_session(target["hash"])
+    if not ok:
+        sys.exit(f"{_switch_label(target)}: {msg}")
+
+
+def cmd_switch(args):
+    """FOCUS-06..08: raise the next (or previous) other beacon session, the
+    ones that need you first, or pick one from a list. Bound to Command-Option
+    `]` / `[` / `/` in the beacon profiles (FOCUS-07). Prints nothing on
+    success: a key binding's coprocess types its stdout into the pane."""
+    ring = _switch_ring()
+    here_guid = _iterm_cache_key()
+    here = next((s["hash"] for s in ring if _read_iterm_handle(s["hash"]) == here_guid), None)
+    if getattr(args, "list", False):
+        print(json.dumps([{"hash": s["hash"], "label": _switch_label(s), "color_state": s.get("color_state")}
+                          for s in ring if s["hash"] != (here or session_hash())]))
+        return
+    if getattr(args, "pick", False):
+        _switch_pick(ring, here)
+        return
+    if not [s for s in ring if s["hash"] != here]:
+        sys.exit("No other beacon session to switch to.")
+    step = -1 if getattr(args, "prev", False) else 1
+    at = next((i for i, s in enumerate(ring) if s["hash"] == here), None)
+    target = ring[(at + step) % len(ring)] if at is not None else ring[0 if step == 1 else -1]
+    ok, _ = _focus_session(target["hash"])
+    if not ok:
+        # The session listed can't be raised (its window closed, or iTerm2 lost
+        # the handle): which one was meant is now a guess, so ask (FOCUS-08).
+        _switch_pick(ring, here)
+
+
+def _switch_key_map(prefs: dict | None, parent: str | None) -> dict:
+    """FOCUS-07: the beacon profiles' Keyboard Map. iTerm2 replaces a dynamic
+    profile's map whole rather than merging the parent's into it, so the
+    parent's bindings are copied in under beacon's three, or every key the
+    user bound in their own profile would stop working in a beacon pane."""
+    inherited = {}
+    for profile in (prefs or {}).get("New Bookmarks") or []:
+        if profile.get("Name") == parent and isinstance(profile.get("Keyboard Map"), dict):
+            inherited = profile["Keyboard Map"]
+            break
+    keymap = {key: binding for key, binding in inherited.items() if _json_safe(binding)}
+    script = str(PLUGIN_ROOT / "scripts" / "beacon")
+    python = sys.executable or "python3"
+    for key, flag in SWITCH_KEYS.items():
+        # The coprocess types its stdout into the pane, so only the error, and only into an alert.
+        keymap[key] = {
+            "Action": 35, "Version": 2, "Escaping": 1, "Apply Mode": 0,
+            "Text": (f'err=$("{python}" "{script}" switch {flag} 2>&1 >/dev/null) || '
+                     "{ msg=$(printf '%s' \"$err\" | tr -d '\"\\\\'); "
+                     'osascript -e "display alert \\"beacon\\" message \\"$msg\\"" >/dev/null 2>&1; }'),
+        }
+    return keymap
+
+
+def _json_safe(value) -> bool:
+    try:
+        json.dumps(value)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 # --- full-fidelity export / import (DUMP) ---
@@ -4725,17 +4865,12 @@ def _record_pane_tty() -> None:
         remove_state("tty")
 
 
-# --- session anchor (mirrors shell/beacon.zsh _beacon_precmd) ---
+# --- session anchor ---
 #
 # The navigational identity of a Claude session is the cwd Claude was invoked
-# with. SessionStart captures that and publishes the full set of status-bar
-# slots (project, project_full, branch×5, url) plus the per-session handoff
-# files for the ↗ code / ↖ web buttons (HOOK-08). Those slots are not
-# refreshed mid-session — they represent *which* session this is, not where
-# Claude's current Bash subprocess happens to be. This duplicates
-# project/branch/url resolution from shell/beacon.zsh — keep them in sync;
-# in interactive (non-Claude) sessions the shell publishes the same slots
-# on each prompt redraw and naturally tracks the user's actual PWD.
+# with. SessionStart captures that (HOOK-08), and the status panel reads the
+# branch and its sync state from it (STATUS-06) — *which* session this is,
+# not where Claude's current Bash subprocess happens to be.
 
 def _detect_branch_info(cwd: Path) -> tuple[str, str, str, str]:
     """Return (display, state, indicator, identity). Empty quad outside a repo.
@@ -4916,9 +5051,8 @@ def _project_id_from_url(url: str) -> str:
 
 def _deliverable_suffix(url: str) -> str:
     """`#42` for issues/PRs, `!17` for GitLab MRs. Empty when the URL doesn't
-    point at a forge issue/PR/MR. Used to contextualize the project_full chip
-    when PROV-07 returns a deliverable URL (a tack deliverable, or an open CR) — bare repo
-    or branch-tree URLs leave the chip showing only the project identity."""
+    point at a forge issue/PR/MR: the ref a deliverable is recorded under when
+    PROV-07 returns one (a tack deliverable, or an open CR)."""
     if not url:
         return ""
     for pat, sigil, _kind in _DELIVERABLE_PATTERNS:
@@ -4932,7 +5066,7 @@ def _deliverable_kind(url: str) -> str:
     """`cr` for a PR/MR, `release` for a tagged release, `issue` for an issue,
     empty otherwise. Derived from the URL rather than stored, so the distinction
     costs no state field and applies to entries recorded before it existed. On
-    GitHub a CR and an issue both render `#<n>` (STATUSLINE-03 leans on grouping
+    GitHub a CR and an issue both render `#<n>` (STATUS-03 leans on grouping
     and weight to tell them apart); GitLab's `!` already differs by sigil."""
     for pat, _sigil, kind in _DELIVERABLE_PATTERNS:
         if url and pat.search(url):
@@ -4954,7 +5088,7 @@ def _canonical_item_url(url: str) -> str:
 
 def _announced_delivered_urls() -> set[str]:
     """Deliverable URLs a sibling announced as landed this session
-    (STATUSLINE-03). anchor announces `cr.merged` when it merges one, which is
+    (STATUS-03). anchor announces `cr.merged` when it merges one, which is
     the fact tack's `done` status stood in for — and the only source that still
     answers on a session with no route bound, or one whose route the agent never
     marked done. Unlike the tack tier it cannot drift: the publisher read the
@@ -4966,12 +5100,12 @@ def _announced_delivered_urls() -> set[str]:
 
 
 def _record_deliverable(ref: str, url: str, project_id: str, expanded: bool = False) -> None:
-    """STATUSLINE-03: append a deliverable the session has touched. Deduped on
+    """STATUS-03: append a deliverable the session has touched. Deduped on
     URL, and a re-touch moves the entry to the end. Capped at DELIVERABLES_MAX,
     oldest dropped, so the footer can't grow without bound.
 
     `expanded` marks an entry that reached the row only because something on it
-    links there (STATUSLINE-03 *Expansion*). It never displaces a direct one: an
+    links there (STATUS-03 *Expansion*). It never displaces a direct one: an
     expanded record of a URL the session touched directly changes nothing, it
     goes in older than every direct entry so the cap evicts it first, and it is
     skipped when direct entries fill the row. An expanded record of a URL
@@ -5039,7 +5173,7 @@ class ForgeError(Exception):
 
 
 def _read_links() -> dict:
-    """STATUSLINE-03's per-item forge record, keyed by URL: `{title, state,
+    """STATUS-03's per-item forge record, keyed by URL: `{title, state,
     landed_at, conflicts, closes, waits_on, stacked_on, expand, fetched_at,
     error}`. Held
     apart from `deliverables` because the entry for the branch's own CR is
@@ -5101,7 +5235,7 @@ def _links_stale(record: dict | None, now: float) -> bool:
 
 
 def _expansion_targets(entries: list[dict], links: dict) -> list[str]:
-    """What the row expands to (STATUSLINE-03 *Expansion*), in the order to
+    """What the row expands to (STATUS-03 *Expansion*), in the order to
     record it, so the last is the furthest from the cap's eviction edge: what
     the forge links to each open issue on the row (the CRs that close it, the
     issues it blocks or is blocked by, and what its description opens by
@@ -5117,7 +5251,7 @@ def _expansion_targets(entries: list[dict], links: dict) -> list[str]:
 
 
 def _stack_bases(entries: list[dict], links: dict, marked: set[str]) -> list[str]:
-    """STATUSLINE-03 *Expansion*, stacks: the open CRs under each open CR the
+    """STATUS-03 *Expansion*, stacks: the open CRs under each open CR the
     session touched directly, followed down `stacked_on` to the bottom of its
     stack, nearest first and the newest CR's stack first. A merged or closed
     base, or a dropped one (CMD-24), ends the walk down its side.
@@ -5172,7 +5306,7 @@ def _stale_link_urls() -> list[str]:
 
 
 def _expand_linked_items() -> None:
-    """STATUSLINE-03 *Expansion*: put the row's expansion targets on the row, in
+    """STATUS-03 *Expansion*: put the row's expansion targets on the row, in
     `_expansion_targets`' order. A stack is learned a base per refresher pass,
     so a deeper base reaches the row after a nearer one and would otherwise sit
     on the newer side of it, where the cap would cut the stack in the middle.
@@ -5460,7 +5594,7 @@ def _spawn_links_refresh() -> None:
 
 
 def cmd_refresh_links(args):
-    """STATUSLINE-03: read the title and links of every open CR and issue on a
+    """STATUS-03: read the title and links of every open CR and issue on a
     session's row from its forge, and of what the row's issues expand to. It
     repeats until nothing is left stale, so the targets of an issue read in one
     pass, and the neighbours of an item whose shape changed, are read in the
@@ -5629,10 +5763,8 @@ def _project_full_at(cwd: Path) -> str:
     """Abbreviated remote identity, e.g. `gh:owner/repo`. Empty when there's
     no project or no remote.
 
-    Not a painted value — the project chip carries the project's *name*
-    (STATUS-BAR-02). This is the qualifier that tells the status line whether a
-    deliverable belongs to this project or another (STATUSLINE-03), which is why
-    it survives the chip that used to render it."""
+    Not a painted value. This is the qualifier that tells the status line whether a
+    deliverable belongs to this project or another (STATUS-03)."""
     root = _project_root_at(cwd)
     if not root:
         return ""
@@ -5667,91 +5799,12 @@ def _local_path_at(cwd: Path) -> str:
     return s
 
 
-def _project_chip_at(cwd: Path) -> str:
-    """The project chip's value (STATUS-BAR-02): tack's repo label when the
-    session anchored one, else the project's name, and the directory's own name
-    when that isn't a project.
-
-    The label is what the tab's line 1 already reads (`anchor.project`), so the
-    chip agrees with it. The shell's precmd paints the remote basename instead,
-    since it can't afford a tack call per prompt.
-
-    `_project_name_at` answers empty outside a recognized project because its
-    other caller (tack route lookup) needs that distinction. The chip has no use
-    for a blank slot, so it floors here."""
-    return p_tack_slug(cwd) or _project_name_at(cwd) or cwd.name or str(cwd)
-
-
-def _branch_slot_pairs(display: str, state: str, identity: str) -> tuple[str, ...]:
-    """The hybrid branch slots (#20): the default branch fills its own
-    de-emphasized slot; a feature branch routes to its sync-state slot. Mirrors
-    the shell's precmd so Claude-session and interactive panes agree, and is
-    shared by the two publishers below so they cannot classify one branch two
-    ways."""
-    is_default = identity == "default"
-    return (
-        f"beacon_branch={display}",
-        f"beacon_branch_state={state}",
-        f"beacon_branch_default={display if is_default else ''}",
-        f"beacon_branch_clean={display if (not is_default and state == 'clean') else ''}",
-        f"beacon_branch_diverged={display if (not is_default and state == 'diverged') else ''}",
-        f"beacon_branch_untracked={display if (not is_default and state == 'untracked') else ''}",
-    )
-
-
-# Bash commands that can change what the branch chip shows — the branch name,
-# its upstream, or its ahead/behind count. Read-only git (`status`, `log`,
-# `diff`) is the bulk of what a session runs, and refreshing on those would
-# spend three subprocesses per call to republish the values already painted.
-#
-# A command this misses costs nothing but the wait the chip already had: the
-# Stop hook republishes at the end of the turn either way (HOOK-08b).
-_BRANCH_TOUCHING_RE = re.compile(
-    r"\bgit\b.*?\b(?:push|pull|fetch|clone|checkout|switch|branch|commit|merge"
-    r"|rebase|reset|revert|cherry-pick|stash|worktree|remote|tag)\b")
-
-
-def _refresh_branch_chips_if_git(payload: dict) -> None:
-    """HOOK-08c: republish the branch slots mid-turn when a tool just moved them.
-
-    `_publish_chips` covers this once per turn, but it also resolves the URL
-    (git, and possibly `gh`/`glab`) and reads the tack route (a `tack list`
-    subprocess) — a per-turn cost, which is why a push made early in a long turn
-    left the chip painting `↑1` until the turn ended. The shell's precmd, which
-    would otherwise catch it on the next prompt, cannot run while Claude holds
-    the pane.
-
-    The branch slots on their own are three local git reads, affordable per tool
-    call. Resolved from the session anchor rather than the payload cwd for the
-    same reason HOOK-08b is: the chip names the session's project, not whatever
-    directory the agent stepped into."""
-    if payload.get("tool_name") != "Bash":
-        return
-    tool_input = payload.get("tool_input")
-    command = str(tool_input.get("command") or "") if isinstance(tool_input, dict) else ""
-    if not _BRANCH_TOUCHING_RE.search(command):
-        return
-    cwd = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
-    display, state, _indicator, identity = _detect_branch_info(Path(cwd))
-    _cli("uservar-batch", *_branch_slot_pairs(display, state, identity))
-
-
-def _publish_chips(cwd: Path) -> None:
-    """Refresh status-bar chips (project_name, branch*) + the `↗ code` handoff
-    file from `cwd`, and persist the resolved URL for the status line. Does NOT
-    touch beacon_project / beacon_task — those are owned by the engagement
-    renderer.
-
-    Called whenever the shell's precmd can't (mid-session, between turns) so
-    chips reflect branch creation / tack-context changes that happened while
-    the shell was blocked on Claude."""
-    display, state, indicator, identity = _detect_branch_info(cwd)
-    # `display` leads with the ahead/behind indicator when diverged; route
-    # lookup correlates on the branch name itself.
-    branch = display[len(indicator):].lstrip() if indicator else display
-    proj_name = _project_name_at(cwd)
+def _publish_links(cwd: Path) -> None:
+    """Resolve the session's URL and deliverables from `cwd` and persist them for
+    the status lines (STATUS-02/03), on the hooks that already pay for the
+    git and forge reads, so the status panel's per-poll read never does."""
     url, label = resolve_url(cwd)
-    # STATUSLINE-02: `_tack_url_for` falls back to the newest completed
+    # STATUS-02: `_tack_url_for` falls back to the newest completed
     # deliverable when the route has nothing open, so a fresh session on an idle
     # route would lead its row with a PR that shipped in an earlier session. The
     # substitution is scoped to the persisted link, leaving PROV-07's chain as is
@@ -5760,29 +5813,13 @@ def _publish_chips(cwd: Path) -> None:
     if _url_delivered_before_session(url):
         url, label = _location_url_at(cwd)
 
-    # The bare forge identity (`gh:acme/widgets`) is not a chip value — the chip
-    # carries the project's name. It is still resolved here because it qualifies
-    # a deliverable as this project's or another's in the status line
-    # (STATUSLINE-03).
+    # The bare forge identity (`gh:acme/widgets`) qualifies a deliverable as this
+    # project's or another's in the status lines (STATUS-03).
     project_id = _project_full_at(cwd)
     ref = _deliverable_suffix(url)
     route_urls = _tack_route_urls()
 
-    pairs = (f"beacon_project_name={_project_chip_at(cwd)}",
-             *_branch_slot_pairs(display, state, identity))
-    # Published unconditionally, and deliberately not gated on the last value the
-    # way the shell's precmd sentinels are. The shell can gate because it is one
-    # process for the pane's life; each hook is a fresh interpreter, so the only
-    # gate available here is a persisted one — and a persisted gate would be
-    # wrong, not merely useless: `SetProfile` wipes the session's OSC user vars
-    # (§6.10), which is why apply() forces a republish on a profile swap. These
-    # chips are user vars too, so a signature that survived the swap would
-    # suppress the republish and leave the status bar blank until the branch
-    # happened to change. The expensive half of this function is above anyway —
-    # the git and forge probes run before any signature could be compared.
-    _cli("uservar-batch", *pairs)
-
-    # STATUSLINE-02: the status line renders this per prompt, so it must never
+    # STATUS-02: the status line renders this per prompt, so it must never
     # re-run resolve_url (which shells to git and can shell to gh/glab). The
     # resolution is persisted here, on the hooks that already pay for it.
     # Distinct from the `resolved` badge snapshot (STATE-03), which is written
@@ -5805,26 +5842,20 @@ def _publish_chips(cwd: Path) -> None:
         _record_deliverable(ref, url, _project_id_from_url(url) or project_id)
     _spawn_links_refresh()
 
-    key = _iterm_cache_key()
-    if key:
-        _mkdir_private(CACHE_DIR)
-        _write_private(CACHE_DIR / f"cwd-{key}.txt", f"{cwd}\n")
-
 
 def _publish_anchor(cwd: Path) -> None:
     """HOOK-08: pin the navigational identity of this Claude session.
 
-    SessionStart-only: publishes chips via `_publish_chips`, then anchors
+    SessionStart-only: publishes the links via `_publish_links`, then anchors
     `beacon_project` (badge text fallback) and clears `beacon_task` so a
     fresh session starts from a known state. The cwd and resolved project
     are persisted as `anchor.cwd` / `anchor.project` so the Stop hook
-    (HOOK-08b) re-resolves chips from this fixed anchor rather than trusting
+    (HOOK-08b) re-resolves the links from this fixed anchor rather than trusting
     each turn's payload cwd — the anchor is beacon's own record of where the
     session began, not an implicit property of Claude's hook payloads.
 
-    The anchor is written before the chips publish: the project chip reads
-    `anchor.slug` through `p_tack_slug`, which a prior tenant's anchor would
-    otherwise answer."""
+    The anchor is written before the links publish, so the resolvers read this
+    session's anchor rather than a prior tenant's."""
     root = _project_root_at(cwd)
     slug = _tack_repo_label(root) if root else None
     if slug:
@@ -5844,7 +5875,7 @@ def _publish_anchor(cwd: Path) -> None:
         write_state("anchor.icon", icon)
     else:
         remove_state("anchor.icon")
-    _publish_chips(cwd)
+    _publish_links(cwd)
     _cli("uservar-batch", f"beacon_project={project_display}",
          "beacon_task=", "beacon_location=")
 
@@ -5943,8 +5974,7 @@ def _is_iterm_installed() -> bool:
 
 def _hex_to_color_components(hex_str: str) -> dict:
     """Convert a 6-digit hex color (no leading #) to iTerm2's dynamic-profile
-    color dict — sRGB float components, opaque. Mirrors the float form the
-    base template uses for chip text (THEME-03), so a mode background stays
+    color dict — sRGB float components, opaque, so a mode background stays
     single-sourced from its MODE_SPECS hex."""
     r = int(hex_str[0:2], 16) / 255.0
     g = int(hex_str[2:4], 16) / 255.0
@@ -5958,54 +5988,26 @@ def _hex_to_color_components(hex_str: str) -> dict:
     }
 
 
-# An action component draws its title inside the `maxwidth` knob, and the layout
-# sets "remove empty components" — so a title wider than the cap leaves the
-# button blank rather than truncated. The template's caps fit the default labels;
-# a longer one from `statusbar.buttons.<name>.label` (STATUS-BAR-09) needs the cap
-# grown with it. Sized from the layout font's advance width (Menlo-Regular 18pt),
-# rounded up generously: maxwidth is a ceiling, not a fixed width, so an
-# over-estimate costs nothing, where an under-estimate erases the button.
-STATUSBAR_TITLE_ADVANCE = 12.0
-STATUSBAR_TITLE_PADDING = 16
-
-
-def _fit_action_button_widths(profile: dict) -> None:
-    layout = profile.get("Status Bar Layout") or {}
-    for component in layout.get("components") or []:
-        knobs = (component.get("configuration") or {}).get("knobs") or {}
-        title = (knobs.get("action") or {}).get("title")
-        if not title:
-            continue
-        needed = int(len(title) * STATUSBAR_TITLE_ADVANCE) + STATUSBAR_TITLE_PADDING
-        knobs["maxwidth"] = max(knobs.get("maxwidth") or 0, needed)
-
-
-# The action-button shells `install_dynamic_profile` bakes, read back out.
-# `parameter` is a shell one-liner, so the values are recovered by their quoting
-# rather than from a field of their own — see the template.
-_PROFILE_CACHE_DIR_RE = re.compile(r'cat "([^"]+)/cwd-')
+# The switcher key bindings `install_dynamic_profile` bakes, read back out. The
+# binding's text is a shell one-liner, so the values are recovered by their
+# quoting rather than from a field of their own (`_switch_key_map`).
 _PROFILE_EXEC_RE = re.compile(r'\$\("([^"]+)" "([^"]+)" ')
 
 
 def _profile_baked_paths(profile: dict) -> dict | None:
-    """The `{cache_dir, python, script}` an installed profile's buttons will
-    actually use, or None when it declares no action button.
+    """The `{python, script}` an installed profile's switcher keys (FOCUS-07)
+    will actually run, or None when it binds none.
 
     These are baked at render time (see `install_dynamic_profile`), so nothing
-    re-derives them on a click: a profile written against one install keeps
-    pointing there after beacon moves, and the button fails with the same alert
-    it shows for a pane it has no cwd for. Reading them back is what lets
-    `doctor` tell the two apart."""
-    for comp in (profile.get("Status Bar Layout") or {}).get("components") or []:
-        knobs = (comp.get("configuration") or {}).get("knobs") or {}
-        param = (knobs.get("action") or {}).get("parameter")
-        if not isinstance(param, str):
-            continue
-        cache = _PROFILE_CACHE_DIR_RE.search(param)
-        exe = _PROFILE_EXEC_RE.search(param)
-        if cache and exe:
-            return {"cache_dir": cache.group(1),
-                    "python": exe.group(1), "script": exe.group(2)}
+    re-derives them on a press: a profile written against one install keeps
+    pointing there after beacon moves, and the key fails with an alert that
+    reads as a switcher bug. Reading them back is what lets `doctor` tell the
+    two apart."""
+    for binding in (profile.get("Keyboard Map") or {}).values():
+        text = binding.get("Text") if isinstance(binding, dict) else None
+        exe = _PROFILE_EXEC_RE.search(text) if isinstance(text, str) and " switch " in text else None
+        if exe:
+            return {"python": exe.group(1), "script": exe.group(2)}
     return None
 
 
@@ -6029,27 +6031,12 @@ def _derived_profile_specs() -> list[dict]:
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the base beacon-dev profile (status bar layout + badge sizing, §6.6)
+    """Write the base beacon-dev profile (badge sizing and the switcher keys, §6.6)
     and one derived mode profile per MODE_SPECS entry that paints the pane
     (beacon-pause, beacon-release, beacon-done; RENDER-05) into iTerm2's
     DynamicProfiles directory. iTerm2
     watches the directory and reloads on change without restart, so the write
     needs no quit.
-
-    Substitutions in `iterm/profile.json.template`:
-      __BEACON_SCRIPT__     — script path for the non-interactive coprocess
-                              shells behind the status-bar action buttons.
-      __BEACON_PYTHON__     — the running interpreter, absolute. A coprocess
-                              action shell has no interactive `PATH` (§6.10
-                              caveat 3), so a bare `python3` may not resolve.
-      __BEACON_CACHE_DIR__  — so the `↗ code` action shell reads the
-                              per-session handoff file without deriving it.
-      __BEACON_*_LABEL__    — each action button's title, from
-                              `statusbar.buttons.<name>.label` (STATUS-BAR-09).
-                              Baked in rather than read from a user var: an
-                              action component's title is a static knob
-                              (§6.10), so a label change applies by
-                              re-rendering here, not on the next click.
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
     its own formatting and any GUI-edited values, so a "content matches"
@@ -6058,7 +6045,6 @@ def install_dynamic_profile() -> tuple[bool, str]:
     them.
     """
     target_dir = _iterm_profiles_dir()
-    beacon_script = str(PLUGIN_ROOT / "scripts" / "beacon")
     template = PLUGIN_ROOT / "iterm" / "profile.json.template"
     target = target_dir / "beacon-dev.json"
 
@@ -6069,18 +6055,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
 
     if not template.is_file():
         return False, f"profile template not found: {template}"
-    # The placeholders sit inside JSON string literals, so a path with
-    # backslashes (Windows) would otherwise emit invalid JSON escapes. Encode
-    # each value for string-literal context — json.dumps quotes and escapes,
-    # the slice drops the surrounding quotes the template already supplies.
-    def _json_inner(value: str) -> str:
-        return json.dumps(value)[1:-1]
-    content = (template.read_text(encoding="utf-8")
-               .replace("__BEACON_SCRIPT__", _json_inner(beacon_script))
-               .replace("__BEACON_PYTHON__", _json_inner(sys.executable or "python3"))
-               .replace("__BEACON_CACHE_DIR__", _json_inner(str(CACHE_DIR)))
-               .replace("__BEACON_WEB_LABEL__", _json_inner(_statusbar_button("web")["label"]))
-               .replace("__BEACON_CODE_LABEL__", _json_inner(_statusbar_button("code")["label"])))
+    content = template.read_text(encoding="utf-8")
     try:
         base_profile = json.loads(content)["Profiles"][0]
     except (ValueError, KeyError, IndexError) as e:
@@ -6100,7 +6075,9 @@ def install_dynamic_profile() -> tuple[bool, str]:
     if notifications is not None:
         for key in ITERM_ALERT_KEYS:
             base_profile[key] = notifications
-    _fit_action_button_widths(base_profile)
+    base_profile["Keyboard Map"] = _switch_key_map(
+        _iterm_prefs() if sys.platform == "darwin" else None,
+        base_profile.get("Dynamic Profile Parent Name"))
     try:
         target.write_text(json.dumps({"Profiles": [base_profile]}, indent=2))
     except OSError as e:
@@ -6339,7 +6316,7 @@ def apply(state: dict):
     # state beacon does not own exclusively. `SetProfile` wipes it (§6.10). A
     # persisted gate cannot see a wipe it did not cause, so it suppresses the one
     # repaint that would recover the tab and leaves it unpainted for the rest of
-    # the session. Same argument _publish_chips makes for the chip user vars.
+    # the session.
     # TAB-04: the tab takes the area-weighted hue, the badge the canonical one.
     # The badge is small and sits over terminal output, so it wants full strength
     # for the same reason the tab cannot have it.
@@ -6400,7 +6377,7 @@ def apply(state: dict):
     # also owns is only visible in the focused pane, and the tab color answers a
     # different question. A glyph, not the word, because line 1 is shared by the tab
     # and the window title and cannot differ between them. The mode's *note* is not
-    # here: it goes to the Claude Code status line (STATUSLINE-01), a footer row
+    # here: it goes to the Claude Code status line (STATUS-01), a footer row
     # with room for prose.
     if glyph != prev.get("title_prefix", "") or (switched and glyph):
         _cli("uservar", "beacon_title_prefix", glyph)
@@ -7008,7 +6985,7 @@ def _wipe_session_for_fresh_start() -> None:
     remove_state("opening_command")
     remove_state("first_prompt")
     remove_state("title_reasserted")
-    # STATUSLINE-03: the accumulated list is scoped to one Claude session, but
+    # STATUS-03: the accumulated list is scoped to one Claude session, but
     # the state keys on the pane — without this, a fresh session inherits the
     # previous tenant's deliverables and the footer credits it with work it
     # never touched.
@@ -7052,29 +7029,35 @@ def cmd_render(_args):
 
 
 STATUSLINE_SEPARATOR = " · "
-STATUSLINE_LINK_COLOR = "36"
-# A mode's note reads as de-emphasized context, not as an alert: the tab already
-# says which mode, so the note is the detail you look down for. Dracula `comment`
-# in the 256-color space, matching the identity role it plays elsewhere.
-_MODE_NOTE_COLOR = "38;5;61"
-# STATUSLINE-03: change requests lead the row and carry full weight; issues
-# trail, dimmed. Same hue for both — the palette's "one hue, two weights" split
-# between an actionable thing and its context (THEME-03) — so the row reads as
-# one group, and no state carries a text glyph (BADGE-11 / WIP-12).
-STATUSLINE_CR_SGR = "1;36"
-STATUSLINE_ISSUE_SGR = "2;36"
+# THEME-04: every role clears WCAG AA (4.5:1) on the Dracula ground, a faint
+# role measured at the 50% blend iTerm2 draws it at. That is why the waiting gray
+# and the mode note are 256-color: the ANSI shades a dark theme gives bright
+# black (90) and a dim hue sit near 3:1, so no 16-color code holds the role.
+STATUSLINE_LINK_COLOR = "37"
+# A mode's note reads as context, not as an alert: the tab already says which
+# mode, so the note is the detail you look down for. Dracula's purple, the
+# identity hue, at the 256-color shade that reads (Dracula `comment`, 61, didn't).
+_MODE_NOTE_COLOR = "38;5;141"
+# STATUS-03: the refs are the row's content, so they take the foreground;
+# hue is left to what a ref's state means (waiting, delivered, conflicting).
+# Change requests lead the row at full weight and issues trail at regular
+# weight: one hue, two weights, so the row reads as one group, and no state
+# carries a text glyph (BADGE-11 / WIP-12).
+STATUSLINE_CR_SGR = "1;37"
+STATUSLINE_ISSUE_SGR = "37"
 # Work waiting on something still open on the row keeps its kind's weight and
 # turns gray, so weight still separates a CR from an issue and the hue alone
 # says what can move now.
-STATUSLINE_CR_BLOCKED_SGR = "1;90"
-STATUSLINE_ISSUE_BLOCKED_SGR = "2;90"
+STATUSLINE_CR_BLOCKED_SGR = "1;38;5;247"
+STATUSLINE_ISSUE_BLOCKED_SGR = "38;5;247"
 # Delivered work gets its own line and its own vocabulary. The strike is
 # decoration; the word and the glyph are what carry it — a bare struck `#27` is
 # four characters of subtlety, and strikethrough is among the first attributes a
 # terminal drops. Green is beacon's release colour throughout (THEME-02). The
-# verb is muted against its ref: the ref is the content, the verb is the label.
-STATUSLINE_DELIVERED_SGR = "32"
-STATUSLINE_VERB_SGR = "2;32"
+# verb steps down a weight from its ref: the ref is the content, the verb is the
+# label. A weight, not a dim: dim green falls under 4:1 (THEME-04).
+STATUSLINE_DELIVERED_SGR = "1;32"
+STATUSLINE_VERB_SGR = "32"
 # A CR line usually holds one ref and a lot of empty terminal, so the title
 # earns its place there. Issues stay bare — several share a line, and titling
 # each would wrap the row the cap exists to prevent.
@@ -7118,7 +7101,7 @@ def _statusline_mode_segment() -> str:
 
 
 def _statusline_review_line(review: dict) -> str:
-    """STATUSLINE-04: what the session is blocked on a review of, led by the
+    """STATUS-04: what the session is blocked on a review of, led by the
     tab's own `👀`. A URL is a link to itself, left whole; a path is printed as
     given, since which checkout it sits in is the question it answers."""
     target = review["target"]
@@ -7129,7 +7112,7 @@ def _statusline_review_line(review: dict) -> str:
 
 
 def _statusline_link_segment(entries: list[dict]) -> str:
-    """STATUSLINE-02/03: the deliverables this session has touched, each a
+    """STATUS-02/03: the deliverables this session has touched, each a
     clickable OSC-8 link, led by its project once the row spans two
     (`widgets#4`). Change requests lead the row at full weight and issues
     trail dimmed, newest first within each group, so the row answers "what am
@@ -7137,11 +7120,11 @@ def _statusline_link_segment(entries: list[dict]) -> str:
 
     A session whose row has no entry to show falls back to the single resolved
     URL (an open PR for the branch, else a branch or repo page), which is the same
-    rendering with one element. `_publish_chips` keeps a delivery from an earlier
+    rendering with one element. `_publish_links` keeps a delivery from an earlier
     session out of that slot, so the fallback names a location and never a ref the
     session had no part in.
 
-    Reads only what `_publish_chips` persisted; never re-resolves — the row
+    Reads only what `_publish_links` persisted; never re-resolves — the row
     renders per prompt, and `resolve_url` shells to git and can shell to
     `gh`/`glab`."""
     if entries:
@@ -7159,13 +7142,13 @@ def _statusline_link_segment(entries: list[dict]) -> str:
 STATUSLINE_STACK_LEAD = "└ "
 # A stacked CR always waits on its open base, so its lead takes the blocked
 # hue, at normal weight: structure reads a step quieter than the ref it leads.
-STATUSLINE_STACK_LEAD_SGR = "90"
+STATUSLINE_STACK_LEAD_SGR = "38;5;247"
 STATUSLINE_INDENT = "  "
 # Claude Code strips a status-line row's leading whitespace, which flattened
 # every tree to the margin. A zero-width reset in front means the row no longer
 # starts with a space, so the indent survives.
 STATUSLINE_INDENT_GUARD = "\033[0m"
-# Titles shorten toward this before they are dropped outright (STATUSLINE-03
+# Titles shorten toward this before they are dropped outright (STATUS-03
 # *Width*): a title cut much shorter reads as noise beside its ref.
 STATUSLINE_TITLE_MIN = 8
 _ANSI_RE = re.compile(r"\x1b\][^\a]*\a|\x1b\[[0-9;]*m")
@@ -7190,7 +7173,7 @@ def _terminal_columns() -> int | None:
 
 
 def _fit_line(render, width: int | None) -> str:
-    """STATUSLINE-03 *Width*: the line `render(cap)` draws, shortened from its
+    """STATUS-03 *Width*: the line `render(cap)` draws, shortened from its
     titles inward until it fits `width`. Every title is capped shorter, which
     trims the longest first, then the titles go; refs, `(closes …)` and the
     indent are never cut by beacon, so a line that still doesn't fit is left for
@@ -7206,7 +7189,7 @@ def _fit_line(render, width: int | None) -> str:
 
 
 def _dependency_layout(urls: list[str], waits_on: dict) -> tuple[list[str], list[list[tuple[int, str]]]]:
-    """STATUSLINE-03 *Dependencies*: split `urls` (newest first) into the ones
+    """STATUS-03 *Dependencies*: split `urls` (newest first) into the ones
     no other entry depends on or waits on, and trees of `(depth, url)` in render
     order for the rest.
 
@@ -7352,7 +7335,7 @@ def _statusline_kind_lines(entries: list[dict], links: dict, sgr: str, blocked_s
 
 
 def _statusline_open_lines(entries: list[dict], links: dict, qualify: bool) -> list[str]:
-    """STATUSLINE-03: open work by kind, change requests above the issues they
+    """STATUS-03: open work by kind, change requests above the issues they
     answer. Newest first within each line. Splitting by kind rather than packing
     one row is what lets a glance separate "what I'm shipping" from "what I'm
     shipping it for"; on GitHub the two are both `#<n>` and share a line only by
@@ -7375,7 +7358,7 @@ def _statusline_open_lines(entries: list[dict], links: dict, qualify: bool) -> l
 
 
 def _statusline_delivered_line(entries: list[dict], links: dict, qualify: bool) -> str:
-    """STATUSLINE-03: what the session has shipped, on its own line above the
+    """STATUS-03: what the session has shipped, on its own line above the
     open work. `~widgets#27~ merged 🏁`. Newest first — the most recent thing
     shipped is the one worth seeing."""
     parts = []
@@ -7392,31 +7375,76 @@ def _statusline_delivered_line(entries: list[dict], links: dict, qualify: bool) 
     return STATUSLINE_SEPARATOR.join(parts)
 
 
-def cmd_statusline(_args):
-    """STATUSLINE-01: Claude Code status-line provider. Claude runs this per
-    prompt (and on its other status-line events) and renders stdout as a footer
-    row it owns — above its built-in badges, never overlapping terminal output,
-    in any terminal. The row carries the pause reason (the highest-signal 'why
-    is this parked' recall context) and the resolved URL as a clickable link;
-    `project` / `task` / `status` are already on the tab (RENDER-04 / TITLE-05),
-    so they are not repeated here. Reads only per-session state files — no
-    network — per Claude Code's guidance that the status-line command stay cheap
-    (it runs frequently)."""
-    # Drain Claude's status-line JSON on stdin so the pipe closes cleanly; beacon
-    # resolves its own session from the environment (session_hash), so the payload
-    # is unused.
+def _status_panel_head() -> dict:
+    """STATUS-06: what the panel's head row names, for this session alone.
+    Resolving the one record keeps the panel off `wip`'s scan of every session,
+    and skips the route, which the head row doesn't draw."""
+    record = _resolve_session(session_hash(), compute_branch=False, compute_route=False) or {}
+    head = {key: record.get(key) for key in ("project", "task", "mode", "color_state")}
+    # The directory the status bar's `↗ code` opens: its handoff file is written
+    # from this same anchor (HOOK-08b), never the payload's drifting cwd.
+    anchor = read_state("anchor.cwd")
+    head.update(anchor_cwd=anchor, branch=None, branch_sync="", branch_slot=None, branch_url=None,
+                forge=None, code_label=_code_button_label())
+    if not anchor or not Path(anchor).is_dir():
+        return head
+    # Local git only, the reads the status-bar chips make: never a forge, since this beats every 15s.
+    display, state, indicator, identity = _detect_branch_info(Path(anchor))
+    branch = display[len(indicator):].lstrip() if indicator else display
+    # The status bar's slot (#20), so the panel colors the branch as the chip does.
+    slot = "default" if identity == "default" else state
     try:
-        sys.stdin.read()
-    except Exception:
-        pass
+        remote = _git_remote_url_normalized(Path(anchor))
+    except (OSError, subprocess.SubprocessError) as exc:
+        log_error("git.remote", f"{type(exc).__name__}: {exc}")
+        remote = ""
+    # Linked only with an upstream: an untracked branch has no page on the forge
+    # to open, and a link to one is a 404.
+    tracked = state in ("clean", "diverged")
+    head.update(branch=branch or None, branch_sync=indicator, branch_slot=slot or None,
+                forge=_forge_name(remote),
+                branch_url=(_branch_url(Path(anchor), branch, remote)[0] or None) if tracked else None)
+    return head
+
+
+def _forge_name(remote: str) -> str | None:
+    """What the status panel labels the project page's button with: the forge
+    beacon knows by name, else the host's own name (`bitbucket` for
+    bitbucket.org). None with no remote, so the button stays off the band."""
+    host = _remote_host(remote)
+    if not host:
+        return None
+    known = next((tag for tag in _FORGE_PROBES if tag in host), None)
+    labels = host.split(".")
+    return known or (labels[-2] if len(labels) > 1 else host)
+
+
+def _code_button_label() -> str:
+    """The status panel's code button says what it runs: the configured
+    editor's program (`code`), so a `subl` user isn't told `code`."""
+    return Path(_code_launch_argv()[0]).name
+
+
+def cmd_status_panel(_args):
+    """STATUS-06: everything the status panel draws for this session, as one
+    JSON object: the head row, and the status lines under it (`lines`,
+    STATUS-01). One process per poll, since the panel polls every session."""
+    print(json.dumps({**_status_panel_head(), "lines": _status_lines()}))
+
+
+def _status_lines() -> list[str]:
+    """STATUS-01: the status lines the status panel draws under its head
+    row: the mode's note, the resolved URL as a link, and the session's
+    deliverables, each still carrying its SGR roles. `project` / `task` are the
+    head row, so they are not repeated here. Reads only per-session state files,
+    never a forge or git, since the panel reads it on every poll."""
     # One line per class, most urgent first: what mode the session declared and
     # why, what it has shipped, then the open work split by kind. Shipping is
     # rare, and burying it among the open refs is what made it unreadable on a
     # shared row.
     review = read_review_block()
     if review:
-        sys.stdout.write(_statusline_review_line(review) + "\n")
-        return
+        return [_statusline_review_line(review)]
     links = _read_links()
     entries = _row_entries(links)
     qualify = _row_spans_projects(entries, links)
@@ -7426,9 +7454,7 @@ def cmd_statusline(_args):
         _statusline_delivered_line(entries, links, qualify),
         *_statusline_open_lines(entries, links, qualify),
     ]
-    rows = [r for r in rows if r]
-    if rows:
-        sys.stdout.write("\n".join(rows) + "\n")
+    return [r for r in rows if r]
 
 
 def _is_active(line: str) -> bool:
@@ -7549,7 +7575,7 @@ _SOURCE_LINE_TARGET_RE = re.compile(r'"([^"]+)"')
 # is behind where the breakdown names each of them (HOOK-14).
 _SHELL_SURFACE = "the .zshrc line"
 _WRAPPER_SURFACE = "the $PATH command"
-_ITERM_SURFACE = "the iTerm2 buttons"
+_ITERM_SURFACE = "the iTerm2 switcher keys"
 _SURFACE_ORDER = (_SHELL_SURFACE, _WRAPPER_SURFACE, _ITERM_SURFACE)
 
 
@@ -7595,7 +7621,7 @@ def _pinned_surfaces() -> list[tuple[str, str, Path]]:
             continue
         baked = _profile_baked_paths(profile)
         if baked:
-            surfaces.append((f"the {stem} status-bar buttons", _ITERM_SURFACE,
+            surfaces.append((f"the {stem} switcher keys", _ITERM_SURFACE,
                              Path(baked["script"])))
 
     return surfaces
@@ -7812,10 +7838,10 @@ REMIGRATE_COMMAND = "beacon refresh-iterm-profiles --remigrate"
 
 def cmd_refresh_iterm_profiles(args):
     """CMD-23: re-render the dynamic profiles from the template and the user
-    config, skipping the rest of the install bootstrap. This is how a changed
-    `statusbar.buttons.<name>.label` is applied (STATUS-BAR-09) — iTerm2 watches
-    DynamicProfiles and reloads on change, so the new label reaches every open
-    pane with no restart and no re-run of the wrapper / completions / shell
+    config, skipping the rest of the install bootstrap. This is how a key
+    binding added to the parent profile reaches the beacon profiles (FOCUS-07):
+    iTerm2 watches DynamicProfiles and reloads on change, so it reaches every
+    open pane with no restart and no re-run of the wrapper / completions / shell
     steps.
 
     `--remigrate` is the exception to that, and the exception is the point:
@@ -8309,7 +8335,7 @@ _DOCTOR_ADVICE = {
                  "and confirm your terminal may control iTerm2.",
     "provider": "A resolver provider threw, so the chain fell through to a lower "
                 "tier — the project, task, or URL it feeds may be stale or blank.",
-    "git": "A git probe failed, so the branch chip and its sync state may be blank.",
+    "git": "A git probe failed, so the status panel's branch and its sync state may be blank.",
     "links": "A forge read for the status line failed, so the item above shows no title, "
              "dependencies, or closed issues. Check `gh auth status` / `glab auth status` "
              "for its host; it is read again within ten minutes.",
@@ -8405,16 +8431,12 @@ _DOCTOR_MARKS = {
 
 
 def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
-    """Whether the installed profiles' action buttons still point at this
-    install — the half `profiles` present/absent can't see.
+    """Whether the installed profiles' switcher keys (FOCUS-07) still point at
+    this install — the half `profiles` present/absent can't see.
 
-    The cache dir is checked for *equality*: the button reads the pane's cwd
-    handoff file straight out of it, so a profile written against another
-    `<DATA_DIR>` finds nothing and alerts as though the pane had no directory,
-    which reads as a `↗ code` bug rather than a stale profile. The interpreter
-    and script are checked for *existence* instead — pointing them at a working
-    tree is how beacon is developed, so a difference is worth naming but is not
-    a fault.
+    The interpreter and script are checked for *existence*: pointing them at a
+    working tree is how beacon is developed, so a difference is worth naming but
+    is not a fault. A profile from 2.x carries no switcher keys at all.
 
     One render writes all five profiles, so a finding almost always holds for
     every one of them; each is reported once, named by profile only where they
@@ -8430,17 +8452,14 @@ def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
             continue
         baked = _profile_baked_paths(profile)
         if not baked:
-            faults.append((stem, "declares no action button"))
+            faults.append((stem, "binds no switcher keys"))
             continue
-        if Path(baked["cache_dir"]) != CACHE_DIR:
-            faults.append((stem, f"buttons read {baked['cache_dir']}, "
-                                 f"hooks write {CACHE_DIR}"))
         if not os.access(baked["python"], os.X_OK):
             faults.append((stem, f"interpreter {baked['python']} is gone"))
         if not Path(baked["script"]).is_file():
             faults.append((stem, f"script {baked['script']} is gone"))
         elif Path(baked["script"]) != this_script:
-            notes.append((stem, f"buttons run {baked['script']}"))
+            notes.append((stem, f"the switcher keys run {baked['script']}"))
 
     def phrase(findings):
         by_text = {}
@@ -8454,7 +8473,7 @@ def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
         return _DOCTOR_BAD, f"{phrase(faults)} — run `beacon refresh-iterm-profiles`"
     if notes:
         return _DOCTOR_WARN, f"{phrase(notes)}, not this install's {this_script}"
-    return _DOCTOR_OK, f"buttons resolve to {CACHE_DIR} and {this_script}"
+    return _DOCTOR_OK, f"the switcher keys run {this_script}"
 
 
 # The one-shot migration iTerm2 3.7.0 records once it has re-marked the
@@ -8665,19 +8684,12 @@ def _doctor_checks() -> list[dict]:
                 f"{look}, but {CLAUDE_SETTINGS} leaves Claude's status reports on — "
                 f"run `beacon config tab.look {look}`")
 
-    # Claude Code — `statusLine` is the only settings key that makes the
-    # status line exist.
-    wired = False
-    if CLAUDE_SETTINGS.exists():
-        try:
-            data = json.loads(CLAUDE_SETTINGS.read_text())
-            cmd = (data.get("statusLine") or {}).get("command", "")
-            wired = "beacon statusline" in cmd
-        except Exception:
-            pass
-    add("Claude Code", "status line", _DOCTOR_OK if wired else _DOCTOR_WARN,
-        f"wired in {CLAUDE_SETTINGS}" if wired
-        else f"no `beacon statusline` in {CLAUDE_SETTINGS} — run `beacon install`")
+    # Claude Code: the status panel draws the status lines above the prompt
+    # (STATUS-06), so a `statusLine` still pointing at beacon draws them twice.
+    if _beacon_statusline_wired(CLAUDE_SETTINGS):
+        add("Claude Code", "status line", _DOCTOR_WARN,
+            f"{CLAUDE_SETTINGS} still runs `beacon statusline` in its statusLine, which "
+            "repeats the status panel's lines — run `beacon install` to remove it")
 
     return checks
 
@@ -8745,20 +8757,6 @@ CLAUDE_SETTINGS = Path.home() / ".claude" / "settings.json"
 PROGRAM_STATUS_ENV = "CLAUDE_CODE_DISABLE_TERMINAL_TITLE"
 
 
-def _statusline_settings_value() -> dict:
-    """Claude Code's `statusLine` value pointing at beacon. `beacon` is the PATH
-    wrapper the install just placed. Only the two keys that name the command:
-    presentation keys like `padding` are Claude Code's defaults to set, and the
-    user's to change."""
-    return {"type": "command", "command": "beacon statusline"}
-
-
-def _statusline_settings_block() -> str:
-    """The `statusLine` block to paste by hand, shown when the install declines
-    to write it."""
-    return json.dumps({"statusLine": _statusline_settings_value()}, indent=2)
-
-
 def _read_claude_settings(settings: Path) -> tuple[dict, str | None]:
     """Claude Code's settings.json as a dict, or the reason it can't be edited
     safely. A missing file reads as empty, since writing creates it."""
@@ -8773,41 +8771,24 @@ def _read_claude_settings(settings: Path) -> tuple[dict, str | None]:
     return data, None
 
 
-def _install_statusline(settings: Path | None = None) -> None:
-    """STATUSLINE-01: wire `beacon statusline` into Claude Code's user
-    settings.json, whose `statusLine` is the only settings key that makes the
-    footer row exist.
-
-    Left to a printed block, this step was skipped or applied to one project's
-    `.claude/settings.local.json`, so the row was absent everywhere else and the
-    whole surface read as broken. Writing it is scoped hard: `statusLine` is the
-    one key touched, and an existing one is never replaced — a status line the
-    user already chose outranks beacon's, so that case prints the block and says
-    so rather than deciding for them."""
-    settings = settings or CLAUDE_SETTINGS
-
-    def decline(why: str) -> None:
-        print(f"  ! {why}")
-        print(f"  To use beacon's instead, set `statusLine` in {settings} to:")
-        print(textwrap.indent(_statusline_settings_block(), "  "))
-
+def _beacon_statusline_wired(settings: Path) -> bool:
     data, problem = _read_claude_settings(settings)
-    if problem:
-        decline(problem)
-        return
+    current = data.get("statusLine") if not problem else None
+    return isinstance(current, dict) and "beacon statusline" in str(current.get("command", ""))
 
-    current = data.get("statusLine")
-    if isinstance(current, dict) and "beacon statusline" in str(current.get("command", "")):
-        print(f"  ✓ already wired: {settings}")
-        return
-    if current is not None:
-        decline(f"{settings} already defines a statusLine — leaving it alone")
-        return
 
-    data["statusLine"] = _statusline_settings_value()
-    settings.parent.mkdir(parents=True, exist_ok=True)
+def _retire_statusline(settings: Path | None = None) -> None:
+    """STATUS-06: take beacon's own `statusLine` out of Claude Code's user
+    settings, where a 2.x install wrote it. The status panel draws those lines
+    above the prompt now, and the row would repeat them. A `statusLine` that
+    runs anything else is the user's, and stays."""
+    settings = settings or CLAUDE_SETTINGS
+    if not _beacon_statusline_wired(settings):
+        return
+    data, _ = _read_claude_settings(settings)
+    del data["statusLine"]
     settings.write_text(json.dumps(data, indent=2) + "\n")
-    print(f"  ✓ wrote statusLine to {settings}")
+    print(f"  ✓ removed beacon's statusLine from {settings}; the status panel draws its lines")
 
 
 def _claude_status_env(settings: Path) -> tuple[object, str | None]:
@@ -8898,15 +8879,15 @@ def cmd_install(_args):
     _install_completions()
     print()
 
-    # Terminal-agnostic: Claude Code renders the status line in any terminal, so
-    # this step runs on both paths.
+    # Terminal-agnostic: the status panel draws in any terminal Claude Code runs in.
     step("Claude Code status line")
-    _install_statusline()
+    _retire_statusline()
+    print("  ✓ the status panel draws beacon's lines above the prompt")
     print()
 
     if not iterm:
         print(_color("33",
-            "iTerm2 not detected — per-pane painting (badge, status bar) is"))
+            "iTerm2 not detected — per-pane painting (tab, badge) is"))
         print(_color("33",
             "unavailable here. The fleet dashboard is ready:"))
         print("  beacon wip      # snapshot of active work streams")
@@ -9165,7 +9146,7 @@ def cmd_hook(args):
             # carries `process.cwd()` as the agent has since moved it, so
             # adopting it repins the session onto a scratch directory the work
             # merely passed through. The chips still refresh, as at Stop.
-            _publish_chips(Path(anchored))
+            _publish_links(Path(anchored))
         else:
             _publish_anchor(Path(payload.get("cwd") or os.getcwd()))
         _sweep_stale_state()
@@ -9235,7 +9216,7 @@ def cmd_hook(args):
         # anchor cwd (persisted by HOOK-08), not this turn's payload cwd —
         # the anchor is fixed for the session even as chip values evolve.
         cwd_str = read_state("anchor.cwd") or payload.get("cwd") or os.getcwd()
-        _publish_chips(Path(cwd_str))
+        _publish_links(Path(cwd_str))
         _write_latest_turn("agent", _last_assistant_text())
 
     elif event == "StopFailure":
@@ -9334,7 +9315,6 @@ def cmd_hook(args):
         write_state("activity", "working")
         _enter_subscribed_mode(payload)
         _read_announcements(payload)
-        _refresh_branch_chips_if_git(payload)
 
     render()
 
@@ -9424,8 +9404,10 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp.add_argument("--clear-screen", action="store_true",
                     help="also clear the iTerm2 session's screen + scrollback for a clean stand-down")
 
-    sub.add_parser("statusline",
-                   help="(internal) Claude Code status-line provider: the mode note + deliverable links")
+
+    sub.add_parser("status-panel",
+                   help="(internal) what the status panel draws for this session, as JSON: "
+                        "the head row and the status lines")
 
     sp = sub.add_parser("release",
                         help="enter release mode (ship-it flow in progress) with an optional note")
@@ -9496,11 +9478,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     sub.add_parser("copy-url", help="copy the resolved URL to the clipboard via pbcopy")
 
     sp = sub.add_parser("open-url",
-                        help="open the project page (config: statusbar.buttons.web.cmd)")
+                        help="open the project page (config: buttons.web.cmd)")
     sp.add_argument("dir", nargs="?", help="directory to resolve from (default: cwd)")
 
     sp = sub.add_parser("open-code",
-                        help="open a directory in the configured editor (config: statusbar.buttons.code.cmd)")
+                        help="open a directory in the configured editor (config: buttons.code.cmd)")
     sp.add_argument("dir", nargs="?", help="directory to open (default: cwd)")
 
     sub.add_parser("json", help="print the resolved session state as JSON")
@@ -9539,6 +9521,18 @@ def _build_parser() -> "argparse.ArgumentParser":
 
     sp = sub.add_parser("forget", help="remove per-session state for one session, by its per-pane hash")
     sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
+
+    sp = sub.add_parser("focus", help="raise the iTerm2 window holding a session, by its per-pane hash")
+    sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
+
+    sp = sub.add_parser("switch", help="raise the next or previous other beacon session, "
+                                       "the ones that need you first, or pick one from a list")
+    which = sp.add_mutually_exclusive_group()
+    which.add_argument("--next", action="store_true", help="the next session (the default; Command-Option-])")
+    which.add_argument("--prev", action="store_true", help="the previous session (Command-Option-[)")
+    which.add_argument("--pick", action="store_true", help="choose from a list (Command-Option-/)")
+    which.add_argument("--list", action="store_true",
+                       help="(internal) print the other sessions in switch order as JSON, for the status panel's picker")
 
     sp = sub.add_parser("drop", help="remove one deliverable from this session's status-line row")
     sp.add_argument("ref", help="the deliverable's ref (#42, !17, otherproj#9) or its URL")
@@ -9582,8 +9576,8 @@ def _build_parser() -> "argparse.ArgumentParser":
 # hook entry points and shell-integration helpers a user never types by hand. The
 # CompletionsMatchSubcommands test asserts completion covers every *other*
 # subcommand, so a new user-facing command that skips ZSH_COMPLETION fails CI.
-_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init", "statusline",
-                         "freshness"}
+_UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init",
+                         "freshness", "status-panel"}
 
 
 def main(argv=None):
@@ -9605,7 +9599,7 @@ def main(argv=None):
         "block": cmd_block, "unblock": cmd_unblock, "badge": cmd_badge,
         "pause": cmd_pause, "release": cmd_release, "retro": cmd_retro, "done": cmd_done,
         "resume": cmd_resume, "reset": cmd_reset,
-        "render": cmd_render, "statusline": cmd_statusline, "hook": cmd_hook,
+        "render": cmd_render, "status-panel": cmd_status_panel, "hook": cmd_hook,
         "completions": cmd_completions, "install": cmd_install,
         "refresh-iterm-profiles": cmd_refresh_iterm_profiles,
         "layout": cmd_layout,
@@ -9614,7 +9608,7 @@ def main(argv=None):
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "forget": cmd_forget, "drop": cmd_drop, "refresh-links": cmd_refresh_links,
+        "forget": cmd_forget, "focus": cmd_focus, "switch": cmd_switch, "drop": cmd_drop, "refresh-links": cmd_refresh_links,
         "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir,
         "doctor": cmd_doctor,

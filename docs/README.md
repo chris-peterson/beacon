@@ -10,10 +10,11 @@
 
 </div>
 
-It surfaces which project, what task, and what's happening right now, so you can scan every session without focusing each one. It does this two ways:
+It surfaces which project, what task, and what's happening right now, so you can scan every session without focusing each one. It does this three ways:
 
 - a **sessions view** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`): click a live session to focus its iTerm2 window
-- **per-pane painting in iTerm2**: a labeled tab, colored by what Claude is doing and marked by the phase you declared, plus a status bar on each pane
+- a **[status panel](/statusline)** in Claude Code's band above the prompt, in any terminal: the session's project, branch, and task, the change requests and issues it's working, and buttons for the project page and your editor
+- **per-pane painting in iTerm2**: a labeled tab, colored by what Claude is doing and marked by the phase you declared, and keys that switch to the session that needs you
 
 A glance across the windows tells you which session needs you:
 
@@ -136,7 +137,9 @@ The sessions view reads session state and paints no pane, so it runs anywhere Py
 | Capability | Where it works |
 |:---|:---|
 | Sessions view (`wip`, `watch`, `serve`, and the browser dashboard) | Any OS, any terminal (needs Python 3) |
-| Per-pane painting (tab label and color, status bar) | macOS + iTerm2 |
+| Status panel above the prompt | Any OS, any terminal (needs Claude Code 2.1.287 or later) |
+| Per-pane painting (tab label and color, mode backgrounds) | macOS + iTerm2 |
+| Switch sessions with Cmd+Option+] / [ / / | macOS + iTerm2 |
 | Click a dashboard card to raise its window | macOS + iTerm2 |
 | Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
 
@@ -145,7 +148,7 @@ The sessions view reads session state and paints no pane, so it runs anywhere Py
 1. Install the plugin (see [Install](#install)). The hooks populate session state on any platform.
 2. Run `beacon serve` and open `http://127.0.0.1:8787/` in a browser.
 
-That's the full sessions view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell. The tab and status-bar painting needs iTerm2 and is skipped automatically.
+That's the full sessions view: the bundled dashboard, plus `beacon wip` and `beacon watch` at the shell, and the status panel shows above the prompt in every session. The tab painting needs iTerm2 and is skipped automatically.
 
 ## Sessions view (any terminal)
 
@@ -185,13 +188,11 @@ The default is closed because the payload carries each session's most recent tur
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and a **status bar** (`↖ web ⟷ project branch ↗ code`, whose buttons open the repo's project page and the cwd in an editor). It's the other half of beacon: the [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and, in a mode, the **pane background**. The [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
-See **[Layout](/iterm/layout)** for the anatomy, the tab states, and what the status-bar chips mean.
+**Cmd+Option+]** raises the next other session, the ones waiting on you first, and **Cmd+Option+[** the previous one. **Cmd+Option+/** opens a list to pick from. They're bound in beacon's iTerm2 profiles, so they work in any beacon pane, with or without Claude running in it.
 
-### Customizing the two buttons
-
-Both buttons read their text and their command from `~/.config/beacon/config.json`, so `↗ code` can open a different editor and `↖ web` a different page. See **[Status-bar buttons](/statusbar)** for the keys, the `{dir}` / `{project}` / `{branch}` placeholders, and when a change takes effect.
+See **[Layout](/iterm/layout)** for the anatomy and the tab states.
 
 ## Install
 
@@ -206,7 +207,7 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 /beacon:install-beacon
 ```
 
-The commands above install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH`, zsh tab completion, and the Claude Code status line.
+The commands above install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion. The [status panel](/statusline) needs no install step: it loads with the plugin. An install from beacon 2.x also takes back the `statusLine` it wrote to `~/.claude/settings.json`, since the panel now draws those lines.
 
 On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place: no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
 
@@ -224,7 +225,7 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the tab shows Claude's status: orange while Claude is working, blue with a ringed dot when it's waiting for you, and green when the turn ends, turning gray once you've typed. Under the legacy [tab look](/iterm/layout?id=tab-look) the tab is amber while Claude works, gray when the turn ends, and red when Claude is waiting for you
-- `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and the status line; sending the next prompt clears both
+- `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and the status panel; sending the next prompt clears both
 - `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still shows it
 
 ## Usage
@@ -341,11 +342,11 @@ If reaching for beacon's own commands feels heavier than the built-ins, beacon a
 
 ## Tack integration (optional)
 
-beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon names each session's project by tack's repo label, the shortest name unique among the repos tack knows, so two checkouts that share a basename read apart. When a tack route is bound to the session, beacon asks tack for that route's most relevant URL, and the status-line link points at it instead of the bare project URL.
+beacon has a soft dependency on [tack](https://github.com/chris-peterson/tack), a CLI for tracking AI-assisted development work. When `tack` is on `$PATH`, beacon names each session's project by tack's repo label, the shortest name unique among the repos tack knows, so two checkouts that share a basename read apart. When a tack route is bound to the session, beacon asks tack for that route's most relevant URL, and the status panel's link points at it instead of the bare project URL.
 
 The dependency is **soft**: if tack isn't installed or no route is bound to the session, beacon probes the forge directly (`gh pr list --head <branch>` on github hosts, `glab mr list --source-branch <branch>` on gitlab hosts) and uses the first open PR/MR it finds. This catches the common case where you've pushed an MR but never ran `tack link add`. If the forge has nothing either (or neither CLI is installed), beacon falls through to a branch URL or the bare project URL. No configuration on any path.
 
-The `↖ web` button opens the repo's project page on every path. Prefer Linear, Jira, GitHub Issues, or a custom provider? Point it at any command you like (see [Status-bar buttons](/statusbar)).
+The status panel's web button opens the repo's project page on every path. Prefer Linear, Jira, GitHub Issues, or a custom provider? Point it at any command you like (see [the panel's buttons](/statusline?id=the-buttons)).
 
 ## Standalone (no tack, no recipes)
 

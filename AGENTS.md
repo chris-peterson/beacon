@@ -1,18 +1,18 @@
 # beacon
 
-Notes for AI coding agents working on beacon. What beacon does, requirement by requirement, is [SPEC.md](./SPEC.md) (published to the docs site as `/spec`); user-facing docs are [README.md](./README.md). This file holds what the spec doesn't: the boundaries, hot paths, and traps that shape the code. Cite a requirement id (`STATUSLINE-03`) rather than restating it here. When the spec and the code disagree, ask; don't silently choose one.
+Notes for AI coding agents working on beacon. What beacon does, requirement by requirement, is [SPEC.md](./SPEC.md) (published to the docs site as `/spec`); user-facing docs are [README.md](./README.md). This file holds what the spec doesn't: the boundaries, hot paths, and traps that shape the code. Cite a requirement id (`STATUS-03`) rather than restating it here. When the spec and the code disagree, ask; don't silently choose one.
 
 ## What beacon is
 
-A Claude Code plugin, a sourceable zsh snippet, and a standalone CLI that surface session state two ways: a terminal-agnostic **sessions view** (`wip` / `watch` / `serve`) that reads across all sessions, and an **iTerm2 render adapter** that paints each pane. Both read the same per-session state files, the single source of record; neither inverts that into a daemon. See SPEC §1–2.
+A Claude Code plugin, a sourceable zsh snippet, and a standalone CLI that surface session state three ways: a terminal-agnostic **sessions view** (`wip` / `watch` / `serve`) that reads across all sessions, an **iTerm2 render adapter** that paints each pane, and the **status panel**, a hooks module drawing one session's context in Claude Code's band above the prompt. All read the same per-session state files, the single source of record; none inverts that into a daemon. See SPEC §1–2.
 
 ## Three deliverables, hard boundaries
 
 | Deliverable | Path | Owns |
 |:---|:---|:---|
 | **CLI** | `bin/beacon-iterm` | Translating subcommands to iTerm2 control operations: OSC sequences for painted surfaces, Apple Events (`focus` to raise a window, `set-name` to set the window title). **Stateless.** No Claude awareness. |
-| **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `rules/` | Hook handlers, COR resolver for signals, slash command. `rules/` holds ambient rules emitted at SessionStart by `hooks/emit-rules.sh`. Invokes the CLI for every iTerm2 write. |
-| **Shell** | `shell/beacon.zsh` | Project name / branch / cwd, refreshed every prompt. Emits its own `SetUserVar` OSC by raw `printf`; calls the CLI for `set-name`. Never goes through the plugin. |
+| **Plugin** | `scripts/beacon`, `hooks/`, `commands/`, `rules/` | Hook handlers, COR resolver for signals, slash command, and the status panel (`hooks/status-panel.tsx`). `rules/` holds ambient rules emitted at SessionStart by `hooks/emit-rules.sh`. Invokes the CLI for every iTerm2 write. |
+| **Shell** | `shell/beacon.zsh` | The beacon profile for an interactive pane, and its window title (project, else cwd), refreshed every prompt. Emits its own `SetUserVar` OSC by raw `printf`; calls the CLI for `set-name`. Never goes through the plugin. |
 
 The plugin and shell write to **disjoint user-var slots** so they never overwrite each other. Don't blur this boundary.
 
@@ -21,19 +21,21 @@ The CLI must remain unaware of Claude. It's usable from CI, ad-hoc terminal scri
 ## Hot paths: keep fast
 
 - `apply()` in `scripts/beacon` runs on every Claude Code hook. Diff against the resolved-state snapshot before invoking the CLI.
-- `_refresh_branch_chips_if_git` runs on every PostToolUse and is a gate before it is a publisher. The branch slots alone (three local git reads) are what a mid-turn push can afford; `_publish_chips` wholesale cannot, because it calls `resolve_url` (git, possibly `gh`/`glab`) and `_tack_route_urls` (a `tack tree` subprocess). Keep the gate on the git *subcommand*: the bare word `git` would fire on the `status` / `log` / `diff` calls that are most of a session (HOOK-08c).
-- `_beacon_precmd` in `shell/beacon.zsh` runs on every prompt redraw and spawns no process of its own. Last-value sentinels gate every emit, one `git for-each-ref` yields every branch value, the origin URL is memoized per project root, and the helpers answer through `_beacon_reply` / `_beacon_binfo` because each `$(...)` is a fork.
-- The shell emits every OSC by raw `printf` **to `/dev/tty`**, with `_beacon_b64` as a zsh-native base64, so it costs no fork. Stdout would splice escape bytes into `x=$(cd somedir; …)`, because zsh fires `chpwd` and `precmd` inside command-substitution subshells. `_beacon_b64` encodes to UTF-8 first (the branch display carries `↑`/`↓`) and pins `multibyte` / `noksharrays` for its own scope, as `_beacon_branch_info` and `_beacon_precmd` pin the options their array indexing assumes. The `shell-init` block (CMD-27) is cached so a new terminal usually spawns no python.
-- `beacon statusline` renders per prompt, so it reads state and nothing else: never `resolve_url`, never a forge (STATUSLINE-01/02). Forge data reaches it through `refresh-links`, which runs detached and writes `deliverables.links` only, so it can't race a hook over the entries.
+- `_publish_links` runs on SessionStart and every Stop, never mid-turn: it calls `resolve_url` (git, possibly `gh`/`glab`) and `_tack_route_urls` (a `tack tree` subprocess), which a per-tool-call hook can't afford.
+- `_beacon_precmd` in `shell/beacon.zsh` runs on every prompt redraw and spawns no process of its own. A last-value sentinel gates the emit, the origin URL is memoized per project root, and the helpers answer through `_beacon_reply` because each `$(...)` is a fork.
+- The shell emits every OSC by raw `printf` **to `/dev/tty`**, with `_beacon_b64` as a zsh-native base64, so it costs no fork. Stdout would splice escape bytes into `x=$(cd somedir; …)`, because zsh fires `chpwd` and `precmd` inside command-substitution subshells. `_beacon_b64` encodes to UTF-8 first (a title can carry a non-ASCII path) and pins `multibyte` / `noksharrays` for its own scope, as `_beacon_precmd` pins the options its indexing assumes. The `shell-init` block (CMD-27) is cached so a new terminal usually spawns no python.
+- The status panel (`hooks/status-panel.tsx`, STATUS-06) polls every 15 seconds per session, running `beacon status-panel`, one process that answers the head row and the status lines together. It reads state and local git and nothing else: never `resolve_url`, never a forge, never `wip` (STATUS-01/02/06). Forge data reaches them through `refresh-links`, which runs detached and writes `deliverables.links` only, so it can't race a hook over the entries.
+- The status panel is a hooks module running inside Claude Code, with no fs and no Python of its own: it reaches state only by running the CLI with `$.process.hookEnv()`, so it lands on the hooks' `DATA_DIR`.
 
 ## Surfaces
 
 SPEC §4.1 lists the surfaces beacon paints, and only those. Adding one is a spec change, not an implementation choice. The rules call sites have to keep:
 
-- The status bar lives in the beacon dynamic profile, never the user's profile.
+- The beacon dynamic profiles carry the switcher's key bindings over a copy of the parent profile's own (FOCUS-07): iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it. Never write the user's profile.
 - The pane background changes only by swapping into a mode profile (RENDER-05), never by an ad-hoc background OSC. A block swaps nothing; what it waits on reaches the tab as a glyph (TITLE-06).
 - The window title and tab label go through the session name (`set-name`), not an OSC title or the profile's `Subtitle` (TITLE-05). Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
-- A status-bar button's `cmd` is read on the click, but its `label` is baked into the profile, so a label change needs `beacon refresh-iterm-profiles` (STATUS-BAR-09, CMD-23). Buttons run through an absolute interpreter path because an action shell has no interactive `PATH` (STATUS-BAR-07).
+- The switcher keys run through an absolute interpreter path baked into the profile, because a coprocess shell has no interactive `PATH`, and they print nothing on success, because a coprocess types its stdout into the pane (FOCUS-06/07).
+- The status panel's buttons resolve their command beacon-side (`open-url` / `open-code`, STATUS-08): a hooks module's process has no login `PATH` either.
 - The badge is opt-in and gated at three paint sites: the profile's `Badge Text`, the plugin render, and the shell's `shell-init` block (BADGE-15). Change all three together.
 - The tab paints the activity hue through `_tab_hex`'s per-state weights (TAB-04). The badge and the sessions view take `COLOR_PALETTE` directly, since a weight tuned for a full-bleed tab erases a 10px dot.
 
@@ -133,11 +135,13 @@ what picks the level.
 | Check the install and report recorded errors | `python3 scripts/beacon doctor [--since 7d] [--json]` |
 | GC per-session state + per-pane cache files for long-idle panes | `python3 scripts/beacon prune [--since 30d]` |
 | Delete per-session state for one session | `python3 scripts/beacon forget <hash>` |
-| Render the Claude Code status-line row (mode note + deliverable links) | `echo '{}' \| python3 scripts/beacon statusline` |
+| Print what the status panel draws (head row + status lines, as JSON) | `python3 scripts/beacon status-panel` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
 | Regenerate the mode watermarks after editing `iterm/marks.py` | `python3 iterm/make-bg.py [<mode>...]` |
 | Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |
+| Run the status panel hooks module's tests | `claude plugin test .` (also the last step of `just test`) |
+| Type-check the status panel | `npx -p typescript@5.6.3 tsc -p tsconfig.json` (types land in `.claude-plugin/types/` once Claude Code loads the hooks module) |
 | Re-record the CLI grammar + reference page | `just generate` (writes `spec/cli.yml`, renders `docs/cli.md`) |
 | Read a new iTerm2 release against the surfaces beacon renders through | `just iterm-release` (`--ack` records it) |
 
@@ -146,11 +150,11 @@ what picks the level.
 `just trial-on` points every installed entry point at this working copy, and
 `just trial-off` points them back at the installed build. beacon pins three of
 them to a plugin root at install time (the `beacon` on PATH, the `.zshrc`
-source line, and the script path baked into each iTerm2 profile's buttons), and
+source line, and the script path baked into each iTerm2 profile's switcher keys), and
 `install` is what rewrites all three from its own root, so both recipes run it
 rather than moving surfaces by hand (CMD-08a). Run `exec zsh` after either.
 
 `beacon --version` tells you which is in force: a trial answers
 `<version>-dev.g<short-sha>`, an installed copy answers the bare version (CMD-30).
 
-The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge, status bar, and tab color rendering, and the focus action, in iTerm2) still requires sourcing the shell snippet and looking.
+The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge and tab color rendering, the switcher keys, and the focus action, in iTerm2; the status panel in a live Claude Code session) still requires sourcing the shell snippet and looking.

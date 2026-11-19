@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Render the Claude Code status line (STATUSLINE-01, STATUSLINE-03) for a set
-of invented sessions, through beacon's own `cmd_statusline`.
+"""Render the Claude Code status line (STATUS-01, STATUS-03) for a set
+of invented sessions, through beacon's own `_status_lines`.
 
     python3 dev/statusline-demo.py          print every scenario in this terminal
     python3 dev/statusline-demo.py --shots  regenerate docs/images/statusline-*.png
@@ -108,7 +108,7 @@ SCENARIOS = {
 
 def load_beacon(data_dir: Path):
     os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
-    os.environ["ITERM_SESSION_ID"] = "w0t0p0:STATUSLINE-DEMO"
+    os.environ["ITERM_SESSION_ID"] = "w0t0p0:STATUS-DEMO"
     loader = importlib.machinery.SourceFileLoader("beacon_demo", str(REPO / "scripts" / "beacon"))
     spec = importlib.util.spec_from_loader("beacon_demo", loader)
     beacon = importlib.util.module_from_spec(spec)
@@ -136,7 +136,7 @@ def render(scenario: dict) -> str:
         with mock.patch.dict(os.environ, {"COLUMNS": str(COLUMNS)}), \
              mock.patch.object(beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(out):
-            beacon.cmd_statusline(None)
+            sys.stdout.write("".join(line + "\n" for line in beacon._status_lines()))
         return out.getvalue()
 
 

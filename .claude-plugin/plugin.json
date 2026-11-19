@@ -1,7 +1,7 @@
 {
   "name": "beacon",
   "version": "2.22.0",
-  "description": "At-a-glance awareness across concurrent Claude Code sessions: a Claude Code status line, a CLI and browser dashboard on any terminal, and painted iTerm2 chrome.",
+  "description": "At-a-glance awareness across concurrent Claude Code sessions: a status panel above the Claude Code prompt, a CLI and browser dashboard on any terminal, and painted iTerm2 chrome.",
   "author": {
     "name": "chris-peterson"
   },

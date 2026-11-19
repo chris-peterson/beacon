@@ -124,18 +124,18 @@ The weight is per state rather than one global dimming. Uniform dimming calms th
 
 Multiplying the channels leaves hue and saturation alone and scales only value, so a weighted state is the same color with less light behind it. It's also the transform iTerm2's own inactive-window dimming applies, which is where the numbers started.
 
-## branch: the status-bar chip
+## branch: the status panel's head row
 
-The branch chip in the status bar reads by a **hybrid of identity and sync state**. The repo's default branch (`origin/HEAD`, else `main` / `master` / `trunk`) is de-emphasized whatever its state, so a feature branch is the one that stands out, and it reads by how it sits against its upstream:
+The branch on the [status panel](/statusline)'s head row reads by a **hybrid of identity and sync state**. The repo's default branch (`origin/HEAD`, else `main` / `master` / `trunk`) is de-emphasized whatever its state, so a feature branch is the one that stands out, and it reads by how it sits against its upstream:
 
 | Branch | Color | Hex |
 |:---|:---|:---|
-| default (main/master/trunk) | slate, de-emphasized | `#6272a4` |
+| default (main/master/trunk) | slate, de-emphasized | `#8d98c4` |
 | feature, synced | cyan | `#8be9fd` |
 | feature, diverged (ahead/behind) | yellow | `#f1fa8c` |
 | feature, untracked (no upstream) | orange | `#ffb86c` |
 
-Green stays reserved here too, for [`release`](#modes-the-tab-glyph-and-the-pane). The color is a Dracula hue in every case; the four are published as separate user-var slots so the profile resolves the one that applies without any conditional logic.
+Green stays reserved here too, for [`release`](#modes-the-tab-glyph-and-the-pane). The color is a Dracula hue in every case, and the ahead/behind counts (`↑2↓1`) lead the name in the same color.
 
 ## modes: the tab glyph and the pane
 
@@ -230,7 +230,7 @@ Some states get a glyph on the tab and no profile of their own. They're observed
     </div>
     <div class="pal-meta">
       <h4>review</h4>
-      <p>A tool opened something for you to review, like anchor's diff viewer, and is waiting on your verdict. The status line names what's under review.</p>
+      <p>A tool opened something for you to review, like anchor's diff viewer, and is waiting on your verdict. The status panel names what's under review.</p>
       <div class="hexrow"><span>glyph 👀</span></div>
     </div>
   </div>
@@ -248,68 +248,49 @@ Some states get a glyph on the tab and no profile of their own. They're observed
 
 </div>
 
-## status line: the footer rows
+## status lines: under the head row
 
-The [status line](/statusline) is the one surface that isn't iTerm2's, so its palette is ANSI rather than hex: beacon emits SGR codes and *your* terminal theme decides the exact shade. The meanings are fixed even though the shades aren't.
+The [status panel](/statusline) is the one surface that isn't iTerm2's: it draws in Claude Code's band above the prompt, in any terminal. beacon names each line's roles as SGR codes, and the panel draws each code in the Dracula hex beside it below, so the shades are fixed and match the rest of the band. The waiting gray and the mode note use 256-color codes, since no 16-color code reaches 4.5:1 on a dark ground for those two roles ([contrast](#contrast)).
 
 <div class="pal pal-grid">
   <div class="pal-chip">
-    <div class="row" style="color: #50fa7b"><s>#27</s> <span style="opacity:0.6">merged 🏁</span></div>
-    <div class="cap">delivered: green, verb muted against its ref <span class="hex">SGR 32 / 2;32</span></div>
+    <div class="row" style="color: #50fa7b"><s style="font-weight: 700">#27</s> merged 🏁</div>
+    <div class="cap">delivered: green, verb a weight below its ref <span class="hex">SGR 1;32 / 32</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row" style="color: #8be9fd; font-weight: 700">#28</div>
-    <div class="cap">open change request: full weight <span class="hex">SGR 1;36</span></div>
+    <div class="row" style="color: #f8f8f2; font-weight: 700">#28</div>
+    <div class="cap">open change request: full weight <span class="hex">SGR 1;37</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row" style="color: #8be9fd; opacity: 0.55">#25</div>
-    <div class="cap">open issue: same hue, dimmed <span class="hex">SGR 2;36</span></div>
+    <div class="row" style="color: #f8f8f2">#25</div>
+    <div class="cap">open issue: same hue, regular weight <span class="hex">SGR 37</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row" style="color: #6272a4; font-weight: 700">!21</div>
-    <div class="cap">change request waiting on open work: gray in place of cyan <span class="hex">SGR 1;90</span></div>
+    <div class="row" style="color: #9e9e9e; font-weight: 700">!21</div>
+    <div class="cap">change request waiting on open work: gray in place of white <span class="hex">SGR 1;38;5;247</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row" style="color: #6272a4; opacity: 0.55">#25</div>
-    <div class="cap">issue waiting on open work <span class="hex">SGR 2;90</span></div>
+    <div class="row" style="color: #9e9e9e">#25</div>
+    <div class="cap">issue waiting on open work <span class="hex">SGR 38;5;247</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row"><span style="color: #6272a4">└</span> <span style="color: #6272a4; font-weight: 700">!22</span></div>
-    <div class="cap">stacked change request, led by its mark <span class="hex">SGR 90</span></div>
+    <div class="row"><span style="color: #9e9e9e">└</span> <span style="color: #9e9e9e; font-weight: 700">!22</span></div>
+    <div class="cap">stacked change request, led by its mark <span class="hex">SGR 38;5;247</span></div>
   </div>
   <div class="pal-chip">
-    <div class="row" style="color: #6272a4">⏸ waiting on CI</div>
-    <div class="cap">the mode's note, led by its glyph <span class="hex">SGR 38;5;61</span></div>
+    <div class="row" style="color: #af87ff">⏸ waiting on CI</div>
+    <div class="cap">the mode's note, led by its glyph <span class="hex">SGR 38;5;141</span></div>
   </div>
 </div>
 
 The rules that carry it:
 
-- **One hue, two weights.** A change request and the issues it answers share cyan; the CR is bold and the issues are dim. On GitHub both are `#<n>`, so weight and line position are the only cues that separate them. On GitLab the `!` sigil already does.
-- **Gray means waiting.** A ref that waits on open work on the row takes gray in place of cyan and keeps its weight, so the cyan refs are exactly what can merge now. It is a hue rather than a weight because dim already means "issue".
-- **Green still means shipped.** The delivered row reuses the same green `release` owns, so it reads as shipping on the footer exactly as it does on the pane.
+- **One hue, two weights.** A change request and the issues it answers share the foreground white; the CR is bold and the issues are regular weight. On GitHub both are `#<n>`, so weight and line position are the only cues that separate them. On GitLab the `!` sigil already does. A ref is the row's content, so it takes the foreground, and hue is left to say what state it is in.
+- **Gray means waiting.** A ref that waits on open work on the row takes gray in place of white and keeps its weight, so the white refs are exactly what can merge now.
+- **Green still means shipped.** The delivered row reuses the same green `release` owns, so it reads as shipping in the panel exactly as it does on the pane.
 - **The verb carries the state, not the strike.** `merged 🏁` / `released 🚀` / `closed ✓` are the signal; the strikethrough on the ref is decoration. A four-character struck ref is too subtle at that size, and strikethrough is among the first attributes a terminal drops.
 
-### What a terminal will actually render
-
-The footer's design is bounded by what survives Claude Code's status-line renderer *and* your terminal. This was measured with a probe wired in as a real `statusLine` command and read off the footer in iTerm2:
-
-| Capability | Result | Where beacon relies on it |
-|:---|:---|:---|
-| Multi-line output | renders | one line per class: delivered, CRs, issues |
-| 16-color | yes | every segment |
-| 256-color, 24-bit truecolor | yes, full fidelity | available, not yet needed |
-| bold / dim | yes | CR vs issue weight |
-| underline / reverse | yes | unused; terminals underline links already |
-| italic / strikethrough | yes *here* | strike is decorative only, for exactly this reason |
-| OSC-8 link, custom label | yes: label shown, URL hidden | every ref is a link |
-| **Several OSC-8 links on one line** | yes, each to its own target | the whole accumulated-deliverables design |
-| Styling composed with a link | yes | bold/dim/green refs stay clickable |
-| Box-drawing glyphs + emoji | yes | `⏸ · 🏁 🚀 ✓` |
-
-The feature's design depends on two of these. **Multiple independent links on one line** is what allows a row of refs rather than a single URL. **Multi-line output** is what allows delivered work its own row instead of being crowded in beside open work.
-
-Italic and strikethrough are the two attributes terminals most often drop, so nothing depends on them alone. If yours renders no strike, a delivered ref still reads `#27 merged 🏁`.
+Strikethrough is among the first attributes a terminal drops, so nothing depends on it alone. If yours renders no strike, a delivered ref still reads `#27 merged 🏁`.
 
 ## Why these colors
 
@@ -318,7 +299,22 @@ Italic and strikethrough are the two attributes terminals most often drop, so no
 - **Most modes own a background.** `pause` a muted purple, `release` a deep launch-sky navy (a darkened Dracula *comment*), `done` a near-black purple. Each is recognizable across the whole pane, not just by the tab. `retro` runs long and is spent writing, so it keeps your background and is marked by its glyph alone.
 - **Only a declared phase gets a pane.** A mode is set once and held until you leave it, so it's worth a cue across the whole pane. A block or background work comes and goes within a turn, so it gets the tab glyph alone.
 - **Pane marks are one family in one slate.** Every mark is drawn at one stroke weight and painted the same slate, so none outshouts another.
-- **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the sessions list, matching the pane's watermark, so nothing has to add, and later strip, a marker inside the project name. The status line's `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
-- **Painted surfaces use hex; the status line uses ANSI.** The pane is beacon's to color exactly. The footer belongs to your terminal, so beacon names a role (bold, dim, green) and lets your theme choose the shade.
+- **One glyph, never spliced into the name.** A mode's glyph sits in its own slot on the tab, the [dashboard card](/demo), and the sessions list, matching the pane's watermark, so nothing has to add, and later strip, a marker inside the project name. The status lines' `🏁 🚀 ✓` are the deliberate exception: that row is prose, not a label, and a delivered ref needs a word and a mark to read at four characters wide.
+- **The panel names roles; the hexes live in one place.** beacon says what a ref is (bold, gray, green) as an SGR code, and the panel turns each code into a Dracula hex, so a retune touches the panel's table and nothing else.
 
-The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), the mark slate in `iterm/watermark.py`, and the footer's SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_CR_BLOCKED_SGR`, `STATUSLINE_ISSUE_BLOCKED_SGR`, `STATUSLINE_STACK_LEAD_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`).
+## contrast
+
+Every role clears WCAG AA, 4.5:1, against Dracula's background (`#282a36`), with a dim role measured as iTerm2 draws it: blended halfway into the background. The 2.23 audit found six that didn't, and moved each up to the shade that does, keeping its hue:
+
+| Role | Was | Ratio | Now | Ratio |
+|:---|:---|--:|:---|--:|
+| open issue | `2;36` | 3.75 | `37` | 13.4 |
+| waiting CR / issue | `1;90` / `2;90` | 3.03 / 1.74 | `1;38;5;247` / `38;5;247` | 5.3 |
+| stack lead `└` | `90` | 3.03 | `38;5;247` | 5.3 |
+| delivered verb | `2;32` | 3.69 | `32` | 10.4 |
+| mode note | `38;5;61` | 2.54 | `38;5;141` | 5.2 |
+| default branch | `#6272a4` | 3.03 | `#8d98c4` | 5.0 |
+
+The change request moved from cyan to white (`1;37`, 13.4) for a different reason: cyan already says "synced feature branch" on the head row, and a ref is content, not a state.
+
+The full color contract lives in the [specification](/spec) (THEME, BADGE, RENDER, STATUSLINE); pane hexes are tunable in one place in `scripts/beacon` (`COLOR_PALETTE`, `MODE_SPECS`), the mark slate in `iterm/watermark.py`, the status lines' SGR codes beside them (`STATUSLINE_CR_SGR`, `STATUSLINE_ISSUE_SGR`, `STATUSLINE_CR_BLOCKED_SGR`, `STATUSLINE_ISSUE_BLOCKED_SGR`, `STATUSLINE_STACK_LEAD_SGR`, `STATUSLINE_DELIVERED_SGR`, `STATUSLINE_VERB_SGR`, `STATUSLINE_TITLE_SGR`), and the hexes the panel draws them in at the top of `hooks/status-panel.tsx`.

@@ -1,5 +1,5 @@
 ---
-description: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
+description: Bootstrap or refresh beacon's wrapper, completions, and iTerm2 profiles
 argument-hint: "[--dir <path>]"
 disable-model-invocation: true
 ---

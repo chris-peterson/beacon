@@ -22,6 +22,6 @@ model turn. -->
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" pause ${ARGUMENTS}
 ```
 
-The CLI repaints the pane as it runs (a `⏸` on the tab and window title, the pause profile's muted-purple background, the note in the Claude Code status line), so the user sees the change immediately; your one-line reply just confirms it. The tab *color* is unchanged: it reports what the hooks observe, not what the session declares, so parking a session doesn't hide whether it needs the user.
+The CLI repaints the pane as it runs (a `⏸` on the tab and window title, the pause profile's muted-purple background, the note in the status panel above the prompt), so the user sees the change immediately; your one-line reply just confirms it. The tab *color* is unchanged: it reports what the hooks observe, not what the session declares, so parking a session doesn't hide whether it needs the user.
 
 Pause is the one mode that auto-clears on the next prompt. The rest, and `resume`, are CLI subcommands: `beacon release`, `beacon retro`, `beacon done`, `beacon resume`.

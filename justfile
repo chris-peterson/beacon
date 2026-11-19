@@ -52,10 +52,11 @@ docs:
     {{shipyard}} build-docs
     docsify serve docs --open
 
-# run the python test suite (stdlib unittest, no external deps)
+# run the python test suite (stdlib unittest, no external deps), then the status panel mod's tests
 [group('check your work')]
 test:
     python3 -m unittest discover -s tests -v
+    command claude plugin test .
 
 # regenerate the artifacts and list what the projection job would commit
 [group('check your work')]

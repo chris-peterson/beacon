@@ -2,6 +2,54 @@
 
 ## Unreleased
 
+### beacon's lines move above the prompt, and the status bar and status line go (breaking)
+
+beacon 3.0 draws one panel in Claude Code's band above the prompt, in every
+session and any terminal, with nothing to turn on. It shows the session's
+project, its branch (colored by how it sits against its upstream, marked
+ahead or behind, and a link to its page when it has one), its task, and the
+lines the status line used to carry: the mode's note, what shipped, and the
+open change requests and issues. Two buttons at the end of the top row,
+named for what they open (`↖ github`, `code ↗`), open the project page and the
+session's directory in your editor; `w` and `c` press them with the band
+focused. It shows this session only. It needs Claude Code 2.1.287 or later.
+
+What it replaces:
+
+- **The iTerm2 status bar is gone.** The beacon profiles no longer lay one
+  out, the shell no longer publishes its project and branch chips, and a plain
+  shell pane keeps its tab and window title. The buttons' commands moved from
+  `statusbar.buttons.<name>.cmd` to `buttons.<name>.cmd`, and their labels
+  went with the bar.
+- **Claude Code's status line row is retired.** `beacon install` removes a
+  `statusLine` that runs `beacon statusline` from `~/.claude/settings.json`,
+  and `beacon doctor` points one out. If your settings are synced from
+  elsewhere, remove it there too, or the row repeats the panel's lines.
+- **`beacon config status-panel` and `/beacon on|off` are gone**, since
+  there is nothing left to switch between.
+
+Run `beacon install` once after updating.
+
+### Switch to the session that needs you
+
+Command-Option-] raises the next beacon session and Command-Option-[ the
+previous one: the sessions waiting on you come first, longest wait first,
+then the rest, most recent first. Presses in quick succession walk one list.
+Command-Option-/ opens a list to choose from, as does a press whose session
+can't be raised, and `/beacon switch` shows the same list above the prompt in
+a Claude Code session. `beacon switch` does the same from a shell, and
+`beacon focus <hash>` raises one session by its hash, as a click on a
+dashboard row does. Your own key bindings come along into the beacon
+profiles, so rerun `beacon refresh-iterm-profiles` after changing them.
+
+### Status line colors meet WCAG AA
+
+Every color beacon draws on the terminal now reaches a 4.5:1 contrast against
+Dracula's background. Change requests are bold white rather than cyan, which
+now means only an in-step branch; issues are regular white rather than dimmed
+cyan; work waiting on something else is a lighter gray; and the mode's note is
+a lighter purple. The palette page lists each change.
+
 ### Turn off what beacon does with a sibling's announcement
 
 `git config --global beacon.subscribe.anchor false` stops beacon acting on

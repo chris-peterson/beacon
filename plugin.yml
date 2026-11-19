@@ -5,7 +5,7 @@
 
 name: beacon
 version: 2.22.0
-description: "At-a-glance awareness across concurrent Claude Code sessions: a Claude Code status line, a CLI and browser dashboard on any terminal, and painted iTerm2 chrome."
+description: "At-a-glance awareness across concurrent Claude Code sessions: a status panel above the Claude Code prompt, a CLI and browser dashboard on any terminal, and painted iTerm2 chrome."
 author: chris-peterson
 repository: https://github.com/chris-peterson/beacon
 icon: .claude-plugin/icon.svg
@@ -45,12 +45,12 @@ events:
     - key: codes.bridgeai.anchor/cr.created
       handled_by: scripts/beacon
       reason: >-
-        links the status line to the change request anchor just opened, rather
+        links the status panel to the change request anchor just opened, rather
         than to one reconstructed from tack and the forge
     - key: codes.bridgeai.anchor/cr.updated
       handled_by: scripts/beacon
       reason: >-
-        links the status line to the change request anchor just described,
+        links the status panel to the change request anchor just described,
         rather than to one reconstructed from tack and the forge
     - key: codes.bridgeai.anchor/cr.merged
       handled_by: scripts/beacon
@@ -60,12 +60,12 @@ events:
     - key: codes.bridgeai.anchor/issue.created
       handled_by: scripts/beacon
       reason: >-
-        puts a freshly filed issue on the status line; an issue filed from the
+        puts a freshly filed issue on the status panel; an issue filed from the
         default branch has no branch to be found by
     - key: codes.bridgeai.anchor/attention.requested
       handled_by: scripts/beacon
       reason: >-
-        leads the tab with 👀 and names what is under review on the status line
+        leads the tab with 👀 and names what is under review on the status panel
         while anchor's review is open, which no hook can see: the review runs in
         a pane of its own and is read back after the turn ends
     - key: codes.bridgeai.anchor/attention.released
@@ -88,7 +88,7 @@ events:
     - key: codes.bridgeai.tack/session.ended
       handled_by: scripts/beacon
       reason: >-
-        reports the work the session closed with, so the status line keeps
+        reports the work the session closed with, so the status panel keeps
         naming what it shipped
 
 # → marketplace SPA; keys mirror the SPA's PLUGINS object.
@@ -113,9 +113,10 @@ suite:
     hooks:
       cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
-      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; StopFailure→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI.'
+      hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; StopFailure→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI; modules→status-panel.'
+      status-panel: module — Draws this session's project, branch, task, and status lines in the band above the prompt, with buttons for the project page and the editor; `/beacon switch` lists the other sessions there.
     commands:
-      install-beacon: Bootstrap or refresh beacon's wrapper, completions, status line, and iTerm2 profiles
+      install-beacon: Bootstrap or refresh beacon's wrapper, completions, and iTerm2 profiles
       pause: Park this session in beacon pause mode, with an optional note
   # <<< shipyard:describe <<<
 
@@ -123,8 +124,8 @@ docs:
   code_languages: [bash, yaml, python, json]
   mermaid: true
 
-# The CLI is what a person types, and what the hooks, the shell snippet, and the
-# status-bar buttons all call, so its command and flag grammar is a public
+# The CLI is what a person types, and what the hooks, the shell snippet, the
+# status panel, and the switcher keys all call, so its command and flag grammar is a public
 # contract. gen-cli-manifest runs the CLI, records what its help documents, and
 # writes the manifest below; build-docs renders that as the command reference
 # page, so the page can't drift from the binary.
@@ -162,7 +163,7 @@ cli:
       about: >-
         For a tool that waits on you somewhere no hook can see, such as a review
         opened in a pane of its own. The tab leads with 👀 and takes the
-        blocked fill, and the status line names what is under review, until the
+        blocked fill, and the status panel names what is under review, until the
         tool releases it.
       commands: [block, unblock]
     - name: The badge
@@ -176,14 +177,14 @@ cli:
       about: >-
         Reading across every session at once. Terminal-agnostic: they paint
         no pane and work anywhere Claude Code runs.
-      commands: [wip, watch, serve, forget, prune]
+      commands: [wip, watch, serve, focus, switch, forget, prune]
     - name: Deliverables
-      about: What the Claude Code status line lists for this session.
+      about: What the status panel lists for this session.
       commands: [drop, refresh-links]
-    - name: Status-bar actions
+    - name: Panel actions
       about: >-
-        What the iTerm2 status bar's buttons run when clicked. Each is also
-        useful by hand.
+        What the status panel's buttons run when pressed. Each is also useful
+        by hand.
       commands: [open-url, open-code, copy-url]
     - name: Installation
       commands: [install, completions, refresh-iterm-profiles, layout, config]
@@ -193,9 +194,9 @@ cli:
       commands: [doctor, data-dir]
     - name: Internal
       about: >-
-        Called by the hooks, the Claude Code status line, and the shell snippet.
-        Listed because they are part of the grammar, not because you type them.
-      commands: [hook, statusline, shell-init, freshness]
+        Called by the hooks, the shell snippet, and the status panel. Listed
+        because they are part of the grammar, not because you type them.
+      commands: [hook, status-panel, shell-init, freshness]
   notes:
     status: >-
       The mode name is the shared vocabulary across the CLI, the tab glyph, the
@@ -204,7 +205,7 @@ cli:
       leave a mode. The note is stored with the mode and cleared with it, so it
       can't outlive what it annotates.
     block: >-
-      The target is a path or a change request's URL, and the status line
+      The target is a path or a change request's URL, and the status panel
       shows it whole so you can tell which checkout or CR the review is about.
       Tool calls and prompts leave the block alone, since only the caller knows
       when the review closes. A turn that ends with nothing left running drops
@@ -225,6 +226,19 @@ cli:
       it running across logins, and `status` reports what that unit is doing.
       Every route is loopback-only and answers only an allowed browser
       origin; a dashboard hosted elsewhere declares itself in `focus_origins`.
+    focus: >-
+      Takes the per-pane hash `wip --json` reports, and raises the iTerm2
+      window and tab holding that session, as a click on a dashboard row does.
+      A session outside iTerm2 records no handle to raise, so it fails as not
+      focusable.
+    switch: >-
+      Bound to Command-Option-] and Command-Option-[ in the beacon iTerm2
+      profiles, it raises the next or previous other session: the ones waiting
+      on you first, longest wait first, then the rest most recently active
+      first. A run of presses within 30 seconds walks one list. Command-Option-/
+      opens a list to choose from, as does a press whose session can't be
+      raised. Inside a Claude Code session, `/beacon switch` shows the same
+      list in the band above the prompt.
     forget: >-
       Takes the per-pane hash `wip --json` reports, which is also what the
       dashboard's dismiss button sends.
@@ -257,13 +271,13 @@ cli:
       stale wrapper already names.
     layout: >-
       Audits the app-wide iTerm2 preferences no dynamic profile can carry: tab
-      position and size, status-bar position. `--write` quits iTerm2, writes,
+      position and size, title bars on split panes. `--write` quits iTerm2, writes,
       and relaunches it, closing every window and pane: iTerm2 holds its
       preferences in memory and overwrites the file on quit, so a write while it
       runs is discarded.
     open-url: >-
-      Resolves the project page at click time from the directory it is given:
-      the web URL of its `origin` remote. `statusbar.buttons.web.cmd` in
+      Resolves the project page when it runs, from the directory it is given:
+      the web URL of its `origin` remote. `buttons.web.cmd` in
       `~/.config/beacon/config.json` replaces it with a command of your own,
       run in that directory.
     import: >-
