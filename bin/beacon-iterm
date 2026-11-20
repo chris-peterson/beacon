@@ -464,6 +464,15 @@ RECOMMENDED_LAYOUT = (
      "why": "a split pane's title bar shows the same session name on one line, "
             "so it drops line 2 (TITLE-05); the tab label carries both lines",
      "where": "Appearance → Panes"},
+    # iTerm2 3.7.8 shows the automatic window title in the strip atop a left tab
+    # bar under the default "When a custom name is set" (1). Never is 0 in
+    # `iTermWindowNameBesideTabsMode`; the strip is one line tall and the session
+    # name is two, so it clips line 1.
+    {"key": "ShowWindowNameBesideTabs", "want": "0", "type": "int",
+     "label": "No window name atop the tabs",
+     "why": "it repeats the selected tab's two-line label in a one-line strip, "
+            "which clips the project off the top (TITLE-05)",
+     "where": "Advanced → Windows"},
 )
 
 
@@ -969,7 +978,8 @@ RESET_FAMILIES = (
               "UseUnevenTabs", "UseSequoiaStyleTabs",
               "TabTitlesUseSmartTruncation", "ShowFullScreenTabBar",
               "PreserveWindowSizeWhenTabBarVisibilityChanges",
-              "DrawBottomLineForHorizontalTabBar", "DisableTabBarTooltips")},
+              "DrawBottomLineForHorizontalTabBar", "DisableTabBarTooltips",
+              "ShowWindowNameBesideTabs")},
     {"surface": "Tab controls",
      "why": "what each tab draws besides the two-line label, and what an "
             "errant click on one does",
