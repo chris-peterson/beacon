@@ -108,7 +108,8 @@ class WatchedSymbols(unittest.TestCase):
         keys = iterm_release._profile_keys()
         self.assertIn("Badge Text", keys)
         self.assertIn("Title Components", keys)
-        self.assertIn("Background Image Location", keys)
+        # No mode paints the pane any more, so nothing adds a background key.
+        self.assertNotIn("Background Image Location", keys)
 
 
 if __name__ == "__main__":

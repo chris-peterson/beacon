@@ -78,13 +78,12 @@ fi
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
 #
-# Switch this pane into the beacon-dev profile (RENDER-05): it carries the badge
-# sizing and the session switcher's keys (FOCUS-07), and is the dev cycle's base
-# profile.
-# beacon-dev is not iTerm2's default profile, so interactive panes activate it
+# Switch this pane into the beacon profile (RENDER-07): it carries the badge
+# sizing and the session switcher's keys (FOCUS-07).
+# beacon is not iTerm2's default profile, so interactive panes activate it
 # here; Claude panes do it at SessionStart. A non-iTerm terminal silently
 # ignores the sequence.
-printf '\e]1337;SetProfile=beacon-dev\a' > /dev/tty
+printf '\e]1337;SetProfile=beacon\a' > /dev/tty
 # Badge (BADGE-15): opt-in, off by default — the tab (color + two-line
 # identity) carries the identity now, so the badge is redundant in a tabs
 # workflow. Emit its format only when the user config turns it on
@@ -167,7 +166,7 @@ typeset -gr _BEACON_CACHE_DIR="$_BEACON_DATA_DIR/cache"
 mkdir -p "$_BEACON_CACHE_DIR"
 
 # Window title (TITLE-01): give an interactive pane its identity as the OS
-# window title, so a beacon-dev pane isn't left showing the profile name (the
+# window title, so a beacon pane isn't left showing the profile name (the
 # profile disables OSC title-setting, so the shell can't printf a title like the
 # badge). A plain shell has no task, so it shows the project when in one and its
 # cwd otherwise — beacon_title carries that "project else cwd" value (published

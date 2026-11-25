@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Render the Claude Code status line (STATUS-01, STATUS-03) for a set
-of invented sessions, through beacon's own `_status_lines`.
+"""Render the status panel's lines (STATUS-01, STATUS-03) for a set of
+invented sessions, through beacon's own `_status_lines`, under the mode's
+ribbon (STATUS-09) when the scenario declares a mode that has one.
 
     python3 dev/statusline-demo.py          print every scenario in this terminal
     python3 dev/statusline-demo.py --shots  regenerate docs/images/statusline-*.png
@@ -94,7 +95,7 @@ SCENARIOS = {
         ],
     ),
     "paused": dict(
-        caption="note, shipped, open",
+        caption="ribbon, shipped, open",
         mode=("pause", "waiting on **design review** before the toggle lands"),
         touches=[
             (release("design-system", "v3.1.0"), {}),
@@ -116,9 +117,9 @@ def load_beacon(data_dir: Path):
     return beacon
 
 
-def render(scenario: dict) -> str:
-    """The status line's stdout for one scenario, from a data dir that exists
-    only for this call."""
+def render(scenario: dict) -> tuple[dict | None, str]:
+    """The mode's ribbon (None without one) and the status lines for one
+    scenario, from a data dir that exists only for this call."""
     with tempfile.TemporaryDirectory(prefix="beacon-statusline-demo-") as tmp:
         beacon = load_beacon(Path(tmp))
         beacon.write_state("session_started_at", SESSION_START)
@@ -132,12 +133,52 @@ def render(scenario: dict) -> str:
                                            beacon._project_id_from_url(url))
                 if record:
                     beacon._update_links(url, **record)
+        mode = beacon._status_panel_mode()
+        ribbon = mode if mode and mode["band"] else None
         out = io.StringIO()
         with mock.patch.dict(os.environ, {"COLUMNS": str(COLUMNS)}), \
              mock.patch.object(beacon.sys, "stdin", io.StringIO("{}")), \
              contextlib.redirect_stdout(out):
-            sys.stdout.write("".join(line + "\n" for line in beacon._status_lines()))
-        return out.getvalue()
+            lines = beacon._status_lines(mode_note=ribbon is None)
+            sys.stdout.write("".join(line + "\n" for line in lines))
+        return ribbon, out.getvalue()
+
+
+# hooks/status-panel.tsx's RIBBON_TEXT and RIBBON_HINT.
+RIBBON_TEXT = "#f8f8f2"
+RIBBON_HINT = "#bfbfd0"
+
+
+def _rgb(hexstr: str) -> str:
+    h = hexstr.lstrip("#")
+    return ";".join(str(int(h[i:i + 2], 16)) for i in (0, 2, 4))
+
+
+def ribbon_ansi(ribbon: dict) -> str:
+    """The ribbon as the panel draws it, in truecolor: a row of its hue above
+    and below the text."""
+    bg = f"\033[48;2;{_rgb(ribbon['band'])}m"
+    fg = f"\033[38;2;{_rgb(RIBBON_TEXT)}m"
+    hint = f"\033[38;2;{_rgb(RIBBON_HINT)}m"
+    text = f" {ribbon['glyph']} {ribbon['label']}"
+    body = f"{bg}{fg}\033[1m{text}\033[22m"
+    if ribbon["note_line"]:
+        body += f"{hint} · {fg}{ribbon['note_line']}"
+    blank = f"{bg}\033[K\033[0m"
+    tail = f"{hint}\033[3m  type to resume \033[23m" if ribbon["resumes_on_prompt"] else ""
+    return f"{blank}\n{body}{tail}\033[K\033[0m\n{blank}\n"
+
+
+def ribbon_html(ribbon: dict) -> str:
+    note = ""
+    if ribbon["note_line"]:
+        note = (f'<span style="color:{RIBBON_HINT}"> · </span>'
+                f'<span style="color:{RIBBON_TEXT}">{ansi_to_html(ribbon["note_line"])}</span>')
+    hint = (f'<span style="color:{RIBBON_HINT};font-style:italic">type to resume</span>'
+            if ribbon["resumes_on_prompt"] else "")
+    return (f'<div class="ribbon" style="background:{ribbon["band"]}">'
+            f'<span><b style="color:{RIBBON_TEXT}">{html.escape(ribbon["glyph"])} '
+            f'{html.escape(ribbon["label"])}</b>{note}</span>{hint}</div>')
 
 
 # The attributes the status line emits, as CSS. Colors approximate a dark
@@ -183,17 +224,22 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <style>
   body {{ margin: 0; background: #1b1d23; }}
-  pre {{ margin: 0; padding: 14px 18px; color: #d0d0d0; background: #1b1d23;
-         font: 14px/1.5 Menlo, "SF Mono", Consolas, monospace; display: inline-block; }}
+  .shot {{ padding: 14px 18px; background: #1b1d23; display: inline-block; min-width: 724px;
+           font: 14px/1.5 Menlo, "SF Mono", Consolas, monospace; }}
+  .ribbon {{ display: flex; justify-content: space-between; padding: 21px 9px;
+             margin-bottom: 4px; white-space: pre; }}
+  pre {{ margin: 0; color: #d0d0d0; font: inherit; }}
 </style>
-<pre>{body}</pre>
+<div class="shot">{ribbon}<pre>{body}</pre></div>
 """
 
 
-def shoot(name: str, rendered: str, workdir: Path) -> Path:
+def shoot(name: str, rendered: tuple[dict | None, str], workdir: Path) -> Path:
+    ribbon, lines = rendered
     page = workdir / f"{name}.html"
-    page.write_text(PAGE.format(body=ansi_to_html(rendered.rstrip("\n"))), encoding="utf-8")
-    rows = rendered.count("\n")
+    page.write_text(PAGE.format(ribbon=ribbon_html(ribbon) if ribbon else "",
+                                body=ansi_to_html(lines.rstrip("\n"))), encoding="utf-8")
+    rows = lines.count("\n") + (3 if ribbon else 0)
     out = DOCS_IMAGES / f"statusline-{name}.png"
     subprocess.run(["npx", "-y", PLAYWRIGHT, "screenshot", "--channel", "chrome", "--viewport-size",
                     f"760,{28 + 21 * rows}", page.as_uri(), str(out)], check=True,
@@ -219,7 +265,8 @@ def main() -> int:
         return 0
     for name in names:
         print(f"\033[2m{name}: {SCENARIOS[name]['caption']}\033[0m")
-        sys.stdout.write(render(SCENARIOS[name]))
+        ribbon, lines = render(SCENARIOS[name])
+        sys.stdout.write((ribbon_ansi(ribbon) if ribbon else "") + lines)
         print()
     return 0
 

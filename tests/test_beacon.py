@@ -271,15 +271,15 @@ class CmdSetPropagatesToBadge(BeaconTest):
 class ApplyEmitsBaseProfileAndColor(BeaconTest):
     """RENDER-04 / §6.6: the first render switches into the base `beacon`
     profile and sets the badge format; for idle / working / blocked, state color is
-    delivered by OSC badge-color/tab-color with no per-state profile (paused is
-    the one exception — see PausedSwapsProfile, RENDER-05). Every render repaints
+    delivered by OSC badge-color/tab-color with no per-state profile, and no
+    mode swaps one either (RENDER-05). Every render repaints
     the color, so a wipe beacon did not cause recovers on the next hook."""
 
     def test_first_render_switches_base_profile_and_sets_ready_color(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
 
-        self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
-                      "First render must switch into the base beacon-dev profile")
+        self.assertIn(("set-profile", "beacon"), self.cli_calls,
+                      "First render must switch into the beacon profile")
         self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["idle"]), self.cli_calls)
         self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls)
 
@@ -337,15 +337,20 @@ class WindowTitleSetName(BeaconTest):
             "first render (a swap) must set the session name to the badge template",
         )
 
-    def test_mode_swap_resets_name(self):
+    def test_a_pane_on_a_retired_profile_swaps_and_resets_name(self):
+        # A pane an earlier install left on `beacon-dev` (or a mode profile)
+        # swaps into `beacon` on its next render, and the swap resets the name.
         self._set_iterm_id("w0t0p0:ABC-123")
         self.beacon.apply({**_base_state(), "activity": "idle"})
+        snap = self.beacon.read_state_json("resolved", {})
+        self.beacon.write_state("resolved", json.dumps({**snap, "profile": "beacon-dev"}))
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "mode": "release"})
+        self.beacon.apply({**_base_state(), "activity": "idle"})
+        self.assertIn(("set-profile", "beacon"), self.cli_calls)
         self.assertIn(
             ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
-            "a mode swap resets the session name, so it must be re-set (TITLE-04)",
+            "a swap resets the session name, so it must be re-set (TITLE-04)",
         )
 
     def test_non_swap_render_leaves_name_alone(self):
@@ -436,60 +441,27 @@ class WindowTitleSetName(BeaconTest):
         )
 
 
-class ModeSwapsProfile(BeaconTest):
-    """RENDER-05 / BADGE-11: a mode that paints the pane has its own profile.
-    Entering and leaving it swaps profiles (beacon-dev ↔ beacon-release) and,
-    because SetProfile wipes session OSC (§6.10), re-emits the badge format, user
-    vars, and badge/tab color. No mode decorates the badge text (BADGE-11).
-    `pause` paints no pane: its cue is the status panel's ribbon."""
+class ModesKeepThePane(BeaconTest):
+    """RENDER-05 / BADGE-11: no mode paints the pane. Entering or leaving any
+    mode swaps no profile; the mode reaches the tab as its glyph (TITLE-06) and
+    the pane through the status panel's ribbon (STATUS-09)."""
 
-    def test_pause_keeps_the_users_pane(self):
-        self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
-        self.cli_calls.clear()
+    def test_no_mode_swaps_the_profile(self):
+        for mode in self.beacon.MODES:
+            with self.subTest(mode=mode):
+                self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
+                self.cli_calls.clear()
 
-        self.beacon.apply({**_base_state(), "mode": "pause", "task": "wiring"})
+                self.beacon.apply({**_base_state(), "mode": mode, "task": "wiring"})
+                glyph = self.beacon.MODE_SPECS[mode]["glyph"]
+                self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [])
+                self.assertIn(("uservar", "beacon_title_prefix", f"{glyph} "), self.cli_calls,
+                              f"{mode} must mark line 1 of the tab / OS window title")
+                self.assertEqual(self.beacon.read_state_json("resolved", {}).get("profile"), "beacon")
 
-        self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [])
-        self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls,
-                      "pause must mark line 1 of the tab / OS window title")
-        self.assertEqual(self.beacon.read_state_json("resolved", {}).get("profile"), "beacon-dev")
-
-    def test_a_mode_swaps_to_its_profile_and_reemits(self):
-        self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "mode": "release", "task": "wiring"})
-
-        self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
-                      "entering release must swap into the beacon-release profile")
-        self.assertIn(("badge-format", self.beacon.BADGE_FORMAT), self.cli_calls,
-                      "a swap must re-emit the badge format (SetProfile wipes it)")
-        # The tab color answers to activity, not the mode: this session is idle, so
-        # it stays the calm gray. The mode reaches the tab as its glyph instead.
-        self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls)
-        self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
-                      "release must mark line 1 of the tab / OS window title")
-        # The user vars are re-emitted because the swap wiped them; the badge text
-        # is the raw project (no glyph, BADGE-11), the (unchanged) task restored.
-        self.assertEqual(
-            _uservar_emits(self.cli_calls, "beacon_project"),
-            [("uservar", "beacon_project", "acme/widget")],
-        )
-        self.assertEqual(
-            _uservar_emits(self.cli_calls, "beacon_task"),
-            [("uservar", "beacon_task", " · wiring")],
-        )
-
-    def test_leaving_swaps_back_to_base(self):
-        self.beacon.apply({**_base_state(), "mode": "release"})
-        self.cli_calls.clear()
-
-        self.beacon.apply({**_base_state(), "activity": "idle"})
-
-        self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
-                      "leaving release must swap back to the base beacon-dev profile")
-        ready = self.beacon.COLOR_PALETTE["idle"]
-        self.assertIn(("badge-color", ready), self.cli_calls)
+                self.cli_calls.clear()
+                self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
+                self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [])
 
     def test_non_mode_transitions_never_swap(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
@@ -502,18 +474,6 @@ class ModeSwapsProfile(BeaconTest):
             [c for c in self.cli_calls if c[0] == "set-profile"], [],
             "idle / working / blocked (dev) stay OSC overlays on the base profile — no swap",
         )
-
-    def test_snapshot_records_active_profile(self):
-        self.beacon.apply({**_base_state(), "mode": "release"})
-        snap = self.beacon.read_state_json("resolved", {})
-        self.assertEqual(snap.get("profile"), "beacon-release")
-        self.assertEqual(snap.get("project"), "acme/widget",
-                         "snapshot keeps the raw project")
-
-        self.beacon.apply({**_base_state(), "activity": "idle"})
-        snap = self.beacon.read_state_json("resolved", {})
-        self.assertEqual(snap.get("profile"), "beacon-dev")
-
 
 class CallerBadge(BeaconTest):
     """BADGE-16: `badge` puts a caller's one line on the pane badge, in its own
@@ -575,8 +535,10 @@ class CallerBadge(BeaconTest):
 
     def test_a_profile_swap_re_emits_it(self):
         self.beacon.apply({**_base_state(), "badge": {"text": "rig"}})
+        snap = self.beacon.read_state_json("resolved", {})
+        self.beacon.write_state("resolved", json.dumps({**snap, "profile": "beacon-dev"}))
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "mode": "release", "badge": {"text": "rig"}})
+        self.beacon.apply({**_base_state(), "badge": {"text": "rig"}})
         self.assertIn(("badge-format", "rig"), self.cli_calls)
 
     def test_clearing_with_the_toggle_off_blanks_the_badge(self):
@@ -653,20 +615,19 @@ class RetroMode(BeaconTest):
 
 
 class DoneMode(BeaconTest):
-    """RENDER-05: done is the terminal "session complete, ready to hand off" mode
-    with its own profile (beacon-done, near-black "powered off"), set via `done`.
-    Like retro it freezes no identity, persists across a prompt, and carries no
-    badge glyph — its cue is the powered-off background and dim-gray color. It
+    """STATE-09: done is the terminal "session complete, ready to hand off" mode,
+    set via `done`. Like retro it freezes no identity, persists across a prompt,
+    and carries no badge glyph; its cue is the status panel's ribbon. It
     additionally suppresses the task slot (STATE-12)."""
 
-    def test_done_swaps_to_done_profile_and_color(self):
+    def test_done_keeps_the_pane_and_marks_the_tab(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "mode": "done"})
 
-        self.assertIn(("set-profile", "beacon-done"), self.cli_calls,
-                      "entering done must swap into the beacon-done profile")
+        self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [],
+                         "done keeps the user's pane")
         self.assertIn(("uservar", "beacon_title_prefix", "🏁 "), self.cli_calls,
                       "the mode's only cross-tab surface is its glyph")
         self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls,
@@ -677,7 +638,7 @@ class DoneMode(BeaconTest):
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"),
             [("uservar", "beacon_project", "acme/widget")],
-            "done carries its cue in the profile/background, not a badge glyph",
+            "done carries its cue in the status panel's ribbon, not a badge glyph",
         )
 
     def test_done_suppresses_task_keeps_project(self):
@@ -1252,16 +1213,14 @@ class AxesAreIndependent(BeaconTest):
         })
         self.assertIn(("tab-color", self.beacon._tab_hex("blocked")), self.cli_calls,
                       "a moded session blocked on the user must still read as blocked")
-        self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
-                      "and must keep the mode's pane background")
         self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
                       "and its glyph, so the tab says both things at once")
 
     def test_activity_never_displaces_the_mode_surfaces(self):
-        # Whatever the activity, the pane stays in the mode's profile and the tab
+        # Whatever the activity, the pane stays in the beacon profile and the tab
         # keeps its glyph — only the color moves. Asserted on the snapshot rather
         # than the emitted calls, because a profile is only *swapped* when it
-        # changes (RENDER-05), so the second pass through here emits nothing.
+        # changes (RENDER-07), so the second pass through here emits nothing.
         for activity, hex_color in (("idle", "idle"), ("working", "working"),
                                     ("blocked", "blocked")):
             with self.subTest(activity=activity):
@@ -1269,7 +1228,7 @@ class AxesAreIndependent(BeaconTest):
                     **_base_state(), "mode": "pause", "activity": activity,
                 })
                 snap = self.beacon.read_state_json("resolved", {})
-                self.assertEqual(snap["profile"], "beacon-dev")
+                self.assertEqual(snap["profile"], "beacon")
                 self.assertEqual(snap["title_prefix"], "⏸ ")
                 self.assertEqual(snap["color_state"], hex_color)
 
@@ -1348,19 +1307,19 @@ class ActivityHasNoOverrideTier(BeaconTest):
 
 
 class ReleaseMode(BeaconTest):
-    """RENDER-05 / STATE-10: release is the active "ship-it flow in progress" mode
-    with its own profile (beacon-release, launch-sky navy + rocket watermark), set via
+    """STATE-10: release is the active "ship-it flow in progress" mode, set via
     `release`. Like retro it freezes no identity, persists across a prompt, and
-    carries no badge glyph — its cue is the profile background and green badge."""
+    carries no badge glyph; it keeps the user's pane, marked by the status
+    panel's ribbon."""
 
-    def test_release_swaps_to_release_profile_and_color(self):
+    def test_release_keeps_the_pane_and_marks_the_tab(self):
         self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "mode": "release"})
 
-        self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
-                      "entering release must swap into the beacon-release profile")
+        self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [],
+                         "release keeps the user's pane")
         self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
                       "the mode's only cross-tab surface is its glyph")
         self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls,
@@ -1371,7 +1330,7 @@ class ReleaseMode(BeaconTest):
         self.assertEqual(
             _uservar_emits(self.cli_calls, "beacon_project"),
             [("uservar", "beacon_project", "acme/widget")],
-            "release carries its cue in the profile/background, not a badge glyph",
+            "release carries its cue in the status panel's ribbon, not a badge glyph",
         )
 
     def test_release_command_sets_status_without_freezing_identity(self):
@@ -1501,10 +1460,9 @@ class DataDirResolution(BeaconTest):
 
 
 class ModeProfileDerivation(unittest.TestCase):
-    """RENDER-05 / §6.6: install derives one mode profile per MODE_SPECS entry
-    from the rendered base — same layout, differing by a de-emphasized Dracula
-    background with its faint watermark, or by a fixed badge — so they never
-    drift. THEME-01: hexes are single-sourced in MODE_SPECS."""
+    """RENDER-07 / §6.6: install writes the one beacon profile and sweeps the
+    ones an earlier install left; no mode has a profile of its own (RENDER-05,
+    retired). THEME-01: hexes are single-sourced in MODE_SPECS."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -1524,12 +1482,20 @@ class ModeProfileDerivation(unittest.TestCase):
         self.assertEqual(comps["Color Space"], "sRGB")
         self.assertEqual(comps["Alpha Component"], 1.0)
 
-    def test_install_derives_each_mode_profile_from_base(self):
-        ok, msg = self.beacon.install_dynamic_profile()
-        self.assertTrue(ok, msg)
+    def test_install_writes_the_one_beacon_profile(self):
         profiles_dir = (Path(self._home.name) / "Library" / "Application Support"
                         / "iTerm2" / "DynamicProfiles")
-        base = json.loads((profiles_dir / "beacon-dev.json").read_text())["Profiles"][0]
+        profiles_dir.mkdir(parents=True)
+        # What an earlier install left: the 2.x base and its mode profiles.
+        for stale in ("beacon-dev", "beacon-pause", "beacon-release", "beacon-done"):
+            (profiles_dir / f"{stale}.json").write_text(
+                json.dumps({"Profiles": [{"Name": stale, "Guid": stale}]}))
+        ok, msg = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok, msg)
+        self.assertEqual(sorted(p.name for p in profiles_dir.glob("beacon*.json")),
+                         ["beacon.json"])
+        base = json.loads((profiles_dir / "beacon.json").read_text())["Profiles"][0]
+        self.assertEqual(base["Name"], "beacon")
         self.assertNotIn("Background Color", base, "base inherits its background")
         self.assertNotIn("Use Separate Colors for Light and Dark Mode", base,
                          "the light/dark switch is the parent profile's to set — "
@@ -1541,38 +1507,12 @@ class ModeProfileDerivation(unittest.TestCase):
             self.assertAlmostEqual(base[key]["Red Component"],
                                    int(ready[0:2], 16) / 255.0, msg=key)
 
-        seen_guids = {base["Guid"]}
-        for spec in self.beacon._derived_profile_specs():
-            mode = spec["profile"]
-            prof = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
-            self.assertEqual(prof["Name"], spec["profile"])
-            self.assertEqual(prof["Guid"], spec["guid"])
-            self.assertNotIn(prof["Guid"], seen_guids, f"{mode} needs a distinct Guid")
-            seen_guids.add(prof["Guid"])
-            # Same key bindings (single-sourced) — a mode profile differs only by
-            # its background.
-            self.assertEqual(prof["Keyboard Map"], base["Keyboard Map"])
-            for key in ("Background Color", "Background Color (Light)",
-                        "Background Color (Dark)"):
-                self.assertAlmostEqual(
-                    prof[key]["Red Component"],
-                    int(spec["background"][0:2], 16) / 255.0,
-                    msg=f"{mode}: {key}",
-                )
-            self.assertEqual(prof["Badge Text"], "", mode)
-            if spec.get("image"):
-                self.assertTrue(prof["Background Image Location"].endswith(spec["image"]))
-                self.assertEqual(prof["Background Image Mode"], 3)
-                self.assertEqual(prof["Blend"], spec["blend"])
-            else:
-                self.assertNotIn("Background Image Location", prof)
-
     def test_a_split_pane_starts_where_the_pane_it_split_from_is(self):
         ok, msg = self.beacon.install_dynamic_profile()
         self.assertTrue(ok, msg)
         profiles_dir = (Path(self._home.name) / "Library" / "Application Support"
                         / "iTerm2" / "DynamicProfiles")
-        base = json.loads((profiles_dir / "beacon-dev.json").read_text())["Profiles"][0]
+        base = json.loads((profiles_dir / "beacon.json").read_text())["Profiles"][0]
         self.assertEqual(base["AWDS Pane Option"], "Recycle")
         # iTerm2 ignores the option unless its paired directory key is present,
         # even though Recycle never reads the value.
@@ -1582,10 +1522,6 @@ class ModeProfileDerivation(unittest.TestCase):
         # The two scopes beacon does not claim stay the parent's to answer.
         for unclaimed in ("AWDS Tab Option", "AWDS Window Option", "Working Directory"):
             self.assertNotIn(unclaimed, base)
-        for spec in self.beacon._derived_profile_specs():
-            mode = json.loads((profiles_dir / f"{spec['profile']}.json").read_text())["Profiles"][0]
-            self.assertEqual(mode["AWDS Pane Option"], "Recycle",
-                             f"{spec['profile']} must not change where a split opens")
 
     def test_dev_is_never_a_mode(self):
         # `dev` is the absence of a mode — the empty mode file — so it must not
@@ -1606,52 +1542,23 @@ class ModeProfileDerivation(unittest.TestCase):
         self.assertEqual(set(self.beacon.ACTIVITY_TO_COLOR_STATE.values()),
                          set(self.beacon.COLOR_PALETTE))
 
-    def test_a_pane_cue_is_a_background_with_its_mark(self):
-        # A mode that paints the pane gets a profile carrying a background with
-        # its slate watermark and blend (iterm/make-bg.py); a background without
-        # a mark reads as a bare tint. A mode that leaves the pane alone has no
-        # profile to swap into.
-        for mode in self.beacon.MODES:
-            spec = self.beacon.MODE_SPECS[mode]
-            if spec.get("background"):
-                self.assertTrue(spec["profile"], f"{mode} paints the pane from a profile")
-                self.assertTrue(spec["image"], f"{mode} should carry a watermark image")
-                self.assertIsNotNone(spec["blend"], f"{mode} should carry a blend")
-            else:
-                self.assertNotIn("profile", spec, f"{mode} has no pane cue to swap into")
+    def test_no_mode_paints_the_pane(self):
+        # RENDER-05: a mode's cue is the status panel's ribbon, which any
+        # terminal draws, so no mode names a profile, background, or watermark.
+        for mode, spec in self.beacon.MODE_SPECS.items():
+            for key in ("profile", "guid", "background", "image", "blend"):
+                self.assertNotIn(key, spec, f"{mode} names a pane {key}")
 
-    def test_mode_background_luma_ladder(self):
-        # Brightness is Rec. 709 luma, not HSV value: value weights the channels
-        # alike where the eye weights green .72 against blue .07, so hues picked
-        # at one value are not panes at one brightness (THEME-02a).
-        tiers = {"release": 43.0, "done": 22.0}
-        self.assertEqual(set(tiers), {m for m, spec in self.beacon.MODE_SPECS.items()
-                                      if spec.get("background")})
-        for mode, target in tiers.items():
-            hexstr = self.beacon.MODE_SPECS[mode]["background"]
-            r, g, b = (int(hexstr[i:i + 2], 16) for i in (0, 2, 4))
-            luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-            self.assertAlmostEqual(
-                luma, target, delta=3.0,
-                msg=f"{mode} #{hexstr} sits at luma {luma:.1f}, off its {target} tier")
+    def test_every_mode_carries_a_label(self):
+        # The ribbon and Claude Code's footer of modes show it (STATUS-09).
+        for mode, spec in self.beacon.MODE_SPECS.items():
+            self.assertTrue(spec["label"], f"{mode} should carry a label")
 
     def test_every_mode_carries_a_glyph(self):
         # The glyph is the mode's *only* cross-tab surface, so a mode without one
         # is invisible from any tab the user isn't looking at.
         for mode, spec in self.beacon.MODE_SPECS.items():
             self.assertTrue(spec["glyph"], f"{mode} should carry a tab glyph")
-
-    def test_mode_image_files_exist(self):
-        # The watermark assets each mode names must be present on disk: they back
-        # both the profile background (install) and the /mode-bg/<state> serve
-        # route the dashboard card renders (WIP-17). A rename that misses one
-        # would 404 the card and blank the pane background.
-        for mode, spec in self.beacon.MODE_SPECS.items():
-            if not spec.get("image"):
-                continue
-            p = self.beacon.PLUGIN_ROOT / "iterm" / "resources" / spec["image"]
-            self.assertTrue(p.is_file(), f"{mode} watermark asset missing: {p}")
-
 
 class ItermNotificationsFollowTheUser(unittest.TestCase):
     """RENDER-06 / CMD-32: the beacon profiles leave iTerm2's own alerts to the
@@ -1679,8 +1586,7 @@ class ItermNotificationsFollowTheUser(unittest.TestCase):
     def _profiles(self):
         d = (Path(self._home.name) / "Library" / "Application Support"
              / "iTerm2" / "DynamicProfiles")
-        names = [self.beacon.BASE_PROFILE_NAME] + [
-            spec["profile"] for spec in self.beacon._derived_profile_specs()]
+        names = [self.beacon.BASE_PROFILE_NAME]
         return [json.loads((d / f"{n}.json").read_text())["Profiles"][0] for n in names]
 
     def _config(self, *values):
@@ -1960,16 +1866,15 @@ class CustomizableButtons(unittest.TestCase):
         # The command's whole job is making the profiles current, and it can't:
         # iTerm2 skips the file each is written from. Reporting the write alone
         # is the failure it was silent about.
-        code, out = self._refresh(["beacon-dev", "beacon-done"])
+        code, out = self._refresh(["beacon"])
         self.assertNotEqual(code, 0)
-        self.assertIn("beacon-dev", out)
-        self.assertIn("beacon-done", out)
+        self.assertIn("beacon", out)
         self.assertIn("--remigrate", out)
         self.assertEqual(self.cli_calls, [],
                          "the restart is opt-in; advice must not quit iTerm2")
 
     def test_remigrate_hands_off_to_the_cli(self):
-        code, _ = self._refresh(["beacon-dev", "beacon-done"], remigrate=True)
+        code, _ = self._refresh(["beacon"], remigrate=True)
         self.assertEqual(code, 0)
         self.assertEqual(len(self.cli_calls), 1)
         self.assertIn("remigrate-profiles", self.cli_calls[0])
@@ -2085,7 +1990,7 @@ class PendingAttentionPaintsBlocked(BeaconTest):
         self.assertIn(("badge-color", self.beacon.COLOR_PALETTE["blocked"]), self.cli_calls)
         self.assertIn(("tab-color", self.beacon._tab_hex("blocked")), self.cli_calls)
         self.assertEqual(
-            [c for c in self.cli_calls if c[0] == "set-profile" and c[1] != "beacon-dev"],
+            [c for c in self.cli_calls if c[0] == "set-profile" and c[1] != "beacon"],
             [],
             "No per-state profile switch — blocked is an OSC color",
         )
@@ -3138,15 +3043,6 @@ class EngagementMarker(BeaconTest):
         self.assertIn(("uservar", "beacon_task", ""), self.cli_calls,
                       "clear (no field) must empty the task slot so a stale "
                       "task doesn't linger on the badge after disengagement")
-
-    def test_clear_mid_mode_reverts_profile(self):
-        # Clearing while in a mode state must swap back to the base profile —
-        # the color-only `clear` OSC can't undo the mode profile's background.
-        self.beacon.apply({**_base_state(), "mode": "pause"})
-        self.cli_calls.clear()
-        self.beacon.cmd_clear(mock.Mock(field=None))
-        self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
-                      "clear (no field) mid-mode must swap back to the base beacon-dev profile")
 
     def test_clear_with_field_keeps_engagement(self):
         self.beacon.apply({**_base_state(), "activity": "working"})
@@ -5010,20 +4906,6 @@ class SessionEndDisengages(BeaconTest):
         self.assertIn(("clear",), self.cli_calls, "Exit must revert badge/tab color")
         self.assertIsNone(self.beacon.read_state("resolved"))
 
-    def test_exit_mid_mode_reverts_profile(self):
-        # A session that ends while in a mode state (done/retro/release/paused)
-        # sits on that mode's profile — the color-only `clear` can't undo its
-        # background, so disengage must swap back to base or the pane keeps its
-        # "powered off" look after exit.
-        self.beacon.apply({**_base_state(), "mode": "done"})
-        self.assertTrue(self._engaged())
-        self.cli_calls.clear()
-        self._fire({"reason": "other"})
-        self.assertIn(
-            ("set-profile", "beacon-dev"), self.cli_calls,
-            "Exit mid-mode must swap the pane back to the base beacon-dev profile",
-        )
-
     def test_clear_reason_keeps_engagement(self):
         # `/clear` ends the session with reason=clear but a fresh SessionStart
         # re-engages the same pane immediately — disengaging would just flicker.
@@ -5056,13 +4938,9 @@ class SessionEndDisengages(BeaconTest):
             "Exit must hand the name back to the interactive title, not leave "
             "it on a template whose vars disengage just blanked",
         )
-        # And after the profile swap: `SetProfile=` resets the name to the target
-        # profile's own (RENDER-05), so a handback emitted first is wiped by it.
-        self.assertGreater(
-            self.cli_calls.index(name_call),
-            self.cli_calls.index(("set-profile", "beacon-dev")),
-            "the name handback must follow the profile swap, which resets the name",
-        )
+        # No profile swap follows to reset it: no mode left the pane on a
+        # profile of its own (RENDER-05).
+        self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [])
 
     def test_name_handback_precedes_blanking_the_title_vars(self):
         # Ordering is the difference between a benign interrupted disengage and a
@@ -8182,6 +8060,14 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
         self.assertEqual(len(documented), 6, documented)
         self.assertEqual(documented, drawn)
 
+    def test_the_dashboard_cards_take_the_ribbon_hue(self):
+        """WIP-17: a moded card echoes the status panel's ribbon, so its tint is
+        the mode's `band`, and a mode with no ribbon leaves its card plain."""
+        html = (REPO_ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+        drawn = dict(re.findall(r"\.card\.mode-(\w+)\s*\{\s*--mode-band:\s*(#[0-9a-f]{6});", html))
+        bands = {m: spec["band"] for m, spec in self.beacon.MODE_SPECS.items() if spec.get("band")}
+        self.assertEqual(drawn, bands)
+
     def test_the_mode_ribbon_meets_wcag_aa(self):
         """A mode's ribbon in the status panel is text on its `band` hue, so both
         of the panel's ribbon foregrounds must clear WCAG 2.x AA for body text
@@ -9216,8 +9102,7 @@ class ProfileBakedPaths(unittest.TestCase):
                          / "iTerm2" / "DynamicProfiles")
         ok, msg = self.beacon.install_dynamic_profile()
         self.assertTrue(ok, msg)
-        self.want = ({self.beacon.BASE_PROFILE_NAME}
-                     | {s["profile"] for s in self.beacon._derived_profile_specs()})
+        self.want = {self.beacon.BASE_PROFILE_NAME}
 
     def _rewrite(self, stem, old, new):
         # Both sides are encoded the way the installer encodes them, because
@@ -9255,14 +9140,7 @@ class ProfileBakedPaths(unittest.TestCase):
         _, detail = self._check()
         self.assertEqual(detail.count("/gone/python3"), 1)
         for stem in self.want:
-            self.assertNotIn(stem, detail)
-
-    def test_only_the_profile_that_drifted_is_named(self):
-        self._rewrite("beacon-done", sys.executable, "/gone/python3")
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_BAD)
-        self.assertIn("beacon-done", detail)
-        self.assertNotIn(self.beacon.BASE_PROFILE_NAME, detail)
+            self.assertNotIn(f"{stem}:", detail)
 
     def test_a_script_that_is_gone_is_a_fault(self):
         script = str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")
@@ -9315,7 +9193,7 @@ class ProfileBakedPaths(unittest.TestCase):
     def test_missing_profiles_are_not_also_reported_as_bad_paths(self):
         # `profiles` already says to re-render; a second line naming the same
         # command is noise, and every present profile is fine here.
-        (self.profiles / "beacon-done.json").unlink()
+        (self.profiles / "beacon.json").unlink()
         with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
                 mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
                 mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
@@ -9347,8 +9225,7 @@ class ProfilesShadowedBySavedCopies(unittest.TestCase):
                          / "iTerm2" / "DynamicProfiles")
         ok, msg = self.beacon.install_dynamic_profile()
         self.assertTrue(ok, msg)
-        self.want = ({self.beacon.BASE_PROFILE_NAME}
-                     | {s["profile"] for s in self.beacon._derived_profile_specs()})
+        self.want = {self.beacon.BASE_PROFILE_NAME}
 
     def _guid(self, stem):
         return json.loads((self.profiles / f"{stem}.json").read_text())["Profiles"][0]["Guid"]
@@ -9385,13 +9262,6 @@ class ProfilesShadowedBySavedCopies(unittest.TestCase):
         # The remedy is the command that lets iTerm2 repair it — a re-render on
         # its own has nowhere to land.
         self.assertIn(self.beacon.REMIGRATE_COMMAND, detail)
-
-    def test_only_the_shadowed_profile_is_named(self):
-        saved = [self._saved(s, s != "beacon-done") for s in self.want]
-        status, detail = self._check(self._prefs(saved))
-        self.assertEqual(status, self.beacon._DOCTOR_BAD)
-        self.assertIn("beacon-done", detail)
-        self.assertNotIn(self.beacon.BASE_PROFILE_NAME, detail)
 
     def test_an_iterm2_that_never_ran_370_is_not_checked(self):
         # There the key is absent from every profile, so its absence carries no
@@ -10283,7 +10153,7 @@ class InstallFreshness(unittest.TestCase):
         self.assertTrue(ok, msg)
         old = json.dumps(str(self.this_root / "scripts" / "beacon"))[1:-1]
         new = json.dumps(str(root / "scripts" / "beacon"))[1:-1]
-        for path in self.profiles.glob("beacon-*.json"):
+        for path in self.profiles.glob("beacon*.json"):
             body = path.read_text()
             self.assertIn(old, body, f"{path.name} does not carry {old}")
             path.write_text(body.replace(old, new))
@@ -10444,8 +10314,7 @@ class InstallFreshness(unittest.TestCase):
         banner = self.beacon._FRESHNESS_BANNER
         self.assertIn("cli is outdated", banner)
         self.assertIn("/beacon:install-beacon", banner)
-        for absent in ("entry point", ".zshrc", "$PATH", "iTerm2",
-                       "beacon-dev", "gone"):
+        for absent in ("entry point", ".zshrc", "$PATH", "iTerm2", "gone"):
             self.assertNotIn(absent, banner)
         message = self.beacon._freshness_message(gone, stale)
         for stem in self.beacon._iterm_profile_names():

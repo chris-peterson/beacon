@@ -26,7 +26,7 @@
       /* Status hexes MIRROR COLOR_PALETTE in scripts/beacon so a card's
          dot matches the same session's iTerm2 badge — do not drift these.
          SDLC cycles: dev (idle / working / blocked) + the mode cycles. Green is
-         retired from the dev activity colors (ready is gray) and pins `release`.
+         retired from the dev activity colors (ready is gray).
          `--planning` is not a state color: the permission axis takes no color
          channel (PERM-02). It tints the `plan` tag alone, in Claude Code's own
          plan-mode teal, so the tag reads as the same thing the pane says. */
@@ -35,7 +35,7 @@
       --blocked:  #ff5555;
       --planning: #1a988c;
       /* Generic success green. Not a mode color: mode tints live in the
-         .card.mode-* rules, keyed to each mode's pane background. */
+         .card.mode-* rules, keyed to each mode's ribbon hue. */
       --ok:       #50fa7b;
 
       /* Console chrome — free to tune; not part of the badge contract. */
@@ -248,7 +248,7 @@
       --pad-x: 0.95rem; --pad-top: 0.85rem;
       padding: var(--pad-top) var(--pad-x) 0.8rem;
       overflow: hidden;
-      isolation: isolate; /* contain the mode watermark ::before (z-index -1) above the tint, below content */
+      isolation: isolate;
       transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
       animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
     }
@@ -263,7 +263,7 @@
 
        The two axes stay on disjoint surfaces here exactly as they do on a pane:
        this bar and the dot answer to `color_state` (activity), while the card's
-       tint and watermark answer to `mode`. A moded session that goes `blocked`
+       tint answers to `mode`. A moded session that goes `blocked`
        therefore keeps its mode treatment and turns its dot red — the sessions view can
        show both at once, where the merged field could only ever show the mode. */
     .card::after {
@@ -278,41 +278,16 @@
     .card.color-working    { --state-color: var(--working); }
     .card.color-blocked { --state-color: var(--blocked); }
 
-    /* Moded cards echo their iTerm2 pane background (RENDER-05): a muted tint in
-       the mode's hue plus a large, faint, centered watermark. The watermark is the
-       *same generated asset the pane paints* (iterm/resources/<mode>-bg.png),
-       streamed by serve at /mode-bg/<mode> — so the card and pane can never
-       drift. It rides a ::before below the card content (z-index -1; the card
-       isolates a stacking context) at a low opacity, the sessions analog of the
-       pane's Blend. One mix fraction serves every tinted mode: the pane hexes sit
-       on a shared luma ladder (THEME-02a), so a card inherits the tier its pane
-       has and needs no per-mode compensation of its own. A retro pane keeps the
-       user's background, so its card stays plain. */
-    .card.mode-pause   { --mode-tint: #251f35; }
-    .card.mode-release { --mode-tint: #212c45; }
+    /* Moded cards echo the mode's ribbon in the status panel (STATUS-09): the
+       card takes the ribbon's hue, MODE_SPECS' `band`, so a card here and the
+       band above the prompt read alike. retro has no ribbon, so its card stays
+       plain. */
+    .card.mode-pause   { --mode-band: #44385f; }
+    .card.mode-release { --mode-band: #2a3a63; }
+    .card.mode-done    { --mode-band: #2b2633; }
     .card.mode-pause,
-    .card.mode-release { background-color: color-mix(in srgb, var(--mode-tint) 34%, var(--panel)); }
-    .card.mode-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
-
-    .card.mode-pause::before,
-    .card.mode-release::before,
-    .card.mode-done::before {
-      content: "";
-      position: absolute; inset: 0; z-index: -1;
-      background-repeat: no-repeat; background-position: center;
-      /* Size by HEIGHT, not width. The assets are square and a card is far wider
-         than it is tall, so a width-derived size (this was `62% auto`) makes the
-         mark taller than the card and `center` then crops it to a middle band —
-         the mark reads as an off-centre fragment rather than a watermark. Height
-         drives it instead, and the `min()` caps an expanded card's much taller
-         box so the mark stays a mark. This is the CSS analog of the Scale Aspect
-         Fit the pane uses (RENDER-05), which is why the two surfaces agree. */
-      background-size: auto min(88%, 190px);
-      opacity: 0.16; pointer-events: none;
-    }
-    .card.mode-pause::before   { background-image: url("/mode-bg/pause"); }
-    .card.mode-release::before { background-image: url("/mode-bg/release"); }
-    .card.mode-done::before    { background-image: url("/mode-bg/done"); }
+    .card.mode-release,
+    .card.mode-done { background-color: color-mix(in srgb, var(--mode-band) 60%, var(--panel)); }
 
     .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
     .card:hover {
@@ -826,7 +801,7 @@
     // A session in a mode is never hoisted, even when its activity is `blocked`.
     // That isn't the mode outranking the signal — the card still turns its dot
     // and bar red, so "blocked" is visible either way. It's that the band's red
-    // glow paints over the mode tint and watermark, which is the only place the
+    // glow paints over the mode tint, which is the only place the
     // mode is legible on this surface. The loudness is spent where it costs
     // nothing: on dev-cycle cards that have no treatment to lose.
     // `mode` is the nested {name, note} tuple both beacon payloads carry, so a
@@ -1114,8 +1089,7 @@
     // line (e.g. "Shipping\n_Phase 3: release_") — so render those rather than
     // showing the raw markers. Escape-first via renderInline, with
     // underscore-italic on. The mode itself needs no text label here: the card's
-    // tint, watermark, and glyph already say which one, exactly as the pane and
-    // tab do.
+    // tint and glyph already say which one, exactly as the band and tab do.
     function renderNoteHtml(note) {
       return note ? renderInline(note, true).replace(/\n/g, "<br>") : "";
     }

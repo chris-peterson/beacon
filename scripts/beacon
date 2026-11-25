@@ -14,7 +14,6 @@ discards the one signal meant to interrupt you.
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
 import json
 import os
@@ -779,25 +778,17 @@ INTERACTIVE_TITLE_FORMAT = r"\(user.beacon_title)"
 # The prefix beacon claims in iTerm2's shared DynamicProfiles directory. Install
 # writes only names in it, and sweeps only names in it (_make_profiles).
 PROFILE_NAMESPACE = "beacon"
-BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
+BASE_PROFILE_NAME = PROFILE_NAMESPACE
 
 # Every mode, and everything that renders one. This dict is the canonical list —
 # `MODES` below is its keys, in the order the CLI offers them — so a mode exists
 # exactly once and cannot be half-declared. Each entry:
 #   glyph      — tab glyph leading line 1 of the session name (TITLE-06)
-#   profile    — the dynamic-profile name switched into via set-profile (CLI-14)
-#   guid       — fixed Guid so re-installs replace the profile in place
-#   background — distinct pane background hex (no leading #). Hue is the mode's
-#                own; brightness sits on a shared luma ladder (THEME-02a).
-#   image      — faint background-image watermark (file under iterm/resources)
-#   blend      — iTerm2 Blend for that image (lower = fainter)
-#
-# Mode profiles exist (RENDER-05) because a mode's second cue is a pane
-# background — a color and a faint watermark — that no OSC sets. Entering or
-# leaving such a mode swaps the session's profile; a mode without a background
-# (`retro`) and the dev cycle have no profile of their own and stay an OSC
-# overlay on the base.
-#
+#   label      — the word the status panel's ribbon and Claude Code's footer of
+#                modes show (STATUS-09)
+#   band       — the ribbon's hue (THEME-02a). Absent for `retro`, which runs
+#                long enough that a standing bar wears on whoever is writing it,
+#                so its glyph is its only mark.
 #   stood_down — the mode declares the session at a halt rather than in an
 #                active phase (STATE-15). Two behaviors read it, and they landed
 #                on `pause` and `done` independently: an `idle_prompt` is
@@ -807,54 +798,35 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 #                stalled release waiting on the user is exactly what red is for,
 #                and their task keeps changing every turn.
 #
-# The glyph is the mode's *stronger* surface: the background is visible only in
-# the focused pane, and a session running many tabs shows one pane at a time,
-# so the glyph is what carries a mode across tabs. Each glyph matches its mode's
-# watermark so the tab and the pane say the same thing. `dev` is absent — the
+# No mode paints the pane. Its cue in front of you is the status panel's ribbon,
+# which Claude Code draws in any terminal; the glyph is what carries a mode
+# across tabs, since only one pane is on screen at a time. `dev` is absent — the
 # default carries no mark, so a glyph always means "this session declared
 # something". Hexes are tunable here without touching call sites (THEME-01).
 MODE_SPECS = {
-    # `pause` keeps the user's pane: its cue is the status panel's ribbon, which
-    # any terminal draws, so the pane needs no profile of its own.
     "pause": {
         "glyph": "⏸",
         "stood_down": True,
         "label": "paused",
         "band": "#44385f",
     },
-    # `release` is the one active mode: a ship-it flow is in progress. A deep
-    # "launch-sky" navy (darkened Dracula `comment` #6272a4, so it stays on-palette
-    # per THEME-01) carries a faint rocket watermark rising through the pane — a
-    # launch in flight, not a session set aside.
+    # `release` is the one active mode: a ship-it flow is in progress.
     "release": {
         "glyph": "🚀",
-        "profile": f"{PROFILE_NAMESPACE}-release",
-        "guid": "c5f9a3d8-7e4b-4a2c-9d1f-6b0e8c3a5d72",
-        "background": "212c45",
-        "image": "release-bg.png",
-        "blend": 0.30,
         "label": "releasing",
         "band": "#2a3a63",
     },
-    # `retro` is the post-work follow-up phase. It keeps the user's own pane,
-    # since a retro runs long enough that a whole-pane treatment wears on whoever
-    # is writing it, so its glyph is its only mark.
+    # `retro` is the post-work follow-up phase, marked by its glyph alone.
     "retro": {
         "glyph": "📋",
         "label": "retro",
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
-    # closing-out skill reaches for instead of pause: a near-black "powered off"
-    # background with a faint checkered-flag (finish-line) watermark, the dimmest
-    # mode so a finished pane reads as lights-out — half the others' blend to hold
-    # that. Also suppresses the task slot (STATE-12).
+    # closing-out skill reaches for instead of pause; its ribbon is the dimmest,
+    # so a finished session reads as lights-out. Also suppresses the task slot
+    # (STATE-12).
     "done": {
         "glyph": "🏁",
-        "profile": f"{PROFILE_NAMESPACE}-done",
-        "guid": "b4e2f6a0-1c3d-4e5f-8a90-2b6c7d8e9f01",
-        "background": "1a1622",
-        "image": "done-bg.png",
-        "blend": 0.15,
         "stood_down": True,
         "label": "done",
         "band": "#2b2633",
@@ -4160,11 +4132,6 @@ def wip_http_server(port: int):
     expanded. The bulk /wip.json carries only the single-line excerpt (WIP-11);
     this reads the companion `latest_turn_full` state.
 
-    GET /mode-bg/<mode> — the mode watermark PNG a moded card renders (WIP-17):
-    the very asset the iTerm2 pane paints (iterm/resources/<mode>-bg.png), so the
-    card and pane can't drift. The filename is resolved from MODE_SPECS by mode
-    name, never from the URL, so there's nothing to traverse.
-
     POST /forget — delete a session's per-session state (FORGET-01), the
     dashboard's close button on a timed-out card (FORGET-03).
 
@@ -4300,21 +4267,6 @@ def wip_http_server(port: int):
             ctype = ICON_CONTENT_TYPES.get(p.suffix.lower(), "application/octet-stream")
             self._respond(200, ctype, data, ICON_HEADERS)
 
-        def _send_mode_bg(self, mode: str) -> None:
-            # The mark file comes from our own MODE_SPECS constant keyed by the
-            # mode name — never from the URL — so there is no path to traverse.
-            spec = MODE_SPECS.get(mode)
-            img = spec.get("image") if spec else None
-            p = (PLUGIN_ROOT / "iterm" / "resources" / img) if img else None
-            try:
-                data = p.read_bytes() if p else None
-            except OSError:
-                data = None
-            if not data:
-                self._send(404, json.dumps({"error": "not found"}))
-                return
-            self._respond(200, "image/png", data)
-
         def _send_turn(self, sh: str) -> None:
             # Same slash/dot-free token guard as /icon — the segment is only a
             # state-file lookup key, never a path.
@@ -4365,8 +4317,6 @@ def wip_http_server(port: int):
                 self._send_icon(parsed.path[len("/icon/"):])
             elif parsed.path.startswith("/turn/"):
                 self._send_turn(parsed.path[len("/turn/"):])
-            elif parsed.path.startswith("/mode-bg/"):
-                self._send_mode_bg(parsed.path[len("/mode-bg/"):])
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
@@ -4748,7 +4698,7 @@ def resolve(cwd: Path | None = None) -> dict:
     # TITLE-05a: line 2 of the tab carries the mode's note while the session is
     # stood down. The note's only other home is the status line, which exists
     # solely in the focused pane — the same weakness that makes the glyph, not
-    # the pane background, the mode's cross-tab surface (TITLE-06). A halted
+    # the status panel's ribbon, the mode's cross-tab surface (TITLE-06). A halted
     # session has no live task to displace: `pause` is not working, and `done`
     # blanks the slot outright (STATE-12), so the slot is empty in exactly the
     # sessions that carry a note. Presentation-only and reversible, like
@@ -6025,32 +5975,23 @@ def _iterm_profiles_dir() -> Path:
 
 
 def _iterm_profile_names() -> set:
-    return {BASE_PROFILE_NAME} | {s["profile"] for s in _derived_profile_specs()}
-
-
-def _derived_profile_specs() -> list[dict]:
-    """Every profile derived from the base: one per mode that paints the pane
-    (RENDER-05)."""
-    return [spec for spec in MODE_SPECS.values() if spec.get("profile")]
+    return {BASE_PROFILE_NAME}
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the base beacon-dev profile (badge sizing and the switcher keys, §6.6)
-    and one derived mode profile per MODE_SPECS entry that paints the pane
-    (beacon-pause, beacon-release, beacon-done; RENDER-05) into iTerm2's
-    DynamicProfiles directory. iTerm2
-    watches the directory and reloads on change without restart, so the write
-    needs no quit.
+    """Write the beacon profile (badge sizing and the switcher keys, §6.6) into
+    iTerm2's DynamicProfiles directory. iTerm2 watches the directory and
+    reloads on change without restart, so the write needs no quit.
 
     Always rewrites — iTerm2 re-serializes dynamic profiles back to disk with
     its own formatting and any GUI-edited values, so a "content matches"
-    short-circuit would silently let stale state win. Also sweeps the retired
-    per-state profiles a pre-1.0 install left behind so iTerm2 stops loading
-    them.
+    short-circuit would silently let stale state win. Also sweeps the beacon
+    profiles an earlier install left behind (the mode profiles and `beacon-dev`
+    before 3.0) so iTerm2 stops loading them.
     """
     target_dir = _iterm_profiles_dir()
     template = PLUGIN_ROOT / "iterm" / "profile.json.template"
-    target = target_dir / "beacon-dev.json"
+    target = target_dir / f"{BASE_PROFILE_NAME}.json"
 
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -6069,9 +6010,8 @@ def install_dynamic_profile() -> tuple[bool, str]:
     # shell, which emits no badge-color OSC. Without this the base inherits the
     # parent profile's badge color (e.g. Default's red). Single-sourced from
     # COLOR_PALETTE so the profile default and the rendered `idle` color
-    # never drift. Written to all three keys for the same reason the mode
-    # backgrounds are (below): which set iTerm2 reads depends on the parent
-    # profile's light/dark switch.
+    # never drift. Written to all three keys because which set iTerm2 reads
+    # depends on the parent profile's light/dark switch.
     badge_color = _hex_to_color_components(COLOR_PALETTE["idle"])
     for key in ("Badge Color", "Badge Color (Light)", "Badge Color (Dark)"):
         base_profile[key] = badge_color
@@ -6087,40 +6027,7 @@ def install_dynamic_profile() -> tuple[bool, str]:
     except OSError as e:
         return False, f"failed to write {target}: {e}"
 
-    # Derive each mode profile from the just-rendered base (RENDER-05): same
-    # status-bar layout / badge sizing (and gray badge-color default), differing
-    # only in the mode's background and watermark.
-    # Deriving rather than hand-maintaining sibling
-    # templates keeps the layout single-sourced so the profiles never drift.
     written = [str(target)]
-    for spec in _derived_profile_specs():
-        mode_target = target_dir / f"{spec['profile']}.json"
-        try:
-            mode_profile = copy.deepcopy(base_profile)
-            mode_profile["Name"] = spec["profile"]
-            mode_profile["Guid"] = spec["guid"]
-            # All three keys: iTerm2 reads the plain key when the profile has
-            # "Use Separate Colors for Light and Dark Mode" off and the (Light)
-            # / (Dark) pair when it is on. That switch belongs to the parent
-            # profile (RENDER-05 inherits it rather than forcing a value, so a
-            # user's own light/dark colors survive), so the mode background has
-            # to be written for whichever set the parent turns out to read.
-            if spec.get("background"):
-                background = _hex_to_color_components(spec["background"])
-                for key in ("Background Color", "Background Color (Light)",
-                            "Background Color (Dark)"):
-                    mode_profile[key] = background
-            if spec.get("image"):
-                # iTerm2 Background Image Mode 3 = Scale Aspect Fit: the square
-                # asset stays centered and proportional on any pane size. Blend
-                # dials the watermark down so the background color still reads.
-                mode_profile["Background Image Location"] = str(PLUGIN_ROOT / "iterm" / "resources" / spec["image"])
-                mode_profile["Background Image Mode"] = 3
-                mode_profile["Blend"] = spec["blend"]
-            mode_target.write_text(json.dumps({"Profiles": [mode_profile]}, indent=2))
-            written.append(str(mode_target))
-        except (OSError, ValueError, KeyError) as e:
-            return False, f"failed to write {mode_target}: {e}"
 
     # Sweep beacon profiles this install didn't just write, so a profile whose
     # name retired stops showing up as an orphaned row in iTerm2's picker. Keyed
@@ -6193,7 +6100,7 @@ def remove_engagement_marker() -> None:
 def _color_state_for(state: dict) -> str:
     """The logical color state the tab is painted (BADGE-09): `idle` / `working` /
     `blocked`, from `activity` alone. No mode reaches this — a mode is legible
-    from another tab as its glyph and, once focused, as its pane background, so
+    from another tab as its glyph and, once focused, as its status panel ribbon, so
     the one always-painted channel is spent on the axis that actually varies.
 
     `pending_attention` (HOOK-03b) forces `blocked` over the activity mapping,
@@ -6255,13 +6162,6 @@ def _badge_hex_for(state: dict, color_state: str) -> str:
     return COLOR_PALETTE.get(color_state, COLOR_PALETTE["idle"])
 
 
-def _profile_for(state: dict) -> str:
-    """The dynamic profile the pane sits in: the mode's (RENDER-05), else the
-    base profile. Call sites never name an iTerm profile."""
-    spec = MODE_SPECS.get(state.get("mode")) or {}
-    return spec.get("profile") or BASE_PROFILE_NAME
-
-
 def _set_session_title(fmt: str = TITLE_FORMAT) -> None:
     """WINDOW-TITLE / TITLE-05: set this session's iTerm2 *session name* to the
     two-line title template so `project` over `task` surfaces as the tab label
@@ -6291,17 +6191,17 @@ def apply(state: dict):
 
     # The two axes paint two disjoint surfaces, so nothing here arbitrates
     # between them: activity picks the tab color (BADGE-09), the mode picks the
-    # glyph (TITLE-06) and the profile whose background it owns (RENDER-05).
-    # `release` + `blocked` therefore paints a red tab over the release pane —
-    # a state the merged field could not represent at all.
+    # glyph (TITLE-06). `release` + `blocked` therefore paints a red tab led by
+    # 🚀 — a state the merged field could not represent at all.
     color_state = _color_state_for(state)
     indent1, indent2 = _tab_indent()
     label_lead = f"{indent1},{indent2}"
     glyph = " " * indent1 + _mode_glyph_for(state)
-    target_profile = _profile_for(state)
+    target_profile = BASE_PROFILE_NAME
 
-    # RENDER-05: switch profiles when the target changes — which also covers
-    # the first render (prev carries no profile). set-profile must precede the
+    # RENDER-07: switch into the beacon profile on the first render (prev
+    # carries no profile), and once for a pane an earlier install left on a
+    # profile since retired. set-profile must precede the
     # OSC below: SetProfile wipes the session's OSC overrides including
     # SetBadgeFormat (§6.10), so a switch re-emits the badge format here and
     # forces the user vars + badge/tab color further down.
@@ -6377,8 +6277,8 @@ def apply(state: dict):
 
     # TITLE-06: line 1 (tab label + single-line OS window title) leads with the
     # mode's glyph, or DEV_TITLE_LEAD when no mode is declared. This is what makes
-    # a mode readable from a tab the user isn't looking at — the pane background it
-    # also owns is only visible in the focused pane, and the tab color answers a
+    # a mode readable from a tab the user isn't looking at — its status panel
+    # ribbon is only visible in the focused pane, and the tab color answers a
     # different question. A glyph, not the word, because line 1 is shared by the tab
     # and the window title and cannot differ between them. The mode's *note* is not
     # here: it goes to the Claude Code status line (STATUS-01), a footer row
@@ -6613,17 +6513,9 @@ def _disengage() -> None:
     remove_engagement_marker()
     remove_state("resolved")
     remove_state("tty")
-    # A mode swapped the pane into a mode profile whose background the color-only
-    # `clear` below cannot undo (RENDER-05). apply() swaps back to the base
-    # profile when *leaving* a mode, but disengagement bypasses apply(), so a
-    # session that ends (or is cleared) mid-mode would keep its "powered off" /
-    # paused background. Swap back to base here so the pane reads as unmanaged.
-    # Harmless no-op when already on the base profile.
-    _cli("set-profile", BASE_PROFILE_NAME)
     _cli("clear")
     # Hand the name back to the interactive template (TITLE-04) *before* blanking
-    # the badge user vars, and after the profile swap that resets the name to the
-    # target profile's own (RENDER-05). Order is load-bearing: the vars are
+    # the badge user vars. Order is load-bearing: the vars are
     # everything TITLE_FORMAT interpolates, so a pane left on the managed template
     # with them blanked renders a blank tab label and blank OS window title. The
     # shell's own set-name is a one-shot at source time that skipped this pane (it
@@ -6680,8 +6572,7 @@ def cmd_release(args):
     active mode a session or skill declares while cutting or deploying a release.
     Unlike pause it does not auto-resume on the next prompt (AUTO_RESUME_MODES) —
     it persists until `status dev` / `resume` / `clear` or the session ends. The
-    tab takes a 🚀; the pane takes the deep launch-sky navy with its rocket
-    watermark."""
+    tab takes a 🚀; the status panel takes a launch-sky navy ribbon."""
     write_mode("release", _note_from(args.note))
     render()
 
@@ -6690,7 +6581,7 @@ def cmd_retro(args):
     """Enter retro mode: a post-work follow-up / retro phase a session or skill
     declares. Like release it does not auto-resume on the next prompt — it
     persists until `status dev` / `resume` / `clear` or the session ends. The tab
-    takes a 📋; the pane is left as it is."""
+    takes a 📋, and the status panel draws no ribbon."""
     write_mode("retro", _note_from(args.note))
     render()
 
@@ -6698,10 +6589,9 @@ def cmd_retro(args):
 def cmd_done(args):
     """Enter done mode: the session is complete and ready to hand off to another
     — the terminal mode a closing-out skill reaches for instead of `pause`. Like
-    retro it does not auto-resume on the next prompt. The tab takes a 🏁; the pane
-    takes the dimmest 'powered off' near-black with its checkered-flag watermark,
-    and the task slot is suppressed so the tab shows the project alone
-    (STATE-12)."""
+    retro it does not auto-resume on the next prompt. The tab takes a 🏁; the
+    status panel takes the dimmest ribbon, and the task slot is suppressed so the
+    tab shows the project alone (STATE-12)."""
     write_mode("done", _note_from(args.note))
     render()
 
@@ -8671,7 +8561,7 @@ def _doctor_checks() -> list[dict]:
             "yes" if running else "no — the adapter has nothing to paint")
         profiles = _iterm_profiles_dir()
         want = _iterm_profile_names()
-        have = {p.stem for p in profiles.glob(f"{PROFILE_NAMESPACE}-*.json")}
+        have = {p.stem for p in profiles.glob(f"{PROFILE_NAMESPACE}*.json")}
         missing = sorted(want - have)
         add("iTerm2", "profiles", _DOCTOR_OK if not missing else _DOCTOR_BAD,
             f"{len(want)} present" if not missing

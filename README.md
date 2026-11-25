@@ -28,7 +28,7 @@ Every place beacon shows state has one name, and the code, the spec, commits, an
     <td style="background:#21222c;padding:0" width="75%">
       <table width="100%" cellspacing="8" cellpadding="12">
         <tr>
-          <td style="background:#bd93f9;color:#282a36;vertical-align:middle;text-align:center;font-size:1.2em" width="80%"><b>Pane</b><br>mode background + watermark</td>
+          <td style="background:#44475a;color:#f8f8f2;vertical-align:middle;text-align:center;font-size:1.2em" width="80%"><b>Pane</b><br>left to your own profile</td>
           <td style="background:#bd93f9;color:#282a36;vertical-align:top;text-align:center;font-size:1.2em"><b>Badge</b><br>opt-in</td>
         </tr>
       </table>
@@ -37,7 +37,7 @@ Every place beacon shows state has one name, and the code, the spec, commits, an
   <tr>
     <td style="background:#21222c;padding:0">
       <table width="100%" cellspacing="8" cellpadding="12">
-        <tr><td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><b>Status panel</b><br>project · branch · task, then mode note · delivered · open CRs · open issues</td></tr>
+        <tr><td style="background:#8be9fd;color:#282a36;text-align:center;font-size:1.2em"><b>Status panel</b><br>mode ribbon, then project · branch · task, then delivered · open CRs · open issues; the mode in the footer</td></tr>
       </table>
     </td>
   </tr>
@@ -60,9 +60,8 @@ Every place beacon shows state has one name, and the code, the spec, commits, an
 | Surface | Carries | Spec | Docs |
 |:---|:---|:---|:---|
 | **Tab** | Label: `project` over `task`, led by the mode glyph or a block glyph. Color: `activity`. Line 1 doubles as the OS window title | §4.6 `TAB`, §4.8 `TITLE` | [Layout](https://chris-peterson.github.io/beacon/#/iterm/layout) |
-| **Pane** | The mode's background and watermark, by profile swap; untouched outside a mode | §4.5 `RENDER` | [Layout](https://chris-peterson.github.io/beacon/#/iterm/layout) |
 | **Badge** | Project and activity color, or one line another tool sets; off by default | §4.3 `BADGE` | [Turning the badge on](https://chris-peterson.github.io/beacon/#/iterm/layout?id=turning-the-badge-on) |
-| **Status panel** | This session's project, branch, and task, then its status lines, with buttons for the project page and the editor; drawn by a hooks module in Claude Code's band above the prompt | §4.9 `STATUSLINE` | [The status panel](https://chris-peterson.github.io/beacon/#/statusline) |
+| **Status panel** | This session's declared mode as a ribbon in the mode's hue, with its note, and as a label in Claude Code's footer; then its project, branch, and task, its status lines, and buttons for the project page and the editor; drawn by a hooks module in Claude Code's band above the prompt, in any terminal | §4.9 `STATUSLINE` | [The status panel](https://chris-peterson.github.io/beacon/#/statusline) |
 | **Sessions view** | Every session at once: `wip` / `watch` / `serve` | §3.8 `WIP` | [The sessions view](https://chris-peterson.github.io/beacon/#/cli?id=the-sessions-view), [demo](https://chris-peterson.github.io/beacon/#/demo) |
 
 Adding a surface is a spec change (§4.1), not an implementation choice.
@@ -84,7 +83,7 @@ The sessions view (`wip` / `watch` / `serve`) needs only:
 
 - Python 3: the plugin script and CLI run via the system `python3`.
 
-The per-pane painting layer (tab label and color, mode backgrounds; spec §4) additionally needs:
+The per-pane painting layer (tab label, color, and mode glyph; spec §4) additionally needs:
 
 - macOS with iTerm2: the render adapter is iTerm2-specific. `install` detects iTerm.app and skips these steps when it's absent.
 - zsh: the shell snippet relies on zsh-only features.
@@ -101,7 +100,7 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `hooks/`, `commands/` | Claude Code plugin glue, including the status panel's hooks module (`hooks/status-panel.tsx`) |
 | `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
 | `dashboard/index.html` | Self-contained reference dashboard `serve` hosts at `/` |
-| `iterm/profile.json.template` | Beacon dynamic profile: badge sizing, which the installer extends with the mode backgrounds and the switcher keys |
+| `iterm/profile.json.template` | The `beacon` dynamic profile: badge sizing, which the installer extends with the switcher keys |
 | `docs/` | Docsify site sources; the site renders the EARS-style behavioral spec (D1) from `SPEC.md` |
 
 ## Tests
@@ -151,7 +150,7 @@ sequenceDiagram
         P-->>K: rewrite the sourceable block
         K-->>Z: data dir, badge gate
     end
-    Z->>T: SetProfile=beacon-dev
+    Z->>T: SetProfile=beacon
     Z->>T: SetBadgeFormat, only when the badge is on
     Z->>T: set-name, via beacon-iterm, backgrounded
     Note over Z,T: that write polls 2s for the engaged marker and yields if Claude owns the pane

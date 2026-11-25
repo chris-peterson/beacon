@@ -155,9 +155,9 @@ cli:
       commands: [show, json, set, task, project, clear, resume, reset, render]
     - name: Modes
       about: >-
-        The phase you declare. It marks the tab with a glyph, swaps the pane
-        into that mode's background (`retro` leaves your pane alone), and
-        holds a note until you leave it.
+        The phase you declare. It marks the tab with a glyph, draws a ribbon
+        in the status panel (`retro` has its glyph alone), and holds a note
+        until you leave it.
       commands: [status, pause, release, retro, done]
     - name: Blocks
       about: >-
@@ -200,7 +200,7 @@ cli:
   notes:
     status: >-
       The mode name is the shared vocabulary across the CLI, the tab glyph, the
-      pane background, and the sessions view, so `beacon status release` and
+      status panel's ribbon, and the sessions view, so `beacon status release` and
       `beacon release` are one declaration written two ways. `dev` is how you
       leave a mode. The note is stored with the mode and cleared with it, so it
       can't outlive what it annotates.

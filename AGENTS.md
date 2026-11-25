@@ -4,7 +4,7 @@ Notes for AI coding agents working on beacon. What beacon does, requirement by r
 
 ## What beacon is
 
-A Claude Code plugin, a sourceable zsh snippet, and a standalone CLI that surface session state three ways: a terminal-agnostic **sessions view** (`wip` / `watch` / `serve`) that reads across all sessions, an **iTerm2 render adapter** that paints each pane, and the **status panel**, a hooks module drawing one session's context in Claude Code's band above the prompt. All read the same per-session state files, the single source of record; none inverts that into a daemon. See SPEC §1–2.
+A Claude Code plugin, a sourceable zsh snippet, and a standalone CLI that surface session state three ways: a terminal-agnostic **sessions view** (`wip` / `watch` / `serve`) that reads across all sessions, an **iTerm2 render adapter** that paints each pane's tab, and the **status panel**, a hooks module drawing one session's context and declared mode in Claude Code's band above the prompt. All read the same per-session state files, the single source of record; none inverts that into a daemon. See SPEC §1–2.
 
 ## Three deliverables, hard boundaries
 
@@ -31,8 +31,8 @@ The CLI must remain unaware of Claude. It's usable from CI, ad-hoc terminal scri
 
 SPEC §4.1 lists the surfaces beacon paints, and only those. Adding one is a spec change, not an implementation choice. The rules call sites have to keep:
 
-- The beacon dynamic profiles carry the switcher's key bindings over a copy of the parent profile's own (FOCUS-07): iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it. Never write the user's profile.
-- The pane background changes only by swapping into a mode profile (RENDER-05), never by an ad-hoc background OSC. A block swaps nothing; what it waits on reaches the tab as a glyph (TITLE-06).
+- The `beacon` dynamic profile carries the switcher's key bindings over a copy of the parent profile's own (FOCUS-07): iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it. Never write the user's profile.
+- beacon never paints the pane background. A mode's in-pane cue is the status panel's ribbon and footer label (STATUS-09), which render in any terminal; the only profile swap is engagement's, into `beacon` (RENDER-07). A block swaps nothing; what it waits on reaches the tab as a glyph (TITLE-06).
 - The window title and tab label go through the session name (`set-name`), not an OSC title or the profile's `Subtitle` (TITLE-05). Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
 - The switcher keys run through an absolute interpreter path baked into the profile, because a coprocess shell has no interactive `PATH`, and they print nothing on success, because a coprocess types its stdout into the pane (FOCUS-06/07).
 - The status panel's buttons resolve their command beacon-side (`open-url` / `open-code`, STATUS-08): a hooks module's process has no login `PATH` either.
@@ -47,7 +47,7 @@ The axes resolve independently, each owning its own surfaces (SPEC §1.3). No ca
 |:---|:---|:---|:---|
 | `activity` | hooks only, several times a turn | `ACTIVITY_TO_COLOR_STATE` → `COLOR_PALETTE` | tab (and badge) color |
 | `mode` | declared by a user or skill | `MODE_SPECS` | tab / window-title glyph |
-| | | `MODE_SPECS` | dynamic profile + pane background + watermark |
+| | | `MODE_SPECS` | status panel ribbon hue + footer label (STATUS-09) |
 | `permission` | hooks only, from the payload's `permission_mode` | `_is_planning` | the sessions view only, **no terminal surface** (PERM-02) |
 
 The indirection through a logical name (`idle` / `working` / `blocked`) is the contract, so the palette retunes in one place. Don't reintroduce a precedence rule between mode and activity; the design is that they don't need one.
@@ -82,7 +82,7 @@ The layout is SPEC §6.2, and each field is defined by the requirement that writ
 No hook or render runs `defaults write com.googlecode.iterm2`. iTerm2 caches prefs in memory and restores them on quit, so the writers that exist (`configure --write` / `--defer`, CLI-18 and CLI-22; `refresh-iterm-profiles --remigrate`, CLI-19) write only while iTerm2 is down. Never call them from a hook or render: the restart closes every window.
 
 - Decide whether iTerm2 is running through Apple Events, never `pgrep -x iTerm2`, which never matches the running app (macOS matches `-x` against the full executable path).
-- Profiles load from `DynamicProfiles/`, which iTerm2 reloads live. Sessions switch into them at runtime with `set-profile`; `MODE_SPECS` maps mode to profile so call sites never name one.
+- Profiles load from `DynamicProfiles/`, which iTerm2 reloads live. Sessions switch into the one beacon writes, `beacon`, at runtime with `set-profile`; no mode has a profile of its own.
 - A stale saved copy shadowing a dynamic profile is repaired by re-enabling iTerm2's own migration (CLI-19). **Don't** write `New Bookmarks` to fix it.
 
 A new iTerm2 release can rename a key or move a default and break a surface silently. `just iterm-release` reports the releases not yet read; the `iterm-release` project skill does the read.
@@ -138,7 +138,6 @@ what picks the level.
 | Print what the status panel draws (head row + status lines, as JSON) | `python3 scripts/beacon status-panel` |
 | Reload shell integration | `exec zsh` |
 | Smoke test the CLI | `python3 bin/beacon-iterm <subcommand>` (writes OSC to `/dev/tty`) |
-| Regenerate the mode watermarks after editing `iterm/marks.py` | `python3 iterm/make-bg.py [<mode>...]` |
 | Run unit tests | `just test` (loads `scripts/beacon` via importlib, mocks `_cli`) |
 | Run the status panel hooks module's tests | `claude plugin test .` (also the last step of `just test`) |
 | Type-check the status panel | `npx -p typescript@5.6.3 tsc -p tsconfig.json` (types land in `.claude-plugin/types/` once Claude Code loads the hooks module) |
@@ -150,7 +149,7 @@ what picks the level.
 `just trial-on` points every installed entry point at this working copy, and
 `just trial-off` points them back at the installed build. beacon pins three of
 them to a plugin root at install time (the `beacon` on PATH, the `.zshrc`
-source line, and the script path baked into each iTerm2 profile's switcher keys), and
+source line, and the script path baked into the iTerm2 profile's switcher keys), and
 `install` is what rewrites all three from its own root, so both recipes run it
 rather than moving surfaces by hand (CMD-08a). Run `exec zsh` after either.
 

@@ -4,11 +4,24 @@ beacon draws a panel in the band Claude Code keeps above its prompt: which sessi
 
 The panel is a hooks module that loads with the plugin, so there's nothing to install or turn on. It needs Claude Code 2.1.287 or later, the first to load hooks modules. Before 3.0 these lines were Claude Code's footer row (`statusLine`); an install takes back the `statusLine` beacon wrote, and leaves one you set yourself alone.
 
+## The mode ribbon
+
+When you've declared a mode, the panel opens with a bar three rows tall in that mode's hue: its glyph and name in bold, then your note. A paused session adds *type to resume* at the end, since your next prompt is what lifts it.
+
+| Mode | Ribbon | Footer |
+|:---|:---|:---|
+| `pause` | muted purple, with *type to resume* | `paused` |
+| `release` | launch-sky navy | `releasing` |
+| `done` | near-black | `done` |
+| `retro` | none: its glyph leads the head row and its note takes the first status line | `retro` |
+
+The mode's name also joins the labels at the right of Claude Code's footer (beside its own, like `memory paused`), so a collapsed panel still says it. The ribbon is how beacon marks a mode inside the pane in any terminal; through 2.x, iTerm2 repainted the whole pane instead. Its hues and the contrast they keep are on [the palette](/palette?id=modes-the-tab-glyph-and-the-ribbon).
+
 ## The head row
 
 The first row names the session:
 
-- the mode's glyph, when you've declared one (`⏸`, `🚀`, …)
+- the mode's glyph, when you've declared a mode with no ribbon (`📋`)
 - the **project**, in bold
 - the **branch**, led by `↑` / `↓` counts when it's ahead of or behind its upstream, and colored by how it sits against it: slate for the repo's default branch, cyan in step, yellow ahead or behind, orange with no upstream. A branch with an upstream links to its page on the forge; one without has no page to open, so it's plain text.
 - the **task**, the label `beacon task` or `/rename` sets
@@ -31,12 +44,12 @@ Under the head row, one line per kind of thing, and a kind with nothing in it ta
 | Line | Shows |
 |:---|:---|
 | review | what a review open for you is about (a checkout or a CR), shown alone in place of the other lines until the review is released |
-| mode note | why the session is paused, in release, and so on, led by the mode's glyph |
+| mode note | for `retro`, which has no ribbon: why the session is in it, led by its glyph |
 | delivered | what merged, closed, or released during this session, struck through, in green |
 | open CRs | each with its title and the issues it closes |
 | open issues | the ones no open CR on the row closes yet |
 
-![A paused session: the note "waiting on design review before the toggle lands", then the delivered line with a struck-through !30 merged and v3.1.0 released, then the open CR !32 dark mode toggle.](images/statusline-paused.png)
+![A paused session: the purple ribbon reading "paused · waiting on design review before the toggle lands" with "type to resume" at its right, then the delivered line with a struck-through !30 merged and v3.1.0 released, then the open CR !32 dark mode toggle.](images/statusline-paused.png)
 
 A CR moves to the delivered line when it merges, whether that happened through `/anchor:merge`, in the forge's web UI, or from another session. beacon reads each CR's state from GitHub or GitLab in the background as the session works, at most every ten minutes per CR, so the move can trail the merge by that much. An issue or CR closed without merging keeps being read, so if it's reopened it goes back to the open lines.
 

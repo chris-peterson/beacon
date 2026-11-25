@@ -138,7 +138,7 @@ The sessions view reads session state and paints no pane, so it runs anywhere Py
 |:---|:---|
 | Sessions view (`wip`, `watch`, `serve`, and the browser dashboard) | Any OS, any terminal (needs Python 3) |
 | Status panel above the prompt | Any OS, any terminal (needs Claude Code 2.1.287 or later) |
-| Per-pane painting (tab label and color, mode backgrounds) | macOS + iTerm2 |
+| Per-pane painting (tab label, color, and mode glyph) | macOS + iTerm2 |
 | Switch sessions with Cmd+Option+] / [ / / | macOS + iTerm2 |
 | Click a dashboard card to raise its window | macOS + iTerm2 |
 | Always-on `serve` service | launchd (macOS), systemd (Linux); run `serve` yourself on Windows |
@@ -188,9 +188,9 @@ The default is closed because the payload carries each session's most recent tur
 
 ## In iTerm2: per-pane painting
 
-On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared, and, in a mode, the **pane background**. The [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
+On macOS with iTerm2, beacon also paints each session's state onto its own pane: the **tab**, labeled with the project over its task, colored by what Claude is doing and marked with a glyph for the phase you declared. Inside the pane, the [status panel](/statusline) shows the declared mode as a ribbon in any terminal; the pane background stays your own profile's. The [sessions view](#sessions-view-any-terminal) gathers every session into one browser view; per-pane painting puts the state *on the pane*, so a glance across split panes or a row of tabs tells you which session needs you.
 
-**Cmd+Option+]** raises the next other session, the ones waiting on you first, and **Cmd+Option+[** the previous one. **Cmd+Option+/** opens a list to pick from. They're bound in beacon's iTerm2 profiles, so they work in any beacon pane, with or without Claude running in it.
+**Cmd+Option+]** raises the next other session, the ones waiting on you first, and **Cmd+Option+[** the previous one. **Cmd+Option+/** opens a list to pick from. They're bound in beacon's iTerm2 profile, so they work in any beacon pane, with or without Claude running in it.
 
 See **[Layout](/iterm/layout)** for the anatomy and the tab states.
 
@@ -209,7 +209,7 @@ Then, inside a Claude Code session, bootstrap everything around the plugin:
 
 The commands above install the Claude plugin (hooks, slash commands, ambient rules, scripts). These populate session state on any platform, so the sessions view works as soon as the plugin is installed. `/beacon:install-beacon` then bootstraps the `beacon` CLI wrapper on `$PATH` and zsh tab completion. The [status panel](/statusline) needs no install step: it loads with the plugin. An install from beacon 2.x also takes back the `statusLine` it wrote to `~/.claude/settings.json`, since the panel now draws those lines.
 
-On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the iTerm2 dynamic profiles (the base profile and one per mode cycle). iTerm2 reloads the profile live, so every step completes in place: no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
+On macOS with iTerm2, `install` additionally sets up the per-pane painting: the shell `source` line and the `beacon` iTerm2 dynamic profile, removing the per-mode profiles a 2.x install wrote. iTerm2 reloads the profile live, so every step completes in place: no restart, and no prefs that need iTerm2 quit. Off iTerm2 (Linux, or a macOS terminal without iTerm.app), those steps are skipped automatically and `install` points you at the sessions view.
 
 To keep `serve` running for an external dashboard, install the always-on service separately (see [Always-on serve service](#always-on-serve-service-optional)).
 
@@ -225,8 +225,8 @@ beacon <TAB>        # subcommands with descriptions
 Then run `claude` in that tab and type any prompt:
 
 - the tab shows Claude's status: orange while Claude is working, blue with a ringed dot when it's waiting for you, and green when the turn ends, turning gray once you've typed. Under the legacy [tab look](/iterm/layout?id=tab-look) the tab is amber while Claude works, gray when the turn ends, and red when Claude is waiting for you
-- `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and the status panel; sending the next prompt clears both
-- `beacon release "v2.5.0"` marks the tab with a `🚀` and swaps the pane to its launch-sky background; the tab *color* keeps reporting what Claude is doing, so a release that needs you still shows it
+- `/beacon:pause "checking lunch options"` parks the session and puts your note on line 2 of the tab, where the task would be, plus the dashboard and a purple ribbon atop the status panel; sending the next prompt clears both
+- `beacon release "v2.5.0"` marks the tab with a `🚀` and puts a launch-sky ribbon atop the status panel; the tab *color* keeps reporting what Claude is doing, so a release that needs you still shows it
 
 ## Usage
 
@@ -299,7 +299,7 @@ The label and mode commands paint the pane's tab. Color reports what Claude is d
     <span class="cf-arrow">→</span>
     <span class="cf-out">
       <span class="cf-tab ready">⏸ widgets<span class="t">perms</span></span>
-      <span class="cf-cap">parked: a ⏸ on the tab, the pane dims to purple</span>
+      <span class="cf-cap">parked: a ⏸ on the tab, a purple ribbon in the panel</span>
     </span>
   </div>
   <div class="cf-row">

@@ -8,8 +8,8 @@ beacon 3.0 draws one panel in Claude Code's band above the prompt, in every
 session and any terminal, with nothing to turn on. It shows the session's
 project, its branch (colored by how it sits against its upstream, marked
 ahead or behind, and a link to its page when it has one), its task, and the
-lines the status line used to carry: the mode's note, what shipped, and the
-open change requests and issues. Two buttons at the end of the top row,
+lines the status line used to carry: what shipped, and the open change
+requests and issues. Two buttons at the end of the top row,
 named for what they open (`↖ github`, `code ↗`), open the project page and the
 session's directory in your editor; `w` and `c` press them with the band
 focused. It shows this session only. It needs Claude Code 2.1.287 or later.
@@ -30,6 +30,26 @@ What it replaces:
 
 Run `beacon install` once after updating.
 
+### Modes show in the panel, and leave your pane alone (breaking)
+
+A declared mode now shows in the status panel in any terminal, not by
+repainting the pane in iTerm2. `pause`, `release`, and `done` open the panel
+with a bar in the mode's own hue carrying its glyph, its name, and your note,
+and a paused session's bar says *type to resume*. The mode's name also joins
+the labels at the right of Claude Code's footer, so it still shows with the
+panel collapsed. `retro` has no bar: its glyph leads the panel's top row and
+its note takes the first line, as before. The bar's text meets WCAG AA on
+every hue.
+
+- **Panes keep your background in every mode.** The purple pause pane, the
+  navy release pane, the dark done pane, and their watermarks are gone. The
+  tab still leads with the mode's glyph.
+- **The iTerm2 profile is now named `beacon`**, and it's the only one beacon
+  writes. `beacon install` removes `beacon-dev` and the per-mode profiles,
+  and an open pane moves to `beacon` at its next update, with nothing for you
+  to do. A setting or script that named `beacon-dev` needs the new name.
+- **Dashboard mode cards take the bar's hue**, without a watermark.
+
 ### Switch to the session that needs you
 
 Command-Option-] raises the next beacon session and Command-Option-[ the
@@ -40,7 +60,7 @@ can't be raised, and `/beacon switch` shows the same list above the prompt in
 a Claude Code session. `beacon switch` does the same from a shell, and
 `beacon focus <hash>` raises one session by its hash, as a click on a
 dashboard row does. Your own key bindings come along into the beacon
-profiles, so rerun `beacon refresh-iterm-profiles` after changing them.
+profile, so rerun `beacon refresh-iterm-profiles` after changing them.
 
 ### Status line colors meet WCAG AA
 

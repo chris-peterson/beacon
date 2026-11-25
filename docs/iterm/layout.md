@@ -1,6 +1,6 @@
 # Layout
 
-On macOS with iTerm2, beacon paints each session's state onto its own pane: the tab's label and color, and a background for the mode cycles. Where the [dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
+On macOS with iTerm2, beacon paints each session's state onto its own pane's tab: its label, its color, and the glyph of the mode you declared. Where the [dashboard](/demo) gathers every session into one browser view, per-pane painting works the other way: it puts the state *on the pane itself*, so a glance across a wall of split panes or a row of tabs tells you which session needs you without focusing any of them or opening the dashboard.
 
 These surfaces are an iTerm2 render adapter, so they're macOS + iTerm2 only. On any other terminal beacon skips them and you use the [dashboard](/demo) instead, which shows the same state.
 
@@ -97,8 +97,8 @@ Each surface beacon renders through has a number here, and [Settings by surface]
   <ol class="pf-legend">
     <li><span><b>Tab</b>: the project, with the task indented under it, colored by the session's <em>activity</em> and led by the <em>mode</em>'s glyph when one is declared, or by <code>❓</code>, <code>🔒</code>, or <code>👀</code> while it's blocked on a question, a permission, or a review (see <a href="#/palette?id=tab-only-marks-the-glyph-and-nothing-else">tab-only marks</a>). Two slots, two axes, so a releasing session that needs you shows both at once. Line 1 is also the single-line OS window title, so a window you <code>/rename</code> keeps its project context in Mission Control and the window switcher.</span></li>
     <li><span><b>Per-pane title bar</b>: iTerm2's bar across the top of a pane, with the pane's close button and menu. Off by default, because it shows the session name on one line, without the task line; <a href="#/iterm/layout?id=per-pane-title-bars">Per-pane title bars</a> turns it on.</span></li>
-    <li><span><b>Pane</b>: left to Claude Code and your profile, except while a mode is declared, when it takes the mode's background color and a faint watermark.</span></li>
-    <li><span><b>Status panel</b>: in Claude Code's band above the prompt, beacon names the session (project, branch, task) and lists the mode's note and the session's PRs and issues. It isn't iTerm2's, so it draws in any terminal; <a href="#/statusline">The status panel</a> covers it.</span></li>
+    <li><span><b>Pane</b>: left to Claude Code and your profile, in every mode. Through 2.x a mode repainted it; the status panel's ribbon carries that now.</span></li>
+    <li><span><b>Status panel</b>: in Claude Code's band above the prompt, beacon shows the declared mode as a ribbon in its own hue, names the session (project, branch, task), and lists the session's PRs and issues. It isn't iTerm2's, so it draws in any terminal; <a href="#/statusline">The status panel</a> covers it.</span></li>
   </ol>
 </div>
 
@@ -222,7 +222,7 @@ Every pane gets the bar, including the only pane in a tab, so every pane has its
 
 ## The status panel
 
-Claude Code keeps a band above its prompt that a plugin's hooks module can draw in. beacon's status panel draws there: the session's project, branch, and task, then the mode's note and the session's PRs and issues, with buttons for the project page and your editor. It's Claude Code's surface rather than iTerm2's, so it works in **any** terminal, and it needs no profile or setting.
+Claude Code keeps a band above its prompt that a plugin's hooks module can draw in. beacon's status panel draws there: the declared mode as a ribbon with its note, the session's project, branch, and task, then its PRs and issues, with buttons for the project page and your editor. It's Claude Code's surface rather than iTerm2's, so it works in **any** terminal, and it needs no profile or setting.
 
 What's on it, how to read the merge order, and how work gets onto it are on the [status panel](/statusline) page.
 
@@ -230,7 +230,7 @@ Whether the links are clickable is your terminal's call. iTerm2 renders them, an
 
 ## Switching sessions
 
-beacon's profiles bind three keys to `beacon switch`, so they work in any beacon pane, with or without Claude running in it:
+beacon's profile binds three keys to `beacon switch`, so they work in any beacon pane, with or without Claude running in it:
 
 | Keys | Raises |
 |:---|:---|
@@ -240,13 +240,13 @@ beacon's profiles bind three keys to `beacon switch`, so they work in any beacon
 
 Presses within 30 seconds of each other walk the same list, so it doesn't reshuffle while sessions keep working. A press whose session can't be raised opens the list instead of guessing again. Inside a Claude Code session, `/beacon switch` shows the same list in the band above the prompt.
 
-iTerm2 replaces a profile's key mappings rather than adding to its parent's, so beacon copies your `Default` profile's own mappings into its profiles alongside these three. After you add a mapping to `Default`, run `beacon refresh-iterm-profiles` to bring it into beacon's panes.
+iTerm2 replaces a profile's key mappings rather than adding to its parent's, so beacon copies your `Default` profile's own mappings into its profile alongside these three. After you add a mapping to `Default`, run `beacon refresh-iterm-profiles` to bring it into beacon's panes.
 
 ## What beacon doesn't paint
 
-beacon paints the tab's color and label and (in a mode cycle only) the pane background. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background outside a mode. Those are your colors, not beacon's: its profiles inherit from the iTerm2 profile named `Default`. The behavior it does change, such as where a split opens, is listed under [Settings by surface](#settings-by-surface).
+beacon paints the tab's color and label. Everything else belongs to Claude Code, your own profile, or other tools, and beacon leaves it alone: the terminal foreground, the cursor color and shape, the tab title, and the pane background, in every mode. Those are your colors, not beacon's: its profile inherits from the iTerm2 profile named `Default`. The behavior it does change, such as where a split opens, is listed under [Settings by surface](#settings-by-surface).
 
-The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The base profile turns off iTerm2's honoring of terminal-set titles to make that stick, so Claude Code's own title doesn't show.
+The window title is the one surface it *did* take over: beacon sets the session name, so a `/rename`d Claude session keeps its project in Mission Control, ⌘\`, and the Dock. The `beacon` profile turns off iTerm2's honoring of terminal-set titles to make that stick, so Claude Code's own title doesn't show.
 
 ## iTerm2's Claude Code integration
 
@@ -263,7 +263,7 @@ If it's installed, **iTerm2 → Uninstall Claude Code Integration** removes its 
 
 ## Recommended layout
 
-beacon paints per-*profile* surfaces it fully controls (colors, mode backgrounds, the switcher keys). The *shape* of the tab strip those colors ride on (where the tabs sit, how big they are) lives in iTerm2's **app-wide preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them. beacon writes them to iTerm2's preferences instead, and only while iTerm2 is down, as described below.
+beacon paints per-*profile* surfaces it fully controls (colors and the switcher keys). The *shape* of the tab strip those colors ride on (where the tabs sit, how big they are) lives in iTerm2's **app-wide preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them. beacon writes them to iTerm2's preferences instead, and only while iTerm2 is down, as described below.
 
 The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable. [CLI-18](/spec) lists each one: its `defaults` key, the value to set, the pane of Preferences that holds it, and why it matters.
 
@@ -289,7 +289,7 @@ That same in-memory copy is why the audit adds a caveat while iTerm2 is running:
 beacon layout --write --keys CustomTabBarFontSize
 ```
 
-`beacon layout` is app-wide iTerm2 preferences. Its neighbor `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profiles (badge sizing, mode backgrounds, and the switcher keys), which iTerm2 reloads live, so that one needs no restart. Reach for it after adding a key mapping to your `Default` profile.
+`beacon layout` is app-wide iTerm2 preferences. Its neighbor `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profile (badge sizing and the switcher keys), which iTerm2 reloads live, so that one needs no restart. Reach for it after adding a key mapping to your `Default` profile.
 
 One case needs a restart anyway. iTerm2 3.7.0 decides a profile is dynamic by a key its loader writes, where 3.6.x used a `Dynamic` tag, so profiles saved before that upgrade read as ordinary saved profiles that already own beacon's Guids, and the loader skips the files they came from. `beacon doctor` reports it as `profiles live`, and re-rendering can't reach it.
 
@@ -338,7 +338,6 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 
 | Setting | beacon sets | Why | Can you change it? |
 |---|---|---|---|
-| Background color and image, in the mode profiles only (Profiles → Colors, Window) | a color and a faint watermark for `pause`, `release`, and `done` | a declared mode reads across the whole focused pane, not only in the tab's glyph | No |
 | Working Directory for New Split Panes (Profiles → General → Advanced Configuration) | Reuse previous session's directory | a split is usually more work in the same project; new tabs and windows follow your profile | No |
 
 ### ④ Status panel
@@ -346,6 +345,7 @@ Every setting beacon changes, grouped by the surface it shapes in the [anatomy](
 | Setting | beacon sets | Why | Can you change it? |
 |---|---|---|---|
 | `statusLine` in `~/.claude/settings.json` | removes one that runs `beacon statusline` | beacon 2.x wrote it, and the panel draws those lines now, so the row would repeat them | Yes: a `statusLine` that runs anything else is yours, and stays |
+| The mode ribbon and footer label | a bar in the mode's hue atop the panel for `pause`, `release`, and `done`, and the mode's name in Claude Code's footer | a declared mode reads in the focused pane, in any terminal, without repainting it | No |
 | `buttons` in your beacon config | `code` for the editor, the `origin` remote's page for the forge | the actions a session needs most: its repo, and its directory in your editor | Yes: `buttons.code.cmd` and `buttons.web.cmd` ([The buttons](/statusline?id=the-buttons)) |
 
 ### Alerts, keys, and the shell
@@ -354,11 +354,11 @@ These shape no surface of their own.
 
 | Setting | beacon sets | Why | Can you change it? |
 |---|---|---|---|
-| Notification Center alerts and escape sequence-generated alerts (Profiles → Terminal) | whatever your own profile sets | the tab color already shows the permission and idle prompts these announce; whether a second signal helps is yours to decide | Yes: `beacon config iterm-notifications off` turns both off in every beacon profile, `on` turns them on, `reset` hands them back to your profile |
+| Notification Center alerts and escape sequence-generated alerts (Profiles → Terminal) | whatever your own profile sets | the tab color already shows the permission and idle prompts these announce; whether a second signal helps is yours to decide | Yes: `beacon config iterm-notifications off` turns both off in the beacon profile, `on` turns them on, `reset` hands them back to your profile |
 | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
-| Key Mappings (Profiles → Keys), in the beacon profiles | Cmd+Option+] / [ / / run `beacon switch`, beside a copy of your `Default` profile's own mappings | there's no other way for a key to reach beacon; iTerm2 takes Command chords before Claude Code sees them | No; a mapping you add to `Default` comes along on `beacon refresh-iterm-profiles` ([Switching sessions](#switching-sessions)) |
+| Key Mappings (Profiles → Keys), in the beacon profile | Cmd+Option+] / [ / / run `beacon switch`, beside a copy of your `Default` profile's own mappings | there's no other way for a key to reach beacon; iTerm2 takes Command chords before Claude Code sees them | No; a mapping you add to `Default` comes along on `beacon refresh-iterm-profiles` ([Switching sessions](#switching-sessions)) |
 | `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get the beacon profile and their window title from it | Yes: remove the line, and plain shell panes lose them |
 
 ## Setup
 
-Per-pane painting is wired up by `beacon install` on macOS + iTerm2: it writes the dynamic profiles (the base profile and one per mode cycle), adds the shell `source` line, and switches new sessions into the beacon profile. iTerm2 reloads the profile live, so there's no restart. It closes by auditing the [recommended layout](#recommended-layout) and, when an app-wide setting differs, applying it with `beacon layout --write`, which asks whether to restart iTerm2 now or at your next quit. Off iTerm2 these steps are skipped automatically. See [Install](/?id=install).
+Per-pane painting is wired up by `beacon install` on macOS + iTerm2: it writes the `beacon` dynamic profile (removing the per-mode profiles a 2.x install wrote), adds the shell `source` line, and switches new sessions into the beacon profile. iTerm2 reloads the profile live, so there's no restart. It closes by auditing the [recommended layout](#recommended-layout) and, when an app-wide setting differs, applying it with `beacon layout --write`, which asks whether to restart iTerm2 now or at your next quit. Off iTerm2 these steps are skipped automatically. See [Install](/?id=install).

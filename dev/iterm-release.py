@@ -69,8 +69,6 @@ def _profile_keys() -> list[str]:
     keys = set()
     for profile in template.get("Profiles", []):
         keys.update(profile)
-    # The mode profiles add these to the template at render time (RENDER-05).
-    keys.update({"Background Image Location", "Background Image Mode"})
     return sorted(keys)
 
 
@@ -82,7 +80,7 @@ def surfaces() -> list[dict]:
          "match": "prefkey", "symbols": _layout_keys()},
         {"name": "Dynamic profile keys",
          "why": "what beacon writes into each profile it installs "
-                "(STATUS-BAR-01, RENDER-05, TITLE-05)",
+                "(RENDER-06, FOCUS-07, TITLE-05)",
          "match": "quoted", "symbols": _profile_keys()},
         {"name": "OSC controls",
          "why": "the escape sequences every painted surface goes through",
