@@ -13,6 +13,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sys
 import tempfile
 import threading
@@ -979,6 +980,89 @@ class FocusTest(unittest.TestCase):
         self.assertIn("https://x.example", origins)
 
 
+class PanelRoutesTest(_WipBase):
+    """WIP-22 / WIP-23: the pop-out's tiles read a session's status panel by its
+    hash, and press its web and code buttons through serve."""
+
+    def _start_server(self):
+        server = self.beacon.wip_http_server(0)
+        self.addCleanup(server.server_close)
+        threading.Thread(target=server.handle_request, daemon=True).start()
+        return server.server_address[1]
+
+    def test_the_panel_reads_the_named_sessions_bucket(self):
+        anchor = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, anchor, True)
+        self._write("abcdef01", "anchor.cwd", anchor)
+        self._write("abcdef01", "anchor.project", "widgets")
+        self._write("abcdef01", "mode", json.dumps({"name": "pause", "note": "back at 2"}))
+        with mock.patch.object(self.beacon, "_detect_branch_info",
+                               return_value=("fix", "untracked", "", "feature")):
+            panel = self.beacon._panel_for("abcdef01")
+        self.assertEqual(panel["project"], "widgets")
+        self.assertEqual(panel["anchor_cwd"], anchor)
+        self.assertEqual((panel["mode"]["label"], panel["mode"]["note"]), ("paused", "back at 2"))
+        self.assertIsNone(getattr(self.beacon._PANE, "hash", None),
+                          "the request thread is handed back unscoped")
+
+    def test_a_session_with_no_anchor_has_no_panel(self):
+        self._write("abcdef01", "anchor.project", "widgets")
+        self.assertIsNone(self.beacon._panel_for("abcdef01"))
+        self.assertIsNone(self.beacon._panel_for("../etc"))
+
+    def test_the_route_serves_the_panel(self):
+        port = self._start_server()
+        with mock.patch.object(self.beacon, "_panel_for",
+                               return_value={"project": "widgets", "lines": []}) as m:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/panel/abcdef01", timeout=3) as r:
+                self.assertEqual(json.loads(r.read())["project"], "widgets")
+        m.assert_called_once_with("abcdef01")
+
+    def test_open_runs_the_buttons_verb_in_the_sessions_anchor(self):
+        anchor = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, anchor, True)
+        self._write("abcdef01", "anchor.cwd", anchor)
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               return_value=mock.Mock(returncode=0, stdout="", stderr="")) as run:
+            self.assertEqual(self.beacon._open_for_session("abcdef01", "code"), (True, "opened"))
+            self.beacon._open_for_session("abcdef01", "web")
+        verbs = [c.args[0][-2:] for c in run.call_args_list]
+        self.assertEqual(verbs, [["open-code", anchor], ["open-url", anchor]])
+
+    def test_open_takes_no_command_or_path_from_the_request(self):
+        self._write("abcdef01", "anchor.cwd", tempfile.gettempdir())
+        with mock.patch.object(self.beacon.subprocess, "run") as run:
+            self.assertEqual(self.beacon._open_for_session("abcdef01", "rm -rf /"), (False, "bad target"))
+            self.assertEqual(self.beacon._open_for_session("../x", "code"), (False, "bad hash"))
+            self.assertFalse(self.beacon._open_for_session("abcdef02", "code")[0])
+        run.assert_not_called()
+
+    def test_open_reports_the_verbs_own_failure(self):
+        self._write("abcdef01", "anchor.cwd", tempfile.gettempdir())
+        with mock.patch.object(self.beacon.subprocess, "run",
+                               return_value=mock.Mock(returncode=1, stdout="", stderr="editor not found: 'idea'")):
+            self.assertEqual(self.beacon._open_for_session("abcdef01", "code"),
+                             (False, "editor not found: 'idea'"))
+
+    def test_open_route_is_gated_like_focus(self):
+        port = self._start_server()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/open", method="POST",
+                                     data=json.dumps({"hash": "abcdef01", "target": "code"}).encode())
+        req.add_header("Origin", "https://evil.example")
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            urllib.request.urlopen(req, timeout=3)
+        self.assertEqual(cm.exception.code, 403)
+
+    def test_open_route_presses_the_button(self):
+        port = self._start_server()
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/open", method="POST",
+                                     data=json.dumps({"hash": "abcdef01", "target": "web"}).encode())
+        with mock.patch.object(self.beacon, "_open_for_session", return_value=(True, "opened")) as m:
+            with urllib.request.urlopen(req, timeout=3) as r:
+                self.assertTrue(json.loads(r.read())["opened"])
+        m.assert_called_once_with("abcdef01", "web")
+
+
 class ReadRouteAccessTest(_WipBase):
     """WIP-18 over the read half. The payload and /turn carry transcript-derived
     turn text, so the reads are gated on the same Host + Origin model the mutating
@@ -993,7 +1077,7 @@ class ReadRouteAccessTest(_WipBase):
 
     # Every read route, so a later route addition that skips the gate fails here
     # rather than shipping open.
-    ROUTES = ("/", "/wip.json", "/turn/abcdef01", "/icon/abcdef01", "/mode-bg/pause")
+    ROUTES = ("/", "/wip.json", "/turn/abcdef01", "/icon/abcdef01", "/panel/abcdef01")
 
     def _get(self, path, origin=None, host=None):
         server = self.beacon.wip_http_server(0)

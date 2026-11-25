@@ -50,12 +50,28 @@ HOME = Path.home()
 #   error: the API error an `error` session's turn stopped on
 #   mode + note: a declared phase and its annotation (omit for the dev cycle)
 #   route: (slug, group) → a [slug] chip; None means unrouted.
+#   branch + refs: what the pop-out tile's status panel shows (WIP-22): the
+#     branch on its head row, and each (url, link record) as its CR / issue lines.
+FORGE = "https://gitlab.example.com/meridian"
+
+
+def _mr(project: str, n: int) -> str:
+    return f"{FORGE}/{project}/-/merge_requests/{n}"
+
+
+def _issue(project: str, n: int) -> str:
+    return f"{FORGE}/{project}/-/issues/{n}"
+
+
 SESSIONS = [
     dict(project="checkout-api", task="idempotency keys for refunds", activity="working",
          age=3, route=("checkout", "payments"),
          turn=("agent", "Added the idempotency-key column and a unique index; wiring the refund handler to look it up before charging")),
     dict(project="checkout-api", task="rebase on main", activity="blocked", ask="question",
-         age=95, route=("checkout", "payments"),
+         age=95, route=("checkout", "payments"), branch="refund-idempotency",
+         refs=[(_issue("checkout-api", 412), {}),
+               (_mr("checkout-api", 88), dict(title="idempotency keys for refunds",
+                                              closes=[_issue("checkout-api", 412)]))],
          turn=("agent", "Hit a conflict in refund_handler.py between your idempotency change and main's retry backoff — which side wins?")),
     dict(project="ledger-svc", task="double-entry migration", activity="working",
          age=240, route=("ledger", "payments"),
@@ -71,13 +87,17 @@ SESSIONS = [
          turn=("agent", "Reindexing batch 14 of 60 — throughput is holding at ~8k docs/s")),
     dict(project="mobile-ios", task="deep-link QA", activity="idle", age=2400),
     dict(project="data-pipeline", task="backfill stuck on warehouse quota",
-         activity="blocked", ask="question", age=3600,
+         activity="blocked", ask="question", age=3600, branch="warehouse-backfill",
+         refs=[(_issue("data-pipeline", 57), {})],
          turn=("human", "can you bump the slot reservation or do we need to wait?")),
     # Shipping *and* blocked on you — the state a single merged field could not
     # represent. The card keeps its release treatment and turns its dot red.
     dict(project="auth-svc", task="passkey rollout", activity="blocked",
          mode="release", note="v4.2.0 — canary at 5%",
-         age=300, route=("auth", "platform"),
+         age=300, route=("auth", "platform"), branch="main",
+         refs=[(_mr("auth-svc", 214), dict(title="passkey enrollment",
+                                           state="merged", landed_at="2026-01-05T11:30:00+00:00")),
+               (_mr("auth-svc", 219), dict(title="ramp passkeys to 25%"))],
          turn=("agent", "Canary is green at 5%; ramping to 25% needs your sign-off")),
     dict(project="infra-terraform", task="vpc peering to the new region",
          activity="idle", mode="pause", age=18000,
@@ -168,7 +188,8 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
         if s["activity"] == "blocked":  # blocked-only markers: ring + clickable handle
             _write(state / f"{sh}.pending-attention", s.get("ask", "permission"), mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
-        sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
+        sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"],
+                         "branch": s.get("branch"), "refs": s.get("refs", [])})
 
     for s in SESSIONS:  # routes are matched by project name; in-file slug is the chip
         if s.get("route"):
@@ -205,6 +226,26 @@ def _load_beacon(data_dir: Path, tack_home: Path):
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+def seed_refs(beacon, sessions: list[dict]) -> None:
+    """Record each session's CRs and issues the way the hooks would, so the
+    pop-out's tiles have a stack to show. The demo has no tack route to read."""
+    from unittest import mock
+    with mock.patch.object(beacon, "_tack_landed_urls", return_value=set()):
+        for s in sessions:
+            if not s["refs"]:
+                continue
+            beacon._PANE.hash = s["sh"]
+            try:
+                beacon.write_state("session_started_at", "2026-01-05T09:00:00+00:00")
+                for url, record in s["refs"]:
+                    beacon._record_deliverable(beacon._deliverable_suffix(url), url,
+                                               beacon._project_id_from_url(url))
+                    if record:
+                        beacon._update_links(url, **record)
+            finally:
+                beacon._PANE.hash = None
 
 
 def make_server(port: int, state: Path, beacon, sessions: list[dict]):
@@ -245,6 +286,20 @@ def make_server(port: int, state: Path, beacon, sessions: list[dict]):
                 self._send(200, dash, "text/html; charset=utf-8")
             elif path == "/wip.json":
                 self._send(200, json.dumps(beacon.collect_sessions(None)))
+            elif path.startswith("/panel/"):
+                sh = path[len("/panel/"):]
+                panel = beacon._panel_for(sh)
+                if panel is None:
+                    self._send(404, json.dumps({"error": "not found"}))
+                    return
+                # The demo's checkouts don't exist, so the git half of the head row
+                # comes from the seed instead.
+                branch = (by_hash.get(sh) or {}).get("branch")
+                if branch:
+                    panel.update(branch=branch, branch_slot="default" if branch == "main" else "clean",
+                                 branch_url=f"{FORGE}/{panel['project']}/-/tree/{branch}")
+                panel["forge"] = "gitlab"
+                self._send(200, json.dumps(panel))
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
@@ -265,6 +320,8 @@ def make_server(port: int, state: Path, beacon, sessions: list[dict]):
                     if sh in by_hash:
                         by_hash[sh]["status"] = "working"
                 self._send(200, json.dumps({"focused": bool(sh), "detail": "returned to agent"}))
+            elif path == "/open":
+                self._send(200, json.dumps({"opened": bool(sh), "detail": "demo"}))
             elif path == "/forget":
                 files = 0
                 if sh:
@@ -301,6 +358,7 @@ def main() -> None:
         return
 
     beacon = _load_beacon(data_dir, tack_home)
+    seed_refs(beacon, sessions)
     server = make_server(args.port, data_dir / "state", beacon, sessions)
     threading.Thread(target=simulate, args=(data_dir / "state", sessions, args.interval),
                      daemon=True).start()

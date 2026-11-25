@@ -50,6 +50,15 @@ every hue.
   to do. A setting or script that named `beacon-dev` needs the new name.
 - **Dashboard mode cards take the bar's hue**, without a watermark.
 
+### The pop-out shows each session's status panel
+
+The dashboard's pop-out, the small always-on-top window, now draws each session
+as its status panel: the mode's ribbon, the project, branch, and task, the
+change requests and issues it's working, and the `↖ github` and `code ↗`
+buttons, which open the project page and that session's directory just as they
+do in the band. The activity dot, age, and latest turn stay beside them, and a
+click anywhere else on the tile still raises the session's window.
+
 ### Switch to the session that needs you
 
 Command-Option-] raises the next beacon session and Command-Option-[ the

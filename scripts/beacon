@@ -4103,6 +4103,50 @@ def _focus_session(sh: str) -> tuple[bool, str]:
     return True, "focused"
 
 
+def _panel_for(sh: str) -> dict | None:
+    """WIP-22: what the status panel draws for one session, by its hash, for the
+    dashboard's pop-out tiles. Scoped to that session's bucket on this request's
+    thread, as the idle sweep scopes a park (WIP-21). None for a hash with no
+    anchored state, which the panel would draw as nothing."""
+    if not re.fullmatch(r"[0-9a-f]{8,}", sh or "") or not _read_state_for(sh, "anchor.cwd"):
+        return None
+    _PANE.hash = sh
+    try:
+        return _status_panel_payload()
+    finally:
+        _PANE.hash = None
+
+
+# WIP-23: the panel's two buttons, by the name the dashboard sends.
+OPEN_VERBS = {"web": "open-url", "code": "open-code"}
+
+
+def _open_for_session(sh: str, target: str) -> tuple[bool, str]:
+    """WIP-23: press one of a session's panel buttons from the dashboard. The
+    request names the session and the button; the directory comes from that
+    session's own anchor and the command from the user's config (STATUS-08), so
+    nothing the browser sends reaches the command line. Runs the CLI verb in a
+    child process because the verbs exit on failure, and their message is the
+    detail the dashboard shows."""
+    if not re.fullmatch(r"[0-9a-f]{8,}", sh or ""):
+        return False, "bad hash"
+    verb = OPEN_VERBS.get(target)
+    if not verb:
+        return False, "bad target"
+    anchor = _read_state_for(sh, "anchor.cwd")
+    if not anchor or not Path(anchor).is_dir():
+        return False, "no directory resolved for this session"
+    try:
+        r = subprocess.run([sys.executable, str(PLUGIN_ROOT / "scripts" / "beacon"), verb, anchor],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        log_error(f"serve.{verb}", f"{type(e).__name__}: {e}")
+        return False, f"{verb} failed: {e}"
+    if r.returncode != 0:
+        return False, (r.stderr or r.stdout).strip() or f"{verb} failed"
+    return True, "opened"
+
+
 POST_BODY_MAX = 64 * 1024
 
 
@@ -4135,7 +4179,12 @@ def wip_http_server(port: int):
     POST /forget — delete a session's per-session state (FORGET-01), the
     dashboard's close button on a timed-out card (FORGET-03).
 
+    GET /panel/<hash> — what the status panel draws for that session (WIP-22),
+    for the pop-out's tiles.
+
     POST /focus — bring a session's window forward (FOCUS-01).
+
+    POST /open — press a session's web or code button (WIP-23).
 
     Returns the HTTPServer; the caller drives it (serve_forever, or a single
     handle_request in tests)."""
@@ -4317,12 +4366,18 @@ def wip_http_server(port: int):
                 self._send_icon(parsed.path[len("/icon/"):])
             elif parsed.path.startswith("/turn/"):
                 self._send_turn(parsed.path[len("/turn/"):])
+            elif parsed.path.startswith("/panel/"):
+                panel = _panel_for(parsed.path[len("/panel/"):])
+                if panel is None:
+                    self._send(404, json.dumps({"error": "not found"}))
+                else:
+                    self._send(200, json.dumps(panel))
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
         def do_OPTIONS(self):
             if not (self._access_ok()
-                    and urlparse(self.path).path in ("/focus", "/forget")):
+                    and urlparse(self.path).path in ("/focus", "/forget", "/open")):
                 self._send(403, json.dumps({"error": "forbidden"}))
                 return
             self.send_response(204)
@@ -4335,17 +4390,22 @@ def wip_http_server(port: int):
         def do_POST(self):
             path = urlparse(self.path).path
             raw = self._read_body()
-            if path not in ("/focus", "/forget"):
+            if path not in ("/focus", "/forget", "/open"):
                 self._send(404, json.dumps({"error": "not found"}))
                 return
             if not self._access_ok():
                 self._send(403, json.dumps({"error": "forbidden"}))
                 return
             try:
-                sh = (json.loads(raw or b"{}").get("hash") or "").strip()
+                body = json.loads(raw or b"{}")
+                sh = (body.get("hash") or "").strip()
+                target = body.get("target") or ""
             except (ValueError, AttributeError):
-                sh = ""
-            if path == "/focus":
+                sh, target = "", ""
+            if path == "/open":
+                ok, msg = _open_for_session(sh, target if isinstance(target, str) else "")
+                self._send(200 if ok else 400, json.dumps({"opened": ok, "detail": msg}))
+            elif path == "/focus":
                 ok, msg = _focus_session(sh)
                 code = 200 if ok else (404 if msg == "not focusable" else 400)
                 self._send(code, json.dumps({"focused": ok, "detail": msg}))
@@ -7345,10 +7405,14 @@ def cmd_status_panel(_args):
     """STATUS-06: everything the status panel draws for this session, as one
     JSON object: the head row, and the status lines under it (`lines`,
     STATUS-01). One process per poll, since the panel polls every session."""
+    print(json.dumps(_status_panel_payload()))
+
+
+def _status_panel_payload() -> dict:
     head = _status_panel_head()
     # A mode with a ribbon carries its note there, so line 1 doesn't repeat it.
     ribbon = bool(head["mode"] and head["mode"]["band"])
-    print(json.dumps({**head, "lines": _status_lines(mode_note=not ribbon)}))
+    return {**head, "lines": _status_lines(mode_note=not ribbon)}
 
 
 def _status_lines(mode_note: bool = True) -> list[str]:

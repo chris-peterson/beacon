@@ -49,6 +49,10 @@ A red card is the only kind you can click. In the demo, clicking it **returns th
 
 Let the board run for a minute and you'll watch it drift redder as work stalls, then clear it card by card. That's the loop the sessions view is built for.
 
+## Pop it out
+
+**pop out** (in Chrome and Edge) opens a small window that stays on top of everything else, so the sessions that need you stay in view while you work in your editor. It starts with the sessions waiting on you and adds any that show activity while it's open. Each tile is that session's [status panel](/statusline): its mode ribbon, the project, branch, and task, the change requests and issues it's working, and the buttons that open the project page and the session's directory. Click anywhere else on a tile to raise that session's window.
+
 ## On Windows or a non-iTerm terminal
 
 The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does; the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab painting is an iTerm2 adapter and is skipped automatically off iTerm2.
