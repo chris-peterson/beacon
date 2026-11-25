@@ -814,14 +814,13 @@ BASE_PROFILE_NAME = f"{PROFILE_NAMESPACE}-dev"
 # default carries no mark, so a glyph always means "this session declared
 # something". Hexes are tunable here without touching call sites (THEME-01).
 MODE_SPECS = {
+    # `pause` keeps the user's pane: its cue is the status panel's ribbon, which
+    # any terminal draws, so the pane needs no profile of its own.
     "pause": {
         "glyph": "⏸",
-        "profile": f"{PROFILE_NAMESPACE}-pause",
-        "guid": "7f3d8a1c-2b6e-4c5a-9f01-3e8d4a2b6c5f",
-        "background": "251f35",
-        "image": "pause-bg.png",
-        "blend": 0.35,
         "stood_down": True,
+        "label": "paused",
+        "band": "#44385f",
     },
     # `release` is the one active mode: a ship-it flow is in progress. A deep
     # "launch-sky" navy (darkened Dracula `comment` #6272a4, so it stays on-palette
@@ -834,12 +833,15 @@ MODE_SPECS = {
         "background": "212c45",
         "image": "release-bg.png",
         "blend": 0.30,
+        "label": "releasing",
+        "band": "#2a3a63",
     },
     # `retro` is the post-work follow-up phase. It keeps the user's own pane,
     # since a retro runs long enough that a whole-pane treatment wears on whoever
     # is writing it, so its glyph is its only mark.
     "retro": {
         "glyph": "📋",
+        "label": "retro",
     },
     # `done` is the terminal "session complete, ready to hand off" mode a
     # closing-out skill reaches for instead of pause: a near-black "powered off"
@@ -854,6 +856,8 @@ MODE_SPECS = {
         "image": "done-bg.png",
         "blend": 0.15,
         "stood_down": True,
+        "label": "done",
+        "band": "#2b2633",
     },
 }
 
@@ -7381,6 +7385,7 @@ def _status_panel_head() -> dict:
     and skips the route, which the head row doesn't draw."""
     record = _resolve_session(session_hash(), compute_branch=False, compute_route=False) or {}
     head = {key: record.get(key) for key in ("project", "task", "mode", "color_state")}
+    head["mode"] = _status_panel_mode()
     # The directory the status bar's `↗ code` opens: its handoff file is written
     # from this same anchor (HOOK-08b), never the payload's drifting cwd.
     anchor = read_state("anchor.cwd")
@@ -7407,6 +7412,27 @@ def _status_panel_head() -> dict:
     return head
 
 
+def _status_panel_mode() -> dict | None:
+    """The declared mode as the panel draws it, in any terminal: a ribbon in the
+    mode's `band` hue carrying its glyph, label and note, and the label in
+    Claude Code's own footer of modes. None in the dev cycle."""
+    mode, note = read_mode()
+    spec = MODE_SPECS.get(mode)
+    if not spec:
+        return None
+    note = " ".join(note.split())
+    return {
+        "name": mode,
+        "note": note or None,
+        "glyph": spec["glyph"],
+        "label": spec["label"],
+        "band": spec.get("band"),
+        # STATUS-01a's emphasis, as SGR the panel already parses.
+        "note_line": _emphasize(note, _EMPHASIS_SGR) if note else None,
+        "resumes_on_prompt": mode in AUTO_RESUME_MODES,
+    }
+
+
 def _forge_name(remote: str) -> str | None:
     """What the status panel labels the project page's button with: the forge
     beacon knows by name, else the host's own name (`bitbucket` for
@@ -7429,10 +7455,13 @@ def cmd_status_panel(_args):
     """STATUS-06: everything the status panel draws for this session, as one
     JSON object: the head row, and the status lines under it (`lines`,
     STATUS-01). One process per poll, since the panel polls every session."""
-    print(json.dumps({**_status_panel_head(), "lines": _status_lines()}))
+    head = _status_panel_head()
+    # A mode with a ribbon carries its note there, so line 1 doesn't repeat it.
+    ribbon = bool(head["mode"] and head["mode"]["band"])
+    print(json.dumps({**head, "lines": _status_lines(mode_note=not ribbon)}))
 
 
-def _status_lines() -> list[str]:
+def _status_lines(mode_note: bool = True) -> list[str]:
     """STATUS-01: the status lines the status panel draws under its head
     row: the mode's note, the resolved URL as a link, and the session's
     deliverables, each still carrying its SGR roles. `project` / `task` are the
@@ -7450,7 +7479,8 @@ def _status_lines() -> list[str]:
     qualify = _row_spans_projects(entries, links)
     rows = [
         STATUSLINE_SEPARATOR.join(
-            s for s in (_statusline_mode_segment(), _statusline_link_segment(entries)) if s),
+            s for s in (_statusline_mode_segment() if mode_note else "",
+                        _statusline_link_segment(entries)) if s),
         _statusline_delivered_line(entries, links, qualify),
         *_statusline_open_lines(entries, links, qualify),
     ]

@@ -17,6 +17,28 @@ const BAND: RenderInput<'AbovePrompt', 'terminal'> = {
   props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, scroll: { offset: 0, bodyRows: 10 } },
 } as RenderInput<'AbovePrompt', 'terminal'>
 
+const PAUSED = JSON.stringify({
+  ...JSON.parse(HEAD),
+  mode: { name: 'pause', note: 'waiting for the *VPN*', glyph: '⏸', label: 'paused', band: '#44385f', note_line: `waiting for the ${ESC}[3mVPN${ESC}[23m`, resumes_on_prompt: true },
+})
+
+const FOOTER: RenderInput<'SessionMode', 'terminal'> = {
+  component: 'SessionMode',
+  surface: 'terminal',
+  requestId: 'footer',
+  props: { modes: ['memory paused'] },
+} as RenderInput<'SessionMode', 'terminal'>
+
+/** The modes the footer is handed once beacon's hook has run, read by a hook beneath it. */
+function footerOf(on: On) {
+  const footer = { modes: [] as readonly string[] }
+  on('ui.render', { component: 'SessionMode' }, ($, e) => {
+    footer.modes = e.props.modes
+    return { type: 'engine', ref: 0 }
+  })
+  return footer
+}
+
 const commandOf = (args = ''): CommandRunInput => ({
   command: 'beacon',
   args,
@@ -180,6 +202,45 @@ describe('status panel', () => {
     expect(await ui.find({ key: 'code' })).toBeUndefined()
     expect(await ui.find({ key: 'web' })).toBeUndefined()
     expect(textOf(await $.ui.render(BAND))).toContain('acme')
+  })
+
+  test('the paused mode draws a ribbon in its hue, with its note and how to leave it', async ($, on) => {
+    worldOf(on, { head: PAUSED, statusline: '' })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    const text = textOf(drawn)
+    expect(text).toContain('⏸ paused')
+    expect(text).toContain('waiting for the VPN')
+    expect(text).toContain('type to resume')
+    expect(propsOf(drawn, '⏸ paused')).toMatchObject({ backgroundColor: '#44385f', bold: true })
+    expect(propsOf(drawn, 'VPN')).toMatchObject({ italic: true })
+    // The ribbon carries the glyph, so the head row doesn't repeat it.
+    expect(text.split('⏸').length).toBe(2)
+  })
+
+  test('a mode with no band keeps its glyph on the head row and draws no ribbon', async ($, on) => {
+    const retro = JSON.stringify({ ...JSON.parse(HEAD), mode: { name: 'retro', note: null, glyph: '📋', label: 'retro', band: null, note_line: null, resumes_on_prompt: false } })
+    worldOf(on, { head: retro, statusline: '' })
+    await started($)
+    const text = textOf(await $.ui.render(BAND))
+    expect(text.startsWith('📋')).toBe(true)
+    expect(text).not.toContain('type to resume')
+  })
+
+  test('the declared mode joins Claude Code\'s footer of modes', async ($, on) => {
+    worldOf(on, { head: PAUSED, statusline: '' })
+    const footer = footerOf(on)
+    await started($)
+    await $.ui.render(FOOTER)
+    expect(footer.modes).toEqual(['memory paused', 'paused'])
+  })
+
+  test('the dev cycle leaves the footer of modes as it is', async ($, on) => {
+    worldOf(on)
+    const footer = footerOf(on)
+    await started($)
+    await $.ui.render(FOOTER)
+    expect(footer.modes).toEqual(['memory paused'])
   })
 
   test('STATUS-07: /beacon refuses anything but switch', async ($, on) => {

@@ -341,7 +341,7 @@ class WindowTitleSetName(BeaconTest):
         self._set_iterm_id("w0t0p0:ABC-123")
         self.beacon.apply({**_base_state(), "activity": "idle"})
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "mode": "pause"})
+        self.beacon.apply({**_base_state(), "mode": "release"})
         self.assertIn(
             ("set-name", "w0t0p0:ABC-123", self.beacon.TITLE_FORMAT),
             self.cli_calls,
@@ -436,27 +436,39 @@ class WindowTitleSetName(BeaconTest):
         )
 
 
-class PausedSwapsProfile(BeaconTest):
-    """RENDER-05 / BADGE-11: paused is a mode state with its own profile. The
-    pause⇄resume transition swaps profiles (beacon-dev ↔ beacon-pause) and,
+class ModeSwapsProfile(BeaconTest):
+    """RENDER-05 / BADGE-11: a mode that paints the pane has its own profile.
+    Entering and leaving it swaps profiles (beacon-dev ↔ beacon-release) and,
     because SetProfile wipes session OSC (§6.10), re-emits the badge format, user
-    vars, and badge/tab color. No mode decorates the badge text (BADGE-11)."""
+    vars, and badge/tab color. No mode decorates the badge text (BADGE-11).
+    `pause` paints no pane: its cue is the status panel's ribbon."""
 
-    def test_pause_swaps_to_paused_profile_and_reemits(self):
+    def test_pause_keeps_the_users_pane(self):
         self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "mode": "pause", "task": "wiring"})
 
-        self.assertIn(("set-profile", "beacon-pause"), self.cli_calls,
-                      "entering paused must swap into the beacon-pause profile")
+        self.assertEqual([c for c in self.cli_calls if c[0] == "set-profile"], [])
+        self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls,
+                      "pause must mark line 1 of the tab / OS window title")
+        self.assertEqual(self.beacon.read_state_json("resolved", {}).get("profile"), "beacon-dev")
+
+    def test_a_mode_swaps_to_its_profile_and_reemits(self):
+        self.beacon.apply({**_base_state(), "activity": "idle", "task": "wiring"})
+        self.cli_calls.clear()
+
+        self.beacon.apply({**_base_state(), "mode": "release", "task": "wiring"})
+
+        self.assertIn(("set-profile", "beacon-release"), self.cli_calls,
+                      "entering release must swap into the beacon-release profile")
         self.assertIn(("badge-format", self.beacon.BADGE_FORMAT), self.cli_calls,
                       "a swap must re-emit the badge format (SetProfile wipes it)")
         # The tab color answers to activity, not the mode: this session is idle, so
         # it stays the calm gray. The mode reaches the tab as its glyph instead.
         self.assertIn(("tab-color", self.beacon._tab_hex("idle")), self.cli_calls)
-        self.assertIn(("uservar", "beacon_title_prefix", "⏸ "), self.cli_calls,
-                      "pause must mark line 1 of the tab / OS window title")
+        self.assertIn(("uservar", "beacon_title_prefix", "🚀 "), self.cli_calls,
+                      "release must mark line 1 of the tab / OS window title")
         # The user vars are re-emitted because the swap wiped them; the badge text
         # is the raw project (no glyph, BADGE-11), the (unchanged) task restored.
         self.assertEqual(
@@ -468,14 +480,14 @@ class PausedSwapsProfile(BeaconTest):
             [("uservar", "beacon_task", " · wiring")],
         )
 
-    def test_resume_swaps_back_to_base(self):
-        self.beacon.apply({**_base_state(), "mode": "pause"})
+    def test_leaving_swaps_back_to_base(self):
+        self.beacon.apply({**_base_state(), "mode": "release"})
         self.cli_calls.clear()
 
         self.beacon.apply({**_base_state(), "activity": "idle"})
 
         self.assertIn(("set-profile", "beacon-dev"), self.cli_calls,
-                      "leaving paused must swap back to the base beacon-dev profile")
+                      "leaving release must swap back to the base beacon-dev profile")
         ready = self.beacon.COLOR_PALETTE["idle"]
         self.assertIn(("badge-color", ready), self.cli_calls)
 
@@ -492,9 +504,9 @@ class PausedSwapsProfile(BeaconTest):
         )
 
     def test_snapshot_records_active_profile(self):
-        self.beacon.apply({**_base_state(), "mode": "pause"})
+        self.beacon.apply({**_base_state(), "mode": "release"})
         snap = self.beacon.read_state_json("resolved", {})
-        self.assertEqual(snap.get("profile"), "beacon-pause")
+        self.assertEqual(snap.get("profile"), "beacon-release")
         self.assertEqual(snap.get("project"), "acme/widget",
                          "snapshot keeps the raw project")
 
@@ -564,7 +576,7 @@ class CallerBadge(BeaconTest):
     def test_a_profile_swap_re_emits_it(self):
         self.beacon.apply({**_base_state(), "badge": {"text": "rig"}})
         self.cli_calls.clear()
-        self.beacon.apply({**_base_state(), "mode": "pause", "badge": {"text": "rig"}})
+        self.beacon.apply({**_base_state(), "mode": "release", "badge": {"text": "rig"}})
         self.assertIn(("badge-format", "rig"), self.cli_calls)
 
     def test_clearing_with_the_toggle_off_blanks_the_badge(self):
@@ -1257,7 +1269,7 @@ class AxesAreIndependent(BeaconTest):
                     **_base_state(), "mode": "pause", "activity": activity,
                 })
                 snap = self.beacon.read_state_json("resolved", {})
-                self.assertEqual(snap["profile"], "beacon-pause")
+                self.assertEqual(snap["profile"], "beacon-dev")
                 self.assertEqual(snap["title_prefix"], "⏸ ")
                 self.assertEqual(snap["color_state"], hex_color)
 
@@ -1612,7 +1624,7 @@ class ModeProfileDerivation(unittest.TestCase):
         # Brightness is Rec. 709 luma, not HSV value: value weights the channels
         # alike where the eye weights green .72 against blue .07, so hues picked
         # at one value are not panes at one brightness (THEME-02a).
-        tiers = {"release": 43.0, "pause": 34.0, "done": 22.0}
+        tiers = {"release": 43.0, "done": 22.0}
         self.assertEqual(set(tiers), {m for m, spec in self.beacon.MODE_SPECS.items()
                                       if spec.get("background")})
         for mode, target in tiers.items():
@@ -2588,7 +2600,9 @@ class TheStatusPanelDrawsThisSession(BeaconTest):
         self.assertEqual(json.loads(head)["project"], "acme")
         self.assertEqual(json.loads(head)["task"], "widgets")
         self.assertEqual(json.loads(head)["mode"]["name"], "pause")
-        self.assertIn("back after standup", " ".join(json.loads(head)["lines"]))
+        # The paused ribbon carries the note, so line 1 doesn't repeat it.
+        self.assertEqual(json.loads(head)["mode"]["note"], "back after standup")
+        self.assertNotIn("back after standup", " ".join(json.loads(head)["lines"]))
         self.assertEqual(json.loads(head)["anchor_cwd"], self.beacon.read_state("anchor.cwd"))
         scan.assert_not_called()
         route.assert_not_called()
@@ -8168,6 +8182,29 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
         self.assertEqual(len(documented), 6, documented)
         self.assertEqual(documented, drawn)
 
+    def test_the_mode_ribbon_meets_wcag_aa(self):
+        """A mode's ribbon in the status panel is text on its `band` hue, so both
+        of the panel's ribbon foregrounds must clear WCAG 2.x AA for body text
+        (4.5:1) on every band. Read from the hooks module so the two can't drift."""
+        module = (REPO_ROOT / "hooks" / "status-panel.tsx").read_text(encoding="utf-8")
+        fgs = dict(re.findall(r"const (RIBBON_(?:TEXT|HINT)) = '(#[0-9a-f]{6})'", module))
+        self.assertEqual(set(fgs), {"RIBBON_TEXT", "RIBBON_HINT"})
+
+        def luminance(hexstr):
+            channels = [int(hexstr.lstrip("#")[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+            r, g, b = (c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                       for c in channels)
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        bands = {m: spec["band"] for m, spec in self.beacon.MODE_SPECS.items() if spec.get("band")}
+        self.assertIn("pause", bands)
+        for mode, band in bands.items():
+            for name, fg in fgs.items():
+                with self.subTest(mode=mode, fg=name):
+                    hi, lo = sorted((luminance(fg), luminance(band)), reverse=True)
+                    ratio = (hi + 0.05) / (lo + 0.05)
+                    self.assertGreaterEqual(ratio, 4.5, f"{name} {fg} on {mode} {band}: {ratio:.2f}:1")
+
     def test_the_palette_doc_shows_each_hue(self):
         doc = (REPO_ROOT / "docs" / "palette.md").read_text(encoding="utf-8")
         for state, hex6 in self.beacon.COLOR_PALETTE.items():
@@ -10627,7 +10664,7 @@ class IdleSweep(BeaconTest):
             (a, self.beacon.session_hash(), self.beacon._PANE.tty))
         self._session()
         self.beacon.idle_sweep()
-        self.assertIn((("set-profile", "beacon-pause"), self.HASH, self.tty), seen)
+        self.assertIn((("uservar", "beacon_title_prefix", "⏸ "), self.HASH, self.tty), seen)
         self.assertIn((("set-name", self.GUID, self.beacon.TITLE_FORMAT),
                        self.HASH, self.tty), seen)
         self.assertTrue((self.beacon.CACHE_DIR / f"engaged-{self.GUID}").exists())

@@ -83,14 +83,6 @@ def _cubic(p0, p1, p2, p3, steps: int = 48):
     return out
 
 
-def pause() -> Image.Image:
-    """`pause`: two upright bars."""
-    img, d = _canvas()
-    _stroke(d, [(9.5, 7), (9.5, 17)])
-    _stroke(d, [(14.5, 7), (14.5, 17)])
-    return img
-
-
 def release() -> Image.Image:
     """`release`: a rocket climbing to the upper right, as 🚀 does. Drawn upright
     and turned, so the body stays symmetric; the porthole is a dot because a ring
@@ -144,7 +136,6 @@ def done() -> Image.Image:
 
 # phase -> the function that draws it.
 MARKS = {
-    "pause": pause,
     "release": release,
     "done": done,
 }

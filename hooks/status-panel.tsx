@@ -12,12 +12,27 @@ const CODE_HUE = '#ff79c6'
 // The arrows the iTerm2 status bar's `↖ web` and `↗ code` carried, each on its button's outer side, so the pair bookends the row's end.
 const WEB_GLYPH = '↖'
 const CODE_GLYPH = '↗'
+// The ribbon's text over a mode's `band` hue, which MODE_SPECS keeps dark so one light foreground reads on every mode.
+const RIBBON_TEXT = '#f8f8f2'
+const RIBBON_HINT = '#bfbfd0'
 
 // What changes without an event in this session (a push from a shell, a forge read landing) shows within this.
 const POLL_MS = 15_000
 const TIMEOUT_MS = 5_000
 
-type Mode = { name: string; note: string | null; glyph: string } | null
+type Mode = {
+  name: string
+  note: string | null
+  glyph: string
+  /** The word Claude Code's footer of modes shows (`paused`). */
+  label: string
+  /** The ribbon's hue; null for a mode that marks itself by its glyph alone. */
+  band: string | null
+  /** The note with its emphasis as SGR, for the ribbon. */
+  note_line: string | null
+  /** STATE-04: the next prompt leaves this mode, so the ribbon says how to. */
+  resumes_on_prompt: boolean
+} | null
 type Head = {
   project: string | null
   task: string | null
@@ -36,7 +51,7 @@ type Head = {
   /** STATUS-01's lines, with their SGR and OSC-8 sequences. */
   lines: string[]
 }
-type Style = { bold?: boolean; dim?: boolean; strike?: boolean; color?: string }
+type Style = { bold?: boolean; dim?: boolean; italic?: boolean; strike?: boolean; color?: string }
 type Run = { text: string; style: Style }
 type Segment = Run | { href: string; label: string; runs: Run[] }
 
@@ -77,6 +92,8 @@ function withSgr(style: Style, params: string): Style {
     else if (code === '1') next.bold = true
     else if (code === '2') next.dim = true
     else if (code === '22') next.bold = next.dim = false
+    else if (code === '3') next.italic = true
+    else if (code === '23') next.italic = false
     else if (code === '9') next.strike = true
     else if (code === '29') next.strike = false
     else if (code === '39') delete next.color
@@ -120,6 +137,7 @@ function segmentsOf(line: string): Segment[] {
 // Unstyled text stays dim, as the band drew all of it before: the styled roles are what should stand out.
 const styleOf = (s: Style) => ({
   bold: s.bold,
+  italic: s.italic,
   dimColor: s.dim || (!s.bold && !s.color && !s.strike),
   strikethrough: s.strike,
   color: s.color,
@@ -135,9 +153,8 @@ async function beacon($: EngineInterface, args: string[], options: { stdin?: str
   })
 }
 
-// STATUS-06: the head row and the status lines under it, from one process. Collapsed, the band shows neither, so it reads neither.
+// STATUS-06: the head row and the status lines under it, from one process. Read while collapsed too: the footer's mode label still shows.
 async function refresh($: EngineInterface): Promise<void> {
-  if (collapsed) return
   try {
     const row = await beacon($, ['status-panel'])
     head = row.exitCode === 0 && row.stdout.trim() !== '' ? (JSON.parse(row.stdout) as Head) : null
@@ -219,6 +236,13 @@ export const register: Register = on => {
     return { text, isTextDisplayOnly: true }
   })
 
+  // The declared mode beside Claude Code's own (`memory paused`), so it reads with the band collapsed.
+  on('ui.render', { component: 'SessionMode' }, ($, e, next) => {
+    const label = head?.mode?.label
+    if (!label || e.props.modes.includes(label)) return next(e)
+    return next({ ...e, props: { ...e.props, modes: [...e.props.modes, label] } })
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
     setCollapsed($, e.props.isCollapsed)
     if (e.props.hasSurvey) return next(e)
@@ -246,6 +270,25 @@ export const register: Register = on => {
     // A session that has written no state yet (its first hook still running) draws nothing, rather than saying so.
     if (parts.length === 0 && rest.length === 0) return pickerRows.length ? <Box flexDirection="column">{pickerRows}</Box> : next(e)
 
+    // The mode's pane cue, drawn in the band so any terminal shows it: a bar in the mode's hue carrying its glyph, label and note.
+    // A row of hue above and below the text makes it read as a bar rather than a highlighted line.
+    const mode = head?.mode
+    const band = mode?.band
+    const ribbon = !mode || !band ? [] : [
+      <Box key="ribbon" flexDirection="row" justifyContent="space-between" gap={2} paddingX={1} paddingY={1} backgroundColor={band}>
+        <Box flexDirection="row" flexShrink={1}>
+          <Text backgroundColor={band} color={RIBBON_TEXT} bold>{`${mode.glyph} ${mode.label}`}</Text>
+          {mode.note_line ? [
+            <Text key="rb-sep" backgroundColor={band} color={RIBBON_HINT}>{' · '}</Text>,
+            ...segmentsOf(mode.note_line).flatMap((s, i) => 'href' in s ? [] : [
+              <Text key={`rb-${i}`} backgroundColor={band} color={RIBBON_TEXT} bold={s.style.bold} italic={s.style.italic} wrap="truncate-end">{s.text}</Text>,
+            ]),
+          ] : []}
+        </Box>
+        {mode.resumes_on_prompt ? [<Text key="rb-hint" backgroundColor={band} color={RIBBON_HINT} italic>type to resume</Text>] : []}
+      </Box>,
+    ]
+
     // The ahead/behind glyphs first, in the branch's color; linked only when it has an upstream to open.
     const branchOf = (p: string) => {
       const text = <Text key="branch" color={BRANCH_HUE[head?.branch_slot ?? ''] ?? undefined} wrap="truncate-end">{head?.branch_sync ? `${head.branch_sync} ${p}` : p}</Text>
@@ -255,9 +298,10 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" paddingRight={5} marginTop={1}>
+        {ribbon}
         <Box flexDirection="row" justifyContent="space-between" gap={2}>
           <Box flexDirection="row" gap={1} flexShrink={1}>
-            {head?.mode?.glyph ? [<Text key="glyph">{head.mode.glyph}</Text>] : []}
+            {head?.mode?.glyph && !band ? [<Text key="glyph">{head.mode.glyph}</Text>] : []}
             {parts.flatMap((p, i) => [
                 ...(i === 0 ? [] : [<Text key={`sep-${i}`} dimColor>·</Text>]),
                 // No activity here: the band only ever shows the session in front of you, whose spinner and prompts already say it.
