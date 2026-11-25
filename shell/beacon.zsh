@@ -1,11 +1,8 @@
-# beacon zsh integration — publishes project + branch user vars to iTerm2
-# on every prompt. Source from .zshrc:
+# beacon zsh integration — puts an interactive pane in the beacon profile and
+# keeps its window title on the project (or cwd) at every prompt. Source from
+# .zshrc:
 #
 #   source /path/to/beacon/shell/beacon.zsh
-#
-# When in a recognized project, sets user.beacon_project to the project name
-# and user.beacon_branch to the current git branch (with a leading separator
-# so empty values collapse cleanly in the badge format string).
 
 if [[ -n "${_BEACON_INSTALLED:-}" ]]; then
   return 0
@@ -45,9 +42,8 @@ _beacon_stale=1
 if [[ -r "$_BEACON_INIT_CACHE" ]]; then
   source "$_BEACON_INIT_CACHE"
   _beacon_stale=''
-  [[ "$_beacon_cfg"              -nt "$_BEACON_INIT_CACHE"
-     || "$_beacon_cfg_dir/data-dir" -nt "$_BEACON_INIT_CACHE"
-     || "$_BEACON_SCRIPT"           -nt "$_BEACON_INIT_CACHE" ]] && _beacon_stale=1
+  [[ "$_beacon_cfg"    -nt "$_BEACON_INIT_CACHE"
+     || "$_BEACON_SCRIPT" -nt "$_BEACON_INIT_CACHE" ]] && _beacon_stale=1
   # An mtime test can't see a *deleted* config: nothing is newer than the cache
   # afterwards, so the shell would keep the settings that file used to carry.
   # Compare its presence against what it was when the block was built.
@@ -81,12 +77,12 @@ fi
 # Critical escape sequences emitted FAST via raw printf — no python3 startup
 # in the hot path.
 #
-# Switch this pane into the beacon-dev profile (STATUS-BAR-01): it carries the
-# status bar layout and badge sizing, and is the dev cycle's base profile.
-# beacon-dev is not iTerm2's default profile, so interactive panes activate it
+# Switch this pane into the beacon profile (RENDER-07): it carries the badge
+# sizing and the session switcher's keys (FOCUS-07).
+# beacon is not iTerm2's default profile, so interactive panes activate it
 # here; Claude panes do it at SessionStart. A non-iTerm terminal silently
 # ignores the sequence.
-printf '\e]1337;SetProfile=beacon-dev\a' > /dev/tty
+printf '\e]1337;SetProfile=beacon\a' > /dev/tty
 # Badge (BADGE-15): opt-in, off by default — the tab (color + two-line
 # identity) carries the identity now, so the badge is redundant in a tabs
 # workflow. Emit its format only when the user config turns it on
@@ -103,11 +99,9 @@ typeset -gra _BEACON_MARKERS=(
   .git package.json Cargo.toml pyproject.toml go.mod .hg pom.xml Gemfile
 )
 
-# These helpers answer through `_beacon_reply` / `_beacon_binfo` rather than by
-# printing. Every `$(...)` on the prompt path forks a subshell — four of them
+# These helpers answer through `_beacon_reply` rather than by printing. Every `$(...)` on the prompt path forks a subshell — four of them
 # cost more than the one `git` call left in here.
 typeset -g _beacon_reply=''
-typeset -ga _beacon_binfo=()
 
 _beacon_project_root() {
   local dir="$PWD"
@@ -123,87 +117,10 @@ _beacon_project_root() {
   return 1
 }
 
-# Outputs four lines: display, state, indicator, identity.
-#   display   — branch name, prefixed with an ahead/behind indicator only
-#               when diverged so the eye can scan a column of branches and
-#               spot divergent ones without re-parsing each name. Examples:
-#                 "main"           (clean — synced with upstream)
-#                 "↑3 feature"     (3 ahead)
-#                 "↑3↓1 feature"   (3 ahead, 1 behind)
-#                 "topic"          (untracked — color carries the signal)
-#   state     — "clean" (synced with upstream), "diverged" (ahead/behind), or
-#               "untracked" (no upstream set — local-only branch)
-#   indicator — "" | "↑N" | "↓N" | "↑N↓M"
-#   identity  — "default" (the repo's default branch) or "feature" (any other)
-# All four empty when not in a git repo.
-_beacon_branch_info() {
-  setopt localoptions extendedglob noshwordsplit noksharrays
-  # One `for-each-ref` supplies the branch name, its upstream, the ahead/behind
-  # counts and the repo's default branch — the four `git` invocations this
-  # replaced cost ~60ms of every prompt, against ~14ms here. Fields are
-  # tab-separated because a ref name may contain `|` but never a control
-  # character. Iterating all of refs/heads/ is what lets one call answer both
-  # questions; it scales flat enough to not matter (~4ms extra at 500 branches).
-  local -a rows row
-  local line name="" upstream="" track="" default_branch=""
-  rows=("${(@f)$(git for-each-ref \
-      --format=$'%(HEAD)\t%(refname)\t%(upstream:short)\t%(upstream:track,nobracket)\t%(symref:short)' \
-      refs/heads/ refs/remotes/origin/HEAD 2>/dev/null)}")
-  for line in "$rows[@]"; do
-    row=("${(@ps:\t:)line}")
-    if [[ "${row[2]}" == "refs/remotes/origin/HEAD" ]]; then
-      default_branch="${row[5]#origin/}"
-    elif [[ "${row[1]}" == "*" ]]; then
-      name="${row[2]#refs/heads/}"
-      upstream="${row[3]}"
-      track="${row[4]}"
-    fi
-  done
-  # No `*` row means detached HEAD, no repo, or a branch with no commit yet —
-  # an unborn HEAD points at a ref that `for-each-ref` cannot see. Only the last
-  # of those has a name to show, and `symbolic-ref` is what distinguishes it,
-  # so pay the extra call only here. `_detect_branch_info` in scripts/beacon
-  # names an unborn branch too; without this the interactive prompt and a Claude
-  # pane in the same fresh repo would disagree.
-  if [[ -z "$name" ]]; then
-    name="$(git symbolic-ref --short HEAD 2>/dev/null)" || {
-      _beacon_binfo=('' '' '' ''); return
-    }
-  fi
-
-  # An upstream that was deleted upstream reads as `gone`; it carries no counts,
-  # so it classifies with the local-only branches rather than as diverged.
-  local state="untracked" ind="" ahead=0 behind=0
-  if [[ -n "$upstream" && "$track" != "gone" ]]; then
-    if [[ -z "$track" ]]; then
-      state="clean"
-    else
-      [[ "$track" == (#b)*"ahead "([0-9]##)*  ]] && ahead=$match[1]
-      [[ "$track" == (#b)*"behind "([0-9]##)* ]] && behind=$match[1]
-      state="diverged"
-      (( ahead > 0 ))  && ind+="↑${ahead}"
-      (( behind > 0 )) && ind+="↓${behind}"
-    fi
-  fi
-  # Identity axis (#20): the default branch is de-emphasized whatever its state;
-  # a feature branch reads by state. origin/HEAD names the default when it's set
-  # (git clone / `git remote set-head`); when it isn't, fall back to the
-  # conventional names so a fresh local repo still classifies main/master/trunk.
-  local identity="feature"
-  if [[ -z "$default_branch" ]]; then
-    case "$name" in main|master|trunk) default_branch="$name" ;; esac
-  fi
-  [[ -n "$default_branch" && "$name" == "$default_branch" ]] && identity="default"
-  local display="$name"
-  [[ "$state" == "diverged" ]] && display="${ind} ${name}"
-  _beacon_binfo=("$display" "$state" "$ind" "$identity")
-}
-
 # The project's name (e.g. `beacon`) — the remote's repo basename, else the
 # project root's own directory name. Empty when not in a recognized project, so
-# the caller can tell "no project" from "a project called X"; the status-bar
-# chip floors that to the directory name, the window title to the abbreviated
-# cwd. Mirrors python's `_project_name_at`.
+# the caller can tell "no project" from "a project called X"; the window title
+# floors that to the abbreviated cwd. Mirrors python's `_project_name_at`.
 #
 # The origin URL is memoized for the life of the shell: reading it costs a
 # `git config` fork on a path that runs every prompt, and a repo's origin
@@ -235,21 +152,11 @@ _beacon_project_name() {
 # the first publish always fires — including when the resolved value is empty
 # (e.g. shell starts in a non-project directory). Without this, an empty
 # resolved value would match the initial empty state and we'd skip the publish.
-typeset -g _BEACON_LAST_PROJECT_NAME='__unset__'
 typeset -g _BEACON_LAST_TITLE='__unset__'
-typeset -g _BEACON_LAST_BRANCH='__unset__'
-typeset -g _BEACON_LAST_BRANCH_STATE='__unset__'
-typeset -g _BEACON_LAST_BRANCH_DEFAULT='__unset__'
-typeset -g _BEACON_LAST_BRANCH_CLEAN='__unset__'
-typeset -g _BEACON_LAST_BRANCH_DIVERGED='__unset__'
-typeset -g _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
-typeset -g _BEACON_LAST_LOCAL_PATH='__unset__'
 
-# Per-session file handoff for status-bar action buttons. Action enum 35
-# doesn't interpolate \(user.*) reliably, so the `go` and `code` buttons
-# read these files instead. Derive the cache dir from the script so the
-# shell, hooks, and slash commands converge on the same path regardless
-# of whether the install lives in the marketplace cache or a working tree.
+# The engagement marker below lives in the data dir's cache, resolved by the
+# plugin (shell-init) so the shell computes it exactly as the hooks and slash
+# commands do (§6.2).
 if [[ -z "$_BEACON_DATA_DIR" ]]; then
   echo "beacon.zsh: failed to resolve data dir via $_BEACON_SCRIPT" >&2
   return 1
@@ -258,7 +165,7 @@ typeset -gr _BEACON_CACHE_DIR="$_BEACON_DATA_DIR/cache"
 mkdir -p "$_BEACON_CACHE_DIR"
 
 # Window title (TITLE-01): give an interactive pane its identity as the OS
-# window title, so a beacon-dev pane isn't left showing the profile name (the
+# window title, so a beacon pane isn't left showing the profile name (the
 # profile disables OSC title-setting, so the shell can't printf a title like the
 # badge). A plain shell has no task, so it shows the project when in one and its
 # cwd otherwise — beacon_title carries that "project else cwd" value (published
@@ -266,7 +173,7 @@ mkdir -p "$_BEACON_CACHE_DIR"
 #
 # The session name is a single shared surface (TITLE-04): a Claude pane wants
 # `project · task` from the plugin, not this taskless interactive title, so the
-# marker (same GUID key as the handoff files) says the pane is Claude-owned and
+# marker (keyed on the pane GUID) says the pane is Claude-owned and
 # this write is not wanted — the case being a shell that starts *inside* an
 # already-engaged pane, an `exec zsh` most of all.
 #
@@ -294,18 +201,6 @@ if [[ -n "$ITERM_SESSION_ID" && -z "${CLAUDECODE:-}" ]]; then
   } &>/dev/null &!
 fi
 
-_beacon_write_session_file() {
-  # Skip when the pane id is unavailable (non-iTerm shell). Mirrors the
-  # plugin's `if key:` guard: an empty id would write the shared `cwd-.txt`,
-  # which the `↗ code` button then serves to every empty-id session.
-  [[ -n "$ITERM_SESSION_ID" ]] || return 0
-  # Key on the pane GUID (the segment after the last colon), not the full
-  # ITERM_SESSION_ID: the `wNtNpN` prefix changes when the pane is moved, so
-  # keying on it would leave the buttons reading a stale file after a move.
-  # Mirrors _iterm_cache_key() in scripts/beacon and the CLI's GUID targeting.
-  print -r -- "$2" > "${_BEACON_CACHE_DIR}/${1}-${ITERM_SESSION_ID##*:}.txt"
-}
-
 # Indexed 1-based, matching zsh's string subscripting.
 typeset -gr _BEACON_B64_ALPHABET='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 typeset -g _beacon_b64_out=''
@@ -313,12 +208,12 @@ typeset -g _beacon_b64_out=''
 # Base64-encode $1 into `_beacon_b64_out`, UTF-8 first. iTerm2 wants SetUserVar
 # values base64'd, and `| base64` would put a fork back on the path — the whole
 # point here is that publishing a slot costs no process at all. The UTF-8 step
-# is load-bearing rather than pedantic: the branch display carries ↑/↓ glyphs,
-# and zsh's `#ch` yields a codepoint where base64 needs the bytes.
+# is load-bearing rather than pedantic: a title can carry a non-ASCII path, and
+# zsh's `#ch` yields a codepoint where base64 needs the bytes.
 _beacon_b64() {
   # `multibyte` is the default but a user can turn it off, and with it off the
   # loop below reads bytes as codepoints and re-encodes each one — mojibake in
-  # the branch chip. Force it for the length of this function.
+  # the title. Force it for the length of this function.
   setopt localoptions multibyte noksharrays
   local s=$1 i n=${#1} ch cp out=''
   local -a b
@@ -372,74 +267,21 @@ _beacon_precmd() {
   # BADGE-02: the plugin is the sole writer of `beacon_project`. The shell
   # snippet deliberately does NOT publish it from precmd — the badge text
   # follows intentional signals (overrides, SessionStart anchor) rather
-  # than every `cd`. Status-bar user-vars (branch, project_full, url)
-  # below are still published because the status bar IS meant to track
-  # cwd — different surface, different contract.
-
-  _beacon_branch_info
-  local b="${_beacon_binfo[1]}" bstate="${_beacon_binfo[2]}" bidentity="${_beacon_binfo[4]}"
-  # Hybrid branch color (#20): the default branch publishes one de-emphasized
-  # slot whatever its state; a feature branch routes to its state slot. Exactly
-  # one of the four is non-empty, so the profile's four branch components (each
-  # a fixed color) resolve to a single visible one via remove-empty-components.
-  local b_default="" b_clean="" b_diverged="" b_untracked=""
-  if [[ "$bidentity" == "default" ]]; then
-    b_default="$b"
-  else
-    [[ "$bstate" == "clean"     ]] && b_clean="$b"
-    [[ "$bstate" == "diverged"  ]] && b_diverged="$b"
-    [[ "$bstate" == "untracked" ]] && b_untracked="$b"
-  fi
-
-  # Publishing a slot costs no process: a `cd` used to spend ~570ms here, almost
-  # all of it python interpreter startup paid once per slot.
-  _beacon_publish beacon_branch           "$b"           _BEACON_LAST_BRANCH
-  _beacon_publish beacon_branch_state     "$bstate"      _BEACON_LAST_BRANCH_STATE
-  _beacon_publish beacon_branch_default   "$b_default"   _BEACON_LAST_BRANCH_DEFAULT
-  _beacon_publish beacon_branch_clean     "$b_clean"     _BEACON_LAST_BRANCH_CLEAN
-  _beacon_publish beacon_branch_diverged  "$b_diverged"  _BEACON_LAST_BRANCH_DIVERGED
-  _beacon_publish beacon_branch_untracked "$b_untracked" _BEACON_LAST_BRANCH_UNTRACKED
-
-  # Local cwd with $HOME substituted as ~ (STATUS-BAR-05).
-  local lp="${PWD/#$HOME/~}"
-  if [[ "$lp" != "$_BEACON_LAST_LOCAL_PATH" ]]; then
-    _beacon_write_session_file cwd "$PWD"
-    _BEACON_LAST_LOCAL_PATH="$lp"
-  fi
-
-  # The project chip is the project's *name* (STATUS-BAR-02), so it needs no
-  # URL: it reads the same in a plain shell as under Claude, and outside a git
-  # repo it floors on the directory rather than collapsing. That is what took
-  # the per-prompt `resolve-url` (python startup plus a possible tack
-  # subprocess) off this hot path entirely.
-  _beacon_project_name
-  local pname="$_beacon_reply"
-  local chip="${pname:-${PWD:t}}"
-  _beacon_publish beacon_project_name "$chip" _BEACON_LAST_PROJECT_NAME
+  # than every `cd`.
 
   # Window title value (TITLE-01): the project identity when in one, else the
   # abbreviated cwd — a plain shell outside any project shows where it is
-  # rather than a blank title. It floors differently from the chip on purpose:
-  # a title has room for a path, a chip beside the branch does not. Local path
-  # is never empty (PWD always set), so the title never goes blank.
-  local title="${pname:-$lp}"
+  # rather than a blank title. PWD is always set, so the title never goes blank.
+  _beacon_project_name
+  local title="${_beacon_reply:-${PWD/#$HOME/~}}"
   _beacon_publish beacon_title "$title" _BEACON_LAST_TITLE
 
   return 0
 }
 
 _beacon_chpwd() {
-  # Force re-publish on directory change — branch may have changed even if
-  # project is the same, and project may have changed entirely.
-  _BEACON_LAST_PROJECT_NAME='__unset__'
+  # Force a re-publish on directory change: the project may have changed.
   _BEACON_LAST_TITLE='__unset__'
-  _BEACON_LAST_BRANCH='__unset__'
-  _BEACON_LAST_BRANCH_STATE='__unset__'
-  _BEACON_LAST_BRANCH_DEFAULT='__unset__'
-  _BEACON_LAST_BRANCH_CLEAN='__unset__'
-  _BEACON_LAST_BRANCH_DIVERGED='__unset__'
-  _BEACON_LAST_BRANCH_UNTRACKED='__unset__'
-  _BEACON_LAST_LOCAL_PATH='__unset__'
   _beacon_precmd
 }
 

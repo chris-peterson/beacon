@@ -10,9 +10,9 @@ docs/*
 !docs/iterm/
 !docs/palette.md
 !docs/program-status.md
-!docs/statusbar.md
 !docs/statusline.md
 !docs/why.md
+!docs/whats-new.md
 !docs/images/
 
 .claude/*

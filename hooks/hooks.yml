@@ -38,3 +38,6 @@ hooks:
   - event: PostToolUse
     command: 'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/beacon" hook PostToolUse'
     description: Reports the PostToolUse event to the beacon CLI for sessions-view tracking.
+modules:
+  - path: ./status-panel.tsx
+    description: Draws this session's project, branch, task, and status lines in the band above the prompt, with buttons for the project page and the editor; `/beacon switch` lists the other sessions there.

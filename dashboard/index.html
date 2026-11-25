@@ -26,7 +26,7 @@
       /* Status hexes MIRROR COLOR_PALETTE in scripts/beacon so a card's
          dot matches the same session's iTerm2 badge — do not drift these.
          SDLC cycles: dev (idle / working / blocked) + the mode cycles. Green is
-         retired from the dev activity colors (ready is gray) and pins `release`.
+         retired from the dev activity colors (ready is gray).
          `--planning` is not a state color: the permission axis takes no color
          channel (PERM-02). It tints the `plan` tag alone, in Claude Code's own
          plan-mode teal, so the tag reads as the same thing the pane says. */
@@ -35,7 +35,7 @@
       --blocked:  #ff5555;
       --planning: #1a988c;
       /* Generic success green. Not a mode color: mode tints live in the
-         .card.mode-* rules, keyed to each mode's pane background. */
+         .card.mode-* rules, keyed to each mode's ribbon hue. */
       --ok:       #50fa7b;
 
       /* Console chrome — free to tune; not part of the badge contract. */
@@ -248,7 +248,7 @@
       --pad-x: 0.95rem; --pad-top: 0.85rem;
       padding: var(--pad-top) var(--pad-x) 0.8rem;
       overflow: hidden;
-      isolation: isolate; /* contain the mode watermark ::before (z-index -1) above the tint, below content */
+      isolation: isolate;
       transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.2s ease, background 0.2s ease;
       animation: cardIn 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
     }
@@ -263,7 +263,7 @@
 
        The two axes stay on disjoint surfaces here exactly as they do on a pane:
        this bar and the dot answer to `color_state` (activity), while the card's
-       tint and watermark answer to `mode`. A moded session that goes `blocked`
+       tint answers to `mode`. A moded session that goes `blocked`
        therefore keeps its mode treatment and turns its dot red — the sessions view can
        show both at once, where the merged field could only ever show the mode. */
     .card::after {
@@ -278,41 +278,16 @@
     .card.color-working    { --state-color: var(--working); }
     .card.color-blocked { --state-color: var(--blocked); }
 
-    /* Moded cards echo their iTerm2 pane background (RENDER-05): a muted tint in
-       the mode's hue plus a large, faint, centered watermark. The watermark is the
-       *same generated asset the pane paints* (iterm/resources/<mode>-bg.png),
-       streamed by serve at /mode-bg/<mode> — so the card and pane can never
-       drift. It rides a ::before below the card content (z-index -1; the card
-       isolates a stacking context) at a low opacity, the sessions analog of the
-       pane's Blend. One mix fraction serves every tinted mode: the pane hexes sit
-       on a shared luma ladder (THEME-02a), so a card inherits the tier its pane
-       has and needs no per-mode compensation of its own. A retro pane keeps the
-       user's background, so its card stays plain. */
-    .card.mode-pause   { --mode-tint: #251f35; }
-    .card.mode-release { --mode-tint: #212c45; }
+    /* Moded cards echo the mode's ribbon in the status panel (STATUS-09): the
+       card takes the ribbon's hue, MODE_SPECS' `band`, so a card here and the
+       band above the prompt read alike. retro has no ribbon, so its card stays
+       plain. */
+    .card.mode-pause   { --mode-band: #44385f; }
+    .card.mode-release { --mode-band: #2a3a63; }
+    .card.mode-done    { --mode-band: #2b2633; }
     .card.mode-pause,
-    .card.mode-release { background-color: color-mix(in srgb, var(--mode-tint) 34%, var(--panel)); }
-    .card.mode-done    { background-color: color-mix(in srgb, var(--bg) 55%, var(--panel)); }
-
-    .card.mode-pause::before,
-    .card.mode-release::before,
-    .card.mode-done::before {
-      content: "";
-      position: absolute; inset: 0; z-index: -1;
-      background-repeat: no-repeat; background-position: center;
-      /* Size by HEIGHT, not width. The assets are square and a card is far wider
-         than it is tall, so a width-derived size (this was `62% auto`) makes the
-         mark taller than the card and `center` then crops it to a middle band —
-         the mark reads as an off-centre fragment rather than a watermark. Height
-         drives it instead, and the `min()` caps an expanded card's much taller
-         box so the mark stays a mark. This is the CSS analog of the Scale Aspect
-         Fit the pane uses (RENDER-05), which is why the two surfaces agree. */
-      background-size: auto min(88%, 190px);
-      opacity: 0.16; pointer-events: none;
-    }
-    .card.mode-pause::before   { background-image: url("/mode-bg/pause"); }
-    .card.mode-release::before { background-image: url("/mode-bg/release"); }
-    .card.mode-done::before    { background-image: url("/mode-bg/done"); }
+    .card.mode-release,
+    .card.mode-done { background-color: color-mix(in srgb, var(--mode-band) 60%, var(--panel)); }
 
     .card { cursor: pointer; } /* the whole body toggles expand; go/forget stop propagation */
     .card:hover {
@@ -435,8 +410,11 @@
     .card.expanded .ttext { display: block; }
     /* Copy the turn: the full fetched text when the panel has it, else the
        one-line excerpt. Rides the panel's top-right corner, opposite the role
-       label; hidden until the turn is expanded into its panel. */
-    .turn-copy { position: absolute; top: 0.4rem; right: 0.4rem; display: none; }
+       label; hidden until the turn is expanded into its panel. Scoped under
+       .turn so it outranks .copy's display, which comes later in the sheet:
+       shown on a collapsed card it has no panel to sit in, and lands in the
+       card's corner over the close button. */
+    .turn .turn-copy { position: absolute; top: 0.4rem; right: 0.4rem; display: none; }
     .card.expanded .turn-copy { display: inline-grid; }
 
     /* Rendered-markdown primitives, scoped to .ttext so they never touch the
@@ -826,7 +804,7 @@
     // A session in a mode is never hoisted, even when its activity is `blocked`.
     // That isn't the mode outranking the signal — the card still turns its dot
     // and bar red, so "blocked" is visible either way. It's that the band's red
-    // glow paints over the mode tint and watermark, which is the only place the
+    // glow paints over the mode tint, which is the only place the
     // mode is legible on this surface. The loudness is spent where it costs
     // nothing: on dev-cycle cards that have no treatment to lose.
     // `mode` is the nested {name, note} tuple both beacon payloads carry, so a
@@ -1114,8 +1092,7 @@
     // line (e.g. "Shipping\n_Phase 3: release_") — so render those rather than
     // showing the raw markers. Escape-first via renderInline, with
     // underscore-italic on. The mode itself needs no text label here: the card's
-    // tint, watermark, and glyph already say which one, exactly as the pane and
-    // tab do.
+    // tint and glyph already say which one, exactly as the band and tab do.
     function renderNoteHtml(note) {
       return note ? renderInline(note, true).replace(/\n/g, "<br>") : "";
     }
@@ -1571,12 +1548,15 @@
     }
 
     // ── Pop-out: a compact, always-on-top floating panel (Document
-    // Picture-in-Picture) that starts with just the sessions waiting on you and
-    // grows as others show activity while it's open. A row is a focus trigger,
-    // not an expander — the panel is a glanceable action queue, so a click raises
-    // the session's iTerm2 window (focus) rather than opening its detail. The PiP
-    // window is inherently always-on-top and it auto-fits its height to content
-    // each render. Chromium-only (Document PiP); elsewhere the button stays hidden.
+    // Picture-in-Picture) holding the dashboard's own sessions in its own order,
+    // stacked in one column: the ones waiting on you, then each route group, the
+    // groupless last (WIP-10, WIP-16). Each tile is that session's
+    // status panel (WIP-19): its mode ribbon, head row, CR / issue lines, and web
+    // and code buttons, read from /panel/<hash> (WIP-22) and pressed through
+    // /open (WIP-23). A tile is a focus trigger, not an expander: a click outside
+    // its links and buttons raises the session's iTerm2 window. The PiP window is
+    // inherently always-on-top and it auto-fits its height to content each
+    // render. Chromium-only (Document PiP); elsewhere the button stays hidden.
     const PIP_CSS = `
       :root {
         --idle:#8b8fa0; --working:#ffb86c; --blocked:#ff5555;
@@ -1594,84 +1574,114 @@
       }
       .pip { padding: 0.5rem 0.55rem 0.6rem; }
       .pip-head {
-        display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; padding: 0 0.1rem;
+        display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.4rem; padding: 0 0.1rem;
         font-size: 0.66rem; font-weight: 700; letter-spacing: 0.14em;
-        text-transform: uppercase; color: var(--blocked);
+        text-transform: uppercase; color: var(--muted);
       }
-      .pip-dot {
-        width: 0.45rem; height: 0.45rem; border-radius: 50%;
-        background: var(--blocked); box-shadow: 0 0 7px var(--blocked);
-        animation: pblink 1.2s steps(1) infinite;
+      .pip-head .brand { color: var(--accent); }
+      /* A section's label, as the dashboard heads its bands and route groups. */
+      .pip-group {
+        margin: 0.35rem 0.1rem 0; font-size: 0.62rem; font-weight: 700;
+        letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
       }
-      @keyframes pblink { 50% { opacity: 0.3; } }
+      /* Waiting sessions are already marked by their red dot; the heading only
+         names the section, so it stays as quiet as the route groups' headings. */
+      .pip-group.attn::before { content: "● "; color: var(--blocked); }
       .pip-count { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
-      .pip-list { display: flex; flex-direction: column; gap: 0.35rem; }
+      .pip-list { display: flex; flex-direction: column; gap: 0.3rem; }
       .pip-row {
-        display: flex; align-items: center; gap: 0.55rem; width: 100%; text-align: left;
-        padding: 0.42rem 0.55rem; border-radius: 8px; cursor: pointer;
-        background: var(--panel); border: 1px solid var(--line); color: var(--fg);
-        font: inherit; --state-color: var(--line-hi);
-        transition: border-color 0.12s, background 0.12s, transform 0.1s;
+        display: flex; flex-direction: column; width: 100%;
+        border-radius: 7px; background: var(--panel); border: 1px solid var(--line);
+        border-left: 3px solid var(--edge, var(--line)); color: var(--fg);
+        --state-color: var(--line-hi);
+        transition: border-color 0.12s, background 0.12s;
         animation: prowIn 0.2s cubic-bezier(0.2,0.7,0.3,1) both;
       }
       @keyframes prowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-      .pip-row:hover:not(:disabled) { border-color: var(--state-color); background: var(--panel-hi); transform: translateX(2px); }
-      .pip-row:disabled { cursor: default; opacity: 0.72; }
+      .pip-row:hover { background: var(--panel-hi); }
       .pip-row.color-idle { --state-color: var(--idle); }
       .pip-row.color-working { --state-color: var(--working); }
       .pip-row.color-blocked { --state-color: var(--blocked); }
-      .pip-row.needs-you {
-        border-color: rgba(255,85,85,0.5);
-        background: radial-gradient(120% 140% at 100% 0%, rgba(255,85,85,0.12), transparent 55%), var(--panel-hi);
+      /* A mode marks its tile by an edge in its hue and its glyph before the
+         project. The band is a dark ground for text, so the edge keeps its hue
+         and raises its lightness and chroma until it reads against the panel. */
+      .pip-row.moded { --edge: oklch(from var(--mode-band) 0.7 calc(c * 2.4) h); }
+      /* A parked or finished session recedes behind the work in flight: the
+         ground it sits on drops to the page's, not its text's contrast. */
+      .pip-row.stood-down { background: var(--bg); border-color: transparent; border-left-color: var(--edge); }
+      .pip-row.stood-down .pip-proj b { font-weight: 400; }
+      .pip-headrow { display: flex; align-items: center; gap: 0.45rem; padding: 0.38rem 0.5rem; cursor: pointer; }
+      .pip-chev {
+        flex: none; width: 0.9rem; color: var(--faint); font-size: 0.8rem; line-height: 1;
+        transition: transform 0.15s ease, color 0.15s;
       }
+      .pip-row:hover .pip-chev { color: var(--muted); }
+      .pip-row.expanded .pip-chev { transform: rotate(180deg); }
       .pip-rdot {
-        flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+        flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%;
         background: var(--state-color); box-shadow: 0 0 6px var(--state-color);
       }
-      .pip-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
-      .pip-proj { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .pip-proj .pip-task { color: var(--cyan); font-weight: 400; }
-      .pip-proj .pip-task::before { content: " · "; color: var(--faint); }
-      .pip-turn { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .pip-age { flex: none; color: var(--faint); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+      .pip-proj { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pip-proj b { font-weight: 700; }
+      .pip-proj .sep { color: var(--faint); }
+      .pip-proj a, .pip-detail a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-hi); text-underline-offset: 2px; }
+      .pip-age { flex: none; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
       .pip-age:empty { display: none; }
-      .pip-age::before { content: "◷ "; opacity: 0.7; }
+      .pip-actions { flex: none; display: flex; gap: 0.25rem; }
+      .pip-btn {
+        position: relative; font: inherit; font-size: 0.7rem; padding: 0.05rem 0.4rem;
+        border-radius: 5px; cursor: pointer; background: transparent;
+        border: 1px solid var(--line-hi); color: var(--muted);
+      }
+      .pip-btn:hover { background: var(--panel-hi); color: var(--fg); }
+      .pip-btn[hidden] { display: none; }
+      .pip-btn.web { color: #8be9fd; }
+      .pip-btn.code { color: #ff79c6; }
+      /* Each button says what it does at once, on hover or focus, rather than
+         after the browser's title delay, and above itself so the window's edge
+         never clips it. */
+      .pip-btn[data-tip]:hover::after, .pip-btn[data-tip]:focus-visible::after {
+        content: attr(data-tip); position: absolute; right: 0; bottom: calc(100% + 5px); z-index: 5;
+        white-space: nowrap; padding: 0.2rem 0.45rem; border-radius: 5px;
+        background: #0b0c12; color: var(--fg); border: 1px solid var(--line-hi);
+        font-size: 0.68rem; pointer-events: none;
+      }
+      .pip-detail { display: none; flex-direction: column; gap: 0.2rem; padding: 0 0.6rem 0.45rem 2.4rem; }
+      .pip-row.expanded .pip-detail { display: flex; }
+      .pip-note { color: var(--fg); font-size: 0.74rem; }
+      .pip-note:empty { display: none; }
+      .pip-turn { color: var(--muted); font-size: 0.72rem; overflow-wrap: anywhere; }
+      .pip-turn:empty { display: none; }
+      .pip-lines { display: flex; flex-direction: column; font-size: 0.74rem; }
+      .pip-lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pip-err { color: var(--blocked); font-size: 0.7rem; padding: 0 0.6rem 0.4rem 2.4rem; }
+      .pip-err:empty { display: none; }
       .pip-empty { color: var(--faint); text-align: center; padding: 1.4rem 0.5rem; font-size: 0.72rem; }
       .pip-empty[hidden] { display: none; }
       @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.001s !important; } }
     `;
 
-    const pip = { win: null, root: null, baseline: new Map(), included: new Set() };
+    const pip = { win: null, root: null, panels: new Map(), expanded: new Set() };
     const pipSupported = "documentPictureInPicture" in window;
 
     async function togglePopout() {
       if (pip.win) { pip.win.close(); return; }
       if (!pipSupported) return;
-      const w = await documentPictureInPicture.requestWindow({ width: 340, height: 240 });
+      const w = await documentPictureInPicture.requestWindow({ width: 480, height: 240 });
       pip.win = w;
-      // Seed the include set + baseline from the current snapshot: everything
-      // waiting on you is in from the start; every other session's current turn
-      // timestamp is the baseline, so a later change reads as "activity" and pulls
-      // it in. The set only grows (until a session ends) so the panel is a running
-      // feed, never yanking a row you just glanced at.
-      pip.included = new Set();
-      pip.baseline = new Map();
-      for (const s of (latest && latest.sessions) || []) {
-        pip.baseline.set(s.hash, (s.latest_turn && s.latest_turn.at) || "");
-        if (needsYou(s)) pip.included.add(s.hash);
-      }
+      pip.panels = new Map();
       const doc = w.document;
-      doc.title = "beacon · needs you";
+      doc.title = "beacon · sessions";
       const style = doc.createElement("style");
       style.textContent = PIP_CSS;
       doc.head.appendChild(style);
       const root = doc.createElement("div");
       root.className = "pip";
       root.innerHTML =
-        '<div class="pip-head"><span class="pip-dot"></span>needs you' +
+        '<div class="pip-head"><span class="brand">beacon</span> / sessions' +
         '<span class="pip-count"></span></div>' +
         '<div class="pip-list"></div>' +
-        '<div class="pip-empty" hidden>All quiet — nothing waiting on you.</div>';
+        '<div class="pip-empty" hidden>No sessions in the window.</div>';
       doc.body.appendChild(root);
       pip.root = root;
       setPopoutActive(true);
@@ -1688,86 +1698,298 @@
       btn.classList.toggle("active", on);
       btn.title = on
         ? "Close the floating pop-out"
-        : "Pop out a floating, always-on-top view of sessions that need you";
+        : "Pop out a compact, always-on-top view of these sessions";
     }
 
     function renderPip() {
       if (!pip.win || !pip.root) return;
       const sessions = (latest && latest.sessions) || [];
-      const byHash = new Map(sessions.map((s) => [s.hash, s]));
-      // Grow the include set: waiting sessions are always in; a session whose
-      // latest turn changed since the panel opened counts as activity and joins.
-      // A session unseen at open is baselined (not flagged) so the panel doesn't
-      // flood with pre-existing chatter — it earns its place on its NEXT update.
-      for (const s of sessions) {
-        if (needsYou(s)) { pip.included.add(s.hash); continue; }
-        const at = (s.latest_turn && s.latest_turn.at) || "";
-        if (!pip.baseline.has(s.hash)) { pip.baseline.set(s.hash, at); continue; }
-        if (at && at !== pip.baseline.get(s.hash)) pip.included.add(s.hash);
-      }
-      for (const h of [...pip.included]) if (!byHash.has(h)) pip.included.delete(h);
-
-      const show = [...pip.included].map((h) => byHash.get(h)).filter(Boolean).sort(byRank);
-      const list = pip.root.querySelector(".pip-list");
       const doc = pip.win.document;
-      // Reuse rows across renders, keyed by hash (buffer-dom-rerenders): a steady
-      // poll re-orders and re-labels in place instead of rebuilding the list.
-      const have = new Map([...list.children].map((c) => [c.dataset.hash, c]));
+      const list = pip.root.querySelector(".pip-list");
+      // The dashboard's own sections, in its order: the waiting band, then each
+      // route group, the groupless last and unlabeled.
+      const waiting = sessions.filter(needsYou).sort(byRank);
+      const sections = [
+        ...(waiting.length ? [{ key: "\x00attn", label: "needs you", attn: true, sessions: waiting }] : []),
+        ...computeGroups(sessions.filter((s) => !needsYou(s))),
+      ];
+      // Reuse headers and tiles across renders, keyed (buffer-dom-rerenders): a
+      // steady poll re-orders and re-labels in place instead of rebuilding.
+      const have = new Map([...list.children].map((c) => [c.dataset.key, c]));
       let prev = null;
-      for (const s of show) {
-        let row = have.get(s.hash) || buildPipRow(doc, s.hash);
-        updatePipRow(row, s);
-        have.delete(s.hash);
+      const place = (node) => {
         const anchor = prev ? prev.nextSibling : list.firstChild;
-        if (row.parentNode !== list || row !== anchor) list.insertBefore(row, anchor);
-        prev = row;
+        if (node.parentNode !== list || node !== anchor) list.insertBefore(node, anchor);
+        prev = node;
+      };
+      for (const sec of sections) {
+        if (sec.label) {
+          const key = "h:" + sec.key;
+          let h = have.get(key);
+          if (!h) { h = doc.createElement("div"); h.dataset.key = key; }
+          h.className = "pip-group" + (sec.attn ? " attn" : "");
+          if (h.textContent !== sec.label) h.textContent = sec.label;
+          have.delete(key);
+          place(h);
+        }
+        for (const s of sec.sessions) {
+          loadPanel(s);
+          const key = "s:" + s.hash;
+          const row = have.get(key) || buildPipRow(doc, s.hash);
+          row.dataset.key = key;
+          updatePipRow(row, s, (pip.panels.get(s.hash) || {}).data);
+          have.delete(key);
+          place(row);
+        }
       }
-      for (const row of have.values()) row.remove();
+      for (const node of have.values()) node.remove();
 
-      pip.root.querySelector(".pip-count").textContent = show.length ? String(show.length) : "";
-      pip.root.querySelector(".pip-empty").hidden = show.length > 0;
+      pip.root.querySelector(".pip-count").textContent = sessions.length ? String(sessions.length) : "";
+      pip.root.querySelector(".pip-empty").hidden = sessions.length > 0;
       resizePip();
     }
 
+    // WIP-22: a tile's status panel, read at most once per STATUS-06 poll
+    // interval, and again at once when the record shows the session moved
+    // (a mode, task, or branch change), so the tile never lags the card.
+    const PANEL_MS = 15000;
+    function loadPanel(s) {
+      const sig = [s.mode && s.mode.name, s.mode && s.mode.note, s.task, s.branch].join("\x00");
+      const entry = pip.panels.get(s.hash) || {};
+      if (entry.pending || (entry.sig === sig && Date.now() - (entry.at || 0) < PANEL_MS)) return;
+      entry.pending = true;
+      entry.sig = sig;
+      pip.panels.set(s.hash, entry);
+      fetch("/panel/" + s.hash, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => { entry.data = data; })
+        .catch(() => {})
+        .finally(() => { entry.pending = false; entry.at = Date.now(); renderPip(); });
+    }
+
+    // The status panel's own colors (hooks/status-panel.tsx), so a tile reads as
+    // the band does.
+    const PANEL_ANSI = {
+      "31": "#ff5555", "32": "#50fa7b", "33": "#f1fa8c", "34": "#bd93f9",
+      "35": "#ff79c6", "36": "#8be9fd", "37": "#f8f8f2", "90": "#6272a4",
+    };
+    const BRANCH_HUE = { default: "#8d98c4", clean: "#8be9fd", diverged: "#f1fa8c", untracked: "#ffb86c" };
+    function xterm256(n) {
+      if (n < 16 || n > 255) return undefined;
+      const hex = (v) => v.toString(16).padStart(2, "0");
+      if (n >= 232) { const v = 8 + 10 * (n - 232); return "#" + hex(v) + hex(v) + hex(v); }
+      const step = [0, 95, 135, 175, 215, 255], i = n - 16;
+      return "#" + hex(step[Math.floor(i / 36)]) + hex(step[Math.floor(i / 6) % 6]) + hex(step[i % 6]);
+    }
+    function withSgr(style, params) {
+      let next = { ...style };
+      const codes = (params === "" ? "0" : params).split(";");
+      for (let i = 0; i < codes.length; i++) {
+        const c = codes[i];
+        if (c === "0") next = {};
+        else if (c === "1") next.bold = true;
+        else if (c === "2") next.dim = true;
+        else if (c === "22") next.bold = next.dim = false;
+        else if (c === "3") next.italic = true;
+        else if (c === "23") next.italic = false;
+        else if (c === "9") next.strike = true;
+        else if (c === "29") next.strike = false;
+        else if (c === "39") delete next.color;
+        else if (c === "38" && codes[i + 1] === "5") { const x = xterm256(Number(codes[i + 2])); if (x) next.color = x; i += 2; }
+        else if (PANEL_ANSI[c]) next.color = PANEL_ANSI[c];
+      }
+      return next;
+    }
+    // A status line's SGR runs and OSC 8 links, as the panel's segmentsOf reads them.
+    function panelSegments(line) {
+      const TOKEN = /\x1b\[([0-9;]*)m|\x1b\]8;;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+      const out = [];
+      let style = {}, link = null, at = 0;
+      const emit = (text) => {
+        if (!text) return;
+        const run = { text, style: { ...style } };
+        if (link) link.runs.push(run); else out.push(run);
+      };
+      const close = () => {
+        if (link) out.push({ href: link.href, label: link.runs.map((r) => r.text).join(""), runs: link.runs });
+        link = null;
+      };
+      for (const m of line.matchAll(TOKEN)) {
+        emit(line.slice(at, m.index));
+        at = m.index + m[0].length;
+        if (m[1] !== undefined) style = withSgr(style, m[1]);
+        else if (m[2]) link = { href: m[2], runs: [] };
+        else close();
+      }
+      emit(line.slice(at));
+      close();
+      return out;
+    }
+    function attrEscape(v) { return escapeHtml(v).replace(/"/g, "&quot;"); }
+    // Only a web link opens from a tile: the lines are state-derived, and an
+    // href is the one place they could carry a scheme of their own.
+    function linkHtml(href, inner) {
+      return /^https?:\/\//i.test(href)
+        ? '<a href="' + attrEscape(href) + '" target="_blank" rel="noopener">' + inner + "</a>"
+        : inner;
+    }
+    function runHtml(r) {
+      const st = r.style, css = [];
+      // Unstyled text stays dim, as the band draws it: the styled roles stand out.
+      if (st.color) css.push("color:" + st.color);
+      if (st.dim || (!st.bold && !st.color && !st.strike)) css.push("opacity:0.6");
+      if (st.bold) css.push("font-weight:700");
+      if (st.italic) css.push("font-style:italic");
+      if (st.strike) css.push("text-decoration:line-through");
+      return '<span style="' + css.join(";") + '">' + escapeHtml(r.text) + "</span>";
+    }
+    function segHtml(seg) {
+      return "href" in seg ? linkHtml(seg.href, seg.runs.map(runHtml).join("")) : runHtml(seg);
+    }
+
+    // A tile's age, rounded to what a glance needs: the minute under an hour, the
+    // hour under a day. A seconds count ticking on every poll pulls the eye to
+    // the one number that matters least on a tile.
+    function pipAge(s) {
+      if (s == null) return "";
+      const min = Math.round(s / 60);
+      if (min < 1) return "<1 min";
+      if (min < 60) return "~" + min + " min";
+      const hr = Math.round(s / 3600);
+      if (hr < 24) return "~" + hr + " hr";
+      const day = Math.round(s / 86400);
+      return "~" + day + (day === 1 ? " day" : " days");
+    }
+
     function buildPipRow(doc, hash) {
-      const row = doc.createElement("button");
-      row.type = "button";
+      const row = doc.createElement("div");
       row.className = "pip-row";
       row.dataset.hash = hash;
       row.innerHTML =
-        '<span class="pip-rdot"></span>' +
-        '<span class="pip-body"><span class="pip-proj"></span><span class="pip-turn"></span></span>' +
-        '<span class="pip-age"></span>';
-      row.addEventListener("click", () => focus(hash)); // navigate (raise window), don't expand
+        '<div class="pip-headrow">' +
+          '<span class="pip-chev" aria-hidden="true">⌄</span><span class="pip-rdot"></span><span class="pip-proj"></span>' +
+          '<span class="pip-age"></span>' +
+          '<span class="pip-actions">' +
+            '<button type="button" class="pip-btn go" data-tip="Raise its iTerm2 window" hidden>go →</button>' +
+            '<button type="button" class="pip-btn web" data-tip="Open the project page" hidden></button>' +
+            '<button type="button" class="pip-btn code" hidden></button>' +
+          "</span></div>" +
+        '<div class="pip-detail"><div class="pip-note"></div><div class="pip-turn"></div><div class="pip-lines"></div></div>' +
+        '<div class="pip-err"></div>';
+      row.querySelector(".pip-headrow").setAttribute("role", "button");
+      row.querySelector(".pip-headrow").tabIndex = 0;
+      const toggle = () => {
+        if (pip.expanded.has(hash)) pip.expanded.delete(hash); else pip.expanded.add(hash);
+        row.classList.toggle("expanded", pip.expanded.has(hash));
+        row.querySelector(".pip-headrow").setAttribute("aria-expanded", String(pip.expanded.has(hash)));
+        resizePip();
+      };
+      row.addEventListener("click", (e) => {
+        // A link opens its page and a button does what its tip says; anywhere
+        // else on the head row expands or collapses the tile.
+        if (e.target.closest("a")) return;
+        const btn = e.target.closest(".pip-btn");
+        if (btn) {
+          if (btn.classList.contains("go")) focus(hash);
+          else pressOpen(row, hash, btn.classList.contains("web") ? "web" : "code");
+          return;
+        }
+        if (e.target.closest(".pip-headrow")) toggle();
+      });
+      row.querySelector(".pip-headrow").addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("pip-headrow")) {
+          e.preventDefault();
+          toggle();
+        }
+      });
       return row;
     }
 
-    function updatePipRow(row, s) {
-      row.className = "pip-row color-" + (s.color_state || "idle") + (needsYou(s) ? " needs-you" : "");
-      row.disabled = !s.focusable;
-      row.title = s.focusable ? "Raise this iTerm2 window" : "Not focusable (non-iTerm2 session)";
-      const proj = row.querySelector(".pip-proj");
-      // The mode leads the project here rather than taking its own element: a pip
-      // row is one line of text in a collapsed stack, with no room for a slot
-      // that is empty in the dev cycle.
-      const glyph = modeGlyph(s);
-      const projSig = glyph + "\x00" + (s.project || s.hash) + "\x00" + (s.task || "");
-      if (proj.dataset.sig !== projSig) {
-        proj.dataset.sig = projSig;
-        proj.textContent = (glyph ? glyph + " " : "") + (s.project || s.hash);
-        if (s.task) {
-          const t = row.ownerDocument.createElement("span");
-          t.className = "pip-task";
-          t.textContent = s.task;
-          proj.appendChild(t);
+    // WIP-23: the band's web and code buttons, pressed for this tile's session.
+    async function pressOpen(row, hash, target) {
+      const err = row.querySelector(".pip-err");
+      try {
+        const r = await fetch("/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hash, target }),
+        });
+        const j = await r.json();
+        err.textContent = j.opened ? "" : (j.detail || "open failed");
+      } catch (e) { err.textContent = "open request failed"; }
+      if (err.textContent) setTimeout(() => { err.textContent = ""; resizePip(); }, 5000);
+      resizePip();
+    }
+
+    function updatePipRow(row, s, panel) {
+      // Until the panel arrives, the tile draws what the sessions record says.
+      const mode = panel ? panel.mode : (s.mode && s.mode.name !== "dev" ? s.mode : null);
+      const band = panel && mode && mode.band;
+      row.className = "pip-row color-" + (s.color_state || "idle")
+        + (band ? " moded" : "") + (panel && mode && mode.stood_down ? " stood-down" : "")
+        + (pip.expanded.has(s.hash) ? " expanded" : "");
+      if (band) row.style.setProperty("--mode-band", band);
+      row.querySelector(".pip-headrow").setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
+
+      // The note the band's ribbon carries, in the expanded detail.
+      const note = row.querySelector(".pip-note");
+      const noteHtml = mode && (mode.note_line || mode.note)
+        ? escapeHtml((mode.label || mode.name) + " · ") + (mode.note_line
+            ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
+                '<span style="' + (r.style.bold ? "font-weight:700;" : "") + (r.style.italic ? "font-style:italic" : "") + '">' + escapeHtml(r.text) + "</span>").join("")
+            : escapeHtml(mode.note))
+        : "";
+      if (note.dataset.html !== noteHtml) { note.dataset.html = noteHtml; note.innerHTML = noteHtml; }
+
+      const go = row.querySelector(".pip-btn.go");
+      go.hidden = !s.focusable;
+
+      const lines = ((panel && panel.lines) || []).map(panelSegments);
+      const links = new Map();
+      for (const segs of lines) for (const g of segs) if ("href" in g && !links.has(g.label)) links.set(g.label, g.href);
+      const project = (panel ? panel.project : s.project) || s.project || s.hash;
+      const branch = panel ? panel.branch : null;
+      const task = (panel ? panel.task : s.task) || null;
+      const parts = [...new Set([project, branch, task].filter(Boolean))];
+      const used = new Set(parts.filter((p) => links.has(p)));
+      const glyph = mode ? (mode.glyph || "") : "";
+      const head = parts.map((p, i) => {
+        if (i === 0) return "<b>" + escapeHtml(p) + "</b>";
+        if (p === branch) {
+          const text = '<span style="color:' + (BRANCH_HUE[panel.branch_slot] || "inherit") + '">'
+            + escapeHtml(panel.branch_sync ? panel.branch_sync + " " + p : p) + "</span>";
+          const href = links.get(p) || panel.branch_url;
+          return href ? linkHtml(href, text) : text;
         }
+        return links.has(p) ? linkHtml(links.get(p), escapeHtml(p)) : escapeHtml(p);
+      }).join('<span class="sep"> · </span>');
+      const projHtml = (glyph ? escapeHtml(glyph) + " " : "") + head;
+      const proj = row.querySelector(".pip-proj");
+      if (proj.dataset.html !== projHtml) { proj.dataset.html = projHtml; proj.innerHTML = projHtml; }
+
+      const web = row.querySelector(".pip-btn.web"), code = row.querySelector(".pip-btn.code");
+      const canOpen = !!(panel && panel.anchor_cwd);
+      web.hidden = !(canOpen && panel.forge);
+      code.hidden = !canOpen;
+      if (canOpen) {
+        if (panel.forge) web.textContent = "↖ " + panel.forge;
+        code.textContent = panel.code_label + " ↗";
+        code.dataset.tip = "Open its directory in " + panel.code_label;
       }
+
+      const linesHtml = lines
+        .map((segs) => segs.filter((g) => !("href" in g && used.has(g.label))))
+        .filter((segs) => segs.some((g) => "href" in g || g.text.replace(/[\s·]/g, "") !== ""))
+        .map((segs) => "<div>" + segs.map(segHtml).join("") + "</div>").join("");
+      const linesEl = row.querySelector(".pip-lines");
+      if (linesEl.dataset.html !== linesHtml) { linesEl.dataset.html = linesHtml; linesEl.innerHTML = linesHtml; }
+
       const turnEl = row.querySelector(".pip-turn");
       const tt = (s.latest_turn && s.latest_turn.text) || "";
       if (turnEl.textContent !== tt) turnEl.textContent = tt;
       turnEl.hidden = !tt;
       const age = row.querySelector(".pip-age");
-      const a = fmtAge(s.age_seconds);
+      const a = pipAge(s.age_seconds);
       if (age.textContent !== a) age.textContent = a;
     }
 
@@ -1777,7 +1999,7 @@
       // queue scrolls rather than filling the display; width stays whatever the
       // user last dragged it to.
       const h = Math.min(Math.ceil(pip.root.scrollHeight) + 8, 680);
-      try { pip.win.resizeTo(pip.win.outerWidth || 340, Math.max(120, h)); } catch (_) {}
+      try { pip.win.resizeTo(pip.win.outerWidth || 480, Math.max(120, h)); } catch (_) {}
     }
 
     let scheduled = false, latest = null;

@@ -445,16 +445,6 @@ RECOMMENDED_LAYOUT = (
      "why": "the tooltip repeats the project and task the label already shows, "
             "and pops over the neighbouring tabs being scanned",
      "where": "Advanced → Tabs"},
-    {"key": "StatusBarPosition", "want": "0", "type": "int",
-     "label": "Status bar at the top",
-     "why": "reads as a header for the pane; the bottom is where Claude Code "
-            "renders beacon's own status line, and the two stack there",
-     "where": "Appearance → General"},
-    {"key": "StatusBarHeight", "want": "32", "type": "float",
-     "label": "Status-bar height",
-     "why": "the strip pairs each action button with the data it acts on "
-            "(STATUS-BAR-02); at iTerm2's 21pt the two halves crowd each other",
-     "where": "Advanced → General"},
     {"key": "HTMLTabTitles", "want": "1", "type": "bool",
      "label": "HTML tab titles (on)",
      "why": "renders the <b> project accent in the two-line tab label",
@@ -1000,21 +990,13 @@ RESET_FAMILIES = (
               "ColoredSelectedTabOutlineStrength",
               "ColoredUnselectedTabTextProminence",
               "DarkModeInactiveTabDarkness")},
-    {"surface": "Status bar",
-     "why": "the strip beacon fills with the project chip and the two action "
-            "buttons (STATUS-BAR-02)",
-     "keys": ("StatusBarPosition", "StatusBarHeight",
-              "SeparateStatusBarsPerPane", "AlwaysUseStatusBarComposer")},
-    {"surface": "Pane background",
-     "why": "where a declared mode's watermark is drawn (RENDER-05); clearing "
-            "the approval list means iTerm2 asks about each watermark again, "
-            "which is what a first install does",
-     "keys": ("PerPaneBackgroundImage", "AlwaysAllowBackgroundImage",
-              "DimInactiveSplitPanes", "DimBackgroundWindows", "DimOnlyText",
+    {"surface": "Panes",
+     "why": "the per-pane title bars and dimming the layout sets (CLI-18c)",
+     "keys": ("DimInactiveSplitPanes", "DimBackgroundWindows", "DimOnlyText",
               "SplitPaneDimmingAmount", "ShowPaneTitles",
               "ShowPaneTitlesEvenIfOnlyOnePane")},
     {"surface": "Escape-sequence permissions",
-     "why": "beacon swaps a pane into a mode profile by OSC, which these can "
+     "why": "beacon swaps a pane into its profile by OSC, which these can "
             "refuse (CLI-14)",
      "keys": ("PreventEscapeSequenceFromChangingProfile",
               "PreventEscapeSequenceFromClearingHistory")},
@@ -1062,7 +1044,7 @@ def _reset_audit() -> None:
 
 def _one_line(value: str) -> str:
     """A plist value flattened for a one-line audit row. `defaults read` prints
-    an array over many lines, and `AlwaysAllowBackgroundImage` is a long one."""
+    an array over many lines."""
     flat = " ".join(value.split())
     if not flat:
         return "(empty)"

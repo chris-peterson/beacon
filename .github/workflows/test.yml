@@ -40,3 +40,18 @@ jobs:
 
       - name: Run tests
         run: python -m unittest discover -s tests -v
+
+  # The status panel is a hooks module, which runs inside Claude Code rather than
+  # on any OS's Python, so one runner covers it. `claude plugin test` needs no
+  # login, only Claude Code on PATH.
+  mod:
+    name: status panel mod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: |
+          curl -fsSL https://claude.ai/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - run: claude plugin test .

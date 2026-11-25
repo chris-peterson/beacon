@@ -108,5 +108,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./status-panel.tsx"
+  ]
 }

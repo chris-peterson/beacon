@@ -2,6 +2,98 @@
 
 ## Unreleased
 
+### beacon's lines move above the prompt, and the status bar and status line go (breaking)
+
+beacon 3.0 draws one panel in Claude Code's band above the prompt, in every
+session and any terminal, with nothing to turn on. It shows the session's
+project, its branch (colored by how it sits against its upstream, marked
+ahead or behind, and a link to its page when it has one), its task, and the
+lines the status line used to carry: what shipped, and the open change
+requests and issues. Two buttons at the end of the top row,
+named for what they open (`↖ github`, `code ↗`), open the project page and the
+session's directory in your editor; `w` and `c` press them with the band
+focused. It shows this session only. It needs Claude Code 2.1.287 or later.
+
+What it replaces:
+
+- **The iTerm2 status bar is gone.** The beacon profiles no longer lay one
+  out, the shell no longer publishes its project and branch chips, and a plain
+  shell pane keeps its tab and window title. The buttons' commands moved from
+  `statusbar.buttons.<name>.cmd` to `buttons.<name>.cmd`, and their labels
+  went with the bar.
+- **Claude Code's status line row is retired.** `beacon install` removes a
+  `statusLine` that runs `beacon statusline` from `~/.claude/settings.json`,
+  and `beacon doctor` points one out. If your settings are synced from
+  elsewhere, remove it there too, or the row repeats the panel's lines.
+- **`beacon config status-panel` and `/beacon on|off` are gone**, since
+  there is nothing left to switch between.
+
+Run `/beacon:install-beacon` in a Claude Code session once after updating.
+
+### Modes show in the panel, and leave your pane alone (breaking)
+
+A declared mode now shows in the status panel in any terminal, not by
+repainting the pane in iTerm2. `pause`, `release`, and `done` open the panel
+with a bar in the mode's own hue carrying its glyph, its name, and your note,
+and a paused session's bar says *type to resume*. The mode's name also joins
+the labels at the right of Claude Code's footer, so it still shows with the
+panel collapsed. `retro` has no bar: its glyph leads the panel's top row and
+its note takes the first line, as before. The bar's text meets WCAG AA on
+every hue.
+
+- **Panes keep your background in every mode.** The purple pause pane, the
+  navy release pane, the dark done pane, and their watermarks are gone. The
+  tab still leads with the mode's glyph.
+- **The iTerm2 profile is now named `beacon`**, and it's the only one beacon
+  writes. `beacon install` removes `beacon-dev` and the per-mode profiles,
+  and an open pane moves to `beacon` at its next update, with nothing for you
+  to do. A setting or script that named `beacon-dev` needs the new name.
+- **Dashboard mode cards take the bar's hue**, without a watermark.
+
+### Every session shows, however beacon was loaded
+
+beacon now keeps its state in one place, `~/.local/state/beacon` (or under
+`$XDG_STATE_HOME`), whichever way a session loaded it. Through 2.x a session
+running the installed plugin and one loading beacon from a local checkout kept
+their state in two separate directories, and the dashboard, `beacon wip`, and
+the pop-out showed only one set, so sessions went missing without a word. The
+first 3.0 run copies what 2.x left in both into the new place; `beacon doctor`
+names a 2.x install still running beside it.
+
+### The pop-out is the dashboard, stacked
+
+The dashboard's pop-out, the small always-on-top window, now holds every
+session the dashboard shows, in the same order, as one column of compact
+tiles: the ones waiting on you under their own heading, then the rest. It no
+longer starts with only the waiting sessions and grows as others show
+activity. Each tile is one line, the session's project, branch, and task with
+its activity dot and age, and expands on a click to its mode's note, latest
+turn, and the change requests and issues it's working. Its buttons raise the
+session's window (`go →`) and open the project page and its directory
+(`↖ github`, `code ↗`), each saying what it does the moment you hover it. A
+mode marks a tile with its glyph and an edge in its color, and a paused or
+finished session's tile recedes behind the ones still working.
+
+### Switch to the session that needs you
+
+Command-Option-] raises the next beacon session and Command-Option-[ the
+previous one: the sessions waiting on you come first, longest wait first,
+then the rest, most recent first. Presses in quick succession walk one list.
+Command-Option-/ opens a list to choose from, as does a press whose session
+can't be raised, and `/beacon switch` shows the same list above the prompt in
+a Claude Code session. `beacon switch` does the same from a shell, and
+`beacon focus <hash>` raises one session by its hash, as a click on a
+dashboard row does. Your own key bindings come along into the beacon
+profile, so rerun `beacon refresh-iterm-profiles` after changing them.
+
+### Status line colors meet WCAG AA
+
+Every color beacon draws on the terminal now reaches a 4.5:1 contrast against
+Dracula's background. Change requests are bold white rather than cyan, which
+now means only an in-step branch; issues are regular white rather than dimmed
+cyan; work waiting on something else is a lighter gray; and the mode's note is
+a lighter purple. The palette page lists each change.
+
 ### Turn off what beacon does with a sibling's announcement
 
 `git config --global beacon.subscribe.anchor false` stops beacon acting on

@@ -30,12 +30,12 @@ python3 dev/demo.py --seed-only      # write static sessions and exit (no serve)
 
 A card per session, colored by what each is doing right now, in the same colors beacon paints on an iTerm2 pane. Sessions that need you (waiting, or flagged) rise into a loud **Needs you** band at the top; the rest of the sessions sit quietly below:
 
-![The beacon dashboard: a Needs-you band of red waiting cards above a grid of the rest: gray idle, amber working, and mode cards (a green release with a rocket, a dim done with a power-off mark, a purple paused).](images/demo-sessions.png)
+![The beacon dashboard: a Needs-you band of red waiting cards above a grid of the rest: gray idle, amber working, and mode cards tinted in their ribbon hues.](images/demo-sessions.png)
 
 - **Gray**: idle, at rest, waiting for its next prompt
 - **Amber**: Claude is working
 - **Red**: waiting for you, such as at a permission prompt, or flagged for your attention
-- **Mode colors**: a session you've moved into a cycle: `pause` (purple), `release` (green), `retro` (a plain card with its `📋` glyph), `done` (dim gray). See [The beacon palette](/palette).
+- **Mode tints**: a session you've moved into a cycle takes its status panel ribbon's hue: `pause` (muted purple), `release` (navy), `done` (near-black), and `retro` a plain card with its `📋` glyph. See [The beacon palette](/palette).
 
 Each card carries the recall context a glance needs: the project, the current task, the [tack](https://github.com/chris-peterson/tack) route chip, the branch, and a free-text note about *why* it's in this state.
 
@@ -49,15 +49,19 @@ A red card is the only kind you can click. In the demo, clicking it **returns th
 
 Let the board run for a minute and you'll watch it drift redder as work stalls, then clear it card by card. That's the loop the sessions view is built for.
 
+## Pop it out
+
+**pop out** (in Chrome and Edge) opens a small window that stays on top of everything else, so your sessions stay in view while you work in your editor. It holds the same sessions as the dashboard, in the same order, stacked in one column: the ones waiting on you first, under their own heading. Each tile is one line from that session's [status panel](/statusline): the project, branch, and task, with buttons to raise its window and open its project page and directory. Click a tile to expand it to its mode's note, latest turn, and the change requests and issues it's working.
+
 ## On Windows or a non-iTerm terminal
 
-The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does; the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab and status-bar painting is an iTerm2 adapter and is skipped automatically off iTerm2.
+The sessions view reads session state and paints no pane, so it runs anywhere Python 3 does; the screenshots above are the same dashboard a Windows or Linux coworker sees. Install the plugin, run `beacon serve`, open `http://127.0.0.1:8787/`, and you have this view over your own sessions. The per-pane tab painting is an iTerm2 adapter and is skipped automatically off iTerm2.
 
 See [On Windows or a non-iTerm terminal](/?id=on-windows-or-a-non-iterm-terminal) for the install steps.
 
 ## On macOS + iTerm2: per-pane painting
 
-iTerm2 gets everything the demo shows, plus the same state painted onto each pane (the tab's label and color, and the status bar), so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [Layout](/iterm/layout) for the full anatomy.
+iTerm2 gets everything the demo shows, plus the same state painted onto each pane's tab (its label, color, and mode glyph), so you can scan concurrent panes without opening the dashboard at all. The demo serves only the dashboard; the per-pane surfaces appear once you install beacon and run real sessions. See [Layout](/iterm/layout) for the full anatomy.
 
 ## Next steps
 

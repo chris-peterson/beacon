@@ -64,7 +64,7 @@ beacon is not the only thing painting iTerm2 tabs from Claude Code hooks. [claud
 
 Both are smaller than beacon, and if attention state is all you want, that's the reason to prefer them. Three things separate them:
 
-- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus a status bar, the window title, and a [status line](/statusline) listing the session's open PRs and issues.
+- **How much they carry.** Both surface one axis. beacon's tab carries the project over its task, colored by state, with mode cycles for pause / release / retro / done, plus the window title, and a [status panel](/statusline) above the prompt listing the session's branch and its open PRs and issues.
 - **What has to be running.** They need an iTerm2 Python AutoLaunch script (and an iTerm2 restart) or a resident LaunchAgent holding a websocket. beacon paints with escape sequences and a hot-reloaded profile, so neither is required. beacon's own `serve` is a daemon, but it's opt-in and only powers the dashboard.
 - **Where it stops working.** They're macOS and iTerm2, entirely. beacon's sessions view is the primary product and runs anywhere Python does.
 
@@ -74,11 +74,11 @@ Two things.
 
 **One: the state is on disk, so the sessions outlive any one UI.** Every session writes to `<DATA_DIR>/state/<hash>.<field>`. That's why `beacon wip`, `beacon watch`, the browser dashboard, and anything you write against `/wip.json` read the same records, from outside any running process, in any terminal, on any OS. Every alternative here keeps its sessions inside something: a plugin's memory, a window, an Electron app's database, a status-bar format string.
 
-**Two: it paints a terminal it doesn't own.** The iTerm2 adapter drives that terminal's real chrome (tab color, two-line tab label, status bar, window title) from agent hooks, without being the terminal or requiring a multiplexer. It's an adapter behind a stateless CLI, so a second terminal is a new adapter rather than a rewrite. Windows Terminal is next, then WezTerm.
+**Two: it paints a terminal it doesn't own.** The iTerm2 adapter drives that terminal's real chrome (tab color, two-line tab label, window title) from agent hooks, without being the terminal or requiring a multiplexer. It's an adapter behind a stateless CLI, so a second terminal is a new adapter rather than a rewrite. Windows Terminal is next, then WezTerm.
 
 How much of the iTerm2 surface each one can carry differs. Windows Terminal covers two of them in-band: the **tab label**, because it honors the OSC 0 title sequence a shell writes for itself, and the **tab color**, via `DECAC` against palette indices 263/264 since v1.15. Three limits shape what that adapter can promise: the label is per-*tab*, so panes in a split can't be labeled side by side the way iTerm2's per-session name allows; the tab title takes no SGR, so the bold project accent flattens; and the runtime color resets on a settings edit or a keyboard-layout change, so it wants re-emitting per prompt.
 
-WezTerm reaches further into the rest. `$WEZTERM_PANE` gives a pane the stable identity `$ITERM_SESSION_ID` gives an iTerm2 session, pane-directed `wezterm cli` commands take `--pane-id`, and it reads the same OSC 1337 `SetUserVar` channel beacon's status bar already uses, with user vars scoped to a pane rather than a process, as in iTerm2. kitty is comparable but needs `allow_remote_control` switched on in `kitty.conf` first, so its adapter starts with a config edit rather than an escape sequence. Ghostty parses the iTerm2 OSC 1337 extensions without implementing them, so there's nothing to drive there yet.
+WezTerm reaches further into the rest. `$WEZTERM_PANE` gives a pane the stable identity `$ITERM_SESSION_ID` gives an iTerm2 session, pane-directed `wezterm cli` commands take `--pane-id`, and it reads the same OSC 1337 `SetUserVar` channel beacon's tab label already uses, with user vars scoped to a pane rather than a process, as in iTerm2. kitty is comparable but needs `allow_remote_control` switched on in `kitty.conf` first, so its adapter starts with a config edit rather than an escape sequence. Ghostty parses the iTerm2 OSC 1337 extensions without implementing them, so there's nothing to drive there yet.
 
 ## Where beacon is weaker
 

@@ -50,12 +50,28 @@ HOME = Path.home()
 #   error: the API error an `error` session's turn stopped on
 #   mode + note: a declared phase and its annotation (omit for the dev cycle)
 #   route: (slug, group) → a [slug] chip; None means unrouted.
+#   branch + refs: what the pop-out tile's status panel shows (WIP-22): the
+#     branch on its head row, and each (url, link record) as its CR / issue lines.
+FORGE = "https://gitlab.example.com/meridian"
+
+
+def _mr(project: str, n: int) -> str:
+    return f"{FORGE}/{project}/-/merge_requests/{n}"
+
+
+def _issue(project: str, n: int) -> str:
+    return f"{FORGE}/{project}/-/issues/{n}"
+
+
 SESSIONS = [
     dict(project="checkout-api", task="idempotency keys for refunds", activity="working",
          age=3, route=("checkout", "payments"),
          turn=("agent", "Added the idempotency-key column and a unique index; wiring the refund handler to look it up before charging")),
     dict(project="checkout-api", task="rebase on main", activity="blocked", ask="question",
-         age=95, route=("checkout", "payments"),
+         age=95, route=("checkout", "payments"), branch="refund-idempotency",
+         refs=[(_issue("checkout-api", 412), {}),
+               (_mr("checkout-api", 88), dict(title="idempotency keys for refunds",
+                                              closes=[_issue("checkout-api", 412)]))],
          turn=("agent", "Hit a conflict in refund_handler.py between your idempotency change and main's retry backoff — which side wins?")),
     dict(project="ledger-svc", task="double-entry migration", activity="working",
          age=240, route=("ledger", "payments"),
@@ -71,13 +87,17 @@ SESSIONS = [
          turn=("agent", "Reindexing batch 14 of 60 — throughput is holding at ~8k docs/s")),
     dict(project="mobile-ios", task="deep-link QA", activity="idle", age=2400),
     dict(project="data-pipeline", task="backfill stuck on warehouse quota",
-         activity="blocked", ask="question", age=3600,
+         activity="blocked", ask="question", age=3600, branch="warehouse-backfill",
+         refs=[(_issue("data-pipeline", 57), {})],
          turn=("human", "can you bump the slot reservation or do we need to wait?")),
     # Shipping *and* blocked on you — the state a single merged field could not
     # represent. The card keeps its release treatment and turns its dot red.
     dict(project="auth-svc", task="passkey rollout", activity="blocked",
          mode="release", note="v4.2.0 — canary at 5%",
-         age=300, route=("auth", "platform"),
+         age=300, route=("auth", "platform"), branch="main",
+         refs=[(_mr("auth-svc", 214), dict(title="passkey enrollment",
+                                           state="merged", landed_at="2026-01-05T11:30:00+00:00")),
+               (_mr("auth-svc", 219), dict(title="ramp passkeys to 25%"))],
          turn=("agent", "Canary is green at 5%; ramping to 25% needs your sign-off")),
     dict(project="infra-terraform", task="vpc peering to the new region",
          activity="idle", mode="pause", age=18000,
@@ -133,10 +153,10 @@ def _set_activity(state: Path, sh: str, activity: str) -> None:
         handle.unlink(missing_ok=True)
 
 
-def seed(data_dir: Path, tack_home: Path) -> list[dict]:
+def seed(state: Path, tack_home: Path) -> list[dict]:
     """Wipe and write the initial sessions at staggered ages. Returns the live model
     (hash + current activity per session) the simulator mutates."""
-    state, routes = data_dir / "state", tack_home / "routes"
+    routes = tack_home / "routes"
     for d in (state, routes):
         if d.exists():
             shutil.rmtree(d)
@@ -168,7 +188,8 @@ def seed(data_dir: Path, tack_home: Path) -> list[dict]:
         if s["activity"] == "blocked":  # blocked-only markers: ring + clickable handle
             _write(state / f"{sh}.pending-attention", s.get("ask", "permission"), mt)
             _write(state / f"{sh}.iterm_session_id", f"demo:{sh}", mt)
-        sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"]})
+        sessions.append({"sh": sh, "project": s["project"], "activity": s["activity"],
+                         "branch": s.get("branch"), "refs": s.get("refs", [])})
 
     for s in SESSIONS:  # routes are matched by project name; in-file slug is the chip
         if s.get("route"):
@@ -197,7 +218,7 @@ def simulate(state: Path, sessions: list[dict], interval: float) -> None:
 def _load_beacon(data_dir: Path, tack_home: Path):
     # collect_sessions reads STATE_DIR / TACK_HOME, both resolved at import from
     # the environment — so point them at the isolated dirs before loading.
-    os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
+    os.environ["BEACON_DATA_DIR"] = str(data_dir)
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(REPO)
     os.environ["TACK_HOME"] = str(tack_home)
     loader = importlib.machinery.SourceFileLoader("beacon", str(BEACON_PATH))
@@ -205,6 +226,26 @@ def _load_beacon(data_dir: Path, tack_home: Path):
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
     return module
+
+
+def seed_refs(beacon, sessions: list[dict]) -> None:
+    """Record each session's CRs and issues the way the hooks would, so the
+    pop-out's tiles have a stack to show. The demo has no tack route to read."""
+    from unittest import mock
+    with mock.patch.object(beacon, "_tack_landed_urls", return_value=set()):
+        for s in sessions:
+            if not s["refs"]:
+                continue
+            beacon._PANE.hash = s["sh"]
+            try:
+                beacon.write_state("session_started_at", "2026-01-05T09:00:00+00:00")
+                for url, record in s["refs"]:
+                    beacon._record_deliverable(beacon._deliverable_suffix(url), url,
+                                               beacon._project_id_from_url(url))
+                    if record:
+                        beacon._update_links(url, **record)
+            finally:
+                beacon._PANE.hash = None
 
 
 def make_server(port: int, state: Path, beacon, sessions: list[dict]):
@@ -245,6 +286,20 @@ def make_server(port: int, state: Path, beacon, sessions: list[dict]):
                 self._send(200, dash, "text/html; charset=utf-8")
             elif path == "/wip.json":
                 self._send(200, json.dumps(beacon.collect_sessions(None)))
+            elif path.startswith("/panel/"):
+                sh = path[len("/panel/"):]
+                panel = beacon._panel_for(sh)
+                if panel is None:
+                    self._send(404, json.dumps({"error": "not found"}))
+                    return
+                # The demo's checkouts don't exist, so the git half of the head row
+                # comes from the seed instead.
+                branch = (by_hash.get(sh) or {}).get("branch")
+                if branch:
+                    panel.update(branch=branch, branch_slot="default" if branch == "main" else "clean",
+                                 branch_url=f"{FORGE}/{panel['project']}/-/tree/{branch}")
+                panel["forge"] = "gitlab"
+                self._send(200, json.dumps(panel))
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
@@ -265,6 +320,8 @@ def make_server(port: int, state: Path, beacon, sessions: list[dict]):
                     if sh in by_hash:
                         by_hash[sh]["status"] = "working"
                 self._send(200, json.dumps({"focused": bool(sh), "detail": "returned to agent"}))
+            elif path == "/open":
+                self._send(200, json.dumps({"opened": bool(sh), "detail": "demo"}))
             elif path == "/forget":
                 files = 0
                 if sh:
@@ -292,17 +349,20 @@ def main() -> None:
 
     data_dir = args.data_dir.expanduser().resolve()
     tack_home = data_dir / "tack"
-    sessions = seed(data_dir, tack_home)
-    print(f"seeded {len(sessions)} demo sessions → {data_dir}")
+    # Seeded where beacon reads it: STATE_DIR carries the state schema (§6.2).
+    beacon = _load_beacon(data_dir, tack_home)
+    state = beacon.STATE_DIR
+    sessions = seed(state, tack_home)
+    print(f"seeded {len(sessions)} demo sessions → {state}")
 
     if args.seed_only:
-        print("inspect: CLAUDE_PLUGIN_DATA={d} TACK_HOME={t} python3 {b} wip".format(
+        print("inspect: BEACON_DATA_DIR={d} TACK_HOME={t} python3 {b} wip".format(
             d=data_dir, t=tack_home, b=BEACON_PATH))
         return
 
-    beacon = _load_beacon(data_dir, tack_home)
-    server = make_server(args.port, data_dir / "state", beacon, sessions)
-    threading.Thread(target=simulate, args=(data_dir / "state", sessions, args.interval),
+    seed_refs(beacon, sessions)
+    server = make_server(args.port, state, beacon, sessions)
+    threading.Thread(target=simulate, args=(state, sessions, args.interval),
                      daemon=True).start()
     print(f"dashboard → http://127.0.0.1:{args.port}/   "
           f"(click a red card to return it · Ctrl-C to stop)")

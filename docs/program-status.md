@@ -1681,8 +1681,7 @@ Against beacon's surfaces:
 | Window title | The same label | None |
 | Pane background | The declared phase | None |
 | Badge (off by default) | Project and task, in the activity color | Color only |
-| Status bar | Project, branch, `↖ web`, `↗ code` | None |
-| [Status line](/statusline) | Deliverables, change requests, merge order | None |
+| [Status panel](/statusline) | Project, branch, task, deliverables, change requests, merge order, above the prompt | None |
 | [Sessions view](/demo) | Every session's activity, phase, latest turn, plan mode, and work route | iTerm2's Cockpit groups sessions by `state` with `msg` as detail, in iTerm2 only |
 
 The protocol also brings surfaces beacon has no counterpart for: the dock badge counting sessions waiting on you, the ring when a session first needs you, optional per-status notifications, and a row per running sub-agent.

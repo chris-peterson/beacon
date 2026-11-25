@@ -127,10 +127,10 @@ def tab_hex(beacon, style: str, color_state: str) -> str:
 OPEN_WINDOW = f'''
 on run argv
     tell {ITERM}
-        set w to (create window with profile "beacon-dev" command "{TAB_COMMAND}")
+        set w to (create window with profile "beacon" command "{TAB_COMMAND}")
         set bounds of w to {{80, 60, 1000, 760}}
         repeat ((count of argv) - 1) times
-            tell w to create tab with profile "beacon-dev" command "{TAB_COMMAND}"
+            tell w to create tab with profile "beacon" command "{TAB_COMMAND}"
         end repeat
         set ttys to {{}}
         repeat with i from 1 to count of argv
