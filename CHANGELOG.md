@@ -28,7 +28,7 @@ What it replaces:
 - **`beacon config status-panel` and `/beacon on|off` are gone**, since
   there is nothing left to switch between.
 
-Run `beacon install` once after updating.
+Run `/beacon:install-beacon` in a Claude Code session once after updating.
 
 ### Modes show in the panel, and leave your pane alone (breaking)
 
@@ -50,14 +50,29 @@ every hue.
   to do. A setting or script that named `beacon-dev` needs the new name.
 - **Dashboard mode cards take the bar's hue**, without a watermark.
 
-### The pop-out shows each session's status panel
+### Every session shows, however beacon was loaded
 
-The dashboard's pop-out, the small always-on-top window, now draws each session
-as its status panel: the mode's ribbon, the project, branch, and task, the
-change requests and issues it's working, and the `↖ github` and `code ↗`
-buttons, which open the project page and that session's directory just as they
-do in the band. The activity dot, age, and latest turn stay beside them, and a
-click anywhere else on the tile still raises the session's window.
+beacon now keeps its state in one place, `~/.local/state/beacon` (or under
+`$XDG_STATE_HOME`), whichever way a session loaded it. Through 2.x a session
+running the installed plugin and one loading beacon from a local checkout kept
+their state in two separate directories, and the dashboard, `beacon wip`, and
+the pop-out showed only one set, so sessions went missing without a word. The
+first 3.0 run copies what 2.x left in both into the new place; `beacon doctor`
+names a 2.x install still running beside it.
+
+### The pop-out is the dashboard, stacked
+
+The dashboard's pop-out, the small always-on-top window, now holds every
+session the dashboard shows, in the same order, as one column of compact
+tiles: the ones waiting on you under their own heading, then the rest. It no
+longer starts with only the waiting sessions and grows as others show
+activity. Each tile is one line, the session's project, branch, and task with
+its activity dot and age, and expands on a click to its mode's note, latest
+turn, and the change requests and issues it's working. Its buttons raise the
+session's window (`go →`) and open the project page and its directory
+(`↖ github`, `code ↗`), each saying what it does the moment you hover it. A
+mode marks a tile with its glyph and an edge in its color, and a paused or
+finished session's tile recedes behind the ones still working.
 
 ### Switch to the session that needs you
 

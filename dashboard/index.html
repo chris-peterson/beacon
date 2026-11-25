@@ -410,8 +410,11 @@
     .card.expanded .ttext { display: block; }
     /* Copy the turn: the full fetched text when the panel has it, else the
        one-line excerpt. Rides the panel's top-right corner, opposite the role
-       label; hidden until the turn is expanded into its panel. */
-    .turn-copy { position: absolute; top: 0.4rem; right: 0.4rem; display: none; }
+       label; hidden until the turn is expanded into its panel. Scoped under
+       .turn so it outranks .copy's display, which comes later in the sheet:
+       shown on a collapsed card it has no panel to sit in, and lands in the
+       card's corner over the close button. */
+    .turn .turn-copy { position: absolute; top: 0.4rem; right: 0.4rem; display: none; }
     .card.expanded .turn-copy { display: inline-grid; }
 
     /* Rendered-markdown primitives, scoped to .ttext so they never touch the
@@ -1545,8 +1548,9 @@
     }
 
     // ── Pop-out: a compact, always-on-top floating panel (Document
-    // Picture-in-Picture) that starts with just the sessions waiting on you and
-    // grows as others show activity while it's open. Each tile is that session's
+    // Picture-in-Picture) holding the dashboard's own sessions in its own order,
+    // stacked in one column: the ones waiting on you, then each route group, the
+    // groupless last (WIP-10, WIP-16). Each tile is that session's
     // status panel (WIP-19): its mode ribbon, head row, CR / issue lines, and web
     // and code buttons, read from /panel/<hash> (WIP-22) and pressed through
     // /open (WIP-23). A tile is a focus trigger, not an expander: a click outside
@@ -1570,80 +1574,94 @@
       }
       .pip { padding: 0.5rem 0.55rem 0.6rem; }
       .pip-head {
-        display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; padding: 0 0.1rem;
+        display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.4rem; padding: 0 0.1rem;
         font-size: 0.66rem; font-weight: 700; letter-spacing: 0.14em;
-        text-transform: uppercase; color: var(--blocked);
+        text-transform: uppercase; color: var(--muted);
       }
-      .pip-dot {
-        width: 0.45rem; height: 0.45rem; border-radius: 50%;
-        background: var(--blocked); box-shadow: 0 0 7px var(--blocked);
-        animation: pblink 1.2s steps(1) infinite;
+      .pip-head .brand { color: var(--accent); }
+      /* A section's label, as the dashboard heads its bands and route groups. */
+      .pip-group {
+        margin: 0.35rem 0.1rem 0; font-size: 0.62rem; font-weight: 700;
+        letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
       }
-      @keyframes pblink { 50% { opacity: 0.3; } }
+      /* Waiting sessions are already marked by their red dot; the heading only
+         names the section, so it stays as quiet as the route groups' headings. */
+      .pip-group.attn::before { content: "● "; color: var(--blocked); }
       .pip-count { margin-left: auto; color: var(--faint); font-variant-numeric: tabular-nums; }
-      .pip-list { display: flex; flex-direction: column; gap: 0.35rem; }
+      .pip-list { display: flex; flex-direction: column; gap: 0.3rem; }
       .pip-row {
-        display: flex; flex-direction: column; width: 100%; text-align: left;
-        border-radius: 8px; cursor: pointer; overflow: hidden;
-        background: var(--panel); border: 1px solid var(--line); color: var(--fg);
-        font: inherit; --state-color: var(--line-hi);
-        transition: border-color 0.12s, background 0.12s, transform 0.1s;
+        display: flex; flex-direction: column; width: 100%;
+        border-radius: 7px; background: var(--panel); border: 1px solid var(--line);
+        border-left: 3px solid var(--edge, var(--line)); color: var(--fg);
+        --state-color: var(--line-hi);
+        transition: border-color 0.12s, background 0.12s;
         animation: prowIn 0.2s cubic-bezier(0.2,0.7,0.3,1) both;
       }
       @keyframes prowIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-      .pip-row:hover:not(.unfocusable) { border-color: var(--state-color); background: var(--panel-hi); }
-      .pip-row:focus-visible { outline: 1px solid var(--state-color); }
-      .pip-row.unfocusable { cursor: default; }
+      .pip-row:hover { background: var(--panel-hi); }
       .pip-row.color-idle { --state-color: var(--idle); }
       .pip-row.color-working { --state-color: var(--working); }
       .pip-row.color-blocked { --state-color: var(--blocked); }
-      .pip-row.needs-you {
-        border-color: rgba(255,85,85,0.5);
-        background: radial-gradient(120% 140% at 100% 0%, rgba(255,85,85,0.12), transparent 55%), var(--panel-hi);
+      /* A mode marks its tile by an edge in its hue and its glyph before the
+         project. The band is a dark ground for text, so the edge keeps its hue
+         and raises its lightness and chroma until it reads against the panel. */
+      .pip-row.moded { --edge: oklch(from var(--mode-band) 0.7 calc(c * 2.4) h); }
+      /* A parked or finished session recedes behind the work in flight: the
+         ground it sits on drops to the page's, not its text's contrast. */
+      .pip-row.stood-down { background: var(--bg); border-color: transparent; border-left-color: var(--edge); }
+      .pip-row.stood-down .pip-proj b { font-weight: 400; }
+      .pip-headrow { display: flex; align-items: center; gap: 0.45rem; padding: 0.38rem 0.5rem; cursor: pointer; }
+      .pip-chev {
+        flex: none; width: 0.9rem; color: var(--faint); font-size: 0.8rem; line-height: 1;
+        transition: transform 0.15s ease, color 0.15s;
       }
-      /* STATUS-09's ribbon, as the band draws it: the mode's hue, a row of it
-         above and below the text. */
-      .pip-ribbon {
-        display: flex; padding: 0.55rem 0.6rem; color: #f8f8f2; white-space: nowrap;
-      }
-      .pip-ribbon[hidden] { display: none; }
-      .pip-rlabel { font-weight: 700; flex: none; }
-      .pip-rnote { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .pip-rnote:not(:empty)::before { content: "\00a0·\00a0"; color: #bfbfd0; }
-      .pip-rhint { flex: none; margin-left: auto; padding-left: 0.8rem; color: #bfbfd0; font-style: italic; }
-      .pip-main { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.42rem 0.55rem; }
-      .pip-headrow { display: flex; align-items: center; gap: 0.5rem; }
+      .pip-row:hover .pip-chev { color: var(--muted); }
+      .pip-row.expanded .pip-chev { transform: rotate(180deg); }
       .pip-rdot {
-        flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+        flex: none; width: 0.55rem; height: 0.55rem; border-radius: 50%;
         background: var(--state-color); box-shadow: 0 0 6px var(--state-color);
       }
       .pip-proj { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .pip-proj b { font-weight: 700; }
       .pip-proj .sep { color: var(--faint); }
-      .pip-proj a, .pip-lines a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-hi); text-underline-offset: 2px; }
-      .pip-age { flex: none; color: var(--faint); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+      .pip-proj a, .pip-detail a { color: inherit; text-decoration: underline; text-decoration-color: var(--line-hi); text-underline-offset: 2px; }
+      .pip-age { flex: none; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
       .pip-age:empty { display: none; }
-      .pip-age::before { content: "◷ "; opacity: 0.7; }
-      .pip-actions { flex: none; display: flex; gap: 0.3rem; }
+      .pip-actions { flex: none; display: flex; gap: 0.25rem; }
       .pip-btn {
-        font: inherit; font-size: 0.72rem; padding: 0.05rem 0.4rem; border-radius: 5px; cursor: pointer;
-        background: transparent; border: 1px solid var(--line-hi);
+        position: relative; font: inherit; font-size: 0.7rem; padding: 0.05rem 0.4rem;
+        border-radius: 5px; cursor: pointer; background: transparent;
+        border: 1px solid var(--line-hi); color: var(--muted);
       }
-      .pip-btn:hover { background: var(--panel-hi); }
+      .pip-btn:hover { background: var(--panel-hi); color: var(--fg); }
       .pip-btn[hidden] { display: none; }
       .pip-btn.web { color: #8be9fd; }
       .pip-btn.code { color: #ff79c6; }
-      .pip-turn { color: var(--muted); font-size: 0.72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 1.1rem; }
-      .pip-lines { display: flex; flex-direction: column; padding-left: 1.1rem; font-size: 0.74rem; }
+      /* Each button says what it does at once, on hover or focus, rather than
+         after the browser's title delay, and above itself so the window's edge
+         never clips it. */
+      .pip-btn[data-tip]:hover::after, .pip-btn[data-tip]:focus-visible::after {
+        content: attr(data-tip); position: absolute; right: 0; bottom: calc(100% + 5px); z-index: 5;
+        white-space: nowrap; padding: 0.2rem 0.45rem; border-radius: 5px;
+        background: #0b0c12; color: var(--fg); border: 1px solid var(--line-hi);
+        font-size: 0.68rem; pointer-events: none;
+      }
+      .pip-detail { display: none; flex-direction: column; gap: 0.2rem; padding: 0 0.6rem 0.45rem 2.4rem; }
+      .pip-row.expanded .pip-detail { display: flex; }
+      .pip-note { color: var(--fg); font-size: 0.74rem; }
+      .pip-note:empty { display: none; }
+      .pip-turn { color: var(--muted); font-size: 0.72rem; overflow-wrap: anywhere; }
+      .pip-turn:empty { display: none; }
+      .pip-lines { display: flex; flex-direction: column; font-size: 0.74rem; }
       .pip-lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .pip-err { color: var(--blocked); font-size: 0.7rem; padding-left: 1.1rem; }
+      .pip-err { color: var(--blocked); font-size: 0.7rem; padding: 0 0.6rem 0.4rem 2.4rem; }
       .pip-err:empty { display: none; }
       .pip-empty { color: var(--faint); text-align: center; padding: 1.4rem 0.5rem; font-size: 0.72rem; }
       .pip-empty[hidden] { display: none; }
       @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.001s !important; } }
     `;
 
-    const pip = { win: null, root: null, baseline: new Map(), included: new Set(), panels: new Map() };
+    const pip = { win: null, root: null, panels: new Map(), expanded: new Set() };
     const pipSupported = "documentPictureInPicture" in window;
 
     async function togglePopout() {
@@ -1651,30 +1669,19 @@
       if (!pipSupported) return;
       const w = await documentPictureInPicture.requestWindow({ width: 480, height: 240 });
       pip.win = w;
-      // Seed the include set + baseline from the current snapshot: everything
-      // waiting on you is in from the start; every other session's current turn
-      // timestamp is the baseline, so a later change reads as "activity" and pulls
-      // it in. The set only grows (until a session ends) so the panel is a running
-      // feed, never yanking a row you just glanced at.
-      pip.included = new Set();
-      pip.baseline = new Map();
       pip.panels = new Map();
-      for (const s of (latest && latest.sessions) || []) {
-        pip.baseline.set(s.hash, (s.latest_turn && s.latest_turn.at) || "");
-        if (needsYou(s)) pip.included.add(s.hash);
-      }
       const doc = w.document;
-      doc.title = "beacon · needs you";
+      doc.title = "beacon · sessions";
       const style = doc.createElement("style");
       style.textContent = PIP_CSS;
       doc.head.appendChild(style);
       const root = doc.createElement("div");
       root.className = "pip";
       root.innerHTML =
-        '<div class="pip-head"><span class="pip-dot"></span>needs you' +
+        '<div class="pip-head"><span class="brand">beacon</span> / sessions' +
         '<span class="pip-count"></span></div>' +
         '<div class="pip-list"></div>' +
-        '<div class="pip-empty" hidden>All quiet — nothing waiting on you.</div>';
+        '<div class="pip-empty" hidden>No sessions in the window.</div>';
       doc.body.appendChild(root);
       pip.root = root;
       setPopoutActive(true);
@@ -1691,45 +1698,54 @@
       btn.classList.toggle("active", on);
       btn.title = on
         ? "Close the floating pop-out"
-        : "Pop out a floating, always-on-top view of sessions that need you";
+        : "Pop out a compact, always-on-top view of these sessions";
     }
 
     function renderPip() {
       if (!pip.win || !pip.root) return;
       const sessions = (latest && latest.sessions) || [];
-      const byHash = new Map(sessions.map((s) => [s.hash, s]));
-      // Grow the include set: waiting sessions are always in; a session whose
-      // latest turn changed since the panel opened counts as activity and joins.
-      // A session unseen at open is baselined (not flagged) so the panel doesn't
-      // flood with pre-existing chatter — it earns its place on its NEXT update.
-      for (const s of sessions) {
-        if (needsYou(s)) { pip.included.add(s.hash); continue; }
-        const at = (s.latest_turn && s.latest_turn.at) || "";
-        if (!pip.baseline.has(s.hash)) { pip.baseline.set(s.hash, at); continue; }
-        if (at && at !== pip.baseline.get(s.hash)) pip.included.add(s.hash);
-      }
-      for (const h of [...pip.included]) if (!byHash.has(h)) pip.included.delete(h);
-
-      const show = [...pip.included].map((h) => byHash.get(h)).filter(Boolean).sort(byRank);
-      const list = pip.root.querySelector(".pip-list");
       const doc = pip.win.document;
-      // Reuse rows across renders, keyed by hash (buffer-dom-rerenders): a steady
-      // poll re-orders and re-labels in place instead of rebuilding the list.
-      const have = new Map([...list.children].map((c) => [c.dataset.hash, c]));
+      const list = pip.root.querySelector(".pip-list");
+      // The dashboard's own sections, in its order: the waiting band, then each
+      // route group, the groupless last and unlabeled.
+      const waiting = sessions.filter(needsYou).sort(byRank);
+      const sections = [
+        ...(waiting.length ? [{ key: "\x00attn", label: "needs you", attn: true, sessions: waiting }] : []),
+        ...computeGroups(sessions.filter((s) => !needsYou(s))),
+      ];
+      // Reuse headers and tiles across renders, keyed (buffer-dom-rerenders): a
+      // steady poll re-orders and re-labels in place instead of rebuilding.
+      const have = new Map([...list.children].map((c) => [c.dataset.key, c]));
       let prev = null;
-      for (const s of show) {
-        loadPanel(s);
-        let row = have.get(s.hash) || buildPipRow(doc, s.hash);
-        updatePipRow(row, s, (pip.panels.get(s.hash) || {}).data);
-        have.delete(s.hash);
+      const place = (node) => {
         const anchor = prev ? prev.nextSibling : list.firstChild;
-        if (row.parentNode !== list || row !== anchor) list.insertBefore(row, anchor);
-        prev = row;
+        if (node.parentNode !== list || node !== anchor) list.insertBefore(node, anchor);
+        prev = node;
+      };
+      for (const sec of sections) {
+        if (sec.label) {
+          const key = "h:" + sec.key;
+          let h = have.get(key);
+          if (!h) { h = doc.createElement("div"); h.dataset.key = key; }
+          h.className = "pip-group" + (sec.attn ? " attn" : "");
+          if (h.textContent !== sec.label) h.textContent = sec.label;
+          have.delete(key);
+          place(h);
+        }
+        for (const s of sec.sessions) {
+          loadPanel(s);
+          const key = "s:" + s.hash;
+          const row = have.get(key) || buildPipRow(doc, s.hash);
+          row.dataset.key = key;
+          updatePipRow(row, s, (pip.panels.get(s.hash) || {}).data);
+          have.delete(key);
+          place(row);
+        }
       }
-      for (const row of have.values()) row.remove();
+      for (const node of have.values()) node.remove();
 
-      pip.root.querySelector(".pip-count").textContent = show.length ? String(show.length) : "";
-      pip.root.querySelector(".pip-empty").hidden = show.length > 0;
+      pip.root.querySelector(".pip-count").textContent = sessions.length ? String(sessions.length) : "";
+      pip.root.querySelector(".pip-empty").hidden = sessions.length > 0;
       resizePip();
     }
 
@@ -1831,31 +1847,59 @@
       return "href" in seg ? linkHtml(seg.href, seg.runs.map(runHtml).join("")) : runHtml(seg);
     }
 
+    // A tile's age, rounded to what a glance needs: the minute under an hour, the
+    // hour under a day. A seconds count ticking on every poll pulls the eye to
+    // the one number that matters least on a tile.
+    function pipAge(s) {
+      if (s == null) return "";
+      const min = Math.round(s / 60);
+      if (min < 1) return "<1 min";
+      if (min < 60) return "~" + min + " min";
+      const hr = Math.round(s / 3600);
+      if (hr < 24) return "~" + hr + " hr";
+      const day = Math.round(s / 86400);
+      return "~" + day + (day === 1 ? " day" : " days");
+    }
+
     function buildPipRow(doc, hash) {
       const row = doc.createElement("div");
       row.className = "pip-row";
       row.dataset.hash = hash;
       row.innerHTML =
-        '<div class="pip-ribbon" hidden><span class="pip-rlabel"></span><span class="pip-rnote"></span><span class="pip-rhint"></span></div>' +
-        '<div class="pip-main">' +
-          '<div class="pip-headrow"><span class="pip-rdot"></span><span class="pip-proj"></span>' +
-            '<span class="pip-age"></span>' +
-            '<span class="pip-actions"><button type="button" class="pip-btn web" hidden></button>' +
-            '<button type="button" class="pip-btn code" hidden></button></span></div>' +
-          '<div class="pip-turn"></div><div class="pip-lines"></div><div class="pip-err"></div>' +
-        "</div>";
+        '<div class="pip-headrow">' +
+          '<span class="pip-chev" aria-hidden="true">⌄</span><span class="pip-rdot"></span><span class="pip-proj"></span>' +
+          '<span class="pip-age"></span>' +
+          '<span class="pip-actions">' +
+            '<button type="button" class="pip-btn go" data-tip="Raise its iTerm2 window" hidden>go →</button>' +
+            '<button type="button" class="pip-btn web" data-tip="Open the project page" hidden></button>' +
+            '<button type="button" class="pip-btn code" hidden></button>' +
+          "</span></div>" +
+        '<div class="pip-detail"><div class="pip-note"></div><div class="pip-turn"></div><div class="pip-lines"></div></div>' +
+        '<div class="pip-err"></div>';
+      row.querySelector(".pip-headrow").setAttribute("role", "button");
+      row.querySelector(".pip-headrow").tabIndex = 0;
+      const toggle = () => {
+        if (pip.expanded.has(hash)) pip.expanded.delete(hash); else pip.expanded.add(hash);
+        row.classList.toggle("expanded", pip.expanded.has(hash));
+        row.querySelector(".pip-headrow").setAttribute("aria-expanded", String(pip.expanded.has(hash)));
+        resizePip();
+      };
       row.addEventListener("click", (e) => {
-        // A link opens its page and a button runs its command; the rest of the
-        // tile raises the session (navigate, don't expand).
+        // A link opens its page and a button does what its tip says; anywhere
+        // else on the head row expands or collapses the tile.
         if (e.target.closest("a")) return;
         const btn = e.target.closest(".pip-btn");
-        if (btn) { pressOpen(row, hash, btn.classList.contains("web") ? "web" : "code"); return; }
-        if (!row.classList.contains("unfocusable")) focus(hash);
+        if (btn) {
+          if (btn.classList.contains("go")) focus(hash);
+          else pressOpen(row, hash, btn.classList.contains("web") ? "web" : "code");
+          return;
+        }
+        if (e.target.closest(".pip-headrow")) toggle();
       });
-      row.addEventListener("keydown", (e) => {
-        if ((e.key === "Enter" || e.key === " ") && e.target === row && !row.classList.contains("unfocusable")) {
+      row.querySelector(".pip-headrow").addEventListener("keydown", (e) => {
+        if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("pip-headrow")) {
           e.preventDefault();
-          focus(hash);
+          toggle();
         }
       });
       return row;
@@ -1878,29 +1922,28 @@
     }
 
     function updatePipRow(row, s, panel) {
-      row.className = "pip-row color-" + (s.color_state || "idle") + (needsYou(s) ? " needs-you" : "")
-        + (s.focusable ? "" : " unfocusable");
-      row.tabIndex = s.focusable ? 0 : -1;
-      row.setAttribute("role", s.focusable ? "button" : "group");
-      row.title = s.focusable ? "Raise this iTerm2 window" : "Not focusable (non-iTerm2 session)";
-
       // Until the panel arrives, the tile draws what the sessions record says.
       const mode = panel ? panel.mode : (s.mode && s.mode.name !== "dev" ? s.mode : null);
       const band = panel && mode && mode.band;
-      const ribbon = row.querySelector(".pip-ribbon");
-      ribbon.hidden = !band;
-      if (band) {
-        ribbon.style.background = band;
-        ribbon.querySelector(".pip-rlabel").textContent = mode.glyph + " " + mode.label;
-        ribbon.querySelector(".pip-rnote").innerHTML = mode.note_line
-          ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
-              '<span style="' + (r.style.bold ? "font-weight:700;" : "") + (r.style.italic ? "font-style:italic" : "") + '">' + escapeHtml(r.text) + "</span>").join("")
-          : "";
-        ribbon.querySelector(".pip-rhint").textContent = mode.resumes_on_prompt ? "type to resume" : "";
-      }
+      row.className = "pip-row color-" + (s.color_state || "idle")
+        + (band ? " moded" : "") + (panel && mode && mode.stood_down ? " stood-down" : "")
+        + (pip.expanded.has(s.hash) ? " expanded" : "");
+      if (band) row.style.setProperty("--mode-band", band);
+      row.querySelector(".pip-headrow").setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
 
-      // The head row, as the band composes it: project · branch · task, each once,
-      // a part that names a status-line link drawn as that link instead.
+      // The note the band's ribbon carries, in the expanded detail.
+      const note = row.querySelector(".pip-note");
+      const noteHtml = mode && (mode.note_line || mode.note)
+        ? escapeHtml((mode.label || mode.name) + " · ") + (mode.note_line
+            ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
+                '<span style="' + (r.style.bold ? "font-weight:700;" : "") + (r.style.italic ? "font-style:italic" : "") + '">' + escapeHtml(r.text) + "</span>").join("")
+            : escapeHtml(mode.note))
+        : "";
+      if (note.dataset.html !== noteHtml) { note.dataset.html = noteHtml; note.innerHTML = noteHtml; }
+
+      const go = row.querySelector(".pip-btn.go");
+      go.hidden = !s.focusable;
+
       const lines = ((panel && panel.lines) || []).map(panelSegments);
       const links = new Map();
       for (const segs of lines) for (const g of segs) if ("href" in g && !links.has(g.label)) links.set(g.label, g.href);
@@ -1909,7 +1952,7 @@
       const task = (panel ? panel.task : s.task) || null;
       const parts = [...new Set([project, branch, task].filter(Boolean))];
       const used = new Set(parts.filter((p) => links.has(p)));
-      const glyph = !band && mode ? (mode.glyph || "") : "";
+      const glyph = mode ? (mode.glyph || "") : "";
       const head = parts.map((p, i) => {
         if (i === 0) return "<b>" + escapeHtml(p) + "</b>";
         if (p === branch) {
@@ -1931,6 +1974,7 @@
       if (canOpen) {
         if (panel.forge) web.textContent = "↖ " + panel.forge;
         code.textContent = panel.code_label + " ↗";
+        code.dataset.tip = "Open its directory in " + panel.code_label;
       }
 
       const linesHtml = lines
@@ -1945,7 +1989,7 @@
       if (turnEl.textContent !== tt) turnEl.textContent = tt;
       turnEl.hidden = !tt;
       const age = row.querySelector(".pip-age");
-      const a = fmtAge(s.age_seconds);
+      const a = pipAge(s.age_seconds);
       if (age.textContent !== a) age.textContent = a;
     }
 

@@ -1,5 +1,6 @@
 - [Home](/)
 - [Why beacon?](/why)
+- [What's new in 3.0](/whats-new)
 - [Try the demo](/demo)
 - [Layout](/iterm/layout)
 - [The status panel](/statusline)

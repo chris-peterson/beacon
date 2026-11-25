@@ -94,6 +94,31 @@ SCENARIOS = {
                                            stacked_on=[mr("design-system", 31)])),
         ],
     ),
+    "release": dict(
+        caption="release ribbon, shipped, open",
+        mode=("release", "cutting **v3.1.0**: waiting on the canary"),
+        touches=[
+            (mr("design-system", 32), dict(title="dark mode toggle",
+                                           state="merged", landed_at=LANDED)),
+            (mr("design-system", 34), dict(title="changelog for v3.1.0")),
+        ],
+    ),
+    "done": dict(
+        caption="done ribbon, shipped",
+        mode=("done", "handed off to on-call"),
+        touches=[
+            (release("design-system", "v3.1.0"), {}),
+            (mr("design-system", 32), dict(title="dark mode toggle",
+                                           state="merged", landed_at=LANDED)),
+        ],
+    ),
+    "retro": dict(
+        caption="no ribbon: the note leads with the glyph",
+        mode=("retro", "writing up the *dark mode* rollout"),
+        touches=[
+            (release("design-system", "v3.1.0"), {}),
+        ],
+    ),
     "paused": dict(
         caption="ribbon, shipped, open",
         mode=("pause", "waiting on **design review** before the toggle lands"),
@@ -108,7 +133,7 @@ SCENARIOS = {
 
 
 def load_beacon(data_dir: Path):
-    os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
+    os.environ["BEACON_DATA_DIR"] = str(data_dir)
     os.environ["ITERM_SESSION_ID"] = "w0t0p0:STATUS-DEMO"
     loader = importlib.machinery.SourceFileLoader("beacon_demo", str(REPO / "scripts" / "beacon"))
     spec = importlib.util.spec_from_loader("beacon_demo", loader)
@@ -182,12 +207,12 @@ def ribbon_html(ribbon: dict) -> str:
 
 
 # The attributes the status line emits, as CSS. Colors approximate a dark
-# terminal theme; 38;5;61 is the mode note's 256-color slate.
+# terminal theme; 38;5;141 is the mode note's 256-color purple.
 _SGR_ON = {"1": ("font-weight", "bold"), "2": ("opacity", "0.6"), "3": ("font-style", "italic"),
            "9": ("text-decoration", "line-through")}
 _SGR_OFF = {"22": ("font-weight", "opacity"), "23": ("font-style",), "29": ("text-decoration",)}
 _COLORS = {"32": "#5fd75f", "36": "#4fd1d9", "37": "#d0d0d0", "90": "#808080",
-           "38;5;61": "#8787d7"}
+           "38;5;61": "#8787d7", "38;5;141": "#af87ff"}
 _TOKEN_RE = re.compile(r"\x1b\]8;;[^\x07]*\x07|\x1b\[([0-9;]*)m|[^\x1b]+")
 
 

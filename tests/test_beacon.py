@@ -33,7 +33,7 @@ BEACON_PATH = REPO_ROOT / "scripts" / "beacon"
 
 
 def _load_beacon(data_dir: Path):
-    os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
+    os.environ["BEACON_DATA_DIR"] = str(data_dir)
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     os.environ["ITERM_SESSION_ID"] = "test-session"
     # Keep the user config out of the run in both directions: the suite must not
@@ -51,6 +51,9 @@ def _load_beacon(data_dir: Path):
     spec = importlib.util.spec_from_loader("beacon", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
+    # A test that runs `main` must never adopt the developer's own pre-3.0
+    # state into the run (§6.2).
+    module.LEGACY_DATA_ROOT = data_dir / "no-legacy-installs"
     return module
 
 
@@ -1358,105 +1361,113 @@ class ReleaseMode(BeaconTest):
 
 
 class DataDirResolution(BeaconTest):
-    """§6.2: every invocation context has to land on one data dir or hooks write
-    where nothing reads. Only a hook is handed `CLAUDE_PLUGIN_DATA`, so it records
-    that path and the env-less contexts (slash commands, the on-PATH wrapper, the
-    serve service) read it back. Absent a record, the path is derived the way
-    Claude Code names the directory: `<plugin>-<marketplace>` for a cache install,
-    `<plugin>-inline` for a plugin loaded from a local directory."""
+    """§6.2: every caller keeps state in one directory, computed from the
+    environment the same way whatever loaded the plugin, so two installs side by
+    side (a marketplace copy and an inline one) never split the sessions between
+    two trees. State an earlier install left in Claude Code's per-install dirs
+    is adopted into it once."""
 
     def setUp(self):
         super().setUp()
-        self._config = tempfile.TemporaryDirectory()
-        self.addCleanup(self._config.cleanup)
-        cfg = mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": self._config.name})
-        cfg.start()
-        self.addCleanup(cfg.stop)
         self._home = tempfile.TemporaryDirectory()
         self.addCleanup(self._home.cleanup)
         home = mock.patch("pathlib.Path.home", return_value=Path(self._home.name))
         home.start()
         self.addCleanup(home.stop)
+        self.legacy = Path(self._home.name) / ".claude" / "plugins" / "data"
+        self.beacon.LEGACY_DATA_ROOT = self.legacy
 
-    def _with_plugin_root(self, root: Path):
-        patcher = mock.patch.object(self.beacon, "PLUGIN_ROOT", root)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+    def _resolve(self, **env):
+        keep = {k: v for k, v in os.environ.items()
+                if k not in ("BEACON_DATA_DIR", "XDG_STATE_HOME", "CLAUDE_PLUGIN_DATA")}
+        with mock.patch.dict(os.environ, {**keep, **env}, clear=True):
+            return self.beacon._data_dir()
 
-    def test_cache_install_derives_plugin_marketplace(self):
+    def test_every_caller_lands_on_the_xdg_state_dir(self):
         home = Path(self._home.name)
-        self._with_plugin_root(home / ".claude/plugins/cache/chris-peterson/beacon/2.3.0")
-        self.assertEqual(self.beacon._default_data_dir(),
-                         home / ".claude/plugins/data/beacon-chris-peterson")
+        self.assertEqual(self._resolve(), home / ".local" / "state" / "beacon")
+        self.assertEqual(self._resolve(XDG_STATE_HOME="/x/state"), Path("/x/state/beacon"))
 
-    def test_local_plugin_root_derives_the_inline_bucket(self):
-        # A plugin root outside the cache was loaded from a local directory,
-        # which Claude Code buckets as `<plugin>-inline`. Deriving anything else
-        # (e.g. from the checkout's git remote) points the wrapper and the sessions view
-        # view at a directory the running session's hooks never write.
+    def test_the_per_install_dir_claude_code_hands_a_hook_is_not_used(self):
+        # The split this closes: a marketplace and an inline install each get
+        # their own CLAUDE_PLUGIN_DATA.
         home = Path(self._home.name)
-        self._with_plugin_root(Path("/Users/dev/src/beacon"))
-        self.assertEqual(self.beacon._default_data_dir(),
-                         home / ".claude/plugins/data/beacon-inline")
+        for handed in ("beacon-inline", "beacon-chris-peterson"):
+            with self.subTest(handed=handed):
+                self.assertEqual(self._resolve(CLAUDE_PLUGIN_DATA=str(self.legacy / handed)),
+                                 home / ".local" / "state" / "beacon")
 
-    def test_recorded_pointer_wins_over_the_derivation(self):
-        self._with_plugin_root(Path("/Users/dev/src/beacon"))
-        recorded = Path(self._home.name) / "elsewhere/beacon-inline"
-        self.beacon._record_data_dir(str(recorded))
-        self.assertEqual(self.beacon._default_data_dir(), recorded)
+    def test_beacon_data_dir_names_it_outright(self):
+        self.assertEqual(self._resolve(BEACON_DATA_DIR="/scratch/b"), Path("/scratch/b"))
 
-    def test_blank_or_missing_pointer_falls_through_to_the_derivation(self):
-        home = Path(self._home.name)
-        self._with_plugin_root(Path("/Users/dev/src/beacon"))
-        derived = home / ".claude/plugins/data/beacon-inline"
-        self.assertEqual(self.beacon._default_data_dir(), derived)
-        pointer = self.beacon._data_dir_pointer()
+    def _legacy_file(self, install, rel, text, mtime):
+        f = self.legacy / install / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text)
+        os.utime(f, (mtime, mtime))
+        return f
+
+    def _adopt(self):
+        (self.beacon.DATA_DIR / "adopted").unlink(missing_ok=True)
+        self.beacon._adopt_legacy_state()
+
+    def test_only_beacons_own_install_dirs_are_adopted(self):
+        for name in ("beacon-inline", "beacon-chris-peterson", "beacon-panel-spike-inline", "anchor-inline"):
+            (self.legacy / name).mkdir(parents=True)
+        self.assertEqual([d.name for d in self.beacon._legacy_data_dirs()],
+                         ["beacon-chris-peterson", "beacon-inline"])
+
+    def test_adoption_merges_both_installs_with_the_newer_copy_winning(self):
+        self._legacy_file("beacon-inline", "state/aaaa.activity", "idle", 1000)
+        self._legacy_file("beacon-chris-peterson", "state/bbbb.activity", "working", 1000)
+        self._legacy_file("beacon-inline", "state/cccc.task", "older", 1000)
+        self._legacy_file("beacon-chris-peterson", "state/cccc.task", "newer", 2000)
+        self._legacy_file("beacon-inline", "cache/engaged-GUID", "", 1000)
+        self._adopt()
+        state = self.beacon.STATE_DIR
+        self.assertEqual((state / "aaaa.activity").read_text(), "idle")
+        self.assertEqual((state / "bbbb.activity").read_text(), "working")
+        self.assertEqual((state / "cccc.task").read_text(), "newer")
+        self.assertEqual((state / "cccc.task").stat().st_mtime, 2000,
+                         "the copy keeps its mtime, which the activity window reads")
+        self.assertTrue((self.beacon.CACHE_DIR / "engaged-GUID").exists())
+        if os.name == "posix":
+            self.assertEqual((state / "aaaa.activity").stat().st_mode & 0o777, 0o600)
+
+    def test_adoption_runs_once_and_never_overwrites_newer_state(self):
+        self._legacy_file("beacon-inline", "state/aaaa.task", "from 2.x", 1000)
+        self._adopt()
+        self.beacon.write_state("task", "since 3.0")
+        (self.beacon.STATE_DIR / "aaaa.task").write_text("since 3.0")
+        self.beacon._adopt_legacy_state()
+        self.assertEqual((self.beacon.STATE_DIR / "aaaa.task").read_text(), "since 3.0")
+
+    def test_serve_carries_a_2x_sessions_later_writes_forward(self):
+        self._adopt()
+        late = (self.beacon.DATA_DIR / "adopted").stat().st_mtime + 60
+        self._legacy_file("beacon-inline", "state/eeee.activity", "working", late)
+        self.beacon._adopt_legacy_state()
+        self.assertFalse((self.beacon.STATE_DIR / "eeee.activity").exists(),
+                         "an ordinary invocation stops at the marker")
+        self.beacon._adopt_legacy_state(again=True)
+        self.assertEqual((self.beacon.STATE_DIR / "eeee.activity").read_text(), "working")
+
+    def test_adoption_retires_the_2x_pointer(self):
+        pointer = Path(os.environ["XDG_CONFIG_HOME"]) / "beacon" / "data-dir"
         pointer.parent.mkdir(parents=True, exist_ok=True)
-        pointer.write_text("   \n")
-        self.assertEqual(self.beacon._default_data_dir(), derived)
+        pointer.write_text(str(self.legacy / "beacon-inline"))
+        self._adopt()
+        self.assertFalse(pointer.exists())
 
-    def test_pointer_naming_a_vanished_dir_falls_through(self):
-        # A recorded dir that no longer exists (a temp dir from a test run, a
-        # pruned install) would otherwise strand every env-less context on a path
-        # nothing writes — the exact failure this resolution exists to prevent.
-        home = Path(self._home.name)
-        self._with_plugin_root(Path("/Users/dev/src/beacon"))
-        gone = home / "gone/beacon-inline"
-        self.beacon._record_data_dir(str(gone))
-        self.assertEqual(self.beacon._default_data_dir(), gone)
-        gone.rmdir()
-        self.assertEqual(self.beacon._default_data_dir(),
-                         home / ".claude/plugins/data/beacon-inline")
-
-    def test_record_rewrites_only_on_change(self):
-        home = Path(self._home.name)
-        first_dir = home / "first/beacon-inline"
-        self.beacon._record_data_dir(str(first_dir))
-        pointer = self.beacon._data_dir_pointer()
-        stamp = pointer.stat().st_mtime_ns
-        self.beacon._record_data_dir(str(first_dir))
-        self.assertEqual(pointer.stat().st_mtime_ns, stamp,
-                         "an unchanged pointer must not be rewritten on every hook")
-        second_dir = home / "second/beacon-chris-peterson"
-        self.beacon._record_data_dir(str(second_dir))
-        self.assertEqual(self.beacon._read_data_dir_pointer(), second_dir)
-
-    def test_hook_records_the_dir_it_was_handed(self):
-        handed_dir = Path(self._home.name) / "handed/beacon-inline"
-        args = mock.Mock(event="UserPromptSubmit")
-        handed = {"CLAUDE_PLUGIN_DATA": str(handed_dir)}
-        with mock.patch.dict(os.environ, handed):
-            with mock.patch.object(sys, "stdin", io.StringIO(json.dumps({"prompt": "hi"}))):
-                self.beacon.cmd_hook(args)
-        self.assertEqual(self.beacon._read_data_dir_pointer(), handed_dir)
-
-    def test_the_suite_never_writes_the_developers_own_pointer(self):
-        # `_load_beacon` redirects XDG_CONFIG_HOME into the per-test tempdir, so a
-        # hook under test can't overwrite the pointer the developer's own sessions
-        # depend on. Asserted here because the leak is invisible in a green run.
-        self.assertTrue(
-            str(self.beacon._data_dir_pointer()).startswith(self._config.name),
-            f"pointer escaped the test config dir: {self.beacon._data_dir_pointer()}")
+    def test_doctor_names_an_install_still_writing_the_old_dir(self):
+        self._adopt()
+        self._legacy_file("beacon-chris-peterson", "state/dddd.activity", "idle",
+                          (self.beacon.DATA_DIR / "adopted").stat().st_mtime + 60)
+        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            checks = self.beacon._doctor_checks()
+        older = [c for c in checks if c["name"] == "older install"]
+        self.assertEqual(len(older), 1)
+        self.assertIn("beacon-chris-peterson", older[0]["detail"])
 
 
 class ModeProfileDerivation(unittest.TestCase):
@@ -8060,6 +8071,21 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
         self.assertEqual(len(documented), 6, documented)
         self.assertEqual(documented, drawn)
 
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    def test_the_dashboard_script_parses(self):
+        """One syntax error stops the whole dashboard, and the page has no build
+        step to catch it: a CSS escape like `\\00a0` inside the pop-out's
+        template-literal stylesheet is an octal escape JavaScript refuses."""
+        html = (REPO_ROOT / "dashboard" / "index.html").read_text(encoding="utf-8")
+        scripts = re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, re.S)
+        self.assertTrue(scripts)
+        for i, script in enumerate(scripts):
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+                f.write(script)
+            self.addCleanup(os.unlink, f.name)
+            r = subprocess.run(["node", "--check", f.name], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, f"inline script {i}: {r.stderr}")
+
     def test_the_dashboard_cards_take_the_ribbon_hue(self):
         """WIP-17: a moded card echoes the status panel's ribbon, so its tint is
         the mode's `band`, and a mode with no ribbon leaves its card plain."""
@@ -8944,15 +8970,6 @@ class Doctor(unittest.TestCase):
         self.assertTrue(payload["checks"])
         self.assertEqual(payload["errors"][0]["detail"], "boom")
         self.assertTrue(payload["log"].endswith("errors.log"))
-
-    def test_a_disagreeing_data_dir_pointer_is_a_failure(self):
-        """The trap the pointer exists to prevent: hooks writing state that the
-        wrapper, dashboard, and status line never read."""
-        with mock.patch.object(self.beacon, "_read_data_dir_pointer",
-                               return_value=Path("/somewhere/else")):
-            checks = self.beacon._doctor_checks()
-        pointer = [c for c in checks if c["name"] == "pointer"][0]
-        self.assertEqual(pointer["status"], self.beacon._DOCTOR_BAD)
 
     def test_adapterless_box_is_not_a_failure(self):
         """iTerm2 is optional by design (NFR-06) — the sessions view is the

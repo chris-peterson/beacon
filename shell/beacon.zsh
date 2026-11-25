@@ -42,9 +42,8 @@ _beacon_stale=1
 if [[ -r "$_BEACON_INIT_CACHE" ]]; then
   source "$_BEACON_INIT_CACHE"
   _beacon_stale=''
-  [[ "$_beacon_cfg"              -nt "$_BEACON_INIT_CACHE"
-     || "$_beacon_cfg_dir/data-dir" -nt "$_BEACON_INIT_CACHE"
-     || "$_BEACON_SCRIPT"           -nt "$_BEACON_INIT_CACHE" ]] && _beacon_stale=1
+  [[ "$_beacon_cfg"    -nt "$_BEACON_INIT_CACHE"
+     || "$_BEACON_SCRIPT" -nt "$_BEACON_INIT_CACHE" ]] && _beacon_stale=1
   # An mtime test can't see a *deleted* config: nothing is newer than the cache
   # afterwards, so the shell would keep the settings that file used to carry.
   # Compare its presence against what it was when the block was built.
@@ -156,8 +155,8 @@ _beacon_project_name() {
 typeset -g _BEACON_LAST_TITLE='__unset__'
 
 # The engagement marker below lives in the data dir's cache, resolved by the
-# plugin (shell-init) so the shell, hooks, and slash commands converge on one
-# path whether the install is the marketplace copy or a working tree.
+# plugin (shell-init) so the shell computes it exactly as the hooks and slash
+# commands do (§6.2).
 if [[ -z "$_BEACON_DATA_DIR" ]]; then
   echo "beacon.zsh: failed to resolve data dir via $_BEACON_SCRIPT" >&2
   return 1

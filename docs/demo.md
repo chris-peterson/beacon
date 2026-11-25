@@ -51,7 +51,7 @@ Let the board run for a minute and you'll watch it drift redder as work stalls, 
 
 ## Pop it out
 
-**pop out** (in Chrome and Edge) opens a small window that stays on top of everything else, so the sessions that need you stay in view while you work in your editor. It starts with the sessions waiting on you and adds any that show activity while it's open. Each tile is that session's [status panel](/statusline): its mode ribbon, the project, branch, and task, the change requests and issues it's working, and the buttons that open the project page and the session's directory. Click anywhere else on a tile to raise that session's window.
+**pop out** (in Chrome and Edge) opens a small window that stays on top of everything else, so your sessions stay in view while you work in your editor. It holds the same sessions as the dashboard, in the same order, stacked in one column: the ones waiting on you first, under their own heading. Each tile is one line from that session's [status panel](/statusline): the project, branch, and task, with buttons to raise its window and open its project page and directory. Click a tile to expand it to its mode's note, latest turn, and the change requests and issues it's working.
 
 ## On Windows or a non-iTerm terminal
 

@@ -153,10 +153,10 @@ def _set_activity(state: Path, sh: str, activity: str) -> None:
         handle.unlink(missing_ok=True)
 
 
-def seed(data_dir: Path, tack_home: Path) -> list[dict]:
+def seed(state: Path, tack_home: Path) -> list[dict]:
     """Wipe and write the initial sessions at staggered ages. Returns the live model
     (hash + current activity per session) the simulator mutates."""
-    state, routes = data_dir / "state", tack_home / "routes"
+    routes = tack_home / "routes"
     for d in (state, routes):
         if d.exists():
             shutil.rmtree(d)
@@ -218,7 +218,7 @@ def simulate(state: Path, sessions: list[dict], interval: float) -> None:
 def _load_beacon(data_dir: Path, tack_home: Path):
     # collect_sessions reads STATE_DIR / TACK_HOME, both resolved at import from
     # the environment — so point them at the isolated dirs before loading.
-    os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
+    os.environ["BEACON_DATA_DIR"] = str(data_dir)
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(REPO)
     os.environ["TACK_HOME"] = str(tack_home)
     loader = importlib.machinery.SourceFileLoader("beacon", str(BEACON_PATH))
@@ -349,18 +349,20 @@ def main() -> None:
 
     data_dir = args.data_dir.expanduser().resolve()
     tack_home = data_dir / "tack"
-    sessions = seed(data_dir, tack_home)
-    print(f"seeded {len(sessions)} demo sessions → {data_dir}")
+    # Seeded where beacon reads it: STATE_DIR carries the state schema (§6.2).
+    beacon = _load_beacon(data_dir, tack_home)
+    state = beacon.STATE_DIR
+    sessions = seed(state, tack_home)
+    print(f"seeded {len(sessions)} demo sessions → {state}")
 
     if args.seed_only:
-        print("inspect: CLAUDE_PLUGIN_DATA={d} TACK_HOME={t} python3 {b} wip".format(
+        print("inspect: BEACON_DATA_DIR={d} TACK_HOME={t} python3 {b} wip".format(
             d=data_dir, t=tack_home, b=BEACON_PATH))
         return
 
-    beacon = _load_beacon(data_dir, tack_home)
     seed_refs(beacon, sessions)
-    server = make_server(args.port, data_dir / "state", beacon, sessions)
-    threading.Thread(target=simulate, args=(data_dir / "state", sessions, args.interval),
+    server = make_server(args.port, state, beacon, sessions)
+    threading.Thread(target=simulate, args=(state, sessions, args.interval),
                      daemon=True).start()
     print(f"dashboard → http://127.0.0.1:{args.port}/   "
           f"(click a red card to return it · Ctrl-C to stop)")

@@ -16,6 +16,9 @@ It surfaces which project, what task, and what's happening right now, so you can
 - a **[status panel](/statusline)** in Claude Code's band above the prompt, in any terminal: the session's project, branch, and task, the change requests and issues it's working, and buttons for the project page and your editor
 - **per-pane painting in iTerm2**: a labeled tab, colored by what Claude is doing and marked by the phase you declared, and keys that switch to the session that needs you
 
+> [!TIP]
+> Coming from beacon 2.x? [What's new in 3.0](/whats-new) covers the panel, modes, and the one command to run after updating.
+
 A glance across the windows tells you which session needs you:
 
 <!--
@@ -348,6 +351,18 @@ The dependency is **soft**: if tack isn't installed or no route is bound to the 
 
 The status panel's web button opens the repo's project page on every path. Prefer Linear, Jira, GitHub Issues, or a custom provider? Point it at any command you like (see [the panel's buttons](/statusline?id=the-buttons)).
 
+### Turning a reaction off
+
+beacon acts on what anchor and tack announce in a session's tool output: the change request on the status panel, the work it delivered, the review that marks the tab, and the tack route that names the session. Each reaction has a git config switch, on unless set to `false`:
+
+```
+git config --global beacon.subscribe.anchor false                    # everything anchor announces
+git config --global beacon.subscribe.tack false                      # tack's route binding
+git config --global beacon.subscribe.anchor.release-created false    # one announcement
+```
+
+The per-announcement names are `<plugin>.<entity>-<event>`: for anchor, `cr-created`, `cr-updated`, `cr-merged`, `issue-created`, `release-created`, `attention-requested`, and `attention-released`; for tack, `session-started` and `session-ended`. `cr-created` and `cr-updated` announce the same change request, so turn off `beacon.subscribe.anchor` rather than one of the pair. beacon reads the switch in the repository the tool ran in, so a value set without `--global` applies to that repository alone and wins there.
+
 ## Standalone (no tack, no recipes)
 
 beacon works on its own. The hooks set the fields they can observe (project, branch, and the idle / working / blocked status color) without any other tooling. The one thing they can't observe is *what each session is working on*, the recall context that makes the sessions view worth a glance.
@@ -363,7 +378,7 @@ Third-party Claude Code marketplaces have auto-update **off by default**. Either
 
 After every upgrade, re-run `/beacon:install-beacon`. Plugin upgrades change the version-pinned cache path; both the `source` line in `.zshrc` and the wrapper at `~/.local/bin/beacon` hardcode that path at install time and need to be rewritten to point at the new version. Run it as the slash command, not `beacon install` from the shell: the stale wrapper would re-install itself from the version it already names, while the slash command runs from the new plugin root. The `SessionStart` hook compares the path each installed entry point reaches against the current plugin root on every session start, and nudges you when one no longer reaches it.
 
-Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md) for release notes.
+Coming from 2.x? [What's new in 3.0](/whats-new) lists what changed and what to check. Confirm what's installed: `beacon --version`. See [`CHANGELOG.md`](https://github.com/chris-peterson/beacon/blob/main/CHANGELOG.md) for release notes.
 
 ## Uninstall
 

@@ -30,7 +30,7 @@ BEACON_PATH = REPO_ROOT / "scripts" / "beacon"
 
 
 def _load_beacon(data_dir: Path):
-    os.environ["CLAUDE_PLUGIN_DATA"] = str(data_dir)
+    os.environ["BEACON_DATA_DIR"] = str(data_dir)
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(REPO_ROOT)
     os.environ["ITERM_SESSION_ID"] = "test-session"
     sys.modules.pop("beacon", None)
@@ -38,6 +38,9 @@ def _load_beacon(data_dir: Path):
     spec = importlib.util.spec_from_loader("beacon", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
+    # A test that runs `main` must never adopt the developer's own pre-3.0
+    # state into the run (§6.2).
+    module.LEGACY_DATA_ROOT = data_dir / "no-legacy-installs"
     return module
 
 

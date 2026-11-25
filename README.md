@@ -212,7 +212,7 @@ sequenceDiagram
 
 | Cached value | Lives in | Recomputed when | Scope |
 |:---|:---|:---|:---|
-| Data dir + badge gate | `~/.config/beacon/shell-init<root>.zsh` | `scripts/beacon`, the `data-dir` pointer, or `config.json` is newer than the block, plus a presence flag, because an mtime test can't see a *deleted* config | One pane, keyed by plugin root |
+| Data dir + badge gate | `~/.config/beacon/shell-init<root>.zsh` | `scripts/beacon` or `config.json` is newer than the block, plus a presence flag, because an mtime test can't see a *deleted* config | One pane, keyed by plugin root |
 | Origin URL per project root | `_BEACON_ORIGIN_URL` | Next `exec zsh`, which is when a `git remote set-url` shows up | The shell process |
 | Last published user-var values | `_BEACON_LAST_*` sentinels | `chpwd` clears all of them | The shell process |
 | Last-painted surfaces | `<DATA_DIR>/state/<hash>.resolved` | Every `apply()` (this snapshot is what lets a hook skip the CLI spawn) | The session, on disk |

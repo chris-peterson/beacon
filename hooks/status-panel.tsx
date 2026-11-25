@@ -143,7 +143,7 @@ const styleOf = (s: Style) => ({
   color: s.color,
 })
 
-// The whole hook env, so beacon lands on the data dir its hooks write (CLAUDE_PLUGIN_DATA) and the session they key on.
+// The whole hook env, so beacon keys on the session its hooks key on (the pane's ITERM_SESSION_ID, or CLAUDE_CODE_SESSION_ID).
 async function beacon($: EngineInterface, args: string[], options: { stdin?: string; timeoutMs?: number } = {}) {
   const env = await $.process.hookEnv()
   return $.process.run(['python3', `${env.CLAUDE_PLUGIN_ROOT}/scripts/beacon`, ...args], {

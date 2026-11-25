@@ -92,72 +92,28 @@ def _version_display() -> str:
     return f"{version}-dev.g{sha}{dirty}"
 
 
-def _data_dir_pointer() -> Path:
-    """Where a hook records the data dir Claude Code handed it, so the contexts
-    that get no `CLAUDE_PLUGIN_DATA` can read the answer instead of guessing at
-    it. Sits beside the user config (`_config_file`); the XDG base is recomputed
-    here because this runs at module-load time, before that helper exists."""
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "beacon" / "data-dir"
+def _data_dir() -> Path:
+    """§6.2: the one directory every caller keeps beacon's state in, whatever
+    loaded it. `BEACON_DATA_DIR` names it outright (the test suite and the demos
+    point it at a scratch directory), else it is `beacon` under the XDG state
+    home.
+
+    Not `CLAUDE_PLUGIN_DATA`, though Claude Code hands every hook one: that
+    directory is per install (`beacon-<marketplace>` for a marketplace copy,
+    `beacon-inline` for a plugin loaded from a local directory), so two installs
+    running side by side split the sessions between two state trees, and the
+    sessions view could read only one of them. Every caller computing the same
+    path from the environment is what keeps them on one tree, with no record to
+    agree on."""
+    named = os.environ.get("BEACON_DATA_DIR")
+    if named:
+        return Path(named)
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(base) / "beacon"
 
 
-def _read_data_dir_pointer() -> Path | None:
-    """The recorded data dir, or None when nothing usable is recorded. Empty,
-    unreadable, or naming a directory that no longer exists all read as absent:
-    the PLUGIN_ROOT derivation still lands somewhere usable, where a dead pointer
-    would strand every env-less context on a path nothing writes — the failure
-    this whole resolution exists to prevent. Raising is not an option either; it
-    would take down every invocation in the session."""
-    try:
-        recorded = _data_dir_pointer().read_text().strip()
-    except (FileNotFoundError, OSError):
-        return None
-    if not recorded:
-        return None
-    path = Path(recorded)
-    return path if path.is_dir() else None
+DATA_DIR = _data_dir()
 
-
-def _record_data_dir(resolved: str) -> None:
-    """Stamp the data dir a hook was handed, so the env-less contexts converge on
-    it. Written only when it changed: this runs on every hook, and the common
-    case is a value already correct. Creates the directory it records, so a
-    prompt reading the pointer between this write and the hook's first
-    `write_state` doesn't see it as the dead path above."""
-    if _read_data_dir_pointer() == Path(resolved):
-        return
-    Path(resolved).mkdir(parents=True, exist_ok=True)
-    pointer = _data_dir_pointer()
-    pointer.parent.mkdir(parents=True, exist_ok=True)
-    pointer.write_text(f"{resolved}\n")
-
-
-def _default_data_dir() -> Path:
-    """The data dir for an invocation Claude Code gave no `CLAUDE_PLUGIN_DATA` —
-    slash commands, the on-PATH wrapper, the serve service. Without convergence
-    those contexts write to a different directory than hooks read from and every
-    state change is invisible across them, which is what a `wip` that can't see
-    a live session looks like.
-
-    The recorded pointer (`_data_dir_pointer`, stamped by the last hook that ran)
-    is the authority, because only a hook is *told* which install is loaded.
-    Absent one — a fresh machine where `install` runs before any hook — derive it
-    from PLUGIN_ROOT the way Claude Code names the directory itself: a plugin
-    under `plugins/cache/<marketplace>/<plugin>/<version>` is
-    `<plugin>-<marketplace>`, and a plugin root anywhere else was loaded from a
-    local directory, which Claude Code buckets as `<plugin>-inline`."""
-    recorded = _read_data_dir_pointer()
-    if recorded:
-        return recorded
-    base = Path.home() / ".claude" / "plugins"
-    try:
-        rel = PLUGIN_ROOT.relative_to(base / "cache")
-        return base / "data" / f"{rel.parts[1]}-{rel.parts[0]}"
-    except (ValueError, IndexError):
-        return base / "data" / f"{PLUGIN_ROOT.name}-inline"
-
-
-DATA_DIR = Path(os.environ.get("CLAUDE_PLUGIN_DATA") or str(_default_data_dir()))
 STATE_DIR = DATA_DIR / "state"
 CACHE_DIR = DATA_DIR / "cache"
 LOGS_DIR = DATA_DIR / "logs"
@@ -3171,6 +3127,9 @@ def idle_sweep(now: float | None = None) -> list[str]:
 def _run_idle_sweep(stop: threading.Event, interval: float = IDLE_SWEEP_SECONDS) -> None:
     while not stop.wait(interval):
         try:
+            # A session started before the upgrade keeps its 2.x hooks, which
+            # write the old dir until it restarts (§6.2).
+            _adopt_legacy_state(again=True)
             idle_sweep()
         except Exception as exc:
             log_error("serve.park", f"{type(exc).__name__}: {exc}")
@@ -7380,6 +7339,8 @@ def _status_panel_mode() -> dict | None:
         # STATUS-01a's emphasis, as SGR the panel already parses.
         "note_line": _emphasize(note, _EMPHASIS_SGR) if note else None,
         "resumes_on_prompt": mode in AUTO_RESUME_MODES,
+        # STATE-15: a halted session, which the pop-out lets recede.
+        "stood_down": bool(spec.get("stood_down")),
     }
 
 
@@ -7648,8 +7609,7 @@ def _freshness_drift() -> tuple[dict, dict]:
 
 def _loaded_inline() -> bool:
     """Whether Claude Code loaded this plugin from a local directory rather
-    than from its marketplace cache — the same split `_default_data_dir` names
-    `<plugin>-inline`. Matched on the `plugins/cache` segment rather than a
+    than from its marketplace cache, which Claude Code names `<plugin>-inline`. Matched on the `plugins/cache` segment rather than a
     path under the home directory, which `CLAUDE_CONFIG_DIR` relocates."""
     parts = PLUGIN_ROOT.resolve().parts
     return not any(parts[i:i + 2] == ("plugins", "cache") for i in range(len(parts) - 1))
@@ -8573,20 +8533,13 @@ def _doctor_checks() -> list[dict]:
         + (f" — working tree at {PLUGIN_ROOT}" if _is_dev_install()
            else f" — installed at {PLUGIN_ROOT}"))
 
-    env_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
-    pointer = _read_data_dir_pointer()
-    source = ("CLAUDE_PLUGIN_DATA" if env_dir
-              else "recorded pointer" if pointer else "derived from CLAUDE_PLUGIN_ROOT")
-    add("Data", "data dir", _DOCTOR_OK, f"{DATA_DIR} (from {source})")
-    if pointer is None:
-        add("Data", "pointer", _DOCTOR_WARN,
-            f"{_data_dir_pointer()} records nothing yet — run a hook, or `beacon install`")
-    elif pointer.resolve() != DATA_DIR.resolve():
-        add("Data", "pointer", _DOCTOR_BAD,
-            f"{_data_dir_pointer()} says {pointer}, but this context resolved "
-            f"{DATA_DIR} — hooks and commands are writing to different dirs")
-    else:
-        add("Data", "pointer", _DOCTOR_OK, f"{_data_dir_pointer()} agrees")
+    add("Data", "data dir", _DOCTOR_OK,
+        f"{DATA_DIR}" + (" (from BEACON_DATA_DIR)" if os.environ.get("BEACON_DATA_DIR") else ""))
+    live = _legacy_writers()
+    if live:
+        add("Data", "older install", _DOCTOR_WARN,
+            f"{', '.join(str(d) for d in live)} still receives state, which the sessions view "
+            "doesn't read: a beacon older than 3.0 is loaded there; update it")
 
     if not STATE_DIR.exists():
         add("Data", "state", _DOCTOR_WARN,
@@ -9034,12 +8987,6 @@ def cmd_hook(args):
     except Exception:
         payload = {}
     event = args.event
-
-    # Only a hook is told which install is loaded, so record the dir it was
-    # handed for the invocations that get no env to read (`_default_data_dir`).
-    handed_data_dir = os.environ.get("CLAUDE_PLUGIN_DATA")
-    if handed_data_dir:
-        _record_data_dir(handed_data_dir)
 
     # Capture the Claude session ID for cross-session handoff. It's stable
     # for the lifetime of the Claude conversation; a colleague can resume it
@@ -9564,7 +9511,104 @@ _UNCOMPLETED_COMMANDS = {"hook", "data-dir", "shell-init",
                          "freshness", "status-panel"}
 
 
+# Where Claude Code keeps each plugin install's data dir (§6.2).
+LEGACY_DATA_ROOT = Path.home() / ".claude" / "plugins" / "data"
+
+
+def _legacy_data_dirs() -> list[Path]:
+    """The per-install dirs Claude Code handed beacon before 3.0 (§6.2):
+    `beacon-<marketplace>` for each marketplace install and `beacon-inline` for a
+    plugin loaded from a local directory. Claude Code names an inline dir
+    `<plugin>-inline`, so a `beacon-*-inline` belongs to another plugin."""
+    try:
+        found = [d for d in LEGACY_DATA_ROOT.iterdir() if d.is_dir() and (
+            d.name == "beacon-inline"
+            or (d.name.startswith("beacon-") and not d.name.endswith("-inline")))]
+    except OSError:
+        return []
+    return sorted(found)
+
+
+def _copy_newer(src: Path, dst: Path, op: str) -> None:
+    """Copy each file in `src` whose copy in `dst` is missing or older, keeping
+    its mtime, which the activity window reads (WIP-03)."""
+    if not src.is_dir():
+        return
+    _mkdir_private(dst)
+    for f in src.iterdir():
+        target = dst / f.name
+        try:
+            if not f.is_file() or (target.exists() and target.stat().st_mtime >= f.stat().st_mtime):
+                continue
+            shutil.copy2(f, target)
+            os.chmod(target, _PRIVATE_FILE)
+        except OSError as e:
+            log_error(op, f"{f}: {type(e).__name__}: {e}")
+
+
+LEGACY_ADOPTED = DATA_DIR / "adopted"
+_ADOPT_LOCK = DATA_DIR / "adopting"
+_ADOPT_LOCK_STALE_SECONDS = 120
+
+
+def _adopt_legacy_state(again: bool = False) -> None:
+    """§6.2: copy the state, cache, and log an earlier install left in Claude
+    Code's per-install dirs into DATA_DIR, once, so upgrading loses no session.
+    Where two dirs hold the same file (one pane seen by both installs), the newer
+    copy wins, which is the one a reader would have wanted. The old dirs are left
+    in place: they're Claude Code's, and an install still on 2.x writes there.
+
+    Runs at the top of every invocation, and costs one stat once done. `serve`
+    runs it `again` each minute, since a session started before the upgrade keeps
+    writing the old dir until it restarts; only files newer than DATA_DIR's copy
+    move, so a quiet old dir costs a directory listing."""
+    if LEGACY_ADOPTED.exists() and not again:
+        return
+    _mkdir_private(DATA_DIR)
+    try:
+        fd = os.open(_ADOPT_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        try:
+            if time.time() - _ADOPT_LOCK.stat().st_mtime > _ADOPT_LOCK_STALE_SECONDS:
+                _ADOPT_LOCK.unlink()
+        except OSError:
+            pass
+        return
+    os.close(fd)
+    try:
+        sources = _legacy_data_dirs()
+        for root in sources:
+            for src, dst in ((root / "state", STATE_DIR), (root / "cache", CACHE_DIR),
+                             (root / "logs", LOGS_DIR)):
+                _copy_newer(src, dst, "state.adopt")
+        _write_private(LEGACY_ADOPTED, "".join(f"{d}\n" for d in sources))
+        # The record the 2.x env-less contexts read their dir from; nothing
+        # reads it now.
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config"))
+        (config / "beacon" / "data-dir").unlink(missing_ok=True)
+    finally:
+        _ADOPT_LOCK.unlink(missing_ok=True)
+
+
+def _legacy_writers() -> list[Path]:
+    """The pre-3.0 dirs something has written state to since the adoption: an
+    install still on 2.x, whose sessions the sessions view can't see."""
+    try:
+        adopted = LEGACY_ADOPTED.stat().st_mtime
+    except OSError:
+        return []
+    live = []
+    for root in _legacy_data_dirs():
+        try:
+            if any(f.stat().st_mtime > adopted for f in (root / "state").iterdir()):
+                live.append(root)
+        except OSError:
+            continue
+    return live
+
+
 def main(argv=None):
+    _adopt_legacy_state()
     parser = _build_parser()
 
     argv = sys.argv[1:] if argv is None else argv
