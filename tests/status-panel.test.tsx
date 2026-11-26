@@ -214,7 +214,7 @@ describe('status panel', () => {
     expect(textOf(await $.ui.render(BAND))).toContain('acme')
   })
 
-  test('the paused mode draws a ribbon in its hue, with its note', async ($, on) => {
+  test('the paused mode draws the panel as a slab of its hue, with its note', async ($, on) => {
     worldOf(on, { head: PAUSED, statusline: '' })
     await started($)
     const drawn = await $.ui.render(BAND)
@@ -226,17 +226,19 @@ describe('status panel', () => {
     expect(propsOf(drawn, 'VPN')).toMatchObject({ italic: true })
     // The ribbon carries the glyph, so the head row doesn't repeat it.
     expect(text.split('⏸').length).toBe(2)
-    // Three rows of the same hue under the lines close the panel.
-    expect(propsOf(drawn, ' ')).toMatchObject({ backgroundColor: '#44385f' })
+    // The head row sits on the same slab, not on the terminal's ground between two bars.
+    expect(propsOf(drawn, 'acme')).toMatchObject({ backgroundColor: '#44385f', bold: true })
+    expect(propsOf(drawn, ' ↖ github ')).toMatchObject({ color: '#8be9fd', backgroundColor: '#574c6f' })
   })
 
-  test('the dev cycle draws no closing row, and a button\'s label inverts with it under the pointer', async ($, on) => {
+  test('the dev cycle draws no slab, and a button is a chip that inverts whole under the pointer', async ($, on) => {
     worldOf(on)
     await started($)
     const drawn = await $.ui.render(BAND)
-    expect(propsOf(drawn, ' ')).toBeUndefined()
-    expect(propsOf(drawn, '↖ github')).toMatchObject({ color: '#8be9fd' })
-    expect(hoverOf(drawn, '↖ github')).toEqual({ color: 'text' })
+    expect(propsOf(drawn, 'acme')?.backgroundColor).toBeUndefined()
+    expect(propsOf(drawn, ' ↖ github ')).toMatchObject({ color: '#8be9fd', backgroundColor: '#343746' })
+    // No hover of its own: the terminal's inversion of the plain button is the whole effect.
+    expect(hoverOf(drawn, ' ↖ github ')).toBeUndefined()
   })
 
   test('a mode with no band keeps its glyph on the head row and draws no ribbon', async ($, on) => {

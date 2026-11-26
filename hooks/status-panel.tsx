@@ -12,9 +12,31 @@ const CODE_HUE = '#ff79c6'
 // The arrows the iTerm2 status bar's `↖ web` and `↗ code` carried, each on its button's outer side, so the pair bookends the row's end.
 const WEB_GLYPH = '↖'
 const CODE_GLYPH = '↗'
-// The ribbon's text over a mode's `band` hue, which MODE_SPECS keeps dark so one light foreground reads on every mode; the hint color sets off the separator.
+// The slab's text over a mode's `band` hue, which MODE_SPECS keeps dark so one light foreground reads on every mode; the hint color carries the note and the task, a step below the names.
 const RIBBON_TEXT = '#f8f8f2'
 const RIBBON_HINT = '#bfbfd0'
+// A button's chip with no mode: a step above the terminal's ground, so the label reads as a control at rest.
+const CHIP_GROUND = '#343746'
+
+// A button's chip on the slab: the band lifted toward white, so it stays one family with the mode's hue.
+function lift(hex: string, by = 0.1): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (shift: number) => {
+    const v = (n >> shift) & 0xff
+    return Math.round(v + (255 - v) * by).toString(16).padStart(2, '0')
+  }
+  return `#${ch(16)}${ch(8)}${ch(0)}`
+}
+
+// Terminal cells a short label takes, so the mode's label and the project can share a column: an emoji past U+1F000 (💤 🚀 🏁) takes two, a variation selector none.
+function cells(text: string): number {
+  let n = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0)!
+    n += cp === 0xfe0f ? 0 : cp >= 0x1f000 ? 2 : 1
+  }
+  return n
+}
 
 // What changes without an event in this session (a push from a shell, a forge read landing) shows within this.
 const POLL_MS = 15_000
@@ -268,73 +290,93 @@ export const register: Register = on => {
     // A session that has written no state yet (its first hook still running) draws nothing, rather than saying so.
     if (parts.length === 0 && rest.length === 0) return pickerRows.length ? <Box flexDirection="column">{pickerRows}</Box> : next(e)
 
-    // The mode's pane cue, drawn in the band so any terminal shows it: a bar in the mode's hue carrying its glyph, label and note.
-    // A row of hue above and below the text makes it read as a bar rather than a highlighted line.
+    // STATUS-09: a declared mode turns the whole panel into one slab of its hue, mode row first, so any terminal shows the mode as a surface rather than a line.
+    // Every Text on it names the hue too: one drawn without it shows the terminal's ground through the slab.
     const mode = head?.mode
-    const band = mode?.band
-    const ribbon = !mode || !band ? [] : [
-      <Box key="ribbon" flexDirection="row" justifyContent="space-between" gap={2} paddingX={1} paddingY={1} backgroundColor={band}>
-        <Box flexDirection="row" flexShrink={1}>
-          <Text backgroundColor={band} color={RIBBON_TEXT} bold>{`${mode.glyph} ${mode.label}`}</Text>
-          {mode.note_line ? [
-            <Text key="rb-sep" backgroundColor={band} color={RIBBON_HINT}>{' · '}</Text>,
-            ...segmentsOf(mode.note_line).flatMap((s, i) => 'href' in s ? [] : [
-              <Text key={`rb-${i}`} backgroundColor={band} color={RIBBON_TEXT} bold={s.style.bold} italic={s.style.italic} wrap="truncate-end">{s.text}</Text>,
-            ]),
-          ] : []}
-        </Box>
+    const band = mode?.band ?? undefined
+    const soft = band ? RIBBON_HINT : undefined
+    const modeLabel = mode && band ? `${mode.glyph} ${mode.label}` : null
+    // On the slab the mode's label and the project share one column, so the note and the branch start together.
+    const lead = modeLabel ? Math.max(cells(modeLabel), cells(parts[0] ?? '')) : undefined
+
+    // The ahead/behind glyphs first, in the branch's color; linked only when it has an upstream to open.
+    // It never shrinks: squeezed, a branch wraps mid-name onto a second row. The task beside it truncates instead.
+    const branchOf = (p: string) => {
+      const text = <Text backgroundColor={band} color={BRANCH_HUE[head?.branch_slot ?? ''] ?? undefined}>{head?.branch_sync ? `${head.branch_sync} ${p}` : p}</Text>
+      const href = links.get(p) ?? head?.branch_url
+      return <Box key="branch" flexShrink={0}>{href ? <Link href={href}>{text}</Link> : text}</Box>
+    }
+
+    // Plain, so the terminal draws no brackets of its own: the chip is the whole control, and under the pointer it inverts as one block in the button's hue.
+    // The label carries a cell of padding each side, so the inverted block doesn't hug the text.
+    const chip = band ? lift(band) : CHIP_GROUND
+    // No hotkey: one answers only once ctrl+x tab has moved the focus into the band, and a plain button prints it as `w:` outside the chip.
+    const button = (key: string, text: string, color: string, verb: 'open-url' | 'open-code') => (
+      <Button key={key} plain label={text} onPress={() => void openWith($, verb)}>
+        <Text color={color} backgroundColor={chip}>{` ${text} `}</Text>
+      </Button>
+    )
+
+    // Only once the anchor is known: before it, a press could only answer that there is no directory.
+    // Docked at the panel's top right, on whichever row opens it, so they hold one place and the head row keeps its width for the task.
+    const actions = !head?.anchor_cwd ? [] : [
+      <Box key="actions" flexDirection="row" gap={2} flexShrink={0}>
+        {/* Labeled by what they open: the forge and the editor, each with its status bar arrow on the outer side. */}
+        {head.forge ? [button('web', `${WEB_GLYPH} ${head.forge}`, WEB_HUE, 'open-url')] : []}
+        {button('code', `${head.code_label} ${CODE_GLYPH}`, CODE_HUE, 'open-code')}
       </Box>,
     ]
 
-    // The ahead/behind glyphs first, in the branch's color; linked only when it has an upstream to open.
-    const branchOf = (p: string) => {
-      const text = <Text key="branch" color={BRANCH_HUE[head?.branch_slot ?? ''] ?? undefined} wrap="truncate-end">{head?.branch_sync ? `${head.branch_sync} ${p}` : p}</Text>
-      const href = links.get(p) ?? head?.branch_url
-      return href ? <Link key="branch" href={href}>{text}</Link> : text
-    }
-
-    return (
-      <Box flexDirection="column" paddingRight={5} marginTop={1}>
-        {ribbon}
-        <Box flexDirection="row" justifyContent="space-between" gap={2}>
-          <Box flexDirection="row" gap={1} flexShrink={1}>
-            {head?.mode?.glyph && !band ? [<Text key="glyph">{head.mode.glyph}</Text>] : []}
-            {parts.flatMap((p, i) => [
-                ...(i === 0 ? [] : [<Text key={`sep-${i}`} dimColor>·</Text>]),
-                // No activity here: the band only ever shows the session in front of you, whose spinner and prompts already say it.
-                i === 0
-                  ? <Text key="p-0" bold wrap="truncate-end">{p}</Text>
-                  : p === head?.branch
-                    ? branchOf(p)
-                    : links.has(p)
-                      ? <Link key={`p-${i}`} href={links.get(p)!} label={p} />
-                      : <Text key={`p-${i}`} wrap="truncate-end">{p}</Text>,
+    // A blank row of the slab under the mode's row sets the mode apart from the names it governs.
+    const modeRow = !mode || !modeLabel ? [] : [
+      <Box key="mode" flexDirection="row" justifyContent="space-between" gap={2} marginBottom={1}>
+        <Box flexDirection="row" gap={2} flexShrink={1}>
+          <Box width={lead} flexShrink={0}><Text backgroundColor={band} color={RIBBON_TEXT} bold>{modeLabel}</Text></Box>
+          {mode.note_line ? [
+            <Box key="note" flexDirection="row" flexShrink={1}>
+              {segmentsOf(mode.note_line).flatMap((s, i) => 'href' in s ? [] : [
+                <Text key={`rb-${i}`} backgroundColor={band} color={s.style.bold ? RIBBON_TEXT : RIBBON_HINT} bold={s.style.bold} italic={s.style.italic} wrap="truncate-end">{s.text}</Text>,
               ])}
-          </Box>
-          {/* Only once the anchor is known: before it, a press could only answer that there is no directory. */}
-          {head?.anchor_cwd ? [
-            <Box key="actions" flexDirection="row" gap={1} flexShrink={0}>
-              {/* Labeled by what they open: the forge and the editor, each with its status bar arrow on the outer side. */}
-              {/* Each in a keyed Box of its own, so its label drops its hue under the pointer: the button inverts whole, the label with its brackets, rather than as a colored block inside a gray one. */}
-              {head.forge ? [<Box key="web-scope"><Button key="web" hotkey="w" label={`${WEB_GLYPH} ${head.forge}`} onPress={() => void openWith($, 'open-url')}><Text color={WEB_HUE} hover={{ color: 'text' }}>{`${WEB_GLYPH} ${head.forge}`}</Text></Button></Box>] : []}
-              <Box key="code-scope"><Button key="code" hotkey="c" label={`${head.code_label} ${CODE_GLYPH}`} onPress={() => void openWith($, 'open-code')}><Text color={CODE_HUE} hover={{ color: 'text' }}>{`${head.code_label} ${CODE_GLYPH}`}</Text></Button></Box>
             </Box>,
           ] : []}
         </Box>
-        {rest.map((segs, i) => (
-          <Box key={`sl-${i}`} flexDirection="row" paddingLeft={2}>
-            {segs.map((s, j) =>
-              // A ref (`!45`) never shrinks: squeezed, it wraps mid-token onto a second row. The titles beside it truncate instead.
-              'href' in s
-                ? <Box key={`sl-${i}-${j}`} flexShrink={0}><Link href={s.href}>{s.runs.map((r, k) => <Text key={`sl-${i}-${j}-${k}`} {...styleOf(r.style)} wrap="truncate-end">{r.text}</Text>)}</Link></Box>
-                : <Text key={`sl-${i}-${j}`} {...styleOf(s.style)} wrap="truncate-end">{s.text}</Text>,
-            )}
+        {actions}
+      </Box>,
+    ]
+
+    return (
+      <Box flexDirection="column" paddingRight={5} marginTop={1}>
+        <Box flexDirection="column" backgroundColor={band} paddingX={band ? 1 : 0} paddingY={band ? 1 : 0}>
+          {modeRow}
+          <Box flexDirection="row" justifyContent="space-between" gap={2}>
+            <Box flexDirection="row" gap={2} flexShrink={1}>
+              {head?.mode?.glyph && !band ? [<Text key="glyph">{head.mode.glyph}</Text>] : []}
+              {parts.map((p, i) =>
+                // No activity here: the band only ever shows the session in front of you, whose spinner and prompts already say it.
+                i === 0
+                  ? <Box key="p-0" width={lead} flexShrink={0}><Text backgroundColor={band} bold>{p}</Text></Box>
+                  : p === head?.branch
+                    ? branchOf(p)
+                    : links.has(p)
+                      ? <Link key={`p-${i}`} href={links.get(p)!}><Text backgroundColor={band} color={soft} wrap="truncate-end">{p}</Text></Link>
+                      : <Text key={`p-${i}`} backgroundColor={band} color={soft} wrap="truncate-end">{p}</Text>,
+              )}
+            </Box>
+            {modeRow.length ? [] : actions}
           </Box>
-        ))}
+          {rest.map((segs, i) => (
+            <Box key={`sl-${i}`} flexDirection="row" paddingLeft={2}>
+              {segs.map((s, j) =>
+                // A ref (`!45`) never shrinks: squeezed, it wraps mid-token onto a second row. The titles beside it truncate instead.
+                'href' in s
+                  ? <Box key={`sl-${i}-${j}`} flexShrink={0}><Link href={s.href}>{s.runs.map((r, k) => <Text key={`sl-${i}-${j}-${k}`} {...styleOf(r.style)} backgroundColor={band} wrap="truncate-end">{r.text}</Text>)}</Link></Box>
+                  : <Text key={`sl-${i}-${j}`} {...styleOf(s.style)} backgroundColor={band} wrap="truncate-end">{s.text}</Text>,
+              )}
+            </Box>
+          ))}
+        </Box>
         {pickerRows}
         {lastError === '' ? [] : [<Text key="err" color="#ff5555" wrap="truncate-end">{lastError}</Text>]}
-        {/* Three rows of the ribbon's hue under the lines close the panel, so a moded session reads as one block from bar to bar. */}
-        {band ? [<Box key="ribbon-end" flexDirection="column" backgroundColor={band}>{[0, 1, 2].map(i => <Text key={`re-${i}`} backgroundColor={band}> </Text>)}</Box>] : []}
       </Box>
     )
   })

@@ -6,7 +6,7 @@ The panel is a hooks module that loads with the plugin, so there's nothing to in
 
 ## The mode ribbon
 
-When you've declared a mode, the panel opens with a bar three rows tall in that mode's hue: its glyph and name in bold, then your note. Your next prompt lifts a pause.
+When you've declared a mode, the whole panel sits on that mode's hue, opening with its glyph and name in bold, then your note. Your next prompt lifts a pause.
 
 | Mode | Ribbon | Footer |
 |:---|:---|:---|
@@ -29,12 +29,12 @@ The first row names the session:
 
 Two buttons sit at the end of the row, named for what they open:
 
-| Button | Opens | Key |
-|:---|:---|:---|
-| `↖` and the forge (`github`, `gitlab`, …) | the repo's project page | `w` |
-| the editor (`code`, or yours) and `↗` | the session's directory in your editor | `c` |
+| Button | Opens |
+|:---|:---|
+| `↖` and the forge (`github`, `gitlab`, …) | the repo's project page |
+| the editor (`code`, or yours) and `↗` | the session's directory in your editor |
 
-The keys work once the band has focus (ctrl+x tab, or a click). Both buttons wait until beacon knows the session's directory, and the forge button needs an `origin` remote. A failure shows as a short message in Claude Code. To change what they run, see [the buttons](#the-buttons).
+Both buttons wait until beacon knows the session's directory, and the forge button needs an `origin` remote. A failure shows as a short message in Claude Code. To change what they run, see [the buttons](#the-buttons).
 
 The panel shows this session only. Every session at once is the [sessions view](/cli?id=the-sessions-view): `beacon wip`, `beacon watch`, and the dashboard. To jump to another one, press ⌘K at a shell prompt in iTerm2 for [`beacon pick`](/cli?id=beacon-pick), or, from inside a session, `/beacon switch` lists the others in the band in the same order, the ones waiting on you first; press a number to raise that session's iTerm2 window. A session that has no state yet, in the moment after it starts, shows nothing rather than a placeholder.
 

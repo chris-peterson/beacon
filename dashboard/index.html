@@ -1546,31 +1546,41 @@
       .pip-list { display: flex; flex-direction: column; }
 
       /* One band per session, the prompt's own rule between them. */
-      .pip-row { border-bottom: 1px solid var(--rule); padding-bottom: 0.4rem; }
+      .pip-row { border-bottom: 1px solid var(--rule); }
       .pip-row:focus-within { background: rgba(255,255,255,0.015); }
       .pip-gap { height: 0.9rem; border-bottom: 1px solid var(--rule); }
 
-      /* The ribbon: the mode's hue, a row of it above and below the text, as
-         the band pads it. A parked or finished session gets a thin one, so the
-         work in flight stays the loudest thing in the stack. */
-      .pip-ribbon {
-        display: flex; align-items: baseline; gap: 1rem; padding: 0.55rem 0.75rem;
-        background: var(--mode-band); color: var(--fg); white-space: nowrap;
-      }
-      .pip-ribbon[hidden] { display: none; }
-      .pip-ribbon .rb-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .pip-ribbon .rb-mode { font-weight: 700; }
-      .pip-ribbon .rb-sep { color: var(--hint); }
-      .pip-row.stood-down .pip-ribbon { padding-block: 0.12rem; }
-      /* The band closes a moded panel with a row of the ribbon's hue, so a
-         tile does too; a parked one's is as thin as its ribbon. */
-      .pip-row.moded { padding-bottom: 0; }
-      .pip-row.moded::after { content: ""; display: block; height: 0.55rem; margin-top: 0.4rem; background: var(--mode-band); }
-      .pip-row.moded.stood-down::after { height: 0.15rem; }
+      /* STATUS-09's slab: a declared mode turns the whole tile into one block
+         of its hue, a row of it above and below, as the band draws it. A parked
+         or finished session's slab is shallower, so the work in flight stays
+         the loudest thing in the stack. */
+      .pip-slab { padding: 0.4rem 0; }
+      .pip-row.moded .pip-slab { background: var(--mode-band); padding: 1.45em 0; }
       .pip-row.stood-down .pip-headrow, .pip-row.stood-down .pip-lines { opacity: 0.62; }
+      /* A parked or finished session asks nothing of you, so its tile folds to
+         one line on its hue: glyph, project, why it's parked, the task. Its
+         buttons and lines wait for the pointer (or the expanded turn), so the
+         work in flight stays the loudest thing in the stack. */
+      .pip-row.moded.stood-down .pip-slab { padding: 0.35em 0; }
+      .pip-row.stood-down .pip-moderow { display: none; }
+      .pip-row.stood-down .pip-proj .note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--hint); }
+      .pip-row.stood-down .pip-proj .task { flex: 0 10 auto; }
+      .pip-row.stood-down:not(:hover, :focus-within) .pip-actions { display: none; }
+      .pip-row.stood-down:not(:hover, :focus-within, .expanded) .pip-lines { display: none; }
+
+      /* The mode's row opens the slab, a blank row under it; its label shares
+         the project's column, so the note and the branch start together. */
+      .pip-moderow {
+        display: flex; align-items: center; gap: 0 2ch; white-space: nowrap;
+        padding: 0 0.75rem 0 1.75rem; margin-bottom: 1.45em;
+      }
+      .pip-moderow[hidden] { display: none; }
+      .pip-row.stood-down .pip-moderow { margin-bottom: 0.3em; }
+      .pip-moderow .rb-mode { flex: none; font-weight: 700; }
+      .pip-moderow .rb-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--hint); }
 
       .pip-headrow {
-        display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; padding: 0.4rem 0.75rem 0.1rem;
+        display: flex; align-items: center; gap: 0 0.5rem; padding: 0 0.75rem;
         cursor: pointer; border-radius: 0;
       }
       .pip-headrow:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -1578,29 +1588,36 @@
       .pip-row.color-working { --state-color: var(--working); }
       .pip-row.color-blocked { --state-color: var(--blocked); }
       .pip-row.color-blocked .pip-rdot { box-shadow: 0 0 6px var(--blocked); }
-      /* The name keeps room for itself; in a narrow window the buttons wrap
-         under it rather than squeezing it to nothing. */
-      .pip-proj { flex: 1 1 14ch; min-width: 14ch; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .pip-proj b { font-weight: 700; }
-      .pip-proj .sep { color: var(--faint); }
+      /* The branch never wraps or shrinks; the task beside it truncates first. */
+      .pip-proj { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 0 2ch; white-space: nowrap; overflow: hidden; }
+      .pip-proj .lead { flex: none; font-weight: 700; }
+      .pip-proj .br { flex: none; }
+      .pip-proj .task { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+      .pip-row.moded .pip-proj .task { color: var(--hint); }
       .pip-proj a { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-thickness: 1px; }
       .pip-age { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
       .pip-age:empty { display: none; }
 
-      /* The band's buttons, bracketed as Claude Code draws them. */
-      .pip-actions { flex: none; display: flex; gap: 0.3rem; margin-left: auto; }
+      /* The band's buttons: chips a step above what they sit on, each label in
+         its action's hue, inverting whole under the pointer as the band's do.
+         Docked at the tile's top right, on whichever row opens it. */
+      .pip-actions { flex: none; display: flex; gap: 0 1ch; margin-left: auto; }
       .pip-btn {
-        position: relative; cursor: pointer; background: none; border: 0; padding: 0 0.1rem;
-        color: var(--fg); white-space: nowrap; border-radius: 3px;
+        --hue: var(--fg);
+        cursor: pointer; border: 0; padding: 0 1ch; border-radius: 2px;
+        background: var(--chip, #343746); color: var(--hue); white-space: nowrap;
       }
       .pip-btn[hidden] { display: none; }
-      .pip-btn::before { content: "[ "; }
-      .pip-btn::after { content: " ]"; }
-      .pip-btn span { font-weight: 700; }
-      .pip-btn.go span { color: var(--fg); }
-      .pip-btn.web span { color: var(--web); }
-      .pip-btn.code span { color: var(--code); }
-      .pip-btn:hover, .pip-btn:focus-visible { background: var(--raised); outline: none; }
+      .pip-btn.web { --hue: var(--web); }
+      .pip-btn.code { --hue: var(--code); }
+      .pip-btn:hover, .pip-btn:focus-visible { background: var(--hue); color: var(--ground); outline: none; }
+      /* go is the tile's own, not the band's: it takes the age's place only
+         while the head row is under the pointer or holds the focus, so a
+         resting stack carries just the band's two and gives up no width for
+         it. The head row takes Tab itself, so the focus reaches go from there. */
+      .pip-btn.go { flex: none; display: none; }
+      .pip-headrow:is(:hover, :focus-within) .pip-btn.go:not([hidden]) { display: inline-block; }
+      .pip-headrow:is(:hover, :focus-within):has(.pip-btn.go:not([hidden])) .pip-age { display: none; }
       .pip-tip {
         position: fixed; z-index: 5; pointer-events: none; white-space: nowrap;
         padding: 0.15rem 0.45rem; border-radius: 4px; background: #191a21; color: var(--fg);
@@ -1738,6 +1755,18 @@
       "35": "#ff79c6", "36": "#8be9fd", "37": "#f8f8f2", "90": "#6272a4",
     };
     const BRANCH_HUE = { default: "#8d98c4", clean: "#8be9fd", diverged: "#f1fa8c", untracked: "#ffb86c" };
+    // A chip on the slab: the band lifted toward white, as the panel's lift() does.
+    function liftHex(hex, by = 0.1) {
+      const n = parseInt(hex.slice(1), 16);
+      const ch = (shift) => { const v = (n >> shift) & 0xff; return Math.round(v + (255 - v) * by).toString(16).padStart(2, "0"); };
+      return "#" + ch(16) + ch(8) + ch(0);
+    }
+    // Cells a short label takes, as the panel's cells() counts them.
+    function cells(text) {
+      let n = 0;
+      for (const ch of text) { const cp = ch.codePointAt(0); n += cp === 0xfe0f ? 0 : cp >= 0x1f000 ? 2 : 1; }
+      return n;
+    }
     function xterm256(n) {
       if (n < 16 || n > 255) return undefined;
       const hex = (v) => v.toString(16).padStart(2, "0");
@@ -1830,16 +1859,18 @@
       row.className = "pip-row";
       row.dataset.hash = hash;
       row.innerHTML =
-        '<div class="pip-ribbon" hidden><span class="rb-text"></span></div>' +
-        '<div class="pip-headrow">' +
-          '<span class="pip-rdot"></span><span class="pip-proj"></span>' +
-          '<span class="pip-age"></span>' +
-          '<span class="pip-actions">' +
-            '<button type="button" class="pip-btn go" data-tip="Raise its terminal window" hidden><span>go</span></button>' +
-            '<button type="button" class="pip-btn web" data-tip="Open the project page" hidden><span></span></button>' +
-            '<button type="button" class="pip-btn code" hidden><span></span></button>' +
-          "</span></div>" +
-        '<div class="pip-lines"></div><div class="pip-turn"></div><div class="pip-err"></div>';
+        '<div class="pip-slab">' +
+          '<div class="pip-moderow" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
+          '<div class="pip-headrow">' +
+            '<span class="pip-rdot"></span><span class="pip-proj"></span>' +
+            '<button type="button" class="pip-btn go" data-tip="Raise its terminal window" hidden>go</button>' +
+            '<span class="pip-age"></span>' +
+            '<span class="pip-actions">' +
+              '<button type="button" class="pip-btn web" data-tip="Open the project page" hidden></button>' +
+              '<button type="button" class="pip-btn code" hidden></button>' +
+            "</span></div>" +
+          '<div class="pip-lines"></div><div class="pip-turn"></div><div class="pip-err"></div>' +
+        "</div>";
       const headrow = row.querySelector(".pip-headrow");
       headrow.setAttribute("role", "button");
       headrow.tabIndex = 0;
@@ -1916,22 +1947,34 @@
       row.className = "pip-row color-" + (s.color_state || "idle")
         + (band ? " moded" : "") + (stoodDown(s) ? " stood-down" : "")
         + (pip.expanded.has(s.hash) ? " expanded" : "");
-      if (band) row.style.setProperty("--mode-band", band);
-      row.querySelector(".pip-headrow").setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
+      if (band) {
+        row.style.setProperty("--mode-band", band);
+        row.style.setProperty("--chip", liftHex(band));
+      } else {
+        row.style.removeProperty("--chip");
+      }
+      const headrow = row.querySelector(".pip-headrow");
+      headrow.setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
 
-      // The ribbon, as the band draws it: glyph and label bold, then the note.
-      const ribbon = row.querySelector(".pip-ribbon");
-      ribbon.hidden = !band;
+      // The slab's first row, as the band draws it: glyph and label bold, then the note.
+      const moderow = row.querySelector(".pip-moderow");
+      moderow.hidden = !band;
+      const modeLabel = band ? (mode.glyph ? mode.glyph + " " : "") + (mode.label || mode.name) : "";
       if (band) {
         const note = mode.note_line
           ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
-              '<span style="' + (r.style.bold ? "font-weight:700;" : "") + (r.style.italic ? "font-style:italic" : "") + '">'
+              '<span style="' + (r.style.bold ? "font-weight:700;color:var(--fg);" : "") + (r.style.italic ? "font-style:italic" : "") + '">'
               + escapeHtml(r.text) + "</span>").join("")
           : escapeHtml(mode.note || "");
-        setHtml(ribbon.querySelector(".rb-text"),
-          '<span class="rb-mode">' + escapeHtml((mode.glyph ? mode.glyph + " " : "") + (mode.label || mode.name)) + "</span>"
-          + (note ? '<span class="rb-sep"> · </span>' + note : ""));
+        setHtml(moderow.querySelector(".rb-mode"), escapeHtml(modeLabel));
+        setHtml(moderow.querySelector(".rb-note"), note);
       }
+      // A parked or finished tile folds to its head row (the CSS hides the mode's row).
+      const folded = !!band && stoodDown(s);
+      // The buttons dock on whichever row opens the tile.
+      const actions = row.querySelector(".pip-actions");
+      const dock = band && !folded ? moderow : headrow;
+      if (actions.parentNode !== dock) dock.appendChild(actions);
 
       row.querySelector(".pip-btn.go").hidden = !s.focusable;
 
@@ -1944,26 +1987,34 @@
       const parts = [...new Set([project, branch, task].filter(Boolean))];
       const used = new Set(parts.filter((p) => links.has(p)));
       // A mode with no ribbon (retro) marks the head row with its glyph, as the band does.
-      const glyph = mode && !band ? (mode.glyph || "") : "";
-      const head = parts.map((p, i) => {
-        if (i === 0) return "<b>" + escapeHtml(p) + "</b>";
+      // A folded tile leads with the mode's glyph, as a mode with no ribbon does.
+      const glyph = mode && (!band || folded) ? (mode.glyph || "") : "";
+      // On the slab the project shares the mode label's column (STATUS-09).
+      const lead = band && !folded ? Math.max(cells(modeLabel), cells(parts[0] || "")) : 0;
+      if (band) moderow.querySelector(".rb-mode").style.minWidth = lead + "ch";
+      // Folded, the note (why it's parked) follows the project; the branch drops, the task trails.
+      const shown = folded ? parts.filter((p) => p !== branch) : parts;
+      const note = folded ? moderow.querySelector(".rb-note").innerHTML : "";
+      const head = shown.map((p, i) => {
+        if (i === 0) return '<span class="lead"' + (lead ? ' style="min-width:' + lead + 'ch"' : "") + ">" + escapeHtml(p) + "</span>";
         if (p === branch && panel) {
           const text = '<span style="color:' + (BRANCH_HUE[panel.branch_slot] || "inherit") + '">'
             + escapeHtml(panel.branch_sync ? panel.branch_sync + " " + p : p) + "</span>";
           const href = links.get(p) || panel.branch_url;
-          return href ? linkHtml(href, text) : text;
+          return '<span class="br">' + (href ? linkHtml(href, text) : text) + "</span>";
         }
-        return links.has(p) ? linkHtml(links.get(p), escapeHtml(p)) : escapeHtml(p);
-      }).join('<span class="sep"> · </span>');
-      setHtml(row.querySelector(".pip-proj"), (glyph ? escapeHtml(glyph) + " " : "") + head);
+        return '<span class="task">' + (links.has(p) ? linkHtml(links.get(p), escapeHtml(p)) : escapeHtml(p)) + "</span>";
+      });
+      if (note) head.splice(1, 0, '<span class="note">' + note + "</span>");
+      setHtml(row.querySelector(".pip-proj"), (glyph ? "<span>" + escapeHtml(glyph) + "</span>" : "") + head.join(""));
 
       const web = row.querySelector(".pip-btn.web"), code = row.querySelector(".pip-btn.code");
       const canOpen = !!(panel && panel.anchor_cwd);
       web.hidden = !(canOpen && panel.forge);
       code.hidden = !canOpen;
       if (canOpen) {
-        if (panel.forge) web.querySelector("span").textContent = "↖ " + panel.forge;
-        code.querySelector("span").textContent = panel.code_label + " ↗";
+        if (panel.forge) web.textContent = "↖ " + panel.forge;
+        code.textContent = panel.code_label + " ↗";
         code.dataset.tip = "Open its directory in " + panel.code_label;
       }
 
