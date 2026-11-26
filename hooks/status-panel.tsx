@@ -2,7 +2,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 /** STATUS-07: `/beacon switch` opens the session switcher in the band. */
 export const COMMAND = 'beacon'
-// COLOR_PALETTE in scripts/beacon, for the switcher's list. The panel takes the palette directly, as the badge and sessions view do.
+// COLOR_PALETTE in scripts/beacon, for the band's list of sessions. The panel takes the palette directly, as the badge and sessions view do.
 const HUE: Record<string, string> = { idle: '#8b8fa0', working: '#ffb86c', blocked: '#ff5555' }
 // The branch's color by its sync state (#20): the default branch recedes, a feature branch reads by how it sits against its upstream.
 const BRANCH_HUE: Record<string, string> = { default: '#8d98c4', clean: '#8be9fd', diverged: '#f1fa8c', untracked: '#ffb86c' }
@@ -12,7 +12,7 @@ const CODE_HUE = '#ff79c6'
 // The arrows the iTerm2 status bar's `↖ web` and `↗ code` carried, each on its button's outer side, so the pair bookends the row's end.
 const WEB_GLYPH = '↖'
 const CODE_GLYPH = '↗'
-// The ribbon's text over a mode's `band` hue, which MODE_SPECS keeps dark so one light foreground reads on every mode.
+// The ribbon's text over a mode's `band` hue, which MODE_SPECS keeps dark so one light foreground reads on every mode; the hint color sets off the separator.
 const RIBBON_TEXT = '#f8f8f2'
 const RIBBON_HINT = '#bfbfd0'
 
@@ -30,8 +30,6 @@ type Mode = {
   band: string | null
   /** The note with its emphasis as SGR, for the ribbon. */
   note_line: string | null
-  /** STATE-04: the next prompt leaves this mode, so the ribbon says how to. */
-  resumes_on_prompt: boolean
 } | null
 type Head = {
   project: string | null
@@ -184,9 +182,9 @@ function setCollapsed($: EngineInterface, value: boolean): void {
   if (!collapsed) void refresh($)
 }
 
-// FOCUS-08: the switcher's list, opened in the band. It reads the other sessions only when asked, so the band stays this session's otherwise.
+// FOCUS-08: the other sessions in `beacon pick`'s order, opened in the band. It reads them only when asked, so the band stays this session's otherwise.
 async function openPicker($: EngineInterface): Promise<string> {
-  const r = await beacon($, ['switch', '--list'], { timeoutMs: 20_000 })
+  const r = await beacon($, ['pick', '--json'], { timeoutMs: 20_000 })
   if (r.exitCode !== 0) return `beacon: ${(r.stderr || r.stdout).trim()}`
   const sessions = JSON.parse(r.stdout) as NonNullable<typeof picker>
   if (sessions.length === 0) return 'beacon: no other beacon session to switch to.'
@@ -285,7 +283,6 @@ export const register: Register = on => {
             ]),
           ] : []}
         </Box>
-        {mode.resumes_on_prompt ? [<Text key="rb-hint" backgroundColor={band} color={RIBBON_HINT} italic>type to resume</Text>] : []}
       </Box>,
     ]
 
@@ -318,22 +315,26 @@ export const register: Register = on => {
           {head?.anchor_cwd ? [
             <Box key="actions" flexDirection="row" gap={1} flexShrink={0}>
               {/* Labeled by what they open: the forge and the editor, each with its status bar arrow on the outer side. */}
-              {head.forge ? [<Button key="web" hotkey="w" label={`${WEB_GLYPH} ${head.forge}`} onPress={() => void openWith($, 'open-url')}><Text color={WEB_HUE}>{`${WEB_GLYPH} ${head.forge}`}</Text></Button>] : []}
-              <Button key="code" hotkey="c" label={`${head.code_label} ${CODE_GLYPH}`} onPress={() => void openWith($, 'open-code')}><Text color={CODE_HUE}>{`${head.code_label} ${CODE_GLYPH}`}</Text></Button>
+              {/* Each in a keyed Box of its own, so its label drops its hue under the pointer: the button inverts whole, the label with its brackets, rather than as a colored block inside a gray one. */}
+              {head.forge ? [<Box key="web-scope"><Button key="web" hotkey="w" label={`${WEB_GLYPH} ${head.forge}`} onPress={() => void openWith($, 'open-url')}><Text color={WEB_HUE} hover={{ color: 'text' }}>{`${WEB_GLYPH} ${head.forge}`}</Text></Button></Box>] : []}
+              <Box key="code-scope"><Button key="code" hotkey="c" label={`${head.code_label} ${CODE_GLYPH}`} onPress={() => void openWith($, 'open-code')}><Text color={CODE_HUE} hover={{ color: 'text' }}>{`${head.code_label} ${CODE_GLYPH}`}</Text></Button></Box>
             </Box>,
           ] : []}
         </Box>
         {rest.map((segs, i) => (
           <Box key={`sl-${i}`} flexDirection="row" paddingLeft={2}>
             {segs.map((s, j) =>
+              // A ref (`!45`) never shrinks: squeezed, it wraps mid-token onto a second row. The titles beside it truncate instead.
               'href' in s
-                ? <Link key={`sl-${i}-${j}`} href={s.href}>{s.runs.map((r, k) => <Text key={`sl-${i}-${j}-${k}`} {...styleOf(r.style)}>{r.text}</Text>)}</Link>
+                ? <Box key={`sl-${i}-${j}`} flexShrink={0}><Link href={s.href}>{s.runs.map((r, k) => <Text key={`sl-${i}-${j}-${k}`} {...styleOf(r.style)} wrap="truncate-end">{r.text}</Text>)}</Link></Box>
                 : <Text key={`sl-${i}-${j}`} {...styleOf(s.style)} wrap="truncate-end">{s.text}</Text>,
             )}
           </Box>
         ))}
         {pickerRows}
         {lastError === '' ? [] : [<Text key="err" color="#ff5555" wrap="truncate-end">{lastError}</Text>]}
+        {/* Three rows of the ribbon's hue under the lines close the panel, so a moded session reads as one block from bar to bar. */}
+        {band ? [<Box key="ribbon-end" flexDirection="column" backgroundColor={band}>{[0, 1, 2].map(i => <Text key={`re-${i}`} backgroundColor={band}> </Text>)}</Box>] : []}
       </Box>
     )
   })

@@ -149,7 +149,7 @@ A mode is something you (or a skill) declare. Each carries a **glyph on the tab*
   <div class="pal-card">
     <div class="pal-pane" style="background: var(--ground)">
       <span class="tab" style="color: #8b8fa0">⏸ checkout-api</span>
-      <div class="ribbon" style="background: #44385f"><span><b>⏸ paused</b> · back after standup</span><span class="hint">type to resume</span></div>
+      <div class="ribbon" style="background: #44385f"><span><b>⏸ paused</b> · back after standup</span></div>
     </div>
     <div class="pal-meta">
       <h4>pause <span class="cmd">/beacon:pause</span></h4>

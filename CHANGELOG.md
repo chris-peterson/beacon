@@ -35,7 +35,7 @@ Run `/beacon:install-beacon` in a Claude Code session once after updating.
 A declared mode now shows in the status panel in any terminal, not by
 repainting the pane in iTerm2. `pause`, `release`, and `done` open the panel
 with a bar in the mode's own hue carrying its glyph, its name, and your note,
-and a paused session's bar says *type to resume*. The mode's name also joins
+and three rows of the same hue close the panel underneath. The mode's name also joins
 the labels at the right of Claude Code's footer, so it still shows with the
 panel collapsed. `retro` has no bar: its glyph leads the panel's top row and
 its note takes the first line, as before. The bar's text meets WCAG AA on
@@ -56,35 +56,66 @@ beacon now keeps its state in one place, `~/.local/state/beacon` (or under
 `$XDG_STATE_HOME`), whichever way a session loaded it. Through 2.x a session
 running the installed plugin and one loading beacon from a local checkout kept
 their state in two separate directories, and the dashboard, `beacon wip`, and
-the pop-out showed only one set, so sessions went missing without a word. The
+the tab stack showed only one set, so sessions went missing without a word. The
 first 3.0 run copies what 2.x left in both into the new place; `beacon doctor`
 names a 2.x install still running beside it.
 
-### The pop-out is the dashboard, stacked
+### The tab stack: every session's status panel, on top
 
-The dashboard's pop-out, the small always-on-top window, now holds every
-session the dashboard shows, in the same order, as one column of compact
-tiles: the ones waiting on you under their own heading, then the rest. It no
-longer starts with only the waiting sessions and grows as others show
-activity. Each tile is one line, the session's project, branch, and task with
-its activity dot and age, and expands on a click to its mode's note, latest
-turn, and the change requests and issues it's working. Its buttons raise the
-session's window (`go →`) and open the project page and its directory
-(`↖ github`, `code ↗`), each saying what it does the moment you hover it. A
-mode marks a tile with its glyph and an edge in its color, and a paused or
-finished session's tile recedes behind the ones still working.
+The dashboard's pop-out is now the tab stack: the small always-on-top window
+holds every session the dashboard shows, in the same order, each drawn the way
+Claude Code draws its status panel above the prompt: the mode's bar in its
+color, the project, branch, and task with `[ ↖ github ]` and `[ code ↗ ]`, and
+the change requests and issues underneath. It no longer starts with only the
+waiting sessions and grows as others show activity. Each tile adds the
+session's activity dot, its age, and `[ go ]` to raise its window, and each
+button says what it does the moment you hover it. Click a tile's top row to see
+its latest turn, with links shown as their labels and clickable. A paused or
+finished session gets a thin bar and dimmer text, so it recedes behind the ones
+still working.
 
-### Switch to the session that needs you
+### Ctrl-G opens a list of every session
 
-Command-Option-] raises the next beacon session and Command-Option-[ the
-previous one: the sessions waiting on you come first, longest wait first,
-then the rest, most recent first. Presses in quick succession walk one list.
-Command-Option-/ opens a list to choose from, as does a press whose session
-can't be raised, and `/beacon switch` shows the same list above the prompt in
-a Claude Code session. `beacon switch` does the same from a shell, and
-`beacon focus <hash>` raises one session by its hash, as a click on a
-dashboard row does. Your own key bindings come along into the beacon
-profile, so rerun `beacon refresh-iterm-profiles` after changing them.
+`beacon pick` fills the terminal with every session, two lines each: the
+project, branch, and task, then what it's waiting on or what it last said.
+Type to narrow the list by project, branch, task, or note, move with the
+arrow keys, and press Enter to raise that session's window. Option-W and
+Option-C open its project page and its directory, Tab flips the order to
+newest first, and Esc puts the terminal back as it was. It reads beacon's
+state directly, so it works without `beacon serve`.
+
+At a zsh prompt Ctrl-G opens it, in any terminal. `beacon config pick-key`
+changes the key (`^[p` for Option-P, say) or turns it off, and a new shell
+picks the change up. In iTerm2, a hotkey window running `beacon pick` makes it
+global. Inside a Claude Code session, `/beacon switch` shows the same list above
+the prompt, and `beacon focus <hash>` raises one session by its hash, as a
+click on a dashboard row does.
+
+### One list in the dashboard, by status or by recency
+
+The dashboard and its tab stack show one list with no section headings. By
+default it's in status order: the sessions waiting on you, then working, then
+idle, with paused and finished sessions below a rule on a darker ground. The
+sort switch in the top line shows which order is in force; click `recency` for
+newest first whatever the state, and your browser remembers the choice. A session waiting
+on you is never tucked behind another in a project's stack. The sessions are
+no longer grouped under their tack route's group, though each card still names
+its route.
+
+### Auto-pause looks different from your own pause
+
+A session auto-pause parked now reads as *inactive*: 💤 on its tab, a slate-gray
+bar saying how long it's been idle, and `inactive` in Claude Code's footer. A
+pause you set keeps ⏸, the purple bar, and `paused`, so a glance tells a session
+you set aside from one that was left. Both resume the same way.
+
+### Auto-pause says when nothing is running it
+
+Auto-pause parks idle sessions from `beacon serve`, since an idle session runs
+nothing of its own. With auto-pause on and `serve` stopped, nothing was parked
+and nothing said why. Now a new session shows `beacon: beacon serve install`
+when that happens, and `beacon doctor` has an auto-pause row saying whether
+anything is running it.
 
 ### Status line colors meet WCAG AA
 

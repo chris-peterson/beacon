@@ -19,7 +19,7 @@ const BAND: RenderInput<'AbovePrompt', 'terminal'> = {
 
 const PAUSED = JSON.stringify({
   ...JSON.parse(HEAD),
-  mode: { name: 'pause', note: 'waiting for the *VPN*', glyph: '⏸', label: 'paused', band: '#44385f', note_line: `waiting for the ${ESC}[3mVPN${ESC}[23m`, resumes_on_prompt: true },
+  mode: { name: 'pause', note: 'waiting for the *VPN*', glyph: '⏸', label: 'paused', band: '#44385f', note_line: `waiting for the ${ESC}[3mVPN${ESC}[23m` },
 })
 
 const FOOTER: RenderInput<'SessionMode', 'terminal'> = {
@@ -62,7 +62,7 @@ function worldOf(on: On, { head = HEAD, statusline = STATUSLINE } = {}) {
       const lines = statusline.split('\n').filter(l => l !== '')
       return { value: ok(`${JSON.stringify({ ...JSON.parse(head), lines })}\n`) }
     }
-    if (args[0] === 'switch' && args[1] === '--list') return { value: ok(PICKER) }
+    if (args[0] === 'pick' && args[1] === '--json') return { value: ok(PICKER) }
     return { value: ok('') }
   })
   on('session.start', ($, e) => ({ cwd: e.cwd }))
@@ -109,6 +109,16 @@ function propsOf(tree: unknown, text: string): Record<string, unknown> | undefin
   const children: unknown = Reflect.get(tree, 'children') ?? props?.children ?? []
   if (Reflect.get(tree, 'type') === 'Text' && textOf(children) === text) return props
   return propsOf(children, text)
+}
+
+/** The hover overrides of the Text drawing `text`, which the engine carries beside its props. */
+function hoverOf(tree: unknown, text: string): unknown {
+  if (Array.isArray(tree)) return tree.map(t => hoverOf(t, text)).find(Boolean)
+  if (typeof tree !== 'object' || !tree) return undefined
+  const props = Reflect.get(tree, 'props') as Record<string, unknown> | undefined
+  const children: unknown = Reflect.get(tree, 'children') ?? props?.children ?? []
+  if (Reflect.get(tree, 'type') === 'Text' && textOf(children) === text) return Reflect.get(tree, 'hover')
+  return hoverOf(children, text)
 }
 
 /** The session's start, and the first read it kicks off without waiting on. */
@@ -174,7 +184,7 @@ describe('status panel', () => {
     await started($)
     await $.ui.render(BAND)
     expect(ran(world.runs, 'wip')).toBe(false)
-    expect(ran(world.runs, 'switch')).toBe(false)
+    expect(ran(world.runs, 'pick')).toBe(false)
   })
 
   test('STATUS-06: the code button opens the session\'s directory in the editor', async ($, on) => {
@@ -204,27 +214,37 @@ describe('status panel', () => {
     expect(textOf(await $.ui.render(BAND))).toContain('acme')
   })
 
-  test('the paused mode draws a ribbon in its hue, with its note and how to leave it', async ($, on) => {
+  test('the paused mode draws a ribbon in its hue, with its note', async ($, on) => {
     worldOf(on, { head: PAUSED, statusline: '' })
     await started($)
     const drawn = await $.ui.render(BAND)
     const text = textOf(drawn)
     expect(text).toContain('⏸ paused')
     expect(text).toContain('waiting for the VPN')
-    expect(text).toContain('type to resume')
+    expect(text).not.toContain('type to resume')
     expect(propsOf(drawn, '⏸ paused')).toMatchObject({ backgroundColor: '#44385f', bold: true })
     expect(propsOf(drawn, 'VPN')).toMatchObject({ italic: true })
     // The ribbon carries the glyph, so the head row doesn't repeat it.
     expect(text.split('⏸').length).toBe(2)
+    // Three rows of the same hue under the lines close the panel.
+    expect(propsOf(drawn, ' ')).toMatchObject({ backgroundColor: '#44385f' })
+  })
+
+  test('the dev cycle draws no closing row, and a button\'s label inverts with it under the pointer', async ($, on) => {
+    worldOf(on)
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    expect(propsOf(drawn, ' ')).toBeUndefined()
+    expect(propsOf(drawn, '↖ github')).toMatchObject({ color: '#8be9fd' })
+    expect(hoverOf(drawn, '↖ github')).toEqual({ color: 'text' })
   })
 
   test('a mode with no band keeps its glyph on the head row and draws no ribbon', async ($, on) => {
-    const retro = JSON.stringify({ ...JSON.parse(HEAD), mode: { name: 'retro', note: null, glyph: '📋', label: 'retro', band: null, note_line: null, resumes_on_prompt: false } })
+    const retro = JSON.stringify({ ...JSON.parse(HEAD), mode: { name: 'retro', note: null, glyph: '📋', label: 'retro', band: null, note_line: null } })
     worldOf(on, { head: retro, statusline: '' })
     await started($)
     const text = textOf(await $.ui.render(BAND))
     expect(text.startsWith('📋')).toBe(true)
-    expect(text).not.toContain('type to resume')
   })
 
   test('the declared mode joins Claude Code\'s footer of modes', async ($, on) => {

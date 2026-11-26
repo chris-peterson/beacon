@@ -6,11 +6,12 @@ The panel is a hooks module that loads with the plugin, so there's nothing to in
 
 ## The mode ribbon
 
-When you've declared a mode, the panel opens with a bar three rows tall in that mode's hue: its glyph and name in bold, then your note. A paused session adds *type to resume* at the end, since your next prompt is what lifts it.
+When you've declared a mode, the panel opens with a bar three rows tall in that mode's hue: its glyph and name in bold, then your note. Your next prompt lifts a pause.
 
 | Mode | Ribbon | Footer |
 |:---|:---|:---|
-| `pause` | muted purple, with *type to resume* | `paused` |
+| `pause` | muted purple | `paused` |
+| `pause` set by auto-pause (`beacon config auto-pause`) | slate gray, led by 💤 | `inactive` |
 | `release` | launch-sky navy | `releasing` |
 | `done` | near-black | `done` |
 | `retro` | none: its glyph leads the head row and its note takes the first status line | `retro` |
@@ -35,7 +36,7 @@ Two buttons sit at the end of the row, named for what they open:
 
 The keys work once the band has focus (ctrl+x tab, or a click). Both buttons wait until beacon knows the session's directory, and the forge button needs an `origin` remote. A failure shows as a short message in Claude Code. To change what they run, see [the buttons](#the-buttons).
 
-The panel shows this session only. Every session at once is the [sessions view](/cli?id=the-sessions-view): `beacon wip`, `beacon watch`, and the dashboard. To jump to another one from inside a session, `/beacon switch` lists them in the band; press a number to raise that session's iTerm2 window. A session that has no state yet, in the moment after it starts, shows nothing rather than a placeholder.
+The panel shows this session only. Every session at once is the [sessions view](/cli?id=the-sessions-view): `beacon wip`, `beacon watch`, and the dashboard. To jump to another one, press ⌃G at a shell prompt for [`beacon pick`](/cli?id=beacon-pick), or, from inside a session, `/beacon switch` lists the others in the band in the same order, the ones waiting on you first; press a number to raise that session's iTerm2 window. A session that has no state yet, in the moment after it starts, shows nothing rather than a placeholder.
 
 ## The status lines
 

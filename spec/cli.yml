@@ -168,9 +168,9 @@ commands:
       arg: KEYS
 - name: config
   usages:
-  - summary: 'show or change the user config: tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins'
+  - summary: 'show or change the user config: tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, pick-key, auto-pause, origins'
     args:
-    - name: tab|tab.style|tab.look|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|tab.vertical-padding|pane-title-bar|iterm-notifications|auto-pause|origins
+    - name: tab|tab.style|tab.look|tab.indent|tab.indent.1|tab.indent.2|tab.font-size|tab.vertical-padding|pane-title-bar|iterm-notifications|pick-key|auto-pause|origins
       choices:
       - tab
       - tab.style
@@ -182,6 +182,7 @@ commands:
       - tab.vertical-padding
       - pane-title-bar
       - iterm-notifications
+      - pick-key
       - auto-pause
       - origins
       optional: true
@@ -254,30 +255,11 @@ commands:
   - summary: raise the iTerm2 window holding a session, by its per-pane hash
     args:
     - name: hash
-- name: switch
+- name: pick
   usages:
-  - summary: raise the next or previous other beacon session, the ones that need you first, or pick one from a list
+  - summary: choose a session from a filterable list and raise it (Enter raises, Option-W / Option-C open its project page / directory)
     flags:
-    - name: --next
-      exclusive_with:
-      - --prev
-      - --pick
-      - --list
-    - name: --prev
-      exclusive_with:
-      - --next
-      - --pick
-      - --list
-    - name: --pick
-      exclusive_with:
-      - --next
-      - --prev
-      - --list
-    - name: --list
-      exclusive_with:
-      - --next
-      - --prev
-      - --pick
+    - name: --json
 - name: drop
   usages:
   - summary: remove one deliverable from this session's status-line row

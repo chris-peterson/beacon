@@ -1019,6 +1019,44 @@ class ConfigCommand(BeaconTest):
             with self.subTest(bad=bad), self.assertRaises(SystemExit):
                 self._run(*bad)
 
+    def test_pick_key_is_set_turned_off_reset_and_reaches_the_shell(self):
+        """FOCUS-09: the key the zsh snippet binds to `beacon pick` comes from
+        `shell-init`, ^G until the config says otherwise."""
+        def shell_key():
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                self.beacon.cmd_shell_init(None)
+            return re.search(r"^_BEACON_PICK_KEY=(.*)$", buf.getvalue(), re.M).group(1)
+
+        self.assertEqual(shell_key(), "'^G'")
+        self._run("pick-key", "^[p")
+        self.assertEqual(self._saved()["pick_key"], "^[p")
+        self.assertEqual(shell_key(), "'^[p'")
+        self._run("pick-key", "off")
+        self.assertIs(self._saved()["pick_key"], False)
+        self.assertEqual(shell_key(), "''")
+        self.assertIn("pick-key", self._run().split())
+        self._run("pick-key", "reset")
+        self.assertNotIn("pick_key", self._saved())
+        for bad in (("pick-key", "^G x"), ("pick-key", "a", "b")):
+            with self.subTest(bad=bad), self.assertRaises(SystemExit):
+                self._run(*bad)
+        self.offered.assert_not_called()
+
+    def test_a_malformed_pick_key_is_logged_and_keeps_the_default(self):
+        for raw in (True, 7, "has space"):
+            with self.subTest(raw=raw), \
+                    mock.patch.object(self.beacon, "_load_config", return_value={"pick_key": raw}), \
+                    mock.patch.object(self.beacon, "log_error") as logged:
+                self.assertEqual(self.beacon._pick_key(), "^G")
+                self.assertEqual(logged.call_args.args[0], "config.pick_key")
+        self.assertIn("config.pick_key", self.beacon._DOCTOR_ADVICE)
+
+    def test_the_shell_binds_the_key_shell_init_names(self):
+        shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        self.assertIn('bindkey "$_BEACON_PICK_KEY" _beacon_pick', shell)
+        self.assertIn('pick < /dev/tty > /dev/tty', shell)
+
     def test_a_malformed_pane_title_bar_is_logged_and_reads_as_off(self):
         for raw in ("on", 1, "true"):
             with self.subTest(raw=raw), \
@@ -2566,104 +2604,115 @@ class TheStatusPanelDrawsThisSession(BeaconTest):
         self.assertIsNone(head["branch_url"])
 
 
-class SwitchWalksTheOtherSessions(BeaconTest):
-    """FOCUS-06..08: Command-Option-] / [ raise the next or previous other
-    session, the ones waiting on you first; a session that can't be raised
-    opens the picker instead of guessing again."""
+class PickOrdersAndFilters(BeaconTest):
+    """FOCUS-06..08: `beacon pick` lists every session in status order (waiting
+    on you, working, idle, then parked and finished), narrows as you type, and
+    hands the band the same list as JSON."""
 
     SESSIONS = [
-        {"hash": "aaaaaaaa", "project": "here", "color_state": "idle", "age_seconds": 1, "focusable": True},
-        {"hash": "bbbbbbbb", "project": "fresh", "color_state": "working", "age_seconds": 5, "focusable": True},
-        {"hash": "cccccccc", "project": "long-wait", "color_state": "blocked", "age_seconds": 900, "focusable": True},
-        {"hash": "dddddddd", "project": "short-wait", "color_state": "blocked", "age_seconds": 30, "focusable": True},
-        {"hash": "eeeeeeee", "project": "headless", "color_state": "blocked", "age_seconds": 2, "focusable": False},
+        {"hash": "aaaaaaaa", "project": "here", "activity": "idle", "color_state": "idle", "age_seconds": 1},
+        {"hash": "bbbbbbbb", "project": "fresh", "activity": "working", "color_state": "working",
+         "age_seconds": 5, "branch": "fix-widget"},
+        {"hash": "cccccccc", "project": "long-wait", "activity": "blocked", "color_state": "blocked",
+         "age_seconds": 900, "kind": "permission", "task": "grade ADR-005"},
+        {"hash": "dddddddd", "project": "short-wait", "activity": "blocked", "color_state": "blocked",
+         "age_seconds": 30, "kind": "question"},
+        {"hash": "eeeeeeee", "project": "parked", "activity": "idle", "color_state": "idle", "age_seconds": 2,
+         "mode": {"name": "pause", "note": "waiting for VPN"}},
+        {"hash": "ffffffff", "project": "flagged", "activity": "idle", "color_state": "blocked",
+         "age_seconds": 60, "pending_attention": True},
     ]
 
-    def _press(self, **flags):
-        focused = []
-        args = types.SimpleNamespace(**{"next": False, "prev": False, "pick": False, "list": False, **flags})
-        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": self.SESSIONS}), \
-             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID-aaaaaaaa"), \
-             mock.patch.object(self.beacon, "_read_iterm_handle", side_effect=lambda h: f"GUID-{h}"), \
-             mock.patch.object(self.beacon, "_focus_session",
-                               side_effect=lambda h: focused.append(h) or (True, "focused")):
-            self.beacon.cmd_switch(args)
-        return focused
+    def order(self, order="status"):
+        return [s["hash"] for s in self.beacon._session_order(self.SESSIONS, order)]
 
-    def test_the_order_is_needs_you_first_longest_wait_first(self):
-        order = [s["hash"] for s in self.beacon._switch_order(self.SESSIONS)]
-        self.assertEqual(order, ["cccccccc", "dddddddd", "aaaaaaaa", "bbbbbbbb"])
+    def test_status_puts_the_waiting_first_and_the_parked_last(self):
+        self.assertEqual(self.order(), ["dddddddd", "ffffffff", "cccccccc", "bbbbbbbb", "aaaaaaaa", "eeeeeeee"])
 
-    def test_next_and_prev_step_from_this_pane_and_wrap(self):
-        self.assertEqual(self._press(next=True), ["bbbbbbbb"])
-        self.assertEqual(self._press(prev=True), ["dddddddd"])
+    def test_recency_is_newest_first_whatever_the_state(self):
+        self.assertEqual(self.order("recency"),
+                         ["aaaaaaaa", "eeeeeeee", "bbbbbbbb", "dddddddd", "ffffffff", "cccccccc"])
 
-    def test_a_run_of_presses_walks_one_held_order(self):
-        self._press(next=True)
-        reordered = [dict(s, age_seconds=0 if s["hash"] == "bbbbbbbb" else s["age_seconds"]) for s in self.SESSIONS]
-        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": reordered}):
-            ring = [s["hash"] for s in self.beacon._switch_ring()]
-        self.assertEqual(ring, ["cccccccc", "dddddddd", "aaaaaaaa", "bbbbbbbb"])
+    def test_every_word_typed_has_to_match(self):
+        match = self.beacon._pick_matches
+        self.assertTrue(match(self.SESSIONS[2], "ADR long"))
+        self.assertTrue(match(self.SESSIONS[1], "WIDGET"))
+        self.assertTrue(match(self.SESSIONS[4], "vpn"))
+        self.assertFalse(match(self.SESSIONS[2], "adr widget"))
+        self.assertTrue(match(self.SESSIONS[0], "  "))
 
-    def test_a_session_that_cannot_be_raised_opens_the_picker(self):
-        args = types.SimpleNamespace(next=True, prev=False, pick=False, list=False)
-        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": self.SESSIONS}), \
-             mock.patch.object(self.beacon, "_iterm_cache_key", return_value="GUID-aaaaaaaa"), \
-             mock.patch.object(self.beacon, "_read_iterm_handle", side_effect=lambda h: f"GUID-{h}"), \
-             mock.patch.object(self.beacon, "_focus_session", return_value=(False, "not found")), \
-             mock.patch.object(self.beacon, "_switch_pick") as picked:
-            self.beacon.cmd_switch(args)
-        picked.assert_called_once()
+    def test_the_second_line_says_what_it_waits_on_then_the_turn(self):
+        detail = self.beacon._pick_detail
+        s = dict(self.SESSIONS[2], latest_turn={"text": "Grade the ADR"})
+        self.assertEqual(detail(s), "waiting on your permission · Grade the ADR")
+        self.assertEqual(detail(self.SESSIONS[4]), "pause · waiting for VPN")
+        self.assertEqual(detail({"activity": "error", "stop_error": "rate_limit"}), "stopped on rate limit")
+        self.assertEqual(detail(self.SESSIONS[0]), "")
 
-    def test_alone_says_so(self):
-        self.SESSIONS = [self.SESSIONS[0]]
-        with self.assertRaises(SystemExit) as cm:
-            self._press(next=True)
-        self.assertIn("No other beacon session", str(cm.exception))
-
-    def test_list_names_the_others_for_the_band(self):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            self._press(list=True)
-        listed = json.loads(buf.getvalue())
-        self.assertEqual([s["hash"] for s in listed], ["cccccccc", "dddddddd", "bbbbbbbb"])
-        self.assertEqual(listed[0]["label"], "long-wait (needs you)")
+    def test_an_age_is_rounded_for_a_glance(self):
+        age = self.beacon._glance_age
+        self.assertEqual([age(5), age(720), age(3 * 3600), age(86400), age(3 * 86400)],
+                         ["<1 min", "~12 min", "~3 hr", "~1 day", "~3 days"])
 
     def test_a_label_leads_with_the_tabs_glyph(self):
-        label = self.beacon._switch_label
+        label = self.beacon._pick_label
         self.assertEqual(label({"project": "p", "kind": "question", "mode": {"name": "release"},
                                 "color_state": "blocked"}), "❓ p (needs you)")
         self.assertEqual(label({"project": "p", "mode": {"name": "release"}, "color_state": "idle"}),
                          "🚀 p (idle)")
         self.assertEqual(label({"project": "p", "activity": "background", "color_state": "idle"}), "⏳ p (idle)")
 
+    def test_json_lists_the_others_for_the_band_in_status_order(self):
+        buf = io.StringIO()
+        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": self.SESSIONS}), \
+             mock.patch.object(self.beacon, "session_hash", return_value="aaaaaaaa"), \
+             contextlib.redirect_stdout(buf):
+            self.beacon.cmd_pick(types.SimpleNamespace(json=True))
+        listed = json.loads(buf.getvalue())
+        self.assertEqual([s["hash"] for s in listed],
+                         ["dddddddd", "ffffffff", "cccccccc", "bbbbbbbb", "eeeeeeee"])
+        self.assertEqual(listed[2]["label"], "🔒 long-wait: grade ADR-005 (needs you)")
 
-class SwitchKeysInProfile(unittest.TestCase):
-    """FOCUS-07: the beacon profiles bind Command-Option-] / [ / / to `beacon
-    switch`, and carry the parent profile's own bindings alongside, since
-    iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it."""
+    def test_the_scan_skips_the_routes_but_reads_the_branch(self):
+        with mock.patch.object(self.beacon, "collect_sessions", return_value={"sessions": []}) as scan:
+            self.beacon._pick_sessions()
+        self.assertEqual(scan.call_args.kwargs, {"full": False, "branch": True})
+
+    def test_without_a_terminal_it_points_at_wip(self):
+        with mock.patch.object(sys.stdin, "isatty", return_value=False), \
+             self.assertRaises(SystemExit) as cm:
+            self.beacon.cmd_pick(types.SimpleNamespace(json=False))
+        self.assertIn("beacon wip", str(cm.exception))
+
+    def test_a_cut_line_ends_in_an_ellipsis_at_its_display_width(self):
+        clip = self.beacon._clip
+        self.assertEqual(clip("abcdef", 4), "abc…")
+        self.assertEqual(clip("🚀🚀🚀", 5), "🚀🚀…")
+        self.assertEqual(clip("abc", 3), "abc")
+
+
+class ProfileBindsNoKeys(unittest.TestCase):
+    """FOCUS-07 (retired): the beacon profile carries no Keyboard Map, so a
+    beacon pane keeps the parent profile's own key bindings, and a profile an
+    earlier install wrote with the ⌘⌥ switcher keys loses them on rewrite."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        self.beacon = _load_beacon(Path(tmp.name))
+        self.home = Path(tmp.name)
+        self.beacon = _load_beacon(self.home / "data")
 
-    def test_the_parents_bindings_survive_beside_the_switch_keys(self):
-        prefs = {"New Bookmarks": [
-            {"Name": "Other", "Keyboard Map": {"0x1-0x0": {"Action": 1}}},
-            {"Name": "Default", "Keyboard Map": {"0xf702-0x280000": {"Action": 2, "Text": ""}}},
-        ]}
-        keymap = self.beacon._switch_key_map(prefs, "Default")
-        self.assertEqual(keymap["0xf702-0x280000"], {"Action": 2, "Text": ""})
-        self.assertNotIn("0x1-0x0", keymap)
-        for key, flag in (("0x5d-0x180000-0x1e-0x1", "--next"), ("0x5b-0x180000-0x21-0x1", "--prev"),
-                          ("0x2f-0x180000-0x2c-0x1", "--pick")):
-            binding = keymap[key]
-            self.assertEqual(binding["Action"], 35)
-            self.assertIn(f"switch {flag} 2>&1 >/dev/null", binding["Text"])
-
-    def test_no_prefs_still_binds_the_keys(self):
-        self.assertEqual(len(self.beacon._switch_key_map(None, "Default")), 3)
+    def test_a_rewrite_drops_the_switcher_keys(self):
+        profiles = self.home / "DynamicProfiles"
+        profiles.mkdir()
+        stale = profiles / "beacon.json"
+        stale.write_text(json.dumps({"Profiles": [{"Name": "beacon", "Keyboard Map": {
+            "0x5d-0x180000-0x1e-0x1": {"Action": 35, "Text": 'err=$("python3" "/old/scripts/beacon" switch --next)'}}}]}))
+        with mock.patch.object(self.beacon, "_iterm_profiles_dir", return_value=profiles):
+            ok, _ = self.beacon.install_dynamic_profile()
+        self.assertTrue(ok)
+        written = json.loads(stale.read_text())["Profiles"][0]
+        self.assertNotIn("Keyboard Map", written)
 
 
 class FocusByHash(BeaconTest):
@@ -6335,12 +6384,13 @@ class JsonPayload(BeaconTest):
         self.beacon.write_mode("release", "cutting v2.5")
         p = self._payload()
         self.assertEqual(p["mode"], {"name": "release", "note": "cutting v2.5",
-                                     "glyph": self.beacon.MODE_SPECS["release"]["glyph"]})
+                                     "glyph": self.beacon.MODE_SPECS["release"]["glyph"],
+                                     "stood_down": False, "inactive": False})
         self.assertNotIn("note", p, "the note rides the mode, never a sibling key")
 
     def test_dev_cycle_reports_the_default_mode(self):
         p = self._payload()
-        self.assertEqual(p["mode"], {"name": "dev", "note": "", "glyph": ""})
+        self.assertEqual(p["mode"], {"name": "dev", "note": "", "glyph": "", "stood_down": False, "inactive": False})
 
     def test_axes_are_separate_keys(self):
         self.beacon.write_mode("release", "")
@@ -6376,7 +6426,7 @@ class JsonPayload(BeaconTest):
         record = self.beacon._resolve_session(self.beacon.session_hash())
         self.assertIsNotNone(record, "the session must resolve into the sessions payload")
         self.assertEqual(single, record["mode"])
-        self.assertEqual(sorted(single), ["glyph", "name", "note"])
+        self.assertEqual(sorted(single), ["glyph", "inactive", "name", "note", "stood_down"])
 
 
 class StatusLineProvider(BeaconTest):
@@ -8109,7 +8159,11 @@ class PaletteHexesRestatedElsewhere(unittest.TestCase):
             return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
         bands = {m: spec["band"] for m, spec in self.beacon.MODE_SPECS.items() if spec.get("band")}
+        # The sweep's inactive look draws its own ribbon, so it clears the same bar.
+        bands.update({f"{m}.inactive": spec["inactive"]["band"]
+                      for m, spec in self.beacon.MODE_SPECS.items() if spec.get("inactive")})
         self.assertIn("pause", bands)
+        self.assertIn("pause.inactive", bands)
         for mode, band in bands.items():
             for name, fg in fgs.items():
                 with self.subTest(mode=mode, fg=name):
@@ -9099,128 +9153,6 @@ class ItermHandleGuard(unittest.TestCase):
         self.assertNotIn("do shell script", pane["detail"])
 
 
-class ProfileBakedPaths(unittest.TestCase):
-    """A switcher key (FOCUS-07) runs an interpreter and script baked into the
-    profile when it was rendered, so beacon moving (a reinstall from a
-    different marketplace, a version bump) leaves the keys pointing at a path
-    that may be gone, and a press alerts with an error that reads as a switcher
-    bug. `doctor` is where the two are told apart."""
-
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.beacon = _load_beacon(Path(tmp.name))
-        home = tempfile.TemporaryDirectory()
-        self.addCleanup(home.cleanup)
-        patcher = mock.patch("pathlib.Path.home", return_value=Path(home.name))
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.profiles = (Path(home.name) / "Library" / "Application Support"
-                         / "iTerm2" / "DynamicProfiles")
-        ok, msg = self.beacon.install_dynamic_profile()
-        self.assertTrue(ok, msg)
-        self.want = {self.beacon.BASE_PROFILE_NAME}
-
-    def _rewrite(self, stem, old, new):
-        # Both sides are encoded the way the installer encodes them, because
-        # the file holds each path inside a JSON string: on Windows that is
-        # `C:\\Users\\...`, which a search for the bare path never finds.
-        def encoded(value):
-            return json.dumps(str(value))[1:-1]
-        path = self.profiles / f"{stem}.json"
-        body = path.read_text()
-        self.assertIn(encoded(old), body, f"{stem} does not carry {old}")
-        path.write_text(body.replace(encoded(old), encoded(new)))
-
-    def _check(self):
-        return self.beacon._doctor_profile_paths(self.profiles, self.want)
-
-    def test_the_values_read_back_are_the_ones_the_keys_carry(self):
-        # Against the key map the installer builds: this is the assert that
-        # fails if the binding's shell one-liner is reshaped, which is what the
-        # values are recovered by.
-        profile = {"Keyboard Map": self.beacon._switch_key_map(None, "Default")}
-        self.assertEqual(self.beacon._profile_baked_paths(profile),
-                         {"python": sys.executable,
-                          "script": str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")})
-
-    def test_a_profile_binding_no_switcher_key_reads_back_as_nothing(self):
-        self.assertIsNone(self.beacon._profile_baked_paths({"Keyboard Map": {"0x1-0x0": {"Action": 1}}}))
-
-    def test_a_fresh_render_is_clean(self):
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_OK, detail)
-
-    def test_a_finding_every_profile_shares_is_reported_once(self):
-        for stem in self.want:
-            self._rewrite(stem, sys.executable, "/gone/python3")
-        _, detail = self._check()
-        self.assertEqual(detail.count("/gone/python3"), 1)
-        for stem in self.want:
-            self.assertNotIn(f"{stem}:", detail)
-
-    def test_a_script_that_is_gone_is_a_fault(self):
-        script = str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")
-        for stem in self.want:
-            self._rewrite(stem, script, "/gone/beacon/2.9.0/scripts/beacon")
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_BAD)
-        self.assertIn("/gone/beacon/2.9.0/scripts/beacon", detail)
-
-    def test_an_interpreter_that_is_gone_is_a_fault(self):
-        for stem in self.want:
-            # Bare, not quoted: the file holds the value inside a JSON string,
-            # where every quote around it is escaped.
-            self._rewrite(stem, sys.executable, "/gone/python3")
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_BAD)
-        self.assertIn("/gone/python3", detail)
-
-    def test_buttons_pointed_at_another_checkout_are_a_note_not_a_fault(self):
-        # Running the buttons against a working tree is how beacon is developed,
-        # so this is worth saying and not worth failing on.
-        other = Path(self._other_checkout())
-        script = str(self.beacon.PLUGIN_ROOT / "scripts" / "beacon")
-        for stem in self.want:
-            self._rewrite(stem, script, str(other))
-        status, detail = self._check()
-        self.assertEqual(status, self.beacon._DOCTOR_WARN, detail)
-        self.assertIn(str(other), detail)
-        self.assertIn(script, detail)
-
-    def _other_checkout(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        path = Path(tmp.name) / "scripts"
-        path.mkdir()
-        (path / "beacon").write_text("#!/usr/bin/env python3\n")
-        return path / "beacon"
-
-    def test_doctor_reports_the_check_beside_the_profiles_it_covers(self):
-        for stem in self.want:
-            self._rewrite(stem, sys.executable, "/gone/python3")
-        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
-                mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
-                mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
-            checks = self.beacon._doctor_checks()
-        paths = [c for c in checks if c["name"] == "profile paths"][0]
-        self.assertEqual(paths["status"], self.beacon._DOCTOR_BAD)
-        self.assertEqual(paths["section"], "iTerm2")
-
-    def test_missing_profiles_are_not_also_reported_as_bad_paths(self):
-        # `profiles` already says to re-render; a second line naming the same
-        # command is noise, and every present profile is fine here.
-        (self.profiles / "beacon.json").unlink()
-        with mock.patch.object(self.beacon, "_is_iterm_installed", return_value=True), \
-                mock.patch.object(self.beacon, "_iterm_prefs", return_value=None), \
-                mock.patch.object(self.beacon, "_is_iterm_running", return_value=False):
-            checks = self.beacon._doctor_checks()
-        self.assertEqual([c for c in checks if c["name"] == "profile paths"], [])
-        self.assertEqual(
-            [c for c in checks if c["name"] == "profiles"][0]["status"],
-            self.beacon._DOCTOR_BAD)
-
-
 class ProfilesShadowedBySavedCopies(unittest.TestCase):
     """iTerm2 3.7.0 stopped reading the `Dynamic` tag and started reading an
     `Is Dynamic Profile` key its loader writes. Profiles it saved before the
@@ -10162,19 +10094,6 @@ class InstallFreshness(unittest.TestCase):
             f'{self.beacon._SHELL_SENTINEL}\n',
             encoding="utf-8")
 
-    def _install_profiles(self, root):
-        """Render the real profiles, then rewrite the baked script path — the
-        renderer always bakes PLUGIN_ROOT, which is this install by
-        construction."""
-        ok, msg = self.beacon.install_dynamic_profile()
-        self.assertTrue(ok, msg)
-        old = json.dumps(str(self.this_root / "scripts" / "beacon"))[1:-1]
-        new = json.dumps(str(root / "scripts" / "beacon"))[1:-1]
-        for path in self.profiles.glob("beacon*.json"):
-            body = path.read_text()
-            self.assertIn(old, body, f"{path.name} does not carry {old}")
-            path.write_text(body.replace(old, new))
-
     def _message(self):
         gone, stale = self.beacon._freshness_drift()
         if not gone and not stale:
@@ -10197,14 +10116,12 @@ class InstallFreshness(unittest.TestCase):
         old = self._make_root("2.11.0")
         self._install_wrapper(old)
         self._install_rc_line(old)
-        self._install_profiles(old)
 
         message = self._message()
         self.assertIn("still there, so these run its older code", message)
         self.assertIn(str(old / "scripts" / "beacon"), message)
         self.assertIn("the `beacon` command on $PATH", message)
         self.assertIn("the .zshrc shell integration", message)
-        self.assertIn("switcher keys", message)
         # One `install` writes every surface from one root, so they drift
         # together — the path is named once, not once per surface.
         self.assertEqual(message.count(str(old / "scripts" / "beacon")), 1)
@@ -10324,7 +10241,6 @@ class InstallFreshness(unittest.TestCase):
         reader need not know beacon installs a CLI at all. The breakdown keeps
         the two readers who ask for it: the context and `doctor`."""
         root = self._make_root("2.11.0")
-        self._install_profiles(root)
         self._install_rc_line(root)                           # stale
         self._install_wrapper(self.roots / "2.9.0")           # reaped
         gone, stale = self.beacon._freshness_drift()
@@ -10333,12 +10249,8 @@ class InstallFreshness(unittest.TestCase):
         self.assertIn("/beacon:install-beacon", banner)
         for absent in ("entry point", ".zshrc", "$PATH", "iTerm2", "gone"):
             self.assertNotIn(absent, banner)
-        message = self.beacon._freshness_message(gone, stale)
-        for stem in self.beacon._iterm_profile_names():
-            self.assertIn(f"the {stem} switcher keys", message)
         summary = self.beacon._freshness_summary(gone, stale)
-        self.assertIn("the .zshrc line and the iTerm2 switcher keys "
-                      "run an older install", summary)
+        self.assertIn("the .zshrc line runs an older install", summary)
         self.assertIn("the $PATH command reaches a plugin root that is gone",
                       summary)
 
@@ -10347,6 +10259,85 @@ class InstallFreshness(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             self.beacon.cmd_freshness(types.SimpleNamespace())
         self.assertEqual(out.getvalue(), "")
+
+
+class InactiveLook(BeaconTest):
+    """STATE-16: a pause the idle sweep set is still `pause`, drawn as
+    `inactive` everywhere a mode shows, so it never passes for one the user
+    declared."""
+
+    def test_the_sweeps_pause_draws_inactive_and_the_users_draws_paused(self):
+        spec = self.beacon._mode_spec
+        self.assertEqual(spec("pause")["label"], "paused")
+        swept = spec("pause", self.beacon.PARKED_BY)
+        self.assertEqual((swept["glyph"], swept["label"]), ("💤", "inactive"))
+        self.assertNotEqual(swept["band"], spec("pause")["band"])
+        self.assertTrue(swept["stood_down"], "the look changes, not the behavior")
+        self.assertEqual(spec("release", self.beacon.PARKED_BY), spec("release"))
+
+    def test_the_panel_ribbon_says_inactive_once(self):
+        self.beacon.write_mode("pause", "inactive for >1 hr", by=self.beacon.PARKED_BY)
+        mode = self.beacon._status_panel_mode()
+        self.assertEqual((mode["glyph"], mode["label"], mode["note"]), ("💤", "inactive", "for >1 hr"))
+        self.beacon.write_mode("pause", "back after lunch")
+        mode = self.beacon._status_panel_mode()
+        self.assertEqual((mode["glyph"], mode["label"], mode["note"]), ("⏸", "paused", "back after lunch"))
+
+    def test_the_sessions_view_and_json_carry_it(self):
+        self.beacon.write_mode("pause", "inactive for >30 min", by=self.beacon.PARKED_BY)
+        self.beacon.write_state("anchor.project", "acme/widget")
+        self.beacon.write_state("anchor.cwd", str(self.data_dir))
+        record = self.beacon._resolve_session(self.beacon.session_hash())
+        self.assertEqual((record["mode"]["glyph"], record["mode"]["inactive"]), ("💤", True))
+        self.assertEqual(self.beacon._pick_glyph(record), "💤")
+
+
+class AutoPauseWithNoServe(BeaconTest):
+    """STATE-17: auto-pause parks nothing unless `beacon serve` runs, so a
+    session start and `doctor` both say so when it's on and nothing answers."""
+
+    def _envelope(self, window, answering):
+        with mock.patch.object(self.beacon, "_load_config", return_value={"auto_pause": window} if window else {}), \
+             mock.patch.object(self.beacon, "_freshness_drift", return_value=({}, {})), \
+             mock.patch.object(self.beacon, "_serve_answering", return_value=answering):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.beacon.cmd_freshness(types.SimpleNamespace())
+        return json.loads(out.getvalue()) if out.getvalue() else None
+
+    def test_on_with_nothing_answering_names_the_remedy(self):
+        env = self._envelope("30m", answering=False)
+        self.assertEqual(env["systemMessage"],
+                         "beacon: beacon serve install  # auto-pause is on, but nothing is running it")
+        self.assertIn("auto-pause off", env["hookSpecificOutput"]["additionalContext"])
+
+    def test_off_or_served_says_nothing(self):
+        self.assertIsNone(self._envelope(None, answering=False))
+        self.assertIsNone(self._envelope("off", answering=False))
+        self.assertIsNone(self._envelope("30m", answering=True))
+
+    def test_it_shares_the_envelope_with_install_drift(self):
+        with mock.patch.object(self.beacon, "_load_config", return_value={"auto_pause": "1h"}), \
+             mock.patch.object(self.beacon, "_freshness_drift",
+                               return_value=({Path("/gone/scripts/beacon"): [("the `beacon` command on $PATH", "the $PATH command")]}, {})), \
+             mock.patch.object(self.beacon, "_serve_answering", return_value=False):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.beacon.cmd_freshness(types.SimpleNamespace())
+        banner = json.loads(out.getvalue())["systemMessage"].splitlines()
+        self.assertEqual(banner, [self.beacon._FRESHNESS_BANNER, self.beacon._AUTO_PAUSE_BANNER])
+
+    def test_doctor_reports_whether_anything_runs_it(self):
+        for answering, status in ((False, self.beacon._DOCTOR_WARN), (True, self.beacon._DOCTOR_OK)):
+            with self.subTest(answering=answering), \
+                    mock.patch.object(self.beacon, "_load_config", return_value={"auto_pause": "30m"}), \
+                    mock.patch.object(self.beacon, "_serve_answering", return_value=answering), \
+                    mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+                row = [c for c in self.beacon._doctor_checks() if c["name"] == "auto-pause"]
+                self.assertEqual([c["status"] for c in row], [status])
+        with mock.patch.object(self.beacon, "_load_config", return_value={}), \
+                mock.patch.object(self.beacon, "_is_iterm_installed", return_value=False):
+            self.assertEqual([c for c in self.beacon._doctor_checks() if c["name"] == "auto-pause"], [])
 
 
 class ResetLayoutToStock(unittest.TestCase):
@@ -10550,7 +10541,8 @@ class IdleSweep(BeaconTest):
             (a, self.beacon.session_hash(), self.beacon._PANE.tty))
         self._session()
         self.beacon.idle_sweep()
-        self.assertIn((("uservar", "beacon_title_prefix", "⏸ "), self.HASH, self.tty), seen)
+        # A park the sweep made leads the tab with the inactive look's glyph, not the user's ⏸ (STATE-16).
+        self.assertIn((("uservar", "beacon_title_prefix", "💤 "), self.HASH, self.tty), seen)
         self.assertIn((("set-name", self.GUID, self.beacon.TITLE_FORMAT),
                        self.HASH, self.tty), seen)
         self.assertTrue((self.beacon.CACHE_DIR / f"engaged-{self.GUID}").exists())

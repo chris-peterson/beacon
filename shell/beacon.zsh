@@ -24,8 +24,8 @@ fi
 # wouldn't be visible there.
 typeset -g _BEACON_SCRIPT="${0:A:h:h}/scripts/beacon"
 
-# Source-time answers that need the plugin's own resolution: the data dir and
-# the opt-in badge gate. Asking python for them costs an interpreter startup
+# Source-time answers that need the plugin's own resolution: the data dir, the
+# opt-in badge gate, and the key that opens the picker. Asking python for them costs an interpreter startup
 # each, on every new terminal — the largest single item in this file's budget,
 # spent on values that change only when the user edits a config. So cache the
 # block and regenerate it only when an input changed. Every test below is a
@@ -78,7 +78,7 @@ fi
 # in the hot path.
 #
 # Switch this pane into the beacon profile (RENDER-07): it carries the badge
-# sizing and the session switcher's keys (FOCUS-07).
+# sizing.
 # beacon is not iTerm2's default profile, so interactive panes activate it
 # here; Claude panes do it at SessionStart. A non-iTerm terminal silently
 # ignores the sequence.
@@ -292,5 +292,19 @@ add-zsh-hook chpwd  _beacon_chpwd
 # Publish immediately on source so a fresh shell shows the right values
 # without waiting for the first prompt.
 _beacon_chpwd
+
+# FOCUS-09: a key at the prompt opens `beacon pick` (^G unless `beacon config
+# pick-key` says otherwise). The picker takes the terminal and hands it back, so
+# the prompt is redrawn after rather than left under its last frame. zle is off
+# in a shell with no line editor (Claude Code's snapshot shell among them).
+if [[ -o zle && -n "${_BEACON_PICK_KEY:-}" ]]; then
+  _beacon_pick() {
+    zle -I
+    python3 "$_BEACON_SCRIPT" pick < /dev/tty > /dev/tty
+    zle reset-prompt
+  }
+  zle -N _beacon_pick
+  bindkey "$_BEACON_PICK_KEY" _beacon_pick
+fi
 
 typeset -g _BEACON_INSTALLED=1

@@ -111,7 +111,7 @@ suite:
     rules:
       keep-session-labeled: Keep this session's beacon work label current
     hooks:
-      cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update.
+      cli-freshness: SessionStart — Detects CLI wrapper drift after a plugin update, and auto-pause turned on with no beacon serve running it.
       emit-rules: SessionStart — Emits this plugin's ambient rules into context.
       hooks: 'Hook wiring: SessionStart→beacon CLI, cli-freshness, emit-rules; UserPromptExpansion→beacon CLI; UserPromptSubmit→beacon CLI; Stop→beacon CLI; StopFailure→beacon CLI; SessionEnd→beacon CLI; Notification→beacon CLI; PermissionRequest→beacon CLI; PreToolUse→beacon CLI; PostToolUse→beacon CLI; modules→status-panel.'
       status-panel: module — Draws this session's project, branch, task, and status lines in the band above the prompt, with buttons for the project page and the editor; `/beacon switch` lists the other sessions there.
@@ -125,7 +125,7 @@ docs:
   mermaid: true
 
 # The CLI is what a person types, and what the hooks, the shell snippet, the
-# status panel, and the switcher keys all call, so its command and flag grammar is a public
+# status panel, and the shell's pick key all call, so its command and flag grammar is a public
 # contract. gen-cli-manifest runs the CLI, records what its help documents, and
 # writes the manifest below; build-docs renders that as the command reference
 # page, so the page can't drift from the binary.
@@ -177,7 +177,7 @@ cli:
       about: >-
         Reading across every session at once. Terminal-agnostic: they paint
         no pane and work anywhere Claude Code runs.
-      commands: [wip, watch, serve, focus, switch, forget, prune]
+      commands: [wip, watch, serve, pick, focus, forget, prune]
     - name: Deliverables
       about: What the status panel lists for this session.
       commands: [drop, refresh-links]
@@ -231,14 +231,17 @@ cli:
       window and tab holding that session, as a click on a dashboard row does.
       A session outside iTerm2 records no handle to raise, so it fails as not
       focusable.
-    switch: >-
-      Bound to Command-Option-] and Command-Option-[ in the beacon iTerm2
-      profiles, it raises the next or previous other session: the ones waiting
-      on you first, longest wait first, then the rest most recently active
-      first. A run of presses within 30 seconds walks one list. Command-Option-/
-      opens a list to choose from, as does a press whose session can't be
-      raised. Inside a Claude Code session, `/beacon switch` shows the same
-      list in the band above the prompt.
+    pick: >-
+      Takes the terminal for a list of every session, two lines each, the ones
+      waiting on you first, then working, then idle, then the paused and
+      finished below a rule. Type to narrow it by project, branch, task, or
+      note; ↑ ↓ move, Enter raises the session, Option-W and Option-C open its
+      project page and its directory, Tab flips the order to newest first, and
+      Esc hands the terminal back. It reads the session state directly, so it
+      needs no `beacon serve`. The shell integration binds it to Ctrl-G at the
+      zsh prompt (`beacon config pick-key` changes or turns off the key), and
+      inside a Claude Code session `/beacon switch` shows the same list in the
+      band above the prompt.
     forget: >-
       Takes the per-pane hash `wip --json` reports, which is also what the
       dashboard's dismiss button sends.

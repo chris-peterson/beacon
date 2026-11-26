@@ -230,17 +230,11 @@ Whether the links are clickable is your terminal's call. iTerm2 renders them, an
 
 ## Switching sessions
 
-beacon's profile binds three keys to `beacon switch`, so they work in any beacon pane, with or without Claude running in it:
+Press **⌃G** at a zsh prompt for [`beacon pick`](/cli?id=beacon-pick): every session in a filterable list, the ones waiting on you first. ↵ raises the one you pick, ⌥W and ⌥C open its project page and directory, and Esc hands the terminal back. The key comes with the shell integration rather than the profile, so it works outside iTerm2 too, and `beacon config pick-key` changes it.
 
-| Keys | Raises |
-|:---|:---|
-| Cmd+Option+] | the next other session: the ones waiting on you first, longest wait first, then the rest, most recent first |
-| Cmd+Option+[ | the previous one in that order |
-| Cmd+Option+/ | a list of the other sessions to pick from |
+For a key that works from any app, create a dedicated hotkey window (**Settings → Keys → Hotkey**) and set its profile's **Send text at start** (Profiles → General) to `beacon pick`. Inside a Claude Code session, `/beacon switch` lists the other sessions in the band above the prompt.
 
-Presses within 30 seconds of each other walk the same list, so it doesn't reshuffle while sessions keep working. A press whose session can't be raised opens the list instead of guessing again. Inside a Claude Code session, `/beacon switch` shows the same list in the band above the prompt.
-
-iTerm2 replaces a profile's key mappings rather than adding to its parent's, so beacon copies your `Default` profile's own mappings into its profile alongside these three. After you add a mapping to `Default`, run `beacon refresh-iterm-profiles` to bring it into beacon's panes.
+beacon's profile carries no key mappings of its own, so the keys you mapped in your `Default` profile work in beacon's panes unchanged.
 
 ## What beacon doesn't paint
 
@@ -263,7 +257,7 @@ If it's installed, **iTerm2 → Uninstall Claude Code Integration** removes its 
 
 ## Recommended layout
 
-beacon paints per-*profile* surfaces it fully controls (colors and the switcher keys). The *shape* of the tab strip those colors ride on (where the tabs sit, how big they are) lives in iTerm2's **app-wide preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them. beacon writes them to iTerm2's preferences instead, and only while iTerm2 is down, as described below.
+beacon paints per-*profile* surfaces it fully controls (colors and badge sizing). The *shape* of the tab strip those colors ride on (where the tabs sit, how big they are) lives in iTerm2's **app-wide preferences**, not in any profile. None of these are per-profile keys, so a beacon dynamic profile can't carry them. beacon writes them to iTerm2's preferences instead, and only while iTerm2 is down, as described below.
 
 The tab signal + two-line `project` / `task` label are tuned for a **tall left tab strip**. These settings make that strip readable. [CLI-18](/spec) lists each one: its `defaults` key, the value to set, the pane of Preferences that holds it, and why it matters.
 
@@ -289,7 +283,7 @@ That same in-memory copy is why the audit adds a caveat while iTerm2 is running:
 beacon layout --write --keys CustomTabBarFontSize
 ```
 
-`beacon layout` is app-wide iTerm2 preferences. Its neighbor `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profile (badge sizing and the switcher keys), which iTerm2 reloads live, so that one needs no restart. Reach for it after adding a key mapping to your `Default` profile.
+`beacon layout` is app-wide iTerm2 preferences. Its neighbor `beacon refresh-iterm-profiles` re-renders beacon's *own* dynamic profile (badge sizing and the alert settings), which iTerm2 reloads live, so that one needs no restart.
 
 One case needs a restart anyway. iTerm2 3.7.0 decides a profile is dynamic by a key its loader writes, where 3.6.x used a `Dynamic` tag, so profiles saved before that upgrade read as ordinary saved profiles that already own beacon's Guids, and the loader skips the files they came from. `beacon doctor` reports it as `profiles live`, and re-rendering can't reach it.
 
@@ -356,8 +350,8 @@ These shape no surface of their own.
 |---|---|---|---|
 | Notification Center alerts and escape sequence-generated alerts (Profiles → Terminal) | whatever your own profile sets | the tab color already shows the permission and idle prompts these announce; whether a second signal helps is yours to decide | Yes: `beacon config iterm-notifications off` turns both off in the beacon profile, `on` turns them on, `reset` hands them back to your profile |
 | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
-| Key Mappings (Profiles → Keys), in the beacon profile | Cmd+Option+] / [ / / run `beacon switch`, beside a copy of your `Default` profile's own mappings | there's no other way for a key to reach beacon; iTerm2 takes Command chords before Claude Code sees them | No; a mapping you add to `Default` comes along on `beacon refresh-iterm-profiles` ([Switching sessions](#switching-sessions)) |
-| `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get the beacon profile and their window title from it | Yes: remove the line, and plain shell panes lose them |
+| Key Mappings (Profiles → Keys) | nothing: the beacon profile carries no mappings, so it inherits your `Default` profile's | beacon's one key, ⌃G for [`beacon pick`](#switching-sessions), is a zsh binding rather than an iTerm2 mapping | Yes, in your own profile, as before |
+| `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get the beacon profile, their window title, and the ⌃G key for `beacon pick` from it | Yes: remove the line, and plain shell panes lose them; `beacon config pick-key off` drops only the key |
 
 ## Setup
 

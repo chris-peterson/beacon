@@ -142,7 +142,7 @@ class WipTest(_WipBase):
         self.assertEqual(projects, {"alpha", "beta"})
         alpha = next(s for s in sessions if s["project"] == "alpha")
         self.assertEqual(alpha["activity"], "working")
-        self.assertEqual(alpha["mode"], {"name": "dev", "note": "", "glyph": ""})
+        self.assertEqual(alpha["mode"], {"name": "dev", "note": "", "glyph": "", "stood_down": False, "inactive": False})
         self.assertEqual(alpha["color_state"], "working")
 
     def test_task_in_payload(self):
@@ -230,7 +230,7 @@ class WipTest(_WipBase):
         by_proj = {s["project"]: s for s in self._sessions()}
         self.assertEqual(by_proj["p1"]["mode"],
                          {"name": "pause", "note": "brb",
-                          "glyph": self.beacon.MODE_SPECS["pause"]["glyph"]})
+                          "glyph": self.beacon.MODE_SPECS["pause"]["glyph"], "stood_down": True, "inactive": False})
         self.assertEqual(by_proj["p1"]["activity"], "idle")
         self.assertEqual(by_proj["p1"]["color_state"], "idle")
         self.assertEqual(by_proj["p2"]["color_state"], "working")
@@ -268,7 +268,7 @@ class WipTest(_WipBase):
         self._write("legacy", "anchor.project", "p")
         self._write("legacy", "mode", json.dumps({"name": "wrapping", "note": "x"}))
         s = self._sessions()[0]
-        self.assertEqual(s["mode"], {"name": "dev", "note": "", "glyph": ""},
+        self.assertEqual(s["mode"], {"name": "dev", "note": "", "glyph": "", "stood_down": False, "inactive": False},
                          "an unrecognized mode name is not a mode, and carries no note")
 
     # --- window filter ---
