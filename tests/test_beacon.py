@@ -6878,6 +6878,18 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("lib", 9))
         self.assertEqual(self._lines(), ["lib!9 · site!5 Add a settings page"])
 
+    def test_a_row_wholly_in_another_project_names_it(self):
+        self.beacon.write_state("resolved.project_id",
+                                self.beacon._project_id_from_url(_gl_issue("site", 1)))
+        self._touch(_gl_issue("lib", 201))
+        self.assertEqual(self._lines(), ["lib#201"])
+
+    def test_a_row_wholly_in_the_sessions_project_reads_bare(self):
+        self.beacon.write_state("resolved.project_id",
+                                self.beacon._project_id_from_url(_gl_issue("site", 1)))
+        self._touch(_gl_issue("site", 201))
+        self.assertEqual(self._lines(), ["#201"])
+
     def test_a_delivered_ref_in_another_project_qualifies_the_row(self):
         self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
         self._touch(_mr("lib", 9), state="merged", landed_at="2026-10-13T10:00:00Z")

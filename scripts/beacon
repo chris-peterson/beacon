@@ -6081,6 +6081,7 @@ def _publish_links(cwd: Path) -> None:
     # by the renderer and holds project/task/status.
     write_state("resolved.url", url)
     write_state("resolved.url_label", label)
+    write_state("resolved.project_id", project_id)
     # The route first, then what its issues link to, the resolved URL last:
     # recording the work in hand last keeps it furthest from the
     # DELIVERABLES_MAX eviction edge.
@@ -7428,11 +7429,16 @@ def _dependency_layout(urls: list[str], waits_on: dict) -> tuple[list[str], list
 
 def _row_spans_projects(entries: list[dict], links: dict) -> bool:
     """Whether the row names more than one project, counting the issues an open
-    CR closes, which it renders too. A row in one project has nothing for a
-    qualifier to tell apart, so its refs read bare."""
+    CR closes, which it renders too, and the session's own project, which the
+    head row names. A row wholly in the session's project has nothing for a
+    qualifier to tell apart, so its refs read bare; a row wholly in another one
+    does, since a bare `#201` reads as the head row's."""
     projects = {e.get("project", "") for e in entries}
     projects |= {_project_id_from_url(u) for e in entries
                  for u in (links.get(e["url"]) or {}).get("closes") or []}
+    home = read_state("resolved.project_id")
+    if entries and home:
+        projects.add(home)
     return len(projects) > 1
 
 
