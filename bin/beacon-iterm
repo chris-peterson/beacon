@@ -348,6 +348,16 @@ def _tab_height(font_size: int, padding: int = DEFAULT_TAB_VERTICAL_PADDING) -> 
     return round(2 * (below_center + _TAB_LABEL_MARGIN + padding))
 
 
+# FOCUS-09: ⌘K, as iTerm2 writes a key binding's name itself
+# (`<char>-<modifiers>-<keycode>-0x1`: `k`, Command, kVK_ANSI_K), and what it
+# sends: ESC and the CSI-u form of ⌘K (107 is `k`, 9 is Command + 1), a
+# sequence nothing else sends and the shell integration binds to the picker.
+PICK_KEY_ENTRY = "0x6b-0x100000-0x28-0x1"
+PICK_KEY_SEQUENCE = "[107;9u"
+# KEY_ACTION_ESCAPE_SEQUENCE in iTerm2's iTermKeyBindingAction.
+_SEND_ESCAPE_SEQUENCE = 10
+
+
 # The app-wide iTerm2 prefs beacon's tab-color signal is *tuned for*
 # but cannot set: all are global keys in com.googlecode.iterm2, none are
 # per-profile, so a beacon dynamic profile can't carry them (confirmed against a
@@ -463,6 +473,16 @@ RECOMMENDED_LAYOUT = (
      "why": "it repeats the selected tab's two-line label in a one-line strip, "
             "which clips the project off the top (TITLE-05)",
      "where": "Advanced → Windows"},
+    # FOCUS-09: an app-wide key binding, not a profile's, so it applies in every
+    # profile without replacing a profile's own map. A Command chord never
+    # reaches the shell, so ⌘K is turned into a sequence the shell can bind.
+    {"key": "GlobalKeyMap", "type": "keymap", "entry": PICK_KEY_ENTRY,
+     "want": f"send ESC {PICK_KEY_SEQUENCE}",
+     "label": "⌘K opens the session picker",
+     "why": "sends the sequence the shell integration binds to `beacon pick`, "
+            "since a Command chord never reaches the shell; it takes the place "
+            "of ⌘K's Clear Buffer, which stays in the Edit menu",
+     "where": "Keys → Key Bindings"},
 )
 
 
@@ -572,7 +592,7 @@ def _aligned(spec, current) -> bool:
 def _layout_drift(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TAB_FONT_SIZE,
                   padding: int = DEFAULT_TAB_VERTICAL_PADDING, pane_title_bar: bool = False):
     return [s for s in _recommended_layout(style, font_size, padding, pane_title_bar)
-            if not _aligned(s, _read_default(s["key"]))]
+            if not _aligned(s, _current(s))]
 
 
 def _is_iterm_running() -> bool:
@@ -607,7 +627,44 @@ def _prompt_tty(question: str, default_yes: bool):
     return default_yes if not resp else resp in ("y", "yes")
 
 
+def _read_key_binding(entry: str) -> str | None:
+    """One `GlobalKeyMap` binding, in the form a keymap row's `want` takes, or
+    None when the key is unbound. `defaults read` prints the dictionary in the
+    old ASCII plist form, so the domain is exported as XML and parsed."""
+    import plistlib
+    import subprocess
+
+    try:
+        r = subprocess.run(["defaults", "export", "com.googlecode.iterm2", "-"],
+                           capture_output=True, timeout=5)
+        binding = (plistlib.loads(r.stdout).get("GlobalKeyMap") or {}).get(entry) if r.returncode == 0 else None
+    except Exception:
+        return None
+    if not isinstance(binding, dict):
+        return None
+    if binding.get("Action") == _SEND_ESCAPE_SEQUENCE:
+        return f"send ESC {binding.get('Text', '')}"
+    return f"action {binding.get('Action')}"
+
+
+def _current(spec) -> str | None:
+    """A recommended setting's current value, in the form its `want` takes."""
+    if spec["type"] == "keymap":
+        return _read_key_binding(spec["entry"])
+    return _read_default(spec["key"])
+
+
 def _defaults_write_args(spec) -> list[str]:
+    if spec["type"] == "keymap":
+        # One entry added to the dictionary, so the user's other bindings stay.
+        # The value as iTerm2 writes a binding it was given in Settings.
+        text = spec["want"].removeprefix("send ESC ")
+        return ["-dict-add", spec["entry"],
+                f"<dict><key>Action</key><integer>{_SEND_ESCAPE_SEQUENCE}</integer>"
+                "<key>Apply Mode</key><integer>0</integer>"
+                "<key>Escaping</key><integer>2</integer>"
+                f"<key>Text</key><string>{text}</string>"
+                "<key>Version</key><integer>2</integer></dict>"]
     if spec["type"] == "bool":
         return ["-bool", "true" if spec["want"] == "1" else "false"]
     return [f"-{spec['type']}", spec["want"]]  # -int / -float, typed per the plist
@@ -670,7 +727,7 @@ def _configure_audit(style: str = DEFAULT_TAB_STYLE, font_size: int = DEFAULT_TA
           "— app-wide prefs:\n")
     drift = []
     for s in layout:
-        cur = _read_default(s["key"])
+        cur = _current(s)
         ok = _aligned(s, cur)
         mark = aligned if ok else differs
         shown = cur if cur is not None else "unset"

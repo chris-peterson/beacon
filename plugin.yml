@@ -238,9 +238,10 @@ cli:
       note; ↑ ↓ move, Enter raises the session, Option-W and Option-C open its
       project page and its directory, Tab flips the order to newest first, and
       Esc hands the terminal back. It reads the session state directly, so it
-      needs no `beacon serve`. The shell integration binds it to Ctrl-G at the
-      zsh prompt (`beacon config pick-key` changes or turns off the key), and
-      inside a Claude Code session `/beacon switch` shows the same list in the
+      needs no `beacon serve`. In iTerm2, ⌘K at a zsh prompt opens it, through
+      an app-wide key binding `beacon layout` adds; `beacon config pick-key`
+      binds a key of your own in zsh, for other terminals.
+      Inside a Claude Code session `/beacon switch` shows the same list in the
       band above the prompt.
     forget: >-
       Takes the per-pane hash `wip --json` reports, which is also what the

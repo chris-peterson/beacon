@@ -1028,32 +1028,34 @@ class ConfigCommand(BeaconTest):
                 self.beacon.cmd_shell_init(None)
             return re.search(r"^_BEACON_PICK_KEY=(.*)$", buf.getvalue(), re.M).group(1)
 
-        self.assertEqual(shell_key(), "'^G'")
+        self.assertEqual(shell_key(), "''", "⌘K needs no setting; the extra key is the user's to add")
         self._run("pick-key", "^[p")
         self.assertEqual(self._saved()["pick_key"], "^[p")
         self.assertEqual(shell_key(), "'^[p'")
-        self._run("pick-key", "off")
-        self.assertIs(self._saved()["pick_key"], False)
-        self.assertEqual(shell_key(), "''")
         self.assertIn("pick-key", self._run().split())
-        self._run("pick-key", "reset")
+        self._run("pick-key", "off")
         self.assertNotIn("pick_key", self._saved())
+        self.assertEqual(shell_key(), "''")
         for bad in (("pick-key", "^G x"), ("pick-key", "a", "b")):
             with self.subTest(bad=bad), self.assertRaises(SystemExit):
                 self._run(*bad)
         self.offered.assert_not_called()
 
-    def test_a_malformed_pick_key_is_logged_and_keeps_the_default(self):
+    def test_a_malformed_pick_key_is_logged_and_binds_nothing(self):
         for raw in (True, 7, "has space"):
             with self.subTest(raw=raw), \
                     mock.patch.object(self.beacon, "_load_config", return_value={"pick_key": raw}), \
                     mock.patch.object(self.beacon, "log_error") as logged:
-                self.assertEqual(self.beacon._pick_key(), "^G")
+                self.assertIsNone(self.beacon._pick_key())
                 self.assertEqual(logged.call_args.args[0], "config.pick_key")
         self.assertIn("config.pick_key", self.beacon._DOCTOR_ADVICE)
 
-    def test_the_shell_binds_the_key_shell_init_names(self):
+    def test_the_shell_binds_what_the_iterm2_binding_sends_and_the_extra_key(self):
+        """FOCUS-09: ⌘K never reaches the shell, so iTerm2's app-wide binding
+        sends a sequence the shell binds; the two have to name the same one."""
         shell = (REPO_ROOT / "shell" / "beacon.zsh").read_text(encoding="utf-8")
+        iterm = _load_beacon_iterm()
+        self.assertIn(f"bindkey $'\\e{iterm.PICK_KEY_SEQUENCE}' _beacon_pick", shell)
         self.assertIn('bindkey "$_BEACON_PICK_KEY" _beacon_pick', shell)
         self.assertIn('pick < /dev/tty > /dev/tty', shell)
 
@@ -8200,6 +8202,13 @@ class ConfigureLayoutAudit(unittest.TestCase):
         def fake_run(cmd, *a, **k):
             if record is not None:
                 record.append(cmd)
+            if list(cmd[:2]) == ["defaults", "export"]:
+                # A keymap row reads the domain as XML (`_read_key_binding`).
+                keymap = {}
+                if values.get("GlobalKeyMap"):
+                    keymap[self.iterm.PICK_KEY_ENTRY] = {
+                        "Action": 10, "Text": values["GlobalKeyMap"].removeprefix("send ESC ")}
+                return subprocess.CompletedProcess(cmd, 0, stdout=plistlib.dumps({"GlobalKeyMap": keymap}), stderr=b"")
             key = cmd[-1]
             if key in values:
                 return subprocess.CompletedProcess(cmd, 0, stdout=values[key] + "\n", stderr="")
@@ -8226,6 +8235,21 @@ class ConfigureLayoutAudit(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("HTMLTabTitles", out)
         self.assertIn("1 of", out)
+
+    def test_cmd_k_is_bound_to_send_the_pick_sequence(self):
+        """FOCUS-09: one GlobalKeyMap entry, added beside the user's own, sending
+        ESC and the CSI-u form of ⌘K."""
+        row = next(s for s in self.iterm.RECOMMENDED_LAYOUT if s["type"] == "keymap")
+        self.assertEqual(row["entry"], "0x6b-0x100000-0x28-0x1")
+        args = self.iterm._defaults_write_args(row)
+        self.assertEqual(args[:2], ["-dict-add", row["entry"]])
+        self.assertIn("<integer>10</integer>", args[2])
+        self.assertIn("<string>[107;9u</string>", args[2])
+        drifted = self._aligned()
+        drifted["GlobalKeyMap"] = None
+        code, out = self._run(drifted)
+        self.assertEqual(code, 1)
+        self.assertIn("GlobalKeyMap", out)
 
     def test_tab_bar_stays_visible_at_one_tab(self):
         # A single-pane window is where most sessions live, and iTerm2 hides the
@@ -8337,7 +8361,7 @@ class ConfigureLayoutAudit(unittest.TestCase):
         record = []
         self._run(self._aligned(), record=record)
         self.assertTrue(record)
-        allowed = (["defaults", "read"], ["osascript", "-e"])
+        allowed = (["defaults", "read"], ["defaults", "export"], ["osascript", "-e"])
         for cmd in record:
             self.assertIn(list(cmd[:2]), [list(a) for a in allowed],
                           f"configure must only read, never write: {cmd}")
@@ -10399,7 +10423,9 @@ class ResetLayoutToStock(unittest.TestCase):
         # Anything `configure` writes has to be something `reset` can take back
         # out, or a reset leaves the machine holding beacon's own settings and
         # reports a clean baseline it does not have.
-        recommended = {s["key"] for s in self.iterm.RECOMMENDED_LAYOUT}
+        # A keymap row adds one entry to the user's own GlobalKeyMap, which reset
+        # deliberately leaves alone; taking back just beacon's entry is not built yet.
+        recommended = {s["key"] for s in self.iterm.RECOMMENDED_LAYOUT if s["type"] != "keymap"}
         self.assertTrue(recommended.issubset(set(self._keys())),
                         recommended - set(self._keys()))
 

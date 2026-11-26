@@ -293,18 +293,21 @@ add-zsh-hook chpwd  _beacon_chpwd
 # without waiting for the first prompt.
 _beacon_chpwd
 
-# FOCUS-09: a key at the prompt opens `beacon pick` (^G unless `beacon config
-# pick-key` says otherwise). The picker takes the terminal and hands it back, so
-# the prompt is redrawn after rather than left under its last frame. zle is off
-# in a shell with no line editor (Claude Code's snapshot shell among them).
-if [[ -o zle && -n "${_BEACON_PICK_KEY:-}" ]]; then
+# FOCUS-09: ⌘K at the prompt opens `beacon pick`. A Command chord never reaches
+# the shell, so iTerm2's app-wide key binding (`beacon layout`) sends ⌘K as its
+# CSI-u sequence, which is what's bound here; `beacon config pick-key` adds a
+# key of the user's own. The picker takes the terminal and hands it back, so the
+# prompt is redrawn after rather than left under its last frame. zle is off in a
+# shell with no line editor (Claude Code's snapshot shell among them).
+if [[ -o zle ]]; then
   _beacon_pick() {
     zle -I
     python3 "$_BEACON_SCRIPT" pick < /dev/tty > /dev/tty
     zle reset-prompt
   }
   zle -N _beacon_pick
-  bindkey "$_BEACON_PICK_KEY" _beacon_pick
+  bindkey $'\e[107;9u' _beacon_pick
+  [[ -n "${_BEACON_PICK_KEY:-}" ]] && bindkey "$_BEACON_PICK_KEY" _beacon_pick
 fi
 
 typeset -g _BEACON_INSTALLED=1

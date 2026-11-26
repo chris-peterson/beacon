@@ -156,4 +156,4 @@ after either.
 `beacon --version` tells you which is in force: a trial answers
 `<version>-dev.g<short-sha>`, an installed copy answers the bare version (CMD-30).
 
-The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge and tab color rendering and the focus action, in iTerm2; `beacon pick` and its ⌃G key in a real terminal; the status panel in a live Claude Code session) still requires sourcing the shell snippet and looking.
+The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge and tab color rendering and the focus action, in iTerm2; `beacon pick` and its ⌘K binding in a real terminal; the status panel in a live Claude Code session) still requires sourcing the shell snippet and looking.

@@ -539,7 +539,7 @@ _beacon() {
            [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
            [[ "${words[3]}" == pane-title-bar ]] && compadd on off reset
            [[ "${words[3]}" == iterm-notifications ]] && compadd on off reset
-           [[ "${words[3]}" == pick-key ]] && compadd -Q '^G' off reset
+           [[ "${words[3]}" == pick-key ]] && compadd off
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -912,24 +912,23 @@ def _pane_title_bar() -> bool:
     return _switch(_load_config().get("pane_title_bar"), "pane_title_bar")
 
 
-# FOCUS-09: the zsh key that opens `beacon pick`. ⌘K is iTerm2's Clear Buffer
-# and ⌥Space a launcher's, so the default stays off both.
-DEFAULT_PICK_KEY = "^G"
+# FOCUS-09: a key of the user's own that also opens `beacon pick`, beside the
+# ⌘K the iTerm2 layout binds. None by default: zsh's emacs keymap binds nearly
+# every Ctrl letter, and the one beacon took (^G) was Claude Code's open-in-editor
+# to the fingers, if not to the shell.
 _PICK_KEY_RE = re.compile(r"[\x21-\x7e]+")
 
 
 def _pick_key() -> str | None:
-    """The key `bindkey` takes for `beacon pick` (`pick_key` in the user config,
-    FOCUS-09), or None when it is turned off."""
+    """The extra key `bindkey` takes for `beacon pick` (`pick_key` in the user
+    config, FOCUS-09), or None when none is set."""
     raw = _load_config().get("pick_key")
-    if raw is None:
-        return DEFAULT_PICK_KEY
-    if raw is False:
+    if raw is None or raw is False:
         return None
     if isinstance(raw, str) and _PICK_KEY_RE.fullmatch(raw):
         return raw
-    log_error("config.pick_key", f"pick_key {raw!r} is not a zsh key sequence or false")
-    return DEFAULT_PICK_KEY
+    log_error("config.pick_key", f"pick_key {raw!r} is not a zsh key sequence")
+    return None
 
 
 def _iterm_notifications() -> bool | None:
@@ -8426,9 +8425,10 @@ def _config_pane_title_bar(values: list[str]) -> None:
 
 
 def _config_pick_key(values: list[str]) -> None:
-    """`pick-key` sets the zsh key that opens `beacon pick` (FOCUS-09), in
-    `bindkey` notation, or `off` / `reset`. The shell reads it when it starts."""
-    usage = "usage: beacon config pick-key [<key, as bindkey writes it: ^G, ^[p> | off | reset]"
+    """`pick-key` sets an extra zsh key that opens `beacon pick` (FOCUS-09),
+    in `bindkey` notation, or `off` to drop it. ⌘K, from the iTerm2 layout, needs
+    no setting. The shell reads it when it starts."""
+    usage = "usage: beacon config pick-key [<key, as bindkey writes it: ^[p, ^X^P> | off]"
     if not values:
         print(_pick_key() or "off")
         return
@@ -8436,10 +8436,8 @@ def _config_pick_key(values: list[str]) -> None:
         sys.exit(usage)
     value = values[0].strip()
     data = _config_for_edit()
-    if value.lower() == "reset":
+    if value.lower() in ("off", "reset"):
         data.pop("pick_key", None)
-    elif value.lower() == "off":
-        data["pick_key"] = False
     elif _PICK_KEY_RE.fullmatch(value):
         data["pick_key"] = value
     else:
@@ -8603,7 +8601,7 @@ _DOCTOR_ADVICE = {
                           f"`{LAYOUT_COMMAND}` recommends split panes without title bars. "
                           "`beacon config pane-title-bar reset` clears it.",
     "config.pick_key": f"`pick_key` in {_config_file()} isn't a key sequence or false, so "
-                       "the picker kept ^G. `beacon config pick-key reset` clears it.",
+                       "it was ignored. `beacon config pick-key off` clears it.",
     "config.iterm_notifications": f"`iterm_notifications` in {_config_file()} isn't true or "
                                   "false, so iTerm2's alerts follow your own profile. "
                                   "`beacon config iterm-notifications reset` clears it.",
@@ -9666,7 +9664,7 @@ def _build_parser() -> "argparse.ArgumentParser":
                          "tab.font-size, tab.vertical-padding: <points> | reset; "
                          "pane-title-bar: on | off | reset; "
                          "iterm-notifications: on | off | reset; "
-                         "pick-key: <key> | off | reset; "
+                         "pick-key: <key> | off; "
                          "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 

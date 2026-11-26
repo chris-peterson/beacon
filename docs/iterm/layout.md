@@ -230,7 +230,9 @@ Whether the links are clickable is your terminal's call. iTerm2 renders them, an
 
 ## Switching sessions
 
-Press **⌃G** at a zsh prompt for [`beacon pick`](/cli?id=beacon-pick): every session in a filterable list, the ones waiting on you first. ↵ raises the one you pick, ⌥W and ⌥C open its project page and directory, and Esc hands the terminal back. The key comes with the shell integration rather than the profile, so it works outside iTerm2 too, and `beacon config pick-key` changes it.
+Press **⌘K** at a zsh prompt for [`beacon pick`](/cli?id=beacon-pick): every session in a filterable list, the ones waiting on you first. ↵ raises the one you pick, ⌥W and ⌥C open its project page and directory, and Esc hands the terminal back.
+
+A Command chord never reaches the shell, so the key takes two halves. `beacon layout` adds an app-wide key binding (Settings → Keys → Key Bindings) that makes ⌘K send a sequence of its own, and the shell integration binds that sequence to the picker. The binding is app-wide rather than in a profile, so it applies in every profile without replacing your own mappings. It takes the place of ⌘K's Clear Buffer, which stays in the Edit menu. Outside iTerm2, or to add a key of your own, `beacon config pick-key` binds one in the shell (`^[p` for Option-P, with Option sent as Esc+).
 
 For a key that works from any app, create a dedicated hotkey window (**Settings → Keys → Hotkey**) and set its profile's **Send text at start** (Profiles → General) to `beacon pick`. Inside a Claude Code session, `/beacon switch` lists the other sessions in the band above the prompt.
 
@@ -350,8 +352,9 @@ These shape no surface of their own.
 |---|---|---|---|
 | Notification Center alerts and escape sequence-generated alerts (Profiles → Terminal) | whatever your own profile sets | the tab color already shows the permission and idle prompts these announce; whether a second signal helps is yours to decide | Yes: `beacon config iterm-notifications off` turns both off in the beacon profile, `on` turns them on, `reset` hands them back to your profile |
 | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE` in `~/.claude/settings.json` | unset for the modern [tab look](#tab-look), `"1"` for legacy, only with iTerm2 | it's the switch for Claude Code's status reports, which iTerm2 3.7.5+ draws on the tab | Yes: `beacon config tab.look` sets or removes it; `install` leaves a value it would have to change |
-| Key Mappings (Profiles → Keys) | nothing: the beacon profile carries no mappings, so it inherits your `Default` profile's | beacon's one key, ⌃G for [`beacon pick`](#switching-sessions), is a zsh binding rather than an iTerm2 mapping | Yes, in your own profile, as before |
-| `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get the beacon profile, their window title, and the ⌃G key for `beacon pick` from it | Yes: remove the line, and plain shell panes lose them; `beacon config pick-key off` drops only the key |
+| Key Mappings (Profiles → Keys) | nothing: the beacon profile carries no mappings, so it inherits your `Default` profile's | | Yes, in your own profile, as before |
+| Key Bindings (Keys → Key Bindings), app-wide | one entry: ⌘K sends the sequence the shell binds to [`beacon pick`](#switching-sessions) | a Command chord never reaches the shell, and an app-wide binding leaves every profile's own map alone | Yes: delete the ⌘K binding, or decline it in `beacon layout`; ⌘K is Clear Buffer again |
+| `~/.zshrc` | a `source` line for `shell/beacon.zsh` | plain shell panes get the beacon profile, their window title, and the ⌘K binding for `beacon pick` from it | Yes: remove the line, and plain shell panes lose them |
 
 ## Setup
 

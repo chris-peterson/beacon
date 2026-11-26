@@ -15,7 +15,7 @@ It surfaces which project, what task, and what's happening right now, so you can
 - a **sessions view** that reads across all your sessions and works in any terminal (`wip` / `watch` / `serve`): click a live session to focus its iTerm2 window
 - a **[status panel](/statusline)** in Claude Code's band above the prompt, in any terminal: the session's project, branch, and task, the change requests and issues it's working, and buttons for the project page and your editor
 - **per-pane painting in iTerm2**: a labeled tab, colored by what Claude is doing and marked by the phase you declared
-- **[`beacon pick`](/cli?id=beacon-pick)**, a picker ⌃G opens at any zsh prompt: type to find a session, ↵ to raise it
+- **[`beacon pick`](/cli?id=beacon-pick)**, a picker ⌘K opens at a zsh prompt in iTerm2: type to find a session, ↵ to raise it
 
 > [!TIP]
 > Coming from beacon 2.x? [What's new in 3.0](/whats-new) covers the panel, modes, and the one command to run after updating.

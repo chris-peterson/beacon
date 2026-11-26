@@ -74,7 +74,7 @@ its latest turn, with links shown as their labels and clickable. A paused or
 finished session gets a thin bar and dimmer text, so it recedes behind the ones
 still working.
 
-### Ctrl-G opens a list of every session
+### ⌘K opens a list of every session
 
 `beacon pick` fills the terminal with every session, two lines each: the
 project, branch, and task, then what it's waiting on or what it last said.
@@ -84,10 +84,10 @@ Option-C open its project page and its directory, Tab flips the order to
 newest first, and Esc puts the terminal back as it was. It reads beacon's
 state directly, so it works without `beacon serve`.
 
-At a zsh prompt Ctrl-G opens it, in any terminal. `beacon config pick-key`
-changes the key (`^[p` for Option-P, say) or turns it off, and a new shell
-picks the change up. In iTerm2, a hotkey window running `beacon pick` makes it
-global. Inside a Claude Code session, `/beacon switch` shows the same list above
+In iTerm2, ⌘K at a zsh prompt opens it: `beacon layout` adds an app-wide key
+binding that turns ⌘K into a sequence the shell integration binds, in place of
+⌘K's Clear Buffer (still in the Edit menu). In another terminal, or for a key of
+your own, `beacon config pick-key` binds one in zsh, and a new shell picks it up. Inside a Claude Code session, `/beacon switch` shows the same list above
 the prompt, and `beacon focus <hash>` raises one session by its hash, as a
 click on a dashboard row does.
 

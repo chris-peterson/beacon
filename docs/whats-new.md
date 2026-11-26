@@ -40,7 +40,7 @@ Both list the sessions with no headings, in **status** order: waiting on you, th
 
 ## Pick a session from the keyboard
 
-Press **⌃G** at a zsh prompt and [`beacon pick`](/cli?id=beacon-pick) takes over the terminal with every session, two lines each, in the status order above: the project, branch, and task, then what it waits on or its latest turn. Type to narrow the list by project, branch, task, or note.
+Press **⌘K** at a zsh prompt in iTerm2 and [`beacon pick`](/cli?id=beacon-pick) takes over the terminal with every session, two lines each, in the status order above: the project, branch, and task, then what it waits on or its latest turn. Type to narrow the list by project, branch, task, or note.
 
 | Key | Does |
 |:---|:---|
@@ -50,7 +50,7 @@ Press **⌃G** at a zsh prompt and [`beacon pick`](/cli?id=beacon-pick) takes ov
 | Tab | flip between status and recency order |
 | Esc | hand the terminal back to the shell |
 
-It reads session state directly, so it works with `beacon serve` stopped, and the key binding comes with the shell integration, so it works in any terminal running zsh. `beacon config pick-key` changes the key (`^[p` for Option-P, `off` to bind none, `reset` for ⌃G); `exec zsh` picks up the change. For a key that works from any app, give an iTerm2 hotkey window's profile `beacon pick` as its text to send at start. Inside a Claude Code session, `/beacon switch` lists the other sessions in the same order in the panel.
+It reads session state directly, so it works with `beacon serve` stopped. ⌘K comes from an app-wide iTerm2 key binding `beacon layout` adds, since a Command chord never reaches the shell; it takes the place of Clear Buffer, which stays in the Edit menu. In another terminal, or for a key of your own, `beacon config pick-key` binds one in zsh (`^[p` for Option-P); `exec zsh` picks up the change, and `beacon pick` typed at the prompt always works. For a key that works from any app, give an iTerm2 hotkey window's profile `beacon pick` as its text to send at start. Inside a Claude Code session, `/beacon switch` lists the other sessions in the same order in the panel.
 
 ## Also in 3.0
 
