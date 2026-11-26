@@ -2785,6 +2785,21 @@ class AReviewBlockHoldsTheSession(BeaconTest):
                          self.beacon.BLOCKED_TITLE_LEADS["review"])
         self.assertEqual(self.beacon._color_state_for(state), "blocked")
 
+    def test_the_status_panel_draws_the_review_as_its_own_row(self):
+        self._block("https://example.com/acme/pull/7")
+        payload = self.beacon._status_panel_payload()
+        self.assertEqual(payload["review"]["glyph"], "👀")
+        self.assertEqual(payload["review"]["target"], "https://example.com/acme/pull/7")
+        self.assertEqual(payload["review"]["href"], "https://example.com/acme/pull/7")
+        # The row carries the target, so the line STATUS-04 puts in the others' place isn't drawn twice.
+        self.assertEqual(payload["lines"], [])
+
+    def test_a_path_target_is_not_linked(self):
+        self._block()
+        review = self.beacon._status_panel_payload()["review"]
+        self.assertEqual(review["target"], self.TARGET)
+        self.assertIsNone(review["href"])
+
     def test_the_eyes_lead_ahead_of_a_declared_mode(self):
         self.beacon.write_mode("release", "")
         self._block()

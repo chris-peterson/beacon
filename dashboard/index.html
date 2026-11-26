@@ -1576,6 +1576,10 @@
       }
       .pip-moderow[hidden] { display: none; }
       .pip-row.stood-down .pip-moderow { margin-bottom: 0.3em; }
+      /* STATUS-04: a held review opens the slab ahead of the mode, in its own
+         hue; the blank row falls under whichever opening row comes last. */
+      .pip-moderow.review:has(+ .pip-moderow:not([hidden])) { margin-bottom: 0; }
+      .pip-moderow.review .rb-note { overflow-wrap: anywhere; white-space: normal; }
       .pip-moderow .rb-mode { flex: none; font-weight: 700; }
       .pip-moderow .rb-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--hint); }
 
@@ -1761,6 +1765,8 @@
       const ch = (shift) => { const v = (n >> shift) & 0xff; return Math.round(v + (255 - v) * by).toString(16).padStart(2, "0"); };
       return "#" + ch(16) + ch(8) + ch(0);
     }
+    // Past this many cells, a shared column parts a label from its note more than it lines anything up (the panel's LEAD_SLACK).
+    const LEAD_SLACK = 8;
     // Cells a short label takes, as the panel's cells() counts them.
     function cells(text) {
       let n = 0;
@@ -1860,7 +1866,8 @@
       row.dataset.hash = hash;
       row.innerHTML =
         '<div class="pip-slab">' +
-          '<div class="pip-moderow" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
+          '<div class="pip-moderow review" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
+          '<div class="pip-moderow mode" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
           '<div class="pip-headrow">' +
             '<span class="pip-rdot"></span><span class="pip-proj"></span>' +
             '<button type="button" class="pip-btn go" data-tip="Raise its terminal window" hidden>go</button>' +
@@ -1943,9 +1950,14 @@
     function updatePipRow(row, s, panel) {
       // Until the panel arrives, the tile draws what the sessions record says.
       const mode = panel ? panel.mode : (s.mode && s.mode.name !== "dev" ? s.mode : null);
-      const band = panel && mode && mode.band;
+      const modeBand = panel && mode && mode.band;
+      // STATUS-04: a held review leads the slab and gives it its hue, as its glyph leads the tab.
+      const review = (panel && panel.review) || null;
+      const band = review ? review.band : modeBand;
+      // A parked or finished tile folds to its head row; a held review wants the user, so never.
+      const folded = !!modeBand && stoodDown(s) && !review;
       row.className = "pip-row color-" + (s.color_state || "idle")
-        + (band ? " moded" : "") + (stoodDown(s) ? " stood-down" : "")
+        + (band ? " moded" : "") + (folded ? " stood-down" : "")
         + (pip.expanded.has(s.hash) ? " expanded" : "");
       if (band) {
         row.style.setProperty("--mode-band", band);
@@ -1957,10 +1969,17 @@
       headrow.setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
 
       // The slab's first row, as the band draws it: glyph and label bold, then the note.
-      const moderow = row.querySelector(".pip-moderow");
-      moderow.hidden = !band;
-      const modeLabel = band ? (mode.glyph ? mode.glyph + " " : "") + (mode.label || mode.name) : "";
-      if (band) {
+      const reviewrow = row.querySelector(".pip-moderow.review");
+      reviewrow.hidden = !review;
+      const reviewLabel = review ? review.glyph + " " + review.label : "";
+      if (review) {
+        setHtml(reviewrow.querySelector(".rb-mode"), escapeHtml(reviewLabel));
+        setHtml(reviewrow.querySelector(".rb-note"), review.href ? linkHtml(review.href, escapeHtml(review.target)) : escapeHtml(review.target));
+      }
+      const moderow = row.querySelector(".pip-moderow.mode");
+      moderow.hidden = !modeBand;
+      const modeLabel = modeBand ? (mode.glyph ? mode.glyph + " " : "") + (mode.label || mode.name) : "";
+      if (modeBand) {
         const note = mode.note_line
           ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
               '<span style="' + (r.style.bold ? "font-weight:700;color:var(--fg);" : "") + (r.style.italic ? "font-style:italic" : "") + '">'
@@ -1969,11 +1988,9 @@
         setHtml(moderow.querySelector(".rb-mode"), escapeHtml(modeLabel));
         setHtml(moderow.querySelector(".rb-note"), note);
       }
-      // A parked or finished tile folds to its head row (the CSS hides the mode's row).
-      const folded = !!band && stoodDown(s);
       // The buttons dock on whichever row opens the tile.
       const actions = row.querySelector(".pip-actions");
-      const dock = band && !folded ? moderow : headrow;
+      const dock = review ? reviewrow : modeBand && !folded ? moderow : headrow;
       if (actions.parentNode !== dock) dock.appendChild(actions);
 
       row.querySelector(".pip-btn.go").hidden = !s.focusable;
@@ -1988,10 +2005,14 @@
       const used = new Set(parts.filter((p) => links.has(p)));
       // A mode with no ribbon (retro) marks the head row with its glyph, as the band does.
       // A folded tile leads with the mode's glyph, as a mode with no ribbon does.
-      const glyph = mode && (!band || folded) ? (mode.glyph || "") : "";
-      // On the slab the project shares the mode label's column (STATUS-09).
-      const lead = band && !folded ? Math.max(cells(modeLabel), cells(parts[0] || "")) : 0;
-      if (band) moderow.querySelector(".rb-mode").style.minWidth = lead + "ch";
+      const glyph = mode && (!mode.band || folded) ? (mode.glyph || "") : "";
+      // On the slab the opening rows' labels share the project's column (STATUS-09), unless
+      // the project is so much wider that the column would part a label from its note.
+      const labels = [reviewLabel, modeBand && !folded ? modeLabel : ""].filter(Boolean).map(cells);
+      const labelW = labels.length ? Math.max(...labels) : 0;
+      const aligned = labelW && Math.abs(cells(parts[0] || "") - labelW) <= LEAD_SLACK;
+      const lead = aligned ? Math.max(labelW, cells(parts[0] || "")) : 0;
+      for (const r of [reviewrow, moderow]) r.querySelector(".rb-mode").style.minWidth = (lead || labelW) + "ch";
       // Folded, the note (why it's parked) follows the project; the branch drops, the task trails.
       const shown = folded ? parts.filter((p) => p !== branch) : parts;
       const note = folded ? moderow.querySelector(".rb-note").innerHTML : "";

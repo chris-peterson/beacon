@@ -241,6 +241,32 @@ describe('status panel', () => {
     expect(hoverOf(drawn, ' ↖ github ')).toBeUndefined()
   })
 
+  test('STATUS-04: a held review opens the slab in its own hue, ahead of the mode, with its target', async ($, on) => {
+    const reviewing = JSON.stringify({
+      ...JSON.parse(PAUSED),
+      review: { glyph: '👀', label: 'in review', band: '#4a3a22', target: 'https://example.com/acme/pull/7', href: 'https://example.com/acme/pull/7' },
+    })
+    worldOf(on, { head: reviewing, statusline: '' })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    const text = textOf(drawn)
+    expect(text.indexOf('👀 in review')).toBeLessThan(text.indexOf('⏸ paused'))
+    expect(propsOf(drawn, '👀 in review')).toMatchObject({ backgroundColor: '#4a3a22', bold: true })
+    expect(propsOf(drawn, 'acme')).toMatchObject({ backgroundColor: '#4a3a22' })
+    expect(hrefsOf(drawn)).toContain('https://example.com/acme/pull/7')
+  })
+
+  test('a status line keeps its separators and a title\'s leading space whole, so only the titles truncate', async ($, on) => {
+    const link = (url: string, label: string) => `${ESC}]8;;${url}${ESC}\\${label}${ESC}]8;;${ESC}\\`
+    const twoRefs = `${link('https://example.com/a/pull/1', 'a!1')}${ESC}[2;37m Fix the widget${ESC}[0m · ${link('https://example.com/b/pull/2', 'b!2')}${ESC}[2;37m Ship the gadget${ESC}[0m\n`
+    worldOf(on, { statusline: twoRefs })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    expect(propsOf(drawn, ' · ')?.wrap).toBeUndefined()
+    expect(propsOf(drawn, ' ')?.wrap).toBeUndefined()
+    expect(propsOf(drawn, 'Fix the widget')).toMatchObject({ wrap: 'truncate-end' })
+  })
+
   test('a mode with no band keeps its glyph on the head row and draws no ribbon', async ($, on) => {
     const retro = JSON.stringify({ ...JSON.parse(HEAD), mode: { name: 'retro', note: null, glyph: '📋', label: 'retro', band: null, note_line: null } })
     worldOf(on, { head: retro, statusline: '' })

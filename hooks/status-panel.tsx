@@ -38,6 +38,20 @@ function cells(text: string): number {
   return n
 }
 
+// Past this many cells of padding, a shared column parts the mode's label from its note by more than it lines anything up.
+const LEAD_SLACK = 8
+
+// On the slab the opening rows' labels and the project share one column, so the notes and the branch start together; a project much longer than the labels keeps its own width instead.
+function leadOf(labels: (string | null)[], project: string | undefined): { label?: number; project?: number } {
+  const widths = labels.filter((l): l is string => !!l).map(cells)
+  if (widths.length === 0) return {}
+  const label = Math.max(...widths)
+  const name = cells(project ?? '')
+  if (Math.abs(name - label) > LEAD_SLACK) return { label }
+  const both = Math.max(label, name)
+  return { label: both, project: both }
+}
+
 // What changes without an event in this session (a push from a shell, a forge read landing) shows within this.
 const POLL_MS = 15_000
 const TIMEOUT_MS = 5_000
@@ -68,6 +82,8 @@ type Head = {
   forge: string | null
   /** The editor the code button runs, by its program's name (`code`). */
   code_label: string
+  /** STATUS-04: a held review, drawn as the slab's first row; null with none. */
+  review?: { glyph: string; label: string; band: string; target: string; href: string | null } | null
   /** STATUS-01's lines, with their SGR and OSC-8 sequences. */
   lines: string[]
 }
@@ -292,12 +308,14 @@ export const register: Register = on => {
 
     // STATUS-09: a declared mode turns the whole panel into one slab of its hue, mode row first, so any terminal shows the mode as a surface rather than a line.
     // Every Text on it names the hue too: one drawn without it shows the terminal's ground through the slab.
+    // STATUS-04: a held review leads the slab ahead of the mode, as its glyph leads the tab, and the slab takes its hue.
     const mode = head?.mode
-    const band = mode?.band ?? undefined
+    const review = head?.review ?? null
+    const band = review?.band ?? mode?.band ?? undefined
     const soft = band ? RIBBON_HINT : undefined
-    const modeLabel = mode && band ? `${mode.glyph} ${mode.label}` : null
-    // On the slab the mode's label and the project share one column, so the note and the branch start together.
-    const lead = modeLabel ? Math.max(cells(modeLabel), cells(parts[0] ?? '')) : undefined
+    const reviewLabel = review ? `${review.glyph} ${review.label}` : null
+    const modeLabel = mode?.band ? `${mode.glyph} ${mode.label}` : null
+    const lead = leadOf([reviewLabel, modeLabel], parts[0])
 
     // The ahead/behind glyphs first, in the branch's color; linked only when it has an upstream to open.
     // It never shrinks: squeezed, a branch wraps mid-name onto a second row. The task beside it truncates instead.
@@ -327,34 +345,45 @@ export const register: Register = on => {
       </Box>,
     ]
 
-    // A blank row of the slab under the mode's row sets the mode apart from the names it governs.
-    const modeRow = !mode || !modeLabel ? [] : [
-      <Box key="mode" flexDirection="row" justifyContent="space-between" gap={2} marginBottom={1}>
-        <Box flexDirection="row" gap={2} flexShrink={1}>
-          <Box width={lead} flexShrink={0}><Text backgroundColor={band} color={RIBBON_TEXT} bold>{modeLabel}</Text></Box>
-          {mode.note_line ? [
-            <Box key="note" flexDirection="row" flexShrink={1}>
-              {segmentsOf(mode.note_line).flatMap((s, i) => 'href' in s ? [] : [
-                <Text key={`rb-${i}`} backgroundColor={band} color={s.style.bold ? RIBBON_TEXT : RIBBON_HINT} bold={s.style.bold} italic={s.style.italic} wrap="truncate-end">{s.text}</Text>,
-              ])}
-            </Box>,
-          ] : []}
-        </Box>
-        {actions}
-      </Box>,
+    // The rows that open the slab: the review's, then the mode's, each its glyph and label in bold and then what it's about.
+    // The buttons dock on the first; a blank row of the slab under the last sets them apart from the names they govern.
+    const opening = [
+      ...(review && reviewLabel ? [{
+        key: 'review',
+        label: reviewLabel,
+        // The target is the question the row answers (which changeset, which CR), so it wraps rather than truncating.
+        about: [<Text key="rv-t" backgroundColor={band} color={RIBBON_HINT}>{review.href ? <Link href={review.href}>{review.target}</Link> : review.target}</Text>],
+      }] : []),
+      ...(mode && modeLabel ? [{
+        key: 'mode',
+        label: modeLabel,
+        about: mode.note_line ? segmentsOf(mode.note_line).flatMap((s, i) => 'href' in s ? [] : [
+          <Text key={`rb-${i}`} backgroundColor={band} color={s.style.bold ? RIBBON_TEXT : RIBBON_HINT} bold={s.style.bold} italic={s.style.italic} wrap="truncate-end">{s.text}</Text>,
+        ]) : [],
+      }] : []),
     ]
+    const openingRows = opening.map((row, i) => (
+      <Box key={row.key} flexDirection="row" justifyContent="space-between" gap={2} marginBottom={i === opening.length - 1 ? 1 : 0}>
+        <Box flexDirection="row" gap={2} flexShrink={1}>
+          <Box width={lead.label} flexShrink={0}><Text backgroundColor={band} color={RIBBON_TEXT} bold>{row.label}</Text></Box>
+          {row.about.length ? [<Box key="about" flexDirection="row" flexShrink={1}>{row.about}</Box>] : []}
+        </Box>
+        {i === 0 ? actions : []}
+      </Box>
+    ))
 
     return (
       <Box flexDirection="column" paddingRight={5} marginTop={1}>
         <Box flexDirection="column" backgroundColor={band} paddingX={band ? 1 : 0} paddingY={band ? 1 : 0}>
-          {modeRow}
+          {openingRows}
           <Box flexDirection="row" justifyContent="space-between" gap={2}>
             <Box flexDirection="row" gap={2} flexShrink={1}>
-              {head?.mode?.glyph && !band ? [<Text key="glyph">{head.mode.glyph}</Text>] : []}
+              {/* A mode with no band of its own (retro) keeps its glyph on the head row. */}
+              {mode?.glyph && !mode.band ? [<Text key="glyph" backgroundColor={band}>{mode.glyph}</Text>] : []}
               {parts.map((p, i) =>
                 // No activity here: the band only ever shows the session in front of you, whose spinner and prompts already say it.
                 i === 0
-                  ? <Box key="p-0" width={lead} flexShrink={0}><Text backgroundColor={band} bold>{p}</Text></Box>
+                  ? <Box key="p-0" width={lead.project} flexShrink={0}><Text backgroundColor={band} bold>{p}</Text></Box>
                   : p === head?.branch
                     ? branchOf(p)
                     : links.has(p)
@@ -362,16 +391,24 @@ export const register: Register = on => {
                       : <Text key={`p-${i}`} backgroundColor={band} color={soft} wrap="truncate-end">{p}</Text>,
               )}
             </Box>
-            {modeRow.length ? [] : actions}
+            {opening.length ? [] : actions}
           </Box>
           {rest.map((segs, i) => (
             <Box key={`sl-${i}`} flexDirection="row" paddingLeft={2}>
-              {segs.map((s, j) =>
+              {segs.flatMap((s, j) => {
+                const key = `sl-${i}-${j}`
                 // A ref (`!45`) never shrinks: squeezed, it wraps mid-token onto a second row. The titles beside it truncate instead.
-                'href' in s
-                  ? <Box key={`sl-${i}-${j}`} flexShrink={0}><Link href={s.href}>{s.runs.map((r, k) => <Text key={`sl-${i}-${j}-${k}`} {...styleOf(r.style)} backgroundColor={band} wrap="truncate-end">{r.text}</Text>)}</Link></Box>
-                  : <Text key={`sl-${i}-${j}`} {...styleOf(s.style)} backgroundColor={band} wrap="truncate-end">{s.text}</Text>,
-              )}
+                if ('href' in s) return [<Box key={key} flexShrink={0}><Link href={s.href}>{s.runs.map((r, k) => <Text key={`${key}-${k}`} {...styleOf(r.style)} backgroundColor={band} wrap="truncate-end">{r.text}</Text>)}</Link></Box>]
+                // Nor does the spacing around one: a ` · ` or a title's leading space squeezed to nothing runs one ref into the next title.
+                const fixed = (k: string, text: string) => <Box key={k} flexShrink={0}><Text {...styleOf(s.style)} backgroundColor={band}>{text}</Text></Box>
+                if (!/[\p{L}\p{N}]/u.test(s.text)) return [fixed(key, s.text)]
+                const [, before = '', body = '', after = ''] = /^(\s*)([\s\S]*?)(\s*)$/.exec(s.text) ?? []
+                return [
+                  ...(before ? [fixed(`${key}-b`, before)] : []),
+                  <Text key={key} {...styleOf(s.style)} backgroundColor={band} wrap="truncate-end">{body}</Text>,
+                  ...(after ? [fixed(`${key}-a`, after)] : []),
+                ]
+              })}
             </Box>
           ))}
         </Box>

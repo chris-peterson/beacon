@@ -707,6 +707,11 @@ BLOCKED_TITLE_LEADS = {
 # knows when it ends.
 ATTENTION_KINDS = ("question", "permission")
 REVIEW_KIND = "review"
+# STATUS-04: a held review as the status panel draws it, the row a mode's slab
+# opens with (STATUS-09) in a hue of its own. It leads ahead of a declared mode
+# in the panel as its glyph does on the tab, since it is what wants the user now.
+# Dark like a mode's band, so the slab's one light foreground reads on it.
+REVIEW_PANEL = {"glyph": BLOCKED_TITLE_LEADS[REVIEW_KIND].strip(), "label": "in review", "band": "#4a3a22"}
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries " · <task>" when set, "" when absent (BADGE-03). Both writers
@@ -7623,11 +7628,25 @@ def cmd_status_panel(_args):
     print(json.dumps(_status_panel_payload()))
 
 
+def _status_panel_review() -> dict | None:
+    """STATUS-04: a held review as the panel draws it, a row like a mode's: the
+    `👀` glyph and label, then the target, a URL linked to itself. Neither form
+    is shortened, for the reason the status line gives."""
+    review = read_review_block()
+    if not review:
+        return None
+    target = review["target"]
+    href = _safe_uri(target) if re.match(r"^https?://", target) else None
+    return {**REVIEW_PANEL, "target": _display_safe(target, limit=None), "href": href}
+
+
 def _status_panel_payload() -> dict:
     head = _status_panel_head()
+    review = _status_panel_review()
     # A mode with a ribbon carries its note there, so line 1 doesn't repeat it.
     ribbon = bool(head["mode"] and head["mode"]["band"])
-    return {**head, "lines": _status_lines(mode_note=not ribbon)}
+    # A held review is its own row, so the line STATUS-04 puts in place of the others isn't drawn twice.
+    return {**head, "review": review, "lines": [] if review else _status_lines(mode_note=not ribbon)}
 
 
 def _status_lines(mode_note: bool = True) -> list[str]:
