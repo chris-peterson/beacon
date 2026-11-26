@@ -7,7 +7,7 @@ hooks:
     description: Reports the SessionStart event to the beacon CLI for sessions-view tracking.
   - event: SessionStart
     command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/cli-freshness.sh"'
-    description: Detects CLI wrapper drift after a plugin update.
+    description: Detects CLI wrapper drift after a plugin update, and auto-pause turned on with no beacon serve running it.
   - event: SessionStart
     command: 'bash "${CLAUDE_PLUGIN_ROOT}/hooks/emit-rules.sh"'
     description: Emits this plugin's ambient rules into context.

@@ -100,7 +100,7 @@ The always-on serve service (`beacon serve install`) uses launchd on macOS, syst
 | `hooks/`, `commands/` | Claude Code plugin glue, including the status panel's hooks module (`hooks/status-panel.tsx`) |
 | `rules/` | Ambient rules emitted into context at SessionStart by `hooks/emit-rules.sh` |
 | `dashboard/index.html` | Self-contained reference dashboard `serve` hosts at `/` |
-| `iterm/profile.json.template` | The `beacon` dynamic profile: badge sizing, which the installer extends with the switcher keys |
+| `iterm/profile.json.template` | The `beacon` dynamic profile: badge sizing, font, and margins |
 | `docs/` | Docsify site sources; the site renders the EARS-style behavioral spec (D1) from `SPEC.md` |
 
 ## Tests

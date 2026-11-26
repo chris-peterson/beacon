@@ -31,11 +31,11 @@ The CLI must remain unaware of Claude. It's usable from CI, ad-hoc terminal scri
 
 SPEC §4.1 lists the surfaces beacon paints, and only those. Adding one is a spec change, not an implementation choice. The rules call sites have to keep:
 
-- The `beacon` dynamic profile carries the switcher's key bindings over a copy of the parent profile's own (FOCUS-07): iTerm2 replaces a dynamic profile's Keyboard Map rather than merging it. Never write the user's profile.
+- The `beacon` dynamic profile carries no Keyboard Map (FOCUS-07, retired): iTerm2 replaces a dynamic profile's map whole rather than merging the parent's, so writing one would drop every key the user bound. beacon's one key, `beacon pick`'s (FOCUS-09), is a zsh binding in `shell/beacon.zsh`. Never write the user's profile.
 - beacon never paints the pane background. A mode's in-pane cue is the status panel's ribbon and footer label (STATUS-09), which render in any terminal; the only profile swap is engagement's, into `beacon` (RENDER-07). A block swaps nothing; what it waits on reaches the tab as a glyph (TITLE-06).
 - The window title and tab label go through the session name (`set-name`), not an OSC title or the profile's `Subtitle` (TITLE-05). Disengagement hands the name back *before* blanking the user vars; the other order leaves a blank tab and window title (§4.8, §6.10 caveat 7).
-- The switcher keys run through an absolute interpreter path baked into the profile, because a coprocess shell has no interactive `PATH`, and they print nothing on success, because a coprocess types its stdout into the pane (FOCUS-06/07).
-- The status panel's buttons resolve their command beacon-side (`open-url` / `open-code`, STATUS-08): a hooks module's process has no login `PATH` either.
+- `beacon pick` (FOCUS-06) reads state through `collect_sessions(full=False, branch=True)`: it opens on a key press, and the per-route `tack tree` reads are most of a full scan's time. Its order (`_session_order`) is the one the dashboard's `byOrder` and the band's `/beacon switch` list restate; change them together.
+- The status panel's buttons resolve their command beacon-side (`open-url` / `open-code`, STATUS-08): a hooks module's process has no login `PATH`.
 - The badge is opt-in and gated at three paint sites: the profile's `Badge Text`, the plugin render, and the shell's `shell-init` block (BADGE-15). Change all three together.
 - The tab paints the activity hue through `_tab_hex`'s per-state weights (TAB-04). The badge and the sessions view take `COLOR_PALETTE` directly, since a weight tuned for a full-bleed tab erases a 10px dot.
 
@@ -147,13 +147,13 @@ what picks the level.
 ### Running your changes
 
 `just trial-on` points every installed entry point at this working copy, and
-`just trial-off` points them back at the installed build. beacon pins three of
-them to a plugin root at install time (the `beacon` on PATH, the `.zshrc`
-source line, and the script path baked into the iTerm2 profile's switcher keys), and
-`install` is what rewrites all three from its own root, so both recipes run it
-rather than moving surfaces by hand (CMD-08a). Run `exec zsh` after either.
+`just trial-off` points them back at the installed build. beacon pins two of
+them to a plugin root at install time (the `beacon` on PATH and the `.zshrc`
+source line), and `install` is what rewrites both from its own root, so both
+recipes run it rather than moving surfaces by hand (CMD-08a). Run `exec zsh`
+after either.
 
 `beacon --version` tells you which is in force: a trial answers
 `<version>-dev.g<short-sha>`, an installed copy answers the bare version (CMD-30).
 
-The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge and tab color rendering, the switcher keys, and the focus action, in iTerm2; the status panel in a live Claude Code session) still requires sourcing the shell snippet and looking.
+The test suite under `tests/` covers plugin-side behavior. Surface verification (the actual badge and tab color rendering and the focus action, in iTerm2; `beacon pick` and its ⌘K binding in a real terminal; the status panel in a live Claude Code session) still requires sourcing the shell snippet and looking.

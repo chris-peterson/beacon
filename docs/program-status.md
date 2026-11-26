@@ -92,1442 +92,3348 @@ A program asks whether the terminal supports it with `ESC ] 7501 ; ? ESC \`, and
 
 <div class="osc">
 <div class="osc-scroll">
-<svg class="osc-gantt" viewBox="0 0 1040 1422" role="img" aria-labelledby="osc-g-t osc-g-d">
-<title id="osc-g-t">OSC 7501 adoption, Sep 28 to Oct 22 2026</title>
-<desc id="osc-g-d">A Gantt chart: the spec from its Sep 28 draft through revision 0.4 on Oct 10, then each terminal and program from its first merged change or request to its release. 11 programs had shipped by Oct 22. The sources table below lists every date.</desc>
-<rect class="colhl h0" x="160.0" y="52" width="26.9" height="1364"/>
-<text class="day dl0" x="173.5" y="64" text-anchor="middle">28</text>
-<rect class="colhl h1" x="186.9" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="186.9" x2="186.9" y1="52" y2="1416"/>
-<text class="day dl1" x="200.4" y="64" text-anchor="middle">29</text>
-<rect class="colhl h2" x="213.8" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="213.8" x2="213.8" y1="52" y2="1416"/>
-<text class="day dl2" x="227.3" y="64" text-anchor="middle">30</text>
-<rect class="colhl h3" x="240.8" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="240.8" x2="240.8" y1="52" y2="1416"/>
-<text class="day dl3" x="254.2" y="64" text-anchor="middle">1</text>
-<rect class="colhl h4" x="267.7" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="267.7" x2="267.7" y1="52" y2="1416"/>
-<text class="day dl4" x="281.2" y="64" text-anchor="middle">2</text>
-<rect class="wkend" x="294.6" y="52" width="26.9" height="1364"/>
-<rect class="colhl h5" x="294.6" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="294.6" x2="294.6" y1="52" y2="1416"/>
-<text class="day dl5" x="308.1" y="64" text-anchor="middle">3</text>
-<rect class="wkend" x="321.5" y="52" width="26.9" height="1364"/>
-<rect class="colhl h6" x="321.5" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="321.5" x2="321.5" y1="52" y2="1416"/>
-<text class="day dl6" x="335.0" y="64" text-anchor="middle">4</text>
-<rect class="colhl h7" x="348.5" y="52" width="26.9" height="1364"/>
-<text class="day dl7" x="361.9" y="64" text-anchor="middle">5</text>
-<rect class="colhl h8" x="375.4" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="375.4" x2="375.4" y1="52" y2="1416"/>
-<text class="day dl8" x="388.8" y="64" text-anchor="middle">6</text>
-<rect class="colhl h9" x="402.3" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="402.3" x2="402.3" y1="52" y2="1416"/>
-<text class="day dl9" x="415.8" y="64" text-anchor="middle">7</text>
-<rect class="colhl h10" x="429.2" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="429.2" x2="429.2" y1="52" y2="1416"/>
-<text class="day dl10" x="442.7" y="64" text-anchor="middle">8</text>
-<rect class="colhl h11" x="456.2" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="456.2" x2="456.2" y1="52" y2="1416"/>
-<text class="day dl11" x="469.6" y="64" text-anchor="middle">9</text>
-<rect class="wkend" x="483.1" y="52" width="26.9" height="1364"/>
-<rect class="colhl h12" x="483.1" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="483.1" x2="483.1" y1="52" y2="1416"/>
-<text class="day dl12" x="496.5" y="64" text-anchor="middle">10</text>
-<rect class="wkend" x="510.0" y="52" width="26.9" height="1364"/>
-<rect class="colhl h13" x="510.0" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="510.0" x2="510.0" y1="52" y2="1416"/>
-<text class="day dl13" x="523.5" y="64" text-anchor="middle">11</text>
-<rect class="colhl h14" x="536.9" y="52" width="26.9" height="1364"/>
-<text class="day dl14" x="550.4" y="64" text-anchor="middle">12</text>
-<rect class="colhl h15" x="563.8" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="563.8" x2="563.8" y1="52" y2="1416"/>
-<text class="day dl15" x="577.3" y="64" text-anchor="middle">13</text>
-<rect class="colhl h16" x="590.8" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="590.8" x2="590.8" y1="52" y2="1416"/>
-<text class="day dl16" x="604.2" y="64" text-anchor="middle">14</text>
-<rect class="colhl h17" x="617.7" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="617.7" x2="617.7" y1="52" y2="1416"/>
-<text class="day dl17" x="631.2" y="64" text-anchor="middle">15</text>
-<rect class="colhl h18" x="644.6" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="644.6" x2="644.6" y1="52" y2="1416"/>
-<text class="day dl18" x="658.1" y="64" text-anchor="middle">16</text>
-<rect class="wkend" x="671.5" y="52" width="26.9" height="1364"/>
-<rect class="colhl h19" x="671.5" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="671.5" x2="671.5" y1="52" y2="1416"/>
-<text class="day dl19" x="685.0" y="64" text-anchor="middle">17</text>
-<rect class="wkend" x="698.5" y="52" width="26.9" height="1364"/>
-<rect class="colhl h20" x="698.5" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="698.5" x2="698.5" y1="52" y2="1416"/>
-<text class="day dl20" x="711.9" y="64" text-anchor="middle">18</text>
-<rect class="colhl h21" x="725.4" y="52" width="26.9" height="1364"/>
-<text class="day dl21" x="738.8" y="64" text-anchor="middle">19</text>
-<rect class="colhl h22" x="752.3" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="752.3" x2="752.3" y1="52" y2="1416"/>
-<text class="day dl22" x="765.8" y="64" text-anchor="middle">20</text>
-<rect class="colhl h23" x="779.2" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="779.2" x2="779.2" y1="52" y2="1416"/>
-<text class="day dl23" x="792.7" y="64" text-anchor="middle">21</text>
-<rect class="colhl h24" x="806.2" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="806.2" x2="806.2" y1="52" y2="1416"/>
-<text class="day dl24" x="819.6" y="64" text-anchor="middle">22</text>
-<rect class="colhl h25" x="833.1" y="52" width="26.9" height="1364"/>
-<line class="dayline" x1="833.1" x2="833.1" y1="52" y2="1416"/>
-<text class="day dl25" x="846.5" y="64" text-anchor="middle">23</text>
-<line class="today" x1="833.1" x2="833.1" y1="20" y2="1416"/>
-<rect class="todaytag" x="789.1" y="2" width="88" height="18" rx="9"/>
-<text class="todaytxt" x="833.1" y="15" text-anchor="middle">As of Oct 22</text>
-<line class="week" x1="160.0" x2="160.0" y1="30" y2="1416"/>
-<text class="weekhd" x="166.0" y="42">Week of Sep 28</text>
-<line class="week" x1="348.5" x2="348.5" y1="30" y2="1416"/>
-<text class="weekhd" x="354.5" y="42">Week of Oct 5</text>
-<line class="week" x1="536.9" x2="536.9" y1="30" y2="1416"/>
-<text class="weekhd" x="542.9" y="42">Week of Oct 12</text>
-<line class="week" x1="725.4" x2="725.4" y1="30" y2="1416"/>
-<text class="weekhd" x="731.4" y="42">Week of Oct 19</text>
+<svg class="osc-gantt" viewBox="0 0 1040 1602" role="img" aria-labelledby="osc-g-t osc-g-d">
+<title id="osc-g-t">OSC 7501 adoption, Sep 28 to Nov 25 2026</title>
+<desc id="osc-g-d">A Gantt chart: the spec from its Sep 28 draft through revision 0.4 on Oct 10, then each terminal and program from its first merged change or request to its release. 26 programs had shipped by Nov 25. The sources table below lists every date.</desc>
+<rect class="colhl h0" x="160.0" y="52" width="11.7" height="1544"/>
+<text class="day dl0" x="165.8" y="64" text-anchor="middle">28</text>
+<rect class="colhl h1" x="171.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="171.7" x2="171.7" y1="52" y2="1596"/>
+<text class="day minor dl1" x="177.5" y="64" text-anchor="middle">29</text>
+<rect class="colhl h2" x="183.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="183.3" x2="183.3" y1="52" y2="1596"/>
+<text class="day minor dl2" x="189.2" y="64" text-anchor="middle">30</text>
+<rect class="colhl h3" x="195.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="195.0" x2="195.0" y1="52" y2="1596"/>
+<text class="day minor dl3" x="200.8" y="64" text-anchor="middle">1</text>
+<rect class="colhl h4" x="206.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="206.7" x2="206.7" y1="52" y2="1596"/>
+<text class="day minor dl4" x="212.5" y="64" text-anchor="middle">2</text>
+<rect class="wkend" x="218.3" y="52" width="11.7" height="1544"/>
+<rect class="colhl h5" x="218.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="218.3" x2="218.3" y1="52" y2="1596"/>
+<text class="day minor dl5" x="224.2" y="64" text-anchor="middle">3</text>
+<rect class="wkend" x="230.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h6" x="230.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="230.0" x2="230.0" y1="52" y2="1596"/>
+<text class="day minor dl6" x="235.8" y="64" text-anchor="middle">4</text>
+<rect class="colhl h7" x="241.7" y="52" width="11.7" height="1544"/>
+<text class="day dl7" x="247.5" y="64" text-anchor="middle">5</text>
+<rect class="colhl h8" x="253.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="253.3" x2="253.3" y1="52" y2="1596"/>
+<text class="day minor dl8" x="259.2" y="64" text-anchor="middle">6</text>
+<rect class="colhl h9" x="265.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="265.0" x2="265.0" y1="52" y2="1596"/>
+<text class="day minor dl9" x="270.8" y="64" text-anchor="middle">7</text>
+<rect class="colhl h10" x="276.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="276.7" x2="276.7" y1="52" y2="1596"/>
+<text class="day minor dl10" x="282.5" y="64" text-anchor="middle">8</text>
+<rect class="colhl h11" x="288.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="288.3" x2="288.3" y1="52" y2="1596"/>
+<text class="day minor dl11" x="294.2" y="64" text-anchor="middle">9</text>
+<rect class="wkend" x="300.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h12" x="300.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="300.0" x2="300.0" y1="52" y2="1596"/>
+<text class="day minor dl12" x="305.8" y="64" text-anchor="middle">10</text>
+<rect class="wkend" x="311.7" y="52" width="11.7" height="1544"/>
+<rect class="colhl h13" x="311.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="311.7" x2="311.7" y1="52" y2="1596"/>
+<text class="day minor dl13" x="317.5" y="64" text-anchor="middle">11</text>
+<rect class="colhl h14" x="323.3" y="52" width="11.7" height="1544"/>
+<text class="day dl14" x="329.2" y="64" text-anchor="middle">12</text>
+<rect class="colhl h15" x="335.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="335.0" x2="335.0" y1="52" y2="1596"/>
+<text class="day minor dl15" x="340.8" y="64" text-anchor="middle">13</text>
+<rect class="colhl h16" x="346.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="346.7" x2="346.7" y1="52" y2="1596"/>
+<text class="day minor dl16" x="352.5" y="64" text-anchor="middle">14</text>
+<rect class="colhl h17" x="358.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="358.3" x2="358.3" y1="52" y2="1596"/>
+<text class="day minor dl17" x="364.2" y="64" text-anchor="middle">15</text>
+<rect class="colhl h18" x="370.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="370.0" x2="370.0" y1="52" y2="1596"/>
+<text class="day minor dl18" x="375.8" y="64" text-anchor="middle">16</text>
+<rect class="wkend" x="381.7" y="52" width="11.7" height="1544"/>
+<rect class="colhl h19" x="381.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="381.7" x2="381.7" y1="52" y2="1596"/>
+<text class="day minor dl19" x="387.5" y="64" text-anchor="middle">17</text>
+<rect class="wkend" x="393.3" y="52" width="11.7" height="1544"/>
+<rect class="colhl h20" x="393.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="393.3" x2="393.3" y1="52" y2="1596"/>
+<text class="day minor dl20" x="399.2" y="64" text-anchor="middle">18</text>
+<rect class="colhl h21" x="405.0" y="52" width="11.7" height="1544"/>
+<text class="day dl21" x="410.8" y="64" text-anchor="middle">19</text>
+<rect class="colhl h22" x="416.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="416.7" x2="416.7" y1="52" y2="1596"/>
+<text class="day minor dl22" x="422.5" y="64" text-anchor="middle">20</text>
+<rect class="colhl h23" x="428.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="428.3" x2="428.3" y1="52" y2="1596"/>
+<text class="day minor dl23" x="434.2" y="64" text-anchor="middle">21</text>
+<rect class="colhl h24" x="440.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="440.0" x2="440.0" y1="52" y2="1596"/>
+<text class="day minor dl24" x="445.8" y="64" text-anchor="middle">22</text>
+<rect class="colhl h25" x="451.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="451.7" x2="451.7" y1="52" y2="1596"/>
+<text class="day minor dl25" x="457.5" y="64" text-anchor="middle">23</text>
+<rect class="wkend" x="463.3" y="52" width="11.7" height="1544"/>
+<rect class="colhl h26" x="463.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="463.3" x2="463.3" y1="52" y2="1596"/>
+<text class="day minor dl26" x="469.2" y="64" text-anchor="middle">24</text>
+<rect class="wkend" x="475.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h27" x="475.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="475.0" x2="475.0" y1="52" y2="1596"/>
+<text class="day minor dl27" x="480.8" y="64" text-anchor="middle">25</text>
+<rect class="colhl h28" x="486.7" y="52" width="11.7" height="1544"/>
+<text class="day dl28" x="492.5" y="64" text-anchor="middle">26</text>
+<rect class="colhl h29" x="498.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="498.3" x2="498.3" y1="52" y2="1596"/>
+<text class="day minor dl29" x="504.2" y="64" text-anchor="middle">27</text>
+<rect class="colhl h30" x="510.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="510.0" x2="510.0" y1="52" y2="1596"/>
+<text class="day minor dl30" x="515.8" y="64" text-anchor="middle">28</text>
+<rect class="colhl h31" x="521.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="521.7" x2="521.7" y1="52" y2="1596"/>
+<text class="day minor dl31" x="527.5" y="64" text-anchor="middle">29</text>
+<rect class="colhl h32" x="533.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="533.3" x2="533.3" y1="52" y2="1596"/>
+<text class="day minor dl32" x="539.2" y="64" text-anchor="middle">30</text>
+<rect class="wkend" x="545.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h33" x="545.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="545.0" x2="545.0" y1="52" y2="1596"/>
+<text class="day minor dl33" x="550.8" y="64" text-anchor="middle">31</text>
+<rect class="wkend" x="556.7" y="52" width="11.7" height="1544"/>
+<rect class="colhl h34" x="556.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="556.7" x2="556.7" y1="52" y2="1596"/>
+<text class="day minor dl34" x="562.5" y="64" text-anchor="middle">1</text>
+<rect class="colhl h35" x="568.3" y="52" width="11.7" height="1544"/>
+<text class="day dl35" x="574.2" y="64" text-anchor="middle">2</text>
+<rect class="colhl h36" x="580.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="580.0" x2="580.0" y1="52" y2="1596"/>
+<text class="day minor dl36" x="585.8" y="64" text-anchor="middle">3</text>
+<rect class="colhl h37" x="591.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="591.7" x2="591.7" y1="52" y2="1596"/>
+<text class="day minor dl37" x="597.5" y="64" text-anchor="middle">4</text>
+<rect class="colhl h38" x="603.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="603.3" x2="603.3" y1="52" y2="1596"/>
+<text class="day minor dl38" x="609.2" y="64" text-anchor="middle">5</text>
+<rect class="colhl h39" x="615.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="615.0" x2="615.0" y1="52" y2="1596"/>
+<text class="day minor dl39" x="620.8" y="64" text-anchor="middle">6</text>
+<rect class="wkend" x="626.7" y="52" width="11.7" height="1544"/>
+<rect class="colhl h40" x="626.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="626.7" x2="626.7" y1="52" y2="1596"/>
+<text class="day minor dl40" x="632.5" y="64" text-anchor="middle">7</text>
+<rect class="wkend" x="638.3" y="52" width="11.7" height="1544"/>
+<rect class="colhl h41" x="638.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="638.3" x2="638.3" y1="52" y2="1596"/>
+<text class="day minor dl41" x="644.2" y="64" text-anchor="middle">8</text>
+<rect class="colhl h42" x="650.0" y="52" width="11.7" height="1544"/>
+<text class="day dl42" x="655.8" y="64" text-anchor="middle">9</text>
+<rect class="colhl h43" x="661.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="661.7" x2="661.7" y1="52" y2="1596"/>
+<text class="day minor dl43" x="667.5" y="64" text-anchor="middle">10</text>
+<rect class="colhl h44" x="673.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="673.3" x2="673.3" y1="52" y2="1596"/>
+<text class="day minor dl44" x="679.2" y="64" text-anchor="middle">11</text>
+<rect class="colhl h45" x="685.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="685.0" x2="685.0" y1="52" y2="1596"/>
+<text class="day minor dl45" x="690.8" y="64" text-anchor="middle">12</text>
+<rect class="colhl h46" x="696.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="696.7" x2="696.7" y1="52" y2="1596"/>
+<text class="day minor dl46" x="702.5" y="64" text-anchor="middle">13</text>
+<rect class="wkend" x="708.3" y="52" width="11.7" height="1544"/>
+<rect class="colhl h47" x="708.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="708.3" x2="708.3" y1="52" y2="1596"/>
+<text class="day minor dl47" x="714.2" y="64" text-anchor="middle">14</text>
+<rect class="wkend" x="720.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h48" x="720.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="720.0" x2="720.0" y1="52" y2="1596"/>
+<text class="day minor dl48" x="725.8" y="64" text-anchor="middle">15</text>
+<rect class="colhl h49" x="731.7" y="52" width="11.7" height="1544"/>
+<text class="day dl49" x="737.5" y="64" text-anchor="middle">16</text>
+<rect class="colhl h50" x="743.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="743.3" x2="743.3" y1="52" y2="1596"/>
+<text class="day minor dl50" x="749.2" y="64" text-anchor="middle">17</text>
+<rect class="colhl h51" x="755.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="755.0" x2="755.0" y1="52" y2="1596"/>
+<text class="day minor dl51" x="760.8" y="64" text-anchor="middle">18</text>
+<rect class="colhl h52" x="766.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="766.7" x2="766.7" y1="52" y2="1596"/>
+<text class="day minor dl52" x="772.5" y="64" text-anchor="middle">19</text>
+<rect class="colhl h53" x="778.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="778.3" x2="778.3" y1="52" y2="1596"/>
+<text class="day minor dl53" x="784.2" y="64" text-anchor="middle">20</text>
+<rect class="wkend" x="790.0" y="52" width="11.7" height="1544"/>
+<rect class="colhl h54" x="790.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="790.0" x2="790.0" y1="52" y2="1596"/>
+<text class="day minor dl54" x="795.8" y="64" text-anchor="middle">21</text>
+<rect class="wkend" x="801.7" y="52" width="11.7" height="1544"/>
+<rect class="colhl h55" x="801.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="801.7" x2="801.7" y1="52" y2="1596"/>
+<text class="day minor dl55" x="807.5" y="64" text-anchor="middle">22</text>
+<rect class="colhl h56" x="813.3" y="52" width="11.7" height="1544"/>
+<text class="day dl56" x="819.2" y="64" text-anchor="middle">23</text>
+<rect class="colhl h57" x="825.0" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="825.0" x2="825.0" y1="52" y2="1596"/>
+<text class="day minor dl57" x="830.8" y="64" text-anchor="middle">24</text>
+<rect class="colhl h58" x="836.7" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="836.7" x2="836.7" y1="52" y2="1596"/>
+<text class="day minor dl58" x="842.5" y="64" text-anchor="middle">25</text>
+<rect class="colhl h59" x="848.3" y="52" width="11.7" height="1544"/>
+<line class="dayline" x1="848.3" x2="848.3" y1="52" y2="1596"/>
+<text class="day minor dl59" x="854.2" y="64" text-anchor="middle">26</text>
+<line class="today" x1="848.3" x2="848.3" y1="20" y2="1596"/>
+<rect class="todaytag" x="804.3" y="2" width="88" height="18" rx="9"/>
+<text class="todaytxt" x="848.3" y="15" text-anchor="middle">As of Nov 25</text>
+<line class="week" x1="160.0" x2="160.0" y1="30" y2="1596"/>
+<text class="weekhd" x="166.0" y="42">Sep 28</text>
+<line class="week" x1="241.7" x2="241.7" y1="30" y2="1596"/>
+<text class="weekhd" x="247.7" y="42">Oct 5</text>
+<line class="week" x1="323.3" x2="323.3" y1="30" y2="1596"/>
+<text class="weekhd" x="329.3" y="42">Oct 12</text>
+<line class="week" x1="405.0" x2="405.0" y1="30" y2="1596"/>
+<text class="weekhd" x="411.0" y="42">Oct 19</text>
+<line class="week" x1="486.7" x2="486.7" y1="30" y2="1596"/>
+<text class="weekhd" x="492.7" y="42">Oct 26</text>
+<line class="week" x1="568.3" x2="568.3" y1="30" y2="1596"/>
+<text class="weekhd" x="574.3" y="42">Nov 2</text>
+<line class="week" x1="650.0" x2="650.0" y1="30" y2="1596"/>
+<text class="weekhd" x="656.0" y="42">Nov 9</text>
+<line class="week" x1="731.7" x2="731.7" y1="30" y2="1596"/>
+<text class="weekhd" x="737.7" y="42">Nov 16</text>
+<line class="week" x1="813.3" x2="813.3" y1="30" y2="1596"/>
+<text class="weekhd" x="819.3" y="42">Nov 23</text>
 <line class="rule" x1="160" x2="860" y1="72" y2="72"/>
 <text class="colhd" x="880" y="42">Where it stands</text>
-<rect class="hcell c0" x="160.0" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c1" x="186.9" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c2" x="213.8" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c3" x="240.8" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c4" x="267.7" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c5" x="294.6" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c6" x="321.5" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c7" x="348.5" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c8" x="375.4" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c9" x="402.3" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c10" x="429.2" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c11" x="456.2" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c12" x="483.1" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c13" x="510.0" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c14" x="536.9" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c15" x="563.8" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c16" x="590.8" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c17" x="617.7" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c18" x="644.6" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c19" x="671.5" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c20" x="698.5" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c21" x="725.4" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c22" x="752.3" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c23" x="779.2" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c24" x="806.2" y="52.0" width="26.9" height="20"/>
-<rect class="hcell c25" x="833.1" y="52.0" width="26.9" height="20"/>
-<style>.osc-gantt:has(.c0:hover) .h0,.osc-gantt:has(.c1:hover) .h1,.osc-gantt:has(.c2:hover) .h2,.osc-gantt:has(.c3:hover) .h3,.osc-gantt:has(.c4:hover) .h4,.osc-gantt:has(.c5:hover) .h5,.osc-gantt:has(.c6:hover) .h6,.osc-gantt:has(.c7:hover) .h7,.osc-gantt:has(.c8:hover) .h8,.osc-gantt:has(.c9:hover) .h9,.osc-gantt:has(.c10:hover) .h10,.osc-gantt:has(.c11:hover) .h11,.osc-gantt:has(.c12:hover) .h12,.osc-gantt:has(.c13:hover) .h13,.osc-gantt:has(.c14:hover) .h14,.osc-gantt:has(.c15:hover) .h15,.osc-gantt:has(.c16:hover) .h16,.osc-gantt:has(.c17:hover) .h17,.osc-gantt:has(.c18:hover) .h18,.osc-gantt:has(.c19:hover) .h19,.osc-gantt:has(.c20:hover) .h20,.osc-gantt:has(.c21:hover) .h21,.osc-gantt:has(.c22:hover) .h22,.osc-gantt:has(.c23:hover) .h23,.osc-gantt:has(.c24:hover) .h24,.osc-gantt:has(.c25:hover) .h25{opacity:1}.osc-gantt:has(.c0:hover) .dl0,.osc-gantt:has(.c1:hover) .dl1,.osc-gantt:has(.c2:hover) .dl2,.osc-gantt:has(.c3:hover) .dl3,.osc-gantt:has(.c4:hover) .dl4,.osc-gantt:has(.c5:hover) .dl5,.osc-gantt:has(.c6:hover) .dl6,.osc-gantt:has(.c7:hover) .dl7,.osc-gantt:has(.c8:hover) .dl8,.osc-gantt:has(.c9:hover) .dl9,.osc-gantt:has(.c10:hover) .dl10,.osc-gantt:has(.c11:hover) .dl11,.osc-gantt:has(.c12:hover) .dl12,.osc-gantt:has(.c13:hover) .dl13,.osc-gantt:has(.c14:hover) .dl14,.osc-gantt:has(.c15:hover) .dl15,.osc-gantt:has(.c16:hover) .dl16,.osc-gantt:has(.c17:hover) .dl17,.osc-gantt:has(.c18:hover) .dl18,.osc-gantt:has(.c19:hover) .dl19,.osc-gantt:has(.c20:hover) .dl20,.osc-gantt:has(.c21:hover) .dl21,.osc-gantt:has(.c22:hover) .dl22,.osc-gantt:has(.c23:hover) .dl23,.osc-gantt:has(.c24:hover) .dl24,.osc-gantt:has(.c25:hover) .dl25{fill:var(--fg);font-weight:600}</style>
+<rect class="hcell c0" x="160.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c1" x="171.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c2" x="183.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c3" x="195.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c4" x="206.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c5" x="218.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c6" x="230.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c7" x="241.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c8" x="253.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c9" x="265.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c10" x="276.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c11" x="288.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c12" x="300.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c13" x="311.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c14" x="323.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c15" x="335.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c16" x="346.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c17" x="358.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c18" x="370.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c19" x="381.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c20" x="393.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c21" x="405.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c22" x="416.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c23" x="428.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c24" x="440.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c25" x="451.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c26" x="463.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c27" x="475.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c28" x="486.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c29" x="498.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c30" x="510.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c31" x="521.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c32" x="533.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c33" x="545.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c34" x="556.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c35" x="568.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c36" x="580.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c37" x="591.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c38" x="603.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c39" x="615.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c40" x="626.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c41" x="638.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c42" x="650.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c43" x="661.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c44" x="673.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c45" x="685.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c46" x="696.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c47" x="708.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c48" x="720.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c49" x="731.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c50" x="743.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c51" x="755.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c52" x="766.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c53" x="778.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c54" x="790.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c55" x="801.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c56" x="813.3" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c57" x="825.0" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c58" x="836.7" y="52.0" width="11.7" height="20"/>
+<rect class="hcell c59" x="848.3" y="52.0" width="11.7" height="20"/>
+<style>.osc-gantt .day.minor{opacity:0}.osc-gantt:has(.c0:hover) .h0,.osc-gantt:has(.c1:hover) .h1,.osc-gantt:has(.c2:hover) .h2,.osc-gantt:has(.c3:hover) .h3,.osc-gantt:has(.c4:hover) .h4,.osc-gantt:has(.c5:hover) .h5,.osc-gantt:has(.c6:hover) .h6,.osc-gantt:has(.c7:hover) .h7,.osc-gantt:has(.c8:hover) .h8,.osc-gantt:has(.c9:hover) .h9,.osc-gantt:has(.c10:hover) .h10,.osc-gantt:has(.c11:hover) .h11,.osc-gantt:has(.c12:hover) .h12,.osc-gantt:has(.c13:hover) .h13,.osc-gantt:has(.c14:hover) .h14,.osc-gantt:has(.c15:hover) .h15,.osc-gantt:has(.c16:hover) .h16,.osc-gantt:has(.c17:hover) .h17,.osc-gantt:has(.c18:hover) .h18,.osc-gantt:has(.c19:hover) .h19,.osc-gantt:has(.c20:hover) .h20,.osc-gantt:has(.c21:hover) .h21,.osc-gantt:has(.c22:hover) .h22,.osc-gantt:has(.c23:hover) .h23,.osc-gantt:has(.c24:hover) .h24,.osc-gantt:has(.c25:hover) .h25,.osc-gantt:has(.c26:hover) .h26,.osc-gantt:has(.c27:hover) .h27,.osc-gantt:has(.c28:hover) .h28,.osc-gantt:has(.c29:hover) .h29,.osc-gantt:has(.c30:hover) .h30,.osc-gantt:has(.c31:hover) .h31,.osc-gantt:has(.c32:hover) .h32,.osc-gantt:has(.c33:hover) .h33,.osc-gantt:has(.c34:hover) .h34,.osc-gantt:has(.c35:hover) .h35,.osc-gantt:has(.c36:hover) .h36,.osc-gantt:has(.c37:hover) .h37,.osc-gantt:has(.c38:hover) .h38,.osc-gantt:has(.c39:hover) .h39,.osc-gantt:has(.c40:hover) .h40,.osc-gantt:has(.c41:hover) .h41,.osc-gantt:has(.c42:hover) .h42,.osc-gantt:has(.c43:hover) .h43,.osc-gantt:has(.c44:hover) .h44,.osc-gantt:has(.c45:hover) .h45,.osc-gantt:has(.c46:hover) .h46,.osc-gantt:has(.c47:hover) .h47,.osc-gantt:has(.c48:hover) .h48,.osc-gantt:has(.c49:hover) .h49,.osc-gantt:has(.c50:hover) .h50,.osc-gantt:has(.c51:hover) .h51,.osc-gantt:has(.c52:hover) .h52,.osc-gantt:has(.c53:hover) .h53,.osc-gantt:has(.c54:hover) .h54,.osc-gantt:has(.c55:hover) .h55,.osc-gantt:has(.c56:hover) .h56,.osc-gantt:has(.c57:hover) .h57,.osc-gantt:has(.c58:hover) .h58,.osc-gantt:has(.c59:hover) .h59{opacity:1}.osc-gantt:has(.c0:hover) .dl0,.osc-gantt:has(.c1:hover) .dl1,.osc-gantt:has(.c2:hover) .dl2,.osc-gantt:has(.c3:hover) .dl3,.osc-gantt:has(.c4:hover) .dl4,.osc-gantt:has(.c5:hover) .dl5,.osc-gantt:has(.c6:hover) .dl6,.osc-gantt:has(.c7:hover) .dl7,.osc-gantt:has(.c8:hover) .dl8,.osc-gantt:has(.c9:hover) .dl9,.osc-gantt:has(.c10:hover) .dl10,.osc-gantt:has(.c11:hover) .dl11,.osc-gantt:has(.c12:hover) .dl12,.osc-gantt:has(.c13:hover) .dl13,.osc-gantt:has(.c14:hover) .dl14,.osc-gantt:has(.c15:hover) .dl15,.osc-gantt:has(.c16:hover) .dl16,.osc-gantt:has(.c17:hover) .dl17,.osc-gantt:has(.c18:hover) .dl18,.osc-gantt:has(.c19:hover) .dl19,.osc-gantt:has(.c20:hover) .dl20,.osc-gantt:has(.c21:hover) .dl21,.osc-gantt:has(.c22:hover) .dl22,.osc-gantt:has(.c23:hover) .dl23,.osc-gantt:has(.c24:hover) .dl24,.osc-gantt:has(.c25:hover) .dl25,.osc-gantt:has(.c26:hover) .dl26,.osc-gantt:has(.c27:hover) .dl27,.osc-gantt:has(.c28:hover) .dl28,.osc-gantt:has(.c29:hover) .dl29,.osc-gantt:has(.c30:hover) .dl30,.osc-gantt:has(.c31:hover) .dl31,.osc-gantt:has(.c32:hover) .dl32,.osc-gantt:has(.c33:hover) .dl33,.osc-gantt:has(.c34:hover) .dl34,.osc-gantt:has(.c35:hover) .dl35,.osc-gantt:has(.c36:hover) .dl36,.osc-gantt:has(.c37:hover) .dl37,.osc-gantt:has(.c38:hover) .dl38,.osc-gantt:has(.c39:hover) .dl39,.osc-gantt:has(.c40:hover) .dl40,.osc-gantt:has(.c41:hover) .dl41,.osc-gantt:has(.c42:hover) .dl42,.osc-gantt:has(.c43:hover) .dl43,.osc-gantt:has(.c44:hover) .dl44,.osc-gantt:has(.c45:hover) .dl45,.osc-gantt:has(.c46:hover) .dl46,.osc-gantt:has(.c47:hover) .dl47,.osc-gantt:has(.c48:hover) .dl48,.osc-gantt:has(.c49:hover) .dl49,.osc-gantt:has(.c50:hover) .dl50,.osc-gantt:has(.c51:hover) .dl51,.osc-gantt:has(.c52:hover) .dl52,.osc-gantt:has(.c53:hover) .dl53,.osc-gantt:has(.c54:hover) .dl54,.osc-gantt:has(.c55:hover) .dl55,.osc-gantt:has(.c56:hover) .dl56,.osc-gantt:has(.c57:hover) .dl57,.osc-gantt:has(.c58:hover) .dl58,.osc-gantt:has(.c59:hover) .dl59{fill:var(--fg);font-weight:600;opacity:1}</style>
 <text class="grp" x="12" y="104">Spec</text>
 <line class="grpline" x1="12" x2="1028" y1="112" y2="112"/>
-<rect class="hcell c0" x="160.0" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c1" x="186.9" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c2" x="213.8" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c3" x="240.8" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c4" x="267.7" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c5" x="294.6" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c6" x="321.5" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c7" x="348.5" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c8" x="375.4" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c9" x="402.3" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c10" x="429.2" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c11" x="456.2" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c12" x="483.1" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c13" x="510.0" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c14" x="536.9" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c15" x="563.8" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c16" x="590.8" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c17" x="617.7" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c18" x="644.6" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c19" x="671.5" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c20" x="698.5" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c21" x="725.4" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c22" x="752.3" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c23" x="779.2" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c24" x="806.2" y="112.0" width="26.9" height="48"/>
-<rect class="hcell c25" x="833.1" y="112.0" width="26.9" height="48"/>
+<rect class="hcell c0" x="160.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c1" x="171.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c2" x="183.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c3" x="195.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c4" x="206.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c5" x="218.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c6" x="230.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c7" x="241.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c8" x="253.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c9" x="265.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c10" x="276.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c11" x="288.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c12" x="300.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c13" x="311.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c14" x="323.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c15" x="335.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c16" x="346.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c17" x="358.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c18" x="370.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c19" x="381.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c20" x="393.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c21" x="405.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c22" x="416.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c23" x="428.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c24" x="440.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c25" x="451.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c26" x="463.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c27" x="475.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c28" x="486.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c29" x="498.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c30" x="510.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c31" x="521.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c32" x="533.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c33" x="545.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c34" x="556.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c35" x="568.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c36" x="580.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c37" x="591.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c38" x="603.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c39" x="615.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c40" x="626.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c41" x="638.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c42" x="650.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c43" x="661.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c44" x="673.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c45" x="685.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c46" x="696.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c47" x="708.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c48" x="720.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c49" x="731.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c50" x="743.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c51" x="755.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c52" x="766.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c53" x="778.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c54" x="790.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c55" x="801.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c56" x="813.3" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c57" x="825.0" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c58" x="836.7" y="112.0" width="11.7" height="48"/>
+<rect class="hcell c59" x="848.3" y="112.0" width="11.7" height="48"/>
 <text class="name" x="150" y="141.0" text-anchor="end">Program Status Protocol</text>
-<rect class="bar-spec" x="173.5" y="133.0" width="323.1" height="8" rx="4"/>
-<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Sep 28: Revision 0.1, initial draft</title><path class="ms-spec" d="M173.5,130.0 L180.5,137.0 L173.5,144.0 L166.5,137.0 Z"/><rect class="hit" x="161.5" y="125.0" width="24" height="24"/></a>
-<text class="mslbl" x="175.5" y="125.0">0.1 draft</text>
-<a href="https://mitchellh.com/writing/program-status-osc7501" target="_blank" rel="noopener"><title>Oct 6: Revision 0.2; Mitchell Hashimoto&#x27;s announcement post</title><path class="ms-spec" d="M388.8,130.0 L395.8,137.0 L388.8,144.0 L381.8,137.0 Z"/><rect class="hit" x="376.8" y="125.0" width="24" height="24"/></a>
-<text class="mslbl" x="390.8" y="125.0">0.2 announced</text>
-<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Oct 7: Revision 0.3: absent progress means indeterminate; programs may send without querying</title><path class="ms-spec" d="M415.8,130.0 L422.8,137.0 L415.8,144.0 L408.8,137.0 Z"/><rect class="hit" x="403.8" y="125.0" width="24" height="24"/></a>
-<text class="mslbl" x="417.8" y="157.0">0.3</text>
-<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Oct 10: Revision 0.4: the query reply may list states and kinds</title><path class="ms-spec" d="M496.5,130.0 L503.5,137.0 L496.5,144.0 L489.5,137.0 Z"/><rect class="hit" x="484.5" y="125.0" width="24" height="24"/></a>
-<text class="mslbl" x="498.5" y="125.0">0.4</text>
+<rect class="bar-spec" x="165.8" y="133.0" width="140.0" height="8" rx="4"/>
+<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Sep 28: Revision 0.1, initial draft</title><path class="ms-spec" d="M165.8,130.0 L172.8,137.0 L165.8,144.0 L158.8,137.0 Z"/><rect class="hit" x="153.8" y="125.0" width="24" height="24"/></a>
+<text class="mslbl" x="167.8" y="125.0">0.1 draft</text>
+<a href="https://mitchellh.com/writing/program-status-osc7501" target="_blank" rel="noopener"><title>Oct 6: Revision 0.2; Mitchell Hashimoto&#x27;s announcement post</title><path class="ms-spec" d="M259.2,130.0 L266.2,137.0 L259.2,144.0 L252.2,137.0 Z"/><rect class="hit" x="247.2" y="125.0" width="24" height="24"/></a>
+<text class="mslbl" x="261.2" y="125.0">0.2 announced</text>
+<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Oct 7: Revision 0.3: absent progress means indeterminate; programs may send without querying</title><path class="ms-spec" d="M270.8,130.0 L277.8,137.0 L270.8,144.0 L263.8,137.0 Z"/><rect class="hit" x="258.8" y="125.0" width="24" height="24"/></a>
+<text class="mslbl" x="272.8" y="157.0">0.3</text>
+<a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Oct 10: Revision 0.4: the query reply may list states and kinds</title><path class="ms-spec" d="M305.8,130.0 L312.8,137.0 L305.8,144.0 L298.8,137.0 Z"/><rect class="hit" x="293.8" y="125.0" width="24" height="24"/></a>
+<text class="mslbl" x="307.8" y="157.0">0.4</text>
 <a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><text class="status st-link" x="880" y="141.0">Revision 0.4</text></a>
 <text class="grp" x="12" y="182">Terminals</text>
 <line class="grpline" x1="12" x2="1028" y1="190" y2="190"/>
 <a href="https://www.superlogical.com/rex/docs/build/program-status" target="_blank" rel="noopener"><title>Rex: Shipped with the spec Oct 6</title>
 <rect class="rowhit" x="0" y="200.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="200.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="200.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="200.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="200.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="200.0" width="180" height="30"/>
 <text class="name" x="150" y="219.0" text-anchor="end">Rex</text>
-<line class="live" x1="388.8" x2="833.1" y1="215.0" y2="215.0"/>
-<path class="ms-ship" d="M388.8,208.0 L395.8,215.0 L388.8,222.0 L381.8,215.0 Z"/>
+<line class="live" x1="259.2" x2="848.3" y1="215.0" y2="215.0"/>
+<path class="ms-ship" d="M259.2,208.0 L266.2,215.0 L259.2,222.0 L252.2,215.0 Z"/>
 <text class="status st-link st-shipped" x="880" y="219.0">Shipped with the spec</text>
 </a>
-<a href="https://github.com/ghostty-org/ghostty/pull/14560" target="_blank" rel="noopener"><title>libghostty: Merged Oct 6; Updated to revision 0.4 Oct 10</title>
+<a href="https://ghostty.org/docs/install/release-notes/1-4-0" target="_blank" rel="noopener"><title>libghostty: Merged Oct 6; Updated to revision 0.4 Oct 10; Shipped in Ghostty 1.4.0 Oct 27</title>
 <rect class="rowhit" x="0" y="230.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="230.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="230.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="230.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="230.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="230.0" width="180" height="30"/>
 <text class="name" x="150" y="249.0" text-anchor="end">libghostty</text>
-<rect class="bar-merged" x="388.8" y="239.0" width="444.2" height="12" rx="3"/>
-<text class="status st-link st-merged" x="880" y="249.0">Merged, for Ghostty 1.4.0</text>
+<rect class="bar-work" x="259.2" y="239.0" width="245.0" height="12" rx="3"/>
+<line class="live" x1="504.2" x2="848.3" y1="245.0" y2="245.0"/>
+<path class="ms-ship" d="M504.2,238.0 L511.2,245.0 L504.2,252.0 L497.2,245.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="249.0">Shipped in Ghostty 1.4.0</text>
 </a>
-<a href="https://github.com/microsoft/intelligent-terminal/issues/1096" target="_blank" rel="noopener"><title>Windows Terminal: Requested Oct 7; Moved to Intelligent Terminal Oct 8</title>
+<a href="https://github.com/microsoft/intelligent-terminal/releases/tag/v0.3.3213" target="_blank" rel="noopener"><title>Intelligent Terminal: Requested for Windows Terminal Oct 7; Moved to Intelligent Terminal Oct 8; Merged Nov 17; Shipped in v0.3.3213 Nov 19</title>
 <rect class="rowhit" x="0" y="260.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="260.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="260.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="260.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="260.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="260.0" width="180" height="30"/>
-<text class="name" x="150" y="279.0" text-anchor="end">Windows Terminal</text>
-<rect class="bar-open" x="415.8" y="269.0" width="417.3" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="279.0">Sent to Intelligent Terminal</text>
+<text class="name" x="150" y="279.0" text-anchor="end">Intelligent Terminal</text>
+<rect class="bar-work" x="270.8" y="269.0" width="501.7" height="12" rx="3"/>
+<line class="live" x1="772.5" x2="848.3" y1="275.0" y2="275.0"/>
+<path class="ms-ship" d="M772.5,268.0 L779.5,275.0 L772.5,282.0 L765.5,275.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="279.0">Shipped v0.3.3213</text>
 </a>
 <a href="https://github.com/superset-sh/superset/issues/8278" target="_blank" rel="noopener"><title>Superset: Requested Oct 7</title>
 <rect class="rowhit" x="0" y="290.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="290.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="290.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="290.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="290.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="290.0" width="180" height="30"/>
 <text class="name" x="150" y="309.0" text-anchor="end">Superset</text>
-<rect class="bar-open" x="415.8" y="299.0" width="417.3" height="12" rx="3"/>
+<rect class="bar-open" x="270.8" y="299.0" width="577.5" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="309.0">Requested</text>
 </a>
 <a href="https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1" target="_blank" rel="noopener"><title>cmux: Merged Oct 9; Shipped in v0.65.1 Oct 12</title>
 <rect class="rowhit" x="0" y="320.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="320.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="320.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="320.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="320.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="320.0" width="180" height="30"/>
 <text class="name" x="150" y="339.0" text-anchor="end">cmux</text>
-<rect class="bar-work" x="469.6" y="329.0" width="80.8" height="12" rx="3"/>
-<line class="live" x1="550.4" x2="833.1" y1="335.0" y2="335.0"/>
-<path class="ms-ship" d="M550.4,328.0 L557.4,335.0 L550.4,342.0 L543.4,335.0 Z"/>
+<rect class="bar-work" x="294.2" y="329.0" width="35.0" height="12" rx="3"/>
+<line class="live" x1="329.2" x2="848.3" y1="335.0" y2="335.0"/>
+<path class="ms-ship" d="M329.2,328.0 L336.2,335.0 L329.2,342.0 L322.2,335.0 Z"/>
 <text class="status st-link st-shipped" x="880" y="339.0">Shipped v0.65.1</text>
 </a>
 <a href="https://iterm2.com/downloads.html" target="_blank" rel="noopener"><title>iTerm2: Merged Oct 9; Shipped in 3.7.5 Oct 12; 3.7.6 coalesces floods</title>
 <rect class="rowhit" x="0" y="350.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="350.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="350.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="350.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="350.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="350.0" width="180" height="30"/>
 <text class="name" x="150" y="369.0" text-anchor="end">iTerm2</text>
-<rect class="bar-work" x="469.6" y="359.0" width="80.8" height="12" rx="3"/>
-<line class="live" x1="550.4" x2="833.1" y1="365.0" y2="365.0"/>
-<path class="ms-ship" d="M550.4,358.0 L557.4,365.0 L550.4,372.0 L543.4,365.0 Z"/>
+<rect class="bar-work" x="294.2" y="359.0" width="35.0" height="12" rx="3"/>
+<line class="live" x1="329.2" x2="848.3" y1="365.0" y2="365.0"/>
+<path class="ms-ship" d="M329.2,358.0 L336.2,365.0 L329.2,372.0 L322.2,365.0 Z"/>
 <text class="status st-link st-shipped" x="880" y="369.0">Shipped 3.7.5</text>
 </a>
 <a href="https://github.com/herdrdev/herdr/pull/5172" target="_blank" rel="noopener"><title>Herdr: Draft pull request opened Oct 11</title>
 <rect class="rowhit" x="0" y="380.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="380.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="380.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="380.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="380.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="380.0" width="180" height="30"/>
 <text class="name" x="150" y="399.0" text-anchor="end">Herdr</text>
-<rect class="bar-open" x="523.5" y="389.0" width="309.6" height="12" rx="3"/>
+<rect class="bar-open" x="317.5" y="389.0" width="530.8" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="399.0">Draft pull request</text>
 </a>
-<a href="https://github.com/kovidgoyal/kitty/pull/10657" target="_blank" rel="noopener"><title>kitty: Merged, for 0.50.0 Oct 13</title>
+<a href="https://sw.kovidgoyal.net/kitty/changelog/" target="_blank" rel="noopener"><title>kitty: Merged Oct 13; Shipped in 0.50.0 Nov 3</title>
 <rect class="rowhit" x="0" y="410.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="410.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="410.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="410.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="410.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="410.0" width="180" height="30"/>
 <text class="name" x="150" y="429.0" text-anchor="end">kitty</text>
-<rect class="bar-merged" x="577.3" y="419.0" width="255.8" height="12" rx="3"/>
-<text class="status st-link st-merged" x="880" y="429.0">Merged, for 0.50.0</text>
+<rect class="bar-work" x="340.8" y="419.0" width="245.0" height="12" rx="3"/>
+<line class="live" x1="585.8" x2="848.3" y1="425.0" y2="425.0"/>
+<path class="ms-ship" d="M585.8,418.0 L592.8,425.0 L585.8,432.0 L578.8,425.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="429.0">Shipped 0.50.0</text>
 </a>
-<a href="https://github.com/tmux/tmux/issues/5713" target="_blank" rel="noopener"><title>tmux: Declined for now Oct 13; premature, waiting to see wider adoption</title>
+<a href="https://github.com/tmux/tmux/commit/9e5702fbb75e7ebcd9938eda72b764f4d7237c29" target="_blank" rel="noopener"><title>tmux: Declined for now Oct 13; Minimal support merged Nov 12; Forwarding to the outer terminal merged Nov 23; declined Oct 13 as premature, then taken in a minimal form</title>
 <rect class="rowhit" x="0" y="440.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="440.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="440.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="440.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="440.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="440.0" width="180" height="30"/>
 <text class="name" x="150" y="459.0" text-anchor="end">tmux</text>
-<path class="decl" d="M572.3,450.0 L582.3,460.0 M572.3,460.0 L582.3,450.0"/>
-<text class="status st-link st-declined" x="880" y="459.0">Declined for now</text>
+<rect class="bar-merged" x="340.8" y="449.0" width="507.5" height="12" rx="3"/>
+<text class="status st-link st-merged" x="880" y="459.0">Merged, unreleased</text>
 </a>
-<a href="https://github.com/warpdotdev/warp/pull/16460" target="_blank" rel="noopener"><title>Warp: Pull request opened Oct 14</title>
+<a href="https://github.com/warpdotdev/warp/issues/16407" target="_blank" rel="noopener"><title>Warp: Requested Oct 10; Spec pull request opened Oct 14; Spec pull request closed, stale Oct 31</title>
 <rect class="rowhit" x="0" y="470.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="470.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="470.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="470.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="470.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="470.0" width="180" height="30"/>
 <text class="name" x="150" y="489.0" text-anchor="end">Warp</text>
-<rect class="bar-open" x="604.2" y="479.0" width="228.8" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="489.0">Pull request open</text>
+<rect class="bar-open" x="305.8" y="479.0" width="542.5" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="489.0">Requested</text>
 </a>
 <a href="https://github.com/getpaseo/paseo/pull/6962" target="_blank" rel="noopener"><title>Paseo: Pull request opened Oct 15</title>
 <rect class="rowhit" x="0" y="500.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="500.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="500.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="500.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="500.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="500.0" width="180" height="30"/>
 <text class="name" x="150" y="519.0" text-anchor="end">Paseo</text>
-<rect class="bar-open" x="631.2" y="509.0" width="201.9" height="12" rx="3"/>
+<rect class="bar-open" x="364.2" y="509.0" width="484.2" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="519.0">Pull request open</text>
 </a>
 <a href="https://github.com/stablyai/orca/releases/tag/v1.4.232" target="_blank" rel="noopener"><title>Orca: Merged Oct 19; Shipped in v1.4.232 Oct 20</title>
 <rect class="rowhit" x="0" y="530.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="530.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="530.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="530.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="530.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="530.0" width="180" height="30"/>
 <text class="name" x="150" y="549.0" text-anchor="end">Orca</text>
-<rect class="bar-work" x="738.8" y="539.0" width="26.9" height="12" rx="3"/>
-<line class="live" x1="765.8" x2="833.1" y1="545.0" y2="545.0"/>
-<path class="ms-ship" d="M765.8,538.0 L772.8,545.0 L765.8,552.0 L758.8,545.0 Z"/>
+<rect class="bar-work" x="410.8" y="539.0" width="11.7" height="12" rx="3"/>
+<line class="live" x1="422.5" x2="848.3" y1="545.0" y2="545.0"/>
+<path class="ms-ship" d="M422.5,538.0 L429.5,545.0 L422.5,552.0 L415.5,545.0 Z"/>
 <text class="status st-link st-shipped" x="880" y="549.0">Shipped v1.4.232</text>
 </a>
-<a href="https://github.com/zellij-org/zellij/pull/5734" target="_blank" rel="noopener"><title>Zellij: Merged Oct 20</title>
+<a href="https://github.com/zellij-org/zellij/releases/tag/v0.46.0" target="_blank" rel="noopener"><title>Zellij: Merged Oct 20; Shipped in v0.46.0 Nov 11</title>
 <rect class="rowhit" x="0" y="560.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="560.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="560.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="560.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="560.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="560.0" width="180" height="30"/>
 <text class="name" x="150" y="579.0" text-anchor="end">Zellij</text>
-<rect class="bar-merged" x="765.8" y="569.0" width="67.3" height="12" rx="3"/>
-<text class="status st-link st-merged" x="880" y="579.0">Merged, unreleased</text>
+<rect class="bar-work" x="422.5" y="569.0" width="256.7" height="12" rx="3"/>
+<line class="live" x1="679.2" x2="848.3" y1="575.0" y2="575.0"/>
+<path class="ms-ship" d="M679.2,568.0 L686.2,575.0 L679.2,582.0 L672.2,575.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="579.0">Shipped v0.46.0</text>
 </a>
-<a href="https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md" target="_blank" rel="noopener"><title>agterm: Backlogged, waits on libghostty Oct 21</title>
+<a href="https://github.com/umputun/agterm/commit/71a9483fd6b4cec0039241f995e1cf659f7849a7" target="_blank" rel="noopener"><title>agterm: Backlogged, waits on libghostty Oct 21; Backlog item dropped Nov 6</title>
 <rect class="rowhit" x="0" y="590.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="590.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="590.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="590.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="590.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="590.0" width="180" height="30"/>
 <text class="name" x="150" y="609.0" text-anchor="end">agterm</text>
-<rect class="bar-open" x="792.7" y="599.0" width="40.4" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="609.0">Waits on libghostty</text>
+<path class="decl" d="M429.2,600.0 L439.2,610.0 M429.2,610.0 L439.2,600.0"/>
+<text class="status st-link st-declined" x="880" y="609.0">Backlog item dropped</text>
 </a>
 <text class="grp" x="12" y="642">Coding agents</text>
 <line class="grpline" x1="12" x2="1028" y1="650" y2="650"/>
 <a href="https://github.com/earendil-works/pi/releases/tag/v1.1.0" target="_blank" rel="noopener"><title>pi: Shipped in v1.1.0 Oct 7</title>
 <rect class="rowhit" x="0" y="660.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="660.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="660.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="660.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="660.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="660.0" width="180" height="30"/>
 <text class="name" x="150" y="679.0" text-anchor="end">pi</text>
-<line class="live" x1="415.8" x2="833.1" y1="675.0" y2="675.0"/>
-<path class="ms-ship" d="M415.8,668.0 L422.8,675.0 L415.8,682.0 L408.8,675.0 Z"/>
+<line class="live" x1="270.8" x2="848.3" y1="675.0" y2="675.0"/>
+<path class="ms-ship" d="M270.8,668.0 L277.8,675.0 L270.8,682.0 L263.8,675.0 Z"/>
 <text class="status st-link st-shipped" x="880" y="679.0">Shipped v1.1.0</text>
 </a>
-<a href="https://github.com/anthropics/claude-code/releases/tag/v2.1.295" target="_blank" rel="noopener"><title>Claude Code: Shipped in 2.1.295 Oct 8</title>
+<a href="https://github.com/docker/docker-agent/releases/tag/v1.150.0" target="_blank" rel="noopener"><title>Docker Agent: Merged Oct 7; Shipped in v1.150.0 Oct 9</title>
 <rect class="rowhit" x="0" y="690.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="690.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="690.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="690.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="690.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="690.0" width="180" height="30"/>
-<text class="name" x="150" y="709.0" text-anchor="end">Claude Code</text>
-<line class="live" x1="442.7" x2="833.1" y1="705.0" y2="705.0"/>
-<path class="ms-ship" d="M442.7,698.0 L449.7,705.0 L442.7,712.0 L435.7,705.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="709.0">Shipped 2.1.295</text>
+<text class="name" x="150" y="709.0" text-anchor="end">Docker Agent</text>
+<rect class="bar-work" x="270.8" y="699.0" width="23.3" height="12" rx="3"/>
+<line class="live" x1="294.2" x2="848.3" y1="705.0" y2="705.0"/>
+<path class="ms-ship" d="M294.2,698.0 L301.2,705.0 L294.2,712.0 L287.2,705.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="709.0">Shipped v1.150.0</text>
+</a>
+<a href="https://github.com/anthropics/claude-code/releases/tag/v2.1.295" target="_blank" rel="noopener"><title>Claude Code: Shipped in 2.1.295 Oct 8</title>
+<rect class="rowhit" x="0" y="720.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="720.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="720.0" width="180" height="30"/>
+<text class="name" x="150" y="739.0" text-anchor="end">Claude Code</text>
+<line class="live" x1="282.5" x2="848.3" y1="735.0" y2="735.0"/>
+<path class="ms-ship" d="M282.5,728.0 L289.5,735.0 L282.5,742.0 L275.5,735.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="739.0">Shipped 2.1.295</text>
 </a>
 <a href="https://github.com/charmbracelet/crush/releases/tag/v0.98.0" target="_blank" rel="noopener"><title>Crush: Shipped in v0.98.0 Oct 8</title>
-<rect class="rowhit" x="0" y="720.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="720.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="720.0" width="180" height="30"/>
-<text class="name" x="150" y="739.0" text-anchor="end">Crush</text>
-<line class="live" x1="442.7" x2="833.1" y1="735.0" y2="735.0"/>
-<path class="ms-ship" d="M442.7,728.0 L449.7,735.0 L442.7,742.0 L435.7,735.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="739.0">Shipped v0.98.0</text>
+<rect class="rowhit" x="0" y="750.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="750.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="750.0" width="180" height="30"/>
+<text class="name" x="150" y="769.0" text-anchor="end">Crush</text>
+<line class="live" x1="282.5" x2="848.3" y1="765.0" y2="765.0"/>
+<path class="ms-ship" d="M282.5,758.0 L289.5,765.0 L282.5,772.0 L275.5,765.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="769.0">Shipped v0.98.0</text>
+</a>
+<a href="https://docs.factory.com/changelog/release-notes" target="_blank" rel="noopener"><title>Factory Droid: Shipped in v0.236.0 Oct 8</title>
+<rect class="rowhit" x="0" y="780.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="780.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="780.0" width="180" height="30"/>
+<text class="name" x="150" y="799.0" text-anchor="end">Factory Droid</text>
+<line class="live" x1="282.5" x2="848.3" y1="795.0" y2="795.0"/>
+<path class="ms-ship" d="M282.5,788.0 L289.5,795.0 L282.5,802.0 L275.5,795.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="799.0">Shipped v0.236.0</text>
 </a>
 <a href="https://github.com/openai/codex/pull/52725" target="_blank" rel="noopener"><title>Codex CLI: Merged Oct 9; Shipped in rust-v0.163.0 Oct 15</title>
-<rect class="rowhit" x="0" y="750.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="750.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="750.0" width="180" height="30"/>
-<text class="name" x="150" y="769.0" text-anchor="end">Codex CLI</text>
-<rect class="bar-work" x="469.6" y="759.0" width="161.5" height="12" rx="3"/>
-<line class="live" x1="631.2" x2="833.1" y1="765.0" y2="765.0"/>
-<path class="ms-ship" d="M631.2,758.0 L638.2,765.0 L631.2,772.0 L624.2,765.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="769.0">Shipped rust-v0.163.0</text>
+<rect class="rowhit" x="0" y="810.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="810.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="810.0" width="180" height="30"/>
+<text class="name" x="150" y="829.0" text-anchor="end">Codex CLI</text>
+<rect class="bar-work" x="294.2" y="819.0" width="70.0" height="12" rx="3"/>
+<line class="live" x1="364.2" x2="848.3" y1="825.0" y2="825.0"/>
+<path class="ms-ship" d="M364.2,818.0 L371.2,825.0 L364.2,832.0 L357.2,825.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="829.0">Shipped rust-v0.163.0</text>
 </a>
 <a href="https://github.com/can1357/oh-my-pi/releases/tag/v18.8.7" target="_blank" rel="noopener"><title>oh-my-pi: Shipped in v18.8.7 Oct 9</title>
-<rect class="rowhit" x="0" y="780.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="780.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="780.0" width="180" height="30"/>
-<text class="name" x="150" y="799.0" text-anchor="end">oh-my-pi</text>
-<line class="live" x1="469.6" x2="833.1" y1="795.0" y2="795.0"/>
-<path class="ms-ship" d="M469.6,788.0 L476.6,795.0 L469.6,802.0 L462.6,795.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="799.0">Shipped v18.8.7</text>
-</a>
-<a href="https://github.com/google-gemini/gemini-cli/issues/29710" target="_blank" rel="noopener"><title>Gemini CLI: Requested Oct 10</title>
-<rect class="rowhit" x="0" y="810.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="810.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="810.0" width="180" height="30"/>
-<text class="name" x="150" y="829.0" text-anchor="end">Gemini CLI</text>
-<rect class="bar-open" x="496.5" y="819.0" width="336.5" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="829.0">Requested</text>
-</a>
-<a href="https://github.com/QwenLM/qwen-code/pull/13994" target="_blank" rel="noopener"><title>Qwen Code: Requested Oct 10; Pull request opened Oct 12</title>
 <rect class="rowhit" x="0" y="840.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="840.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="840.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="840.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="840.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="840.0" width="180" height="30"/>
-<text class="name" x="150" y="859.0" text-anchor="end">Qwen Code</text>
-<rect class="bar-open" x="496.5" y="849.0" width="336.5" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="859.0">Pull request open</text>
+<text class="name" x="150" y="859.0" text-anchor="end">oh-my-pi</text>
+<line class="live" x1="294.2" x2="848.3" y1="855.0" y2="855.0"/>
+<path class="ms-ship" d="M294.2,848.0 L301.2,855.0 L294.2,862.0 L287.2,855.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="859.0">Shipped v18.8.7</text>
 </a>
-<a href="https://github.com/XiaomiMiMo/MiMo-Code/issues/2631" target="_blank" rel="noopener"><title>MiMo Code: Requested Oct 10</title>
+<a href="https://github.com/google-gemini/gemini-cli/issues/29710" target="_blank" rel="noopener"><title>Gemini CLI: Requested Oct 10; Pull request opened Oct 24; Pull request closed Nov 8</title>
 <rect class="rowhit" x="0" y="870.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="870.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="870.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="870.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="870.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="870.0" width="180" height="30"/>
-<text class="name" x="150" y="889.0" text-anchor="end">MiMo Code</text>
-<rect class="bar-open" x="496.5" y="879.0" width="336.5" height="12" rx="3"/>
+<text class="name" x="150" y="889.0" text-anchor="end">Gemini CLI</text>
+<rect class="bar-open" x="305.8" y="879.0" width="542.5" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="889.0">Requested</text>
 </a>
-<a href="https://github.com/github/copilot-cli/issues/5112" target="_blank" rel="noopener"><title>GitHub Copilot CLI: Requested Oct 10</title>
+<a href="https://github.com/QwenLM/qwen-code/releases/tag/v0.26.9" target="_blank" rel="noopener"><title>Qwen Code: Requested Oct 10; Pull request opened Oct 12; Merged Nov 6; Shipped in v0.26.9 Nov 6</title>
 <rect class="rowhit" x="0" y="900.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="900.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="900.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="900.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="900.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="900.0" width="180" height="30"/>
-<text class="name" x="150" y="919.0" text-anchor="end">GitHub Copilot CLI</text>
-<rect class="bar-open" x="496.5" y="909.0" width="336.5" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="919.0">Requested</text>
+<text class="name" x="150" y="919.0" text-anchor="end">Qwen Code</text>
+<rect class="bar-work" x="305.8" y="909.0" width="315.0" height="12" rx="3"/>
+<line class="live" x1="620.8" x2="848.3" y1="915.0" y2="915.0"/>
+<path class="ms-ship" d="M620.8,908.0 L627.8,915.0 L620.8,922.0 L613.8,915.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="919.0">Shipped v0.26.9</text>
 </a>
-<a href="https://github.com/Kilo-Org/kilocode/issues/14973" target="_blank" rel="noopener"><title>Kilo Code: Requested Oct 11</title>
+<a href="https://github.com/XiaomiMiMo/MiMo-Code/issues/2631" target="_blank" rel="noopener"><title>MiMo Code: Requested Oct 10</title>
 <rect class="rowhit" x="0" y="930.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="930.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="930.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="930.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="930.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="930.0" width="180" height="30"/>
-<text class="name" x="150" y="949.0" text-anchor="end">Kilo Code</text>
-<rect class="bar-open" x="523.5" y="939.0" width="309.6" height="12" rx="3"/>
+<text class="name" x="150" y="949.0" text-anchor="end">MiMo Code</text>
+<rect class="bar-open" x="305.8" y="939.0" width="542.5" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="949.0">Requested</text>
 </a>
-<a href="https://github.com/anomalyco/opencode/pull/54560" target="_blank" rel="noopener"><title>opencode: Pull request opened Oct 11</title>
+<a href="https://github.com/github/copilot-cli/releases/tag/v1.0.107" target="_blank" rel="noopener"><title>GitHub Copilot CLI: Requested Oct 10; Shipped in v1.0.107 Nov 6</title>
 <rect class="rowhit" x="0" y="960.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="960.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="960.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="960.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="960.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="960.0" width="180" height="30"/>
-<text class="name" x="150" y="979.0" text-anchor="end">opencode</text>
-<rect class="bar-open" x="523.5" y="969.0" width="309.6" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="979.0">Pull request open</text>
+<text class="name" x="150" y="979.0" text-anchor="end">GitHub Copilot CLI</text>
+<rect class="bar-work" x="305.8" y="969.0" width="315.0" height="12" rx="3"/>
+<line class="live" x1="620.8" x2="848.3" y1="975.0" y2="975.0"/>
+<path class="ms-ship" d="M620.8,968.0 L627.8,975.0 L620.8,982.0 L613.8,975.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="979.0">Shipped v1.0.107</text>
 </a>
-<a href="https://github.com/mastra-ai/mastra/issues/26910" target="_blank" rel="noopener"><title>Mastra Code: Requested Oct 13</title>
+<a href="https://github.com/Kilo-Org/kilocode/issues/14973" target="_blank" rel="noopener"><title>Kilo Code: Requested Oct 11</title>
 <rect class="rowhit" x="0" y="990.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="990.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="990.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="990.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="990.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="990.0" width="180" height="30"/>
-<text class="name" x="150" y="1009.0" text-anchor="end">Mastra Code</text>
-<rect class="bar-open" x="577.3" y="999.0" width="255.8" height="12" rx="3"/>
+<text class="name" x="150" y="1009.0" text-anchor="end">Kilo Code</text>
+<rect class="bar-open" x="317.5" y="999.0" width="530.8" height="12" rx="3"/>
 <text class="status st-link st-open" x="880" y="1009.0">Requested</text>
 </a>
-<a href="https://github.com/NousResearch/hermes-agent/pull/140837" target="_blank" rel="noopener"><title>Hermes Agent: Requested, pull request opened Oct 14; Second pull request opened Oct 18</title>
+<a href="https://github.com/anomalyco/opencode/releases/tag/v2.2.0" target="_blank" rel="noopener"><title>opencode: Pull request opened Oct 11; Merged Oct 13; Shipped in v2.2.0 Oct 27</title>
 <rect class="rowhit" x="0" y="1020.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1020.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1020.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1020.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1020.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="1020.0" width="180" height="30"/>
-<text class="name" x="150" y="1039.0" text-anchor="end">Hermes Agent</text>
-<rect class="bar-open" x="604.2" y="1029.0" width="228.8" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1039.0">Pull request open</text>
+<text class="name" x="150" y="1039.0" text-anchor="end">opencode</text>
+<rect class="bar-work" x="317.5" y="1029.0" width="186.7" height="12" rx="3"/>
+<line class="live" x1="504.2" x2="848.3" y1="1035.0" y2="1035.0"/>
+<path class="ms-ship" d="M504.2,1028.0 L511.2,1035.0 L504.2,1042.0 L497.2,1035.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1039.0">Shipped v2.2.0</text>
 </a>
-<a href="https://github.com/aaif-goose/goose/pull/12928" target="_blank" rel="noopener"><title>goose: Merged Oct 16</title>
+<a href="https://github.com/mastra-ai/mastra/issues/26910" target="_blank" rel="noopener"><title>Mastra Code: Requested Oct 13</title>
 <rect class="rowhit" x="0" y="1050.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1050.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1050.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1050.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1050.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="1050.0" width="180" height="30"/>
-<text class="name" x="150" y="1069.0" text-anchor="end">goose</text>
-<rect class="bar-merged" x="658.1" y="1059.0" width="175.0" height="12" rx="3"/>
-<text class="status st-link st-merged" x="880" y="1069.0">Merged, unreleased</text>
+<text class="name" x="150" y="1069.0" text-anchor="end">Mastra Code</text>
+<rect class="bar-open" x="340.8" y="1059.0" width="507.5" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1069.0">Requested</text>
 </a>
-<a href="https://github.com/openclaw/openclaw/pull/175692" target="_blank" rel="noopener"><title>OpenClaw: Merged Oct 18</title>
+<a href="https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4" target="_blank" rel="noopener"><title>Hermes Agent: Requested, pull request opened Oct 14; Second pull request opened Oct 18; Merged Nov 22; Shipped in v0.23.4 Nov 24</title>
 <rect class="rowhit" x="0" y="1080.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1080.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1080.0" width="26.9" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1080.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1080.0" width="11.7" height="30"/>
 <rect class="rowhit" x="860" y="1080.0" width="180" height="30"/>
-<text class="name" x="150" y="1099.0" text-anchor="end">OpenClaw</text>
-<rect class="bar-merged" x="711.9" y="1089.0" width="121.2" height="12" rx="3"/>
-<text class="status st-link st-merged" x="880" y="1099.0">Merged, unreleased</text>
+<text class="name" x="150" y="1099.0" text-anchor="end">Hermes Agent</text>
+<rect class="bar-work" x="352.5" y="1089.0" width="478.3" height="12" rx="3"/>
+<line class="live" x1="830.8" x2="848.3" y1="1095.0" y2="1095.0"/>
+<path class="ms-ship" d="M830.8,1088.0 L837.8,1095.0 L830.8,1102.0 L823.8,1095.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1099.0">Shipped v0.23.4</text>
 </a>
-<text class="grp" x="12" y="1132">Libraries and developer tools</text>
-<line class="grpline" x1="12" x2="1028" y1="1140" y2="1140"/>
+<a href="https://github.com/aaif-goose/goose/releases/tag/v1.56.0" target="_blank" rel="noopener"><title>goose: Merged Oct 16; Shipped in v1.56.0 Oct 23</title>
+<rect class="rowhit" x="0" y="1110.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1110.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1110.0" width="180" height="30"/>
+<text class="name" x="150" y="1129.0" text-anchor="end">goose</text>
+<rect class="bar-work" x="375.8" y="1119.0" width="81.7" height="12" rx="3"/>
+<line class="live" x1="457.5" x2="848.3" y1="1125.0" y2="1125.0"/>
+<path class="ms-ship" d="M457.5,1118.0 L464.5,1125.0 L457.5,1132.0 L450.5,1125.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1129.0">Shipped v1.56.0</text>
+</a>
+<a href="https://github.com/google-antigravity/antigravity-cli/releases/tag/1.4.0" target="_blank" rel="noopener"><title>Antigravity CLI: Shipped in 1.4.0 Oct 16</title>
+<rect class="rowhit" x="0" y="1140.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1140.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1140.0" width="180" height="30"/>
+<text class="name" x="150" y="1159.0" text-anchor="end">Antigravity CLI</text>
+<line class="live" x1="375.8" x2="848.3" y1="1155.0" y2="1155.0"/>
+<path class="ms-ship" d="M375.8,1148.0 L382.8,1155.0 L375.8,1162.0 L368.8,1155.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1159.0">Shipped 1.4.0</text>
+</a>
+<a href="https://github.com/openclaw/openclaw/releases/tag/v2026.11.5" target="_blank" rel="noopener"><title>OpenClaw: Merged Oct 18; Shipped in v2026.11.5 Nov 17</title>
+<rect class="rowhit" x="0" y="1170.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1170.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1170.0" width="180" height="30"/>
+<text class="name" x="150" y="1189.0" text-anchor="end">OpenClaw</text>
+<rect class="bar-work" x="399.2" y="1179.0" width="350.0" height="12" rx="3"/>
+<line class="live" x1="749.2" x2="848.3" y1="1185.0" y2="1185.0"/>
+<path class="ms-ship" d="M749.2,1178.0 L756.2,1185.0 L749.2,1192.0 L742.2,1185.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1189.0">Shipped v2026.11.5</text>
+</a>
+<a href="https://github.com/mistralai/mistral-vibe/releases/tag/v3.0.0" target="_blank" rel="noopener"><title>Mistral Vibe: Shipped in v3.0.0 Oct 19</title>
+<rect class="rowhit" x="0" y="1200.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1200.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1200.0" width="180" height="30"/>
+<text class="name" x="150" y="1219.0" text-anchor="end">Mistral Vibe</text>
+<line class="live" x1="410.8" x2="848.3" y1="1215.0" y2="1215.0"/>
+<path class="ms-ship" d="M410.8,1208.0 L417.8,1215.0 L410.8,1222.0 L403.8,1215.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1219.0">Shipped v3.0.0</text>
+</a>
+<text class="grp" x="12" y="1252">Libraries and developer tools</text>
+<line class="grpline" x1="12" x2="1028" y1="1260" y2="1260"/>
 <a href="https://github.com/rust-lang/cargo/issues/17559" target="_blank" rel="noopener"><title>Cargo: Requested Oct 7</title>
-<rect class="rowhit" x="0" y="1150.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1150.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1150.0" width="180" height="30"/>
-<text class="name" x="150" y="1169.0" text-anchor="end">Cargo</text>
-<rect class="bar-open" x="415.8" y="1159.0" width="417.3" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1169.0">Requested</text>
+<rect class="rowhit" x="0" y="1270.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1270.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1270.0" width="180" height="30"/>
+<text class="name" x="150" y="1289.0" text-anchor="end">Cargo</text>
+<rect class="bar-open" x="270.8" y="1279.0" width="577.5" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1289.0">Requested</text>
 </a>
 <a href="https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0" target="_blank" rel="noopener"><title>Bubble Tea: Shipped in v2.1.0 Oct 8</title>
-<rect class="rowhit" x="0" y="1180.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1180.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1180.0" width="180" height="30"/>
-<text class="name" x="150" y="1199.0" text-anchor="end">Bubble Tea</text>
-<line class="live" x1="442.7" x2="833.1" y1="1195.0" y2="1195.0"/>
-<path class="ms-ship" d="M442.7,1188.0 L449.7,1195.0 L442.7,1202.0 L435.7,1195.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="1199.0">Shipped v2.1.0</text>
+<rect class="rowhit" x="0" y="1300.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1300.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1300.0" width="180" height="30"/>
+<text class="name" x="150" y="1319.0" text-anchor="end">Bubble Tea</text>
+<line class="live" x1="282.5" x2="848.3" y1="1315.0" y2="1315.0"/>
+<path class="ms-ship" d="M282.5,1308.0 L289.5,1315.0 L282.5,1322.0 L275.5,1315.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1319.0">Shipped v2.1.0</text>
 </a>
 <a href="https://github.com/neovim/neovim/issues/42276" target="_blank" rel="noopener"><title>Neovim: Requested Oct 8</title>
-<rect class="rowhit" x="0" y="1210.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1210.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1210.0" width="180" height="30"/>
-<text class="name" x="150" y="1229.0" text-anchor="end">Neovim</text>
-<rect class="bar-open" x="442.7" y="1219.0" width="390.4" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1229.0">Requested</text>
+<rect class="rowhit" x="0" y="1330.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1330.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1330.0" width="180" height="30"/>
+<text class="name" x="150" y="1349.0" text-anchor="end">Neovim</text>
+<rect class="bar-open" x="282.5" y="1339.0" width="565.8" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1349.0">Requested</text>
 </a>
 <a href="https://github.com/ratatui/ratatui/issues/2811" target="_blank" rel="noopener"><title>ratatui: Requested Oct 8</title>
-<rect class="rowhit" x="0" y="1240.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1240.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1240.0" width="180" height="30"/>
-<text class="name" x="150" y="1259.0" text-anchor="end">ratatui</text>
-<rect class="bar-open" x="442.7" y="1249.0" width="390.4" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1259.0">Requested</text>
+<rect class="rowhit" x="0" y="1360.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1360.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1360.0" width="180" height="30"/>
+<text class="name" x="150" y="1379.0" text-anchor="end">ratatui</text>
+<rect class="bar-open" x="282.5" y="1369.0" width="565.8" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1379.0">Requested</text>
 </a>
 <a href="https://github.com/tqdm/tqdm/pull/1884" target="_blank" rel="noopener"><title>tqdm: Requested Oct 8; Pull request opened Oct 16</title>
-<rect class="rowhit" x="0" y="1270.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1270.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1270.0" width="180" height="30"/>
-<text class="name" x="150" y="1289.0" text-anchor="end">tqdm</text>
-<rect class="bar-open" x="442.7" y="1279.0" width="390.4" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1289.0">Pull request open</text>
+<rect class="rowhit" x="0" y="1390.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1390.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1390.0" width="180" height="30"/>
+<text class="name" x="150" y="1409.0" text-anchor="end">tqdm</text>
+<rect class="bar-open" x="282.5" y="1399.0" width="565.8" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1409.0">Pull request open</text>
 </a>
-<a href="https://github.com/expo/expo/pull/51289" target="_blank" rel="noopener"><title>Expo CLI: Experimental pull request opened Oct 9</title>
-<rect class="rowhit" x="0" y="1300.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1300.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1300.0" width="180" height="30"/>
-<text class="name" x="150" y="1319.0" text-anchor="end">Expo CLI</text>
-<rect class="bar-open" x="469.6" y="1309.0" width="363.5" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1319.0">Experimental pull request</text>
+<a href="https://github.com/expo/expo/pull/51289" target="_blank" rel="noopener"><title>Expo CLI: Experimental pull request opened Oct 9; Merged Oct 27</title>
+<rect class="rowhit" x="0" y="1420.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1420.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1420.0" width="180" height="30"/>
+<text class="name" x="150" y="1439.0" text-anchor="end">Expo CLI</text>
+<rect class="bar-merged" x="294.2" y="1429.0" width="554.2" height="12" rx="3"/>
+<text class="status st-link st-merged" x="880" y="1439.0">Merged, unreleased</text>
+</a>
+<a href="https://github.com/gohugoio/hugo/releases/tag/v0.168.0" target="_blank" rel="noopener"><title>Hugo: Merged Oct 9; Shipped in v0.168.0 Oct 13</title>
+<rect class="rowhit" x="0" y="1450.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1450.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1450.0" width="180" height="30"/>
+<text class="name" x="150" y="1469.0" text-anchor="end">Hugo</text>
+<rect class="bar-work" x="294.2" y="1459.0" width="46.7" height="12" rx="3"/>
+<line class="live" x1="340.8" x2="848.3" y1="1465.0" y2="1465.0"/>
+<path class="ms-ship" d="M340.8,1458.0 L347.8,1465.0 L340.8,1472.0 L333.8,1465.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1469.0">Shipped v0.168.0</text>
+</a>
+<a href="https://github.com/dotnet/msbuild/pull/15263" target="_blank" rel="noopener"><title>MSBuild: Draft pull request opened Oct 12</title>
+<rect class="rowhit" x="0" y="1480.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1480.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1480.0" width="180" height="30"/>
+<text class="name" x="150" y="1499.0" text-anchor="end">MSBuild</text>
+<rect class="bar-open" x="329.2" y="1489.0" width="519.2" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1499.0">Draft pull request</text>
 </a>
 <a href="https://github.com/anomalyco/opentui/releases/tag/v0.6.3" target="_blank" rel="noopener"><title>OpenTUI: Shipped in v0.6.3 Oct 13</title>
-<rect class="rowhit" x="0" y="1330.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1330.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1330.0" width="180" height="30"/>
-<text class="name" x="150" y="1349.0" text-anchor="end">OpenTUI</text>
-<line class="live" x1="577.3" x2="833.1" y1="1345.0" y2="1345.0"/>
-<path class="ms-ship" d="M577.3,1338.0 L584.3,1345.0 L577.3,1352.0 L570.3,1345.0 Z"/>
-<text class="status st-link st-shipped" x="880" y="1349.0">Shipped v0.6.3</text>
+<rect class="rowhit" x="0" y="1510.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1510.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1510.0" width="180" height="30"/>
+<text class="name" x="150" y="1529.0" text-anchor="end">OpenTUI</text>
+<line class="live" x1="340.8" x2="848.3" y1="1525.0" y2="1525.0"/>
+<path class="ms-ship" d="M340.8,1518.0 L347.8,1525.0 L340.8,1532.0 L333.8,1525.0 Z"/>
+<text class="status st-link st-shipped" x="880" y="1529.0">Shipped v0.6.3</text>
 </a>
-<a href="https://github.com/gradle/gradle/pull/39468" target="_blank" rel="noopener"><title>Gradle: Pull request opened Oct 14</title>
-<rect class="rowhit" x="0" y="1360.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1360.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1360.0" width="180" height="30"/>
-<text class="name" x="150" y="1379.0" text-anchor="end">Gradle</text>
-<rect class="bar-open" x="604.2" y="1369.0" width="228.8" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1379.0">Pull request open</text>
+<a href="https://github.com/gradle/gradle/pull/39468" target="_blank" rel="noopener"><title>Gradle: Pull request opened Oct 14; Pull request closed Nov 13</title>
+<rect class="rowhit" x="0" y="1540.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1540.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1540.0" width="180" height="30"/>
+<text class="name" x="150" y="1559.0" text-anchor="end">Gradle</text>
+<path class="decl" d="M347.5,1550.0 L357.5,1560.0 M347.5,1560.0 L357.5,1550.0"/>
+<text class="status st-link st-declined" x="880" y="1559.0">Pull request closed</text>
 </a>
 <a href="https://github.com/docker/compose/issues/14365" target="_blank" rel="noopener"><title>Docker Compose: Requested Oct 20</title>
-<rect class="rowhit" x="0" y="1390.0" width="160" height="30"/>
-<rect class="rowhit c0" x="160.0" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c1" x="186.9" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c2" x="213.8" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c3" x="240.8" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c4" x="267.7" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c5" x="294.6" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c6" x="321.5" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c7" x="348.5" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c8" x="375.4" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c9" x="402.3" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c10" x="429.2" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c11" x="456.2" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c12" x="483.1" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c13" x="510.0" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c14" x="536.9" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c15" x="563.8" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c16" x="590.8" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c17" x="617.7" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c18" x="644.6" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c19" x="671.5" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c20" x="698.5" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c21" x="725.4" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c22" x="752.3" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c23" x="779.2" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c24" x="806.2" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit c25" x="833.1" y="1390.0" width="26.9" height="30"/>
-<rect class="rowhit" x="860" y="1390.0" width="180" height="30"/>
-<text class="name" x="150" y="1409.0" text-anchor="end">Docker Compose</text>
-<rect class="bar-open" x="765.8" y="1399.0" width="67.3" height="12" rx="3"/>
-<text class="status st-link st-open" x="880" y="1409.0">Requested</text>
+<rect class="rowhit" x="0" y="1570.0" width="160" height="30"/>
+<rect class="rowhit c0" x="160.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c1" x="171.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c2" x="183.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c3" x="195.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c4" x="206.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c5" x="218.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c6" x="230.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c7" x="241.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c8" x="253.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c9" x="265.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c10" x="276.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c11" x="288.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c12" x="300.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c13" x="311.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c14" x="323.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c15" x="335.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c16" x="346.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c17" x="358.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c18" x="370.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c19" x="381.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c20" x="393.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c21" x="405.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c22" x="416.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c23" x="428.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c24" x="440.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c25" x="451.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c26" x="463.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c27" x="475.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c28" x="486.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c29" x="498.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c30" x="510.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c31" x="521.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c32" x="533.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c33" x="545.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c34" x="556.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c35" x="568.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c36" x="580.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c37" x="591.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c38" x="603.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c39" x="615.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c40" x="626.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c41" x="638.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c42" x="650.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c43" x="661.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c44" x="673.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c45" x="685.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c46" x="696.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c47" x="708.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c48" x="720.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c49" x="731.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c50" x="743.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c51" x="755.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c52" x="766.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c53" x="778.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c54" x="790.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c55" x="801.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c56" x="813.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c57" x="825.0" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c58" x="836.7" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit c59" x="848.3" y="1570.0" width="11.7" height="30"/>
+<rect class="rowhit" x="860" y="1570.0" width="180" height="30"/>
+<text class="name" x="150" y="1589.0" text-anchor="end">Docker Compose</text>
+<rect class="bar-open" x="422.5" y="1579.0" width="425.8" height="12" rx="3"/>
+<text class="status st-link st-open" x="880" y="1589.0">Requested</text>
 </a>
 </svg>
 </div>
@@ -1548,24 +3454,29 @@ A program asks whether the terminal supports it with `ESC ] 7501 ; ? ESC \`, and
 | Oct 6 | Rex | Shipped with the spec | [spec](https://www.superlogical.com/rex/docs/build/program-status) |
 | Oct 6 | libghostty | Merged | [#14560](https://github.com/ghostty-org/ghostty/pull/14560) |
 | Oct 7 | Spec | Revision 0.3 | [spec](https://www.superlogical.com/rex/docs/build/program-status) |
-| Oct 7 | Windows Terminal | Requested | [#1096](https://github.com/microsoft/intelligent-terminal/issues/1096) |
+| Oct 7 | Intelligent Terminal | Requested for Windows Terminal | [#1096](https://github.com/microsoft/intelligent-terminal/issues/1096) |
 | Oct 7 | Superset | Requested | [#8278](https://github.com/superset-sh/superset/issues/8278) |
 | Oct 7 | pi | Shipped in v1.1.0 | [release](https://github.com/earendil-works/pi/releases/tag/v1.1.0) |
+| Oct 7 | Docker Agent | Merged | [#4544](https://github.com/docker/docker-agent/pull/4544) |
 | Oct 7 | Cargo | Requested | [#17559](https://github.com/rust-lang/cargo/issues/17559) |
-| Oct 8 | Windows Terminal | Moved to Intelligent Terminal | [#1096](https://github.com/microsoft/intelligent-terminal/issues/1096) |
+| Oct 8 | Intelligent Terminal | Moved to Intelligent Terminal | [#1096](https://github.com/microsoft/intelligent-terminal/issues/1096) |
 | Oct 8 | Claude Code | Shipped in 2.1.295 | [release](https://github.com/anthropics/claude-code/releases/tag/v2.1.295) |
 | Oct 8 | Crush | Shipped in v0.98.0 | [release](https://github.com/charmbracelet/crush/releases/tag/v0.98.0) |
+| Oct 8 | Factory Droid | Shipped in v0.236.0 | [changelog](https://docs.factory.com/changelog/release-notes) |
 | Oct 8 | Bubble Tea | Shipped in v2.1.0 | [release](https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0) |
 | Oct 8 | Neovim | Requested | [#42276](https://github.com/neovim/neovim/issues/42276) |
 | Oct 8 | ratatui | Requested | [#2811](https://github.com/ratatui/ratatui/issues/2811) |
 | Oct 8 | tqdm | Requested | [#1873](https://github.com/tqdm/tqdm/issues/1873) |
 | Oct 9 | cmux | Merged | [#18742](https://github.com/manaflow-ai/cmux/pull/18742) |
 | Oct 9 | iTerm2 | Merged | [`49936d3a5`](https://github.com/gnachman/iTerm2/commit/49936d3a5) |
+| Oct 9 | Docker Agent | Shipped in v1.150.0 | [release](https://github.com/docker/docker-agent/releases/tag/v1.150.0) |
 | Oct 9 | Codex CLI | Merged | [#52725](https://github.com/openai/codex/pull/52725) |
 | Oct 9 | oh-my-pi | Shipped in v18.8.7 | [release](https://github.com/can1357/oh-my-pi/releases/tag/v18.8.7) |
 | Oct 9 | Expo CLI | Experimental pull request opened | [#51289](https://github.com/expo/expo/pull/51289) |
+| Oct 9 | Hugo | Merged | [`d1024ae6`](https://github.com/gohugoio/hugo/commit/d1024ae6) |
 | Oct 10 | Spec | Revision 0.4 | [spec](https://www.superlogical.com/rex/docs/build/program-status) |
 | Oct 10 | libghostty | Updated to revision 0.4 | [#14630](https://github.com/ghostty-org/ghostty/pull/14630) |
+| Oct 10 | Warp | Requested | [#16407](https://github.com/warpdotdev/warp/issues/16407) |
 | Oct 10 | Gemini CLI | Requested | [#29710](https://github.com/google-gemini/gemini-cli/issues/29710) |
 | Oct 10 | Qwen Code | Requested | [#13870](https://github.com/QwenLM/qwen-code/issues/13870) |
 | Oct 10 | MiMo Code | Requested | [#2631](https://github.com/XiaomiMiMo/MiMo-Code/issues/2631) |
@@ -1576,83 +3487,115 @@ A program asks whether the terminal supports it with `ESC ] 7501 ; ? ESC \`, and
 | Oct 12 | cmux | Shipped in v0.65.1 | [release](https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1) |
 | Oct 12 | iTerm2 | Shipped in 3.7.5 | [downloads](https://iterm2.com/downloads.html) |
 | Oct 12 | Qwen Code | Pull request opened | [#13994](https://github.com/QwenLM/qwen-code/pull/13994) |
-| Oct 13 | kitty | Merged, for 0.50.0 | [#10657](https://github.com/kovidgoyal/kitty/pull/10657) |
+| Oct 12 | MSBuild | Draft pull request opened | [#15263](https://github.com/dotnet/msbuild/pull/15263) |
+| Oct 13 | kitty | Merged | [#10657](https://github.com/kovidgoyal/kitty/pull/10657) |
 | Oct 13 | tmux | Declined for now | [#5713](https://github.com/tmux/tmux/issues/5713) |
+| Oct 13 | opencode | Merged | [#55172](https://github.com/anomalyco/opencode/pull/55172) |
 | Oct 13 | Mastra Code | Requested | [#26910](https://github.com/mastra-ai/mastra/issues/26910) |
+| Oct 13 | Hugo | Shipped in v0.168.0 | [release](https://github.com/gohugoio/hugo/releases/tag/v0.168.0) |
 | Oct 13 | OpenTUI | Shipped in v0.6.3 | [release](https://github.com/anomalyco/opentui/releases/tag/v0.6.3) |
-| Oct 14 | Warp | Pull request opened | [#16460](https://github.com/warpdotdev/warp/pull/16460) |
+| Oct 14 | Warp | Spec pull request opened | [#16460](https://github.com/warpdotdev/warp/pull/16460) |
 | Oct 14 | Hermes Agent | Requested, pull request opened | [#138152](https://github.com/NousResearch/hermes-agent/pull/138152) |
 | Oct 14 | Gradle | Pull request opened | [#39468](https://github.com/gradle/gradle/pull/39468) |
 | Oct 15 | Paseo | Pull request opened | [#6962](https://github.com/getpaseo/paseo/pull/6962) |
 | Oct 15 | Codex CLI | Shipped in rust-v0.163.0 | [#52725](https://github.com/openai/codex/pull/52725) |
 | Oct 16 | goose | Merged | [#12928](https://github.com/aaif-goose/goose/pull/12928) |
+| Oct 16 | Antigravity CLI | Shipped in 1.4.0 | [release](https://github.com/google-antigravity/antigravity-cli/releases/tag/1.4.0) |
 | Oct 16 | tqdm | Pull request opened | [#1884](https://github.com/tqdm/tqdm/pull/1884) |
 | Oct 18 | Hermes Agent | Second pull request opened | [#140837](https://github.com/NousResearch/hermes-agent/pull/140837) |
 | Oct 18 | OpenClaw | Merged | [#175692](https://github.com/openclaw/openclaw/pull/175692) |
 | Oct 19 | Orca | Merged | [#30262](https://github.com/stablyai/orca/pull/30262) |
+| Oct 19 | Mistral Vibe | Shipped in v3.0.0 | [release](https://github.com/mistralai/mistral-vibe/releases/tag/v3.0.0) |
 | Oct 20 | Orca | Shipped in v1.4.232 | [release](https://github.com/stablyai/orca/releases/tag/v1.4.232) |
 | Oct 20 | Zellij | Merged | [#5734](https://github.com/zellij-org/zellij/pull/5734) |
 | Oct 20 | Docker Compose | Requested | [#14365](https://github.com/docker/compose/issues/14365) |
 | Oct 21 | agterm | Backlogged, waits on libghostty | [backlog](https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md) |
+| Oct 23 | goose | Shipped in v1.56.0 | [release](https://github.com/aaif-goose/goose/releases/tag/v1.56.0) |
+| Oct 24 | Gemini CLI | Pull request opened | [#29918](https://github.com/google-gemini/gemini-cli/pull/29918) |
+| Oct 27 | libghostty | Shipped in Ghostty 1.4.0 | [release notes](https://ghostty.org/docs/install/release-notes/1-4-0) |
+| Oct 27 | opencode | Shipped in v2.2.0 | [release](https://github.com/anomalyco/opencode/releases/tag/v2.2.0) |
+| Oct 27 | Expo CLI | Merged | [#51289](https://github.com/expo/expo/pull/51289) |
+| Oct 31 | Warp | Spec pull request closed, stale | [#16460](https://github.com/warpdotdev/warp/pull/16460) |
+| Nov 3 | kitty | Shipped in 0.50.0 | [changelog](https://sw.kovidgoyal.net/kitty/changelog/) |
+| Nov 6 | agterm | Backlog item dropped | [commit](https://github.com/umputun/agterm/commit/71a9483fd6b4cec0039241f995e1cf659f7849a7) |
+| Nov 6 | Qwen Code | Merged | [#16407](https://github.com/QwenLM/qwen-code/pull/16407) |
+| Nov 6 | Qwen Code | Shipped in v0.26.9 | [release](https://github.com/QwenLM/qwen-code/releases/tag/v0.26.9) |
+| Nov 6 | GitHub Copilot CLI | Shipped in v1.0.107 | [release](https://github.com/github/copilot-cli/releases/tag/v1.0.107) |
+| Nov 8 | Gemini CLI | Pull request closed | [#29918](https://github.com/google-gemini/gemini-cli/pull/29918) |
+| Nov 11 | Zellij | Shipped in v0.46.0 | [release](https://github.com/zellij-org/zellij/releases/tag/v0.46.0) |
+| Nov 12 | tmux | Minimal support merged | [`434ab3a25`](https://github.com/tmux/tmux/commit/434ab3a25072837616c34f6d6256f82f52ed988b) |
+| Nov 13 | Gradle | Pull request closed | [#39468](https://github.com/gradle/gradle/pull/39468) |
+| Nov 17 | Intelligent Terminal | Merged | [#1388](https://github.com/microsoft/intelligent-terminal/pull/1388) |
+| Nov 17 | OpenClaw | Shipped in v2026.11.5 | [release](https://github.com/openclaw/openclaw/releases/tag/v2026.11.5) |
+| Nov 19 | Intelligent Terminal | Shipped in v0.3.3213 | [release](https://github.com/microsoft/intelligent-terminal/releases/tag/v0.3.3213) |
+| Nov 22 | Hermes Agent | Merged | [#140837](https://github.com/NousResearch/hermes-agent/pull/140837) |
+| Nov 23 | tmux | Forwarding to the outer terminal merged | [`9e5702fbb`](https://github.com/tmux/tmux/commit/9e5702fbb75e7ebcd9938eda72b764f4d7237c29) |
+| Nov 24 | Hermes Agent | Shipped in v0.23.4 | [release](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4) |
 
 </details>
 </div>
 
-Checked against each project's own releases, pull requests, and changelogs on **2026-10-22**. Support is moving week to week; the community [support matrix](https://github.com/hyeebeen/awesome-osc7501/blob/main/docs/support-matrix.md) tracks more programs, less strictly.
+Checked against each project's own releases, pull requests, and changelogs on **2026-11-25**. Support is moving week to week; the community trackers [Are we OSC 7501 yet?](https://areweosc7501yet.com/) and the [support matrix](https://github.com/hyeebeen/awesome-osc7501/blob/main/docs/support-matrix.md) follow more programs, less strictly.
 
 ### Terminals, multiplexers, and agent workspaces
 
 | Program | Status | Source | How it shows status |
 |:---|:---|:---|:---|
 | Rex | Shipped with the spec | [spec](https://www.superlogical.com/rex/docs/build/program-status) | The session picker and unfocused tab headers; a Lua event for scripts |
+| libghostty | Shipped in Ghostty 1.4.0 | [release notes](https://ghostty.org/docs/install/release-notes/1-4-0) | Ghostty 1.4.0 parses the records; the Ghostty app ignores them for now |
+| Intelligent Terminal | Shipped v0.3.3213 | [release](https://github.com/microsoft/intelligent-terminal/releases/tag/v0.3.3213) | Microsoft's agent-focused fork of Windows Terminal; with Agent Status on, its sidebar shows each session's status, reports over SSH included. The request began as a Windows Terminal one, and Windows Terminal itself doesn't draw it. |
 | cmux | Shipped v0.65.1 | [release](https://github.com/manaflow-ai/cmux/releases/tag/v0.65.1) | A sidebar row per pane with the app, title, message, and progress |
 | iTerm2 | Shipped 3.7.5 | [downloads](https://iterm2.com/downloads.html) | A dot on the tab and the status color on the tab's subtitle line; also the Session Status tool, the Cockpit window, and the dock badge |
+| kitty | Shipped 0.50.0 | [changelog](https://sw.kovidgoyal.net/kitty/changelog/) | `tab.program_status` in the tab title template; `kitten @ ls` |
 | Orca | Shipped v1.4.232 | [release](https://github.com/stablyai/orca/releases/tag/v1.4.232) | An agent IDE; reads the reports beside its agent hooks and shows them on session rows and tabs |
-| libghostty | Merged, for Ghostty 1.4.0 | [#14560](https://github.com/ghostty-org/ghostty/pull/14560) | The library keeps the records; the Ghostty app doesn't show them yet |
-| kitty | Merged, for 0.50.0 | [#10657](https://github.com/kovidgoyal/kitty/pull/10657) | `tab.program_status` in the tab title template; `kitten @ ls` |
-| Zellij | Merged, unreleased | [#5734](https://github.com/zellij-org/zellij/pull/5734) | Marks on pane frames and tabs, an inbox in the session manager; forwards to the outer terminal by default |
-| Windows Terminal | Sent to Intelligent Terminal | [#1096](https://github.com/microsoft/intelligent-terminal/issues/1096) | The team moved the request to Intelligent Terminal, Microsoft's agent-focused fork, to evaluate first; it awaits triage there. ConPTY passes the sequence through, so it reaches Windows Terminal, which doesn't draw it or answer the query. |
+| Zellij | Shipped v0.46.0 | [release](https://github.com/zellij-org/zellij/releases/tag/v0.46.0) | Marks on pane frames and tabs, an inbox in the session manager; forwards to the outer terminal by default |
+| tmux | Merged, unreleased | [`9e5702fbb`](https://github.com/tmux/tmux/commit/9e5702fbb75e7ebcd9938eda72b764f4d7237c29) | Keeps each pane's report in the `pane_program_state`, `pane_program_name`, and `pane_program_message` formats, and forwards the active pane's to the outer terminal |
 | Superset | Requested | [#8278](https://github.com/superset-sh/superset/issues/8278) | An agent workspace; the request is to store the records and expose them |
 | Herdr | Draft pull request | [#5172](https://github.com/herdrdev/herdr/pull/5172) |  |
-| Warp | Pull request open | [#16460](https://github.com/warpdotdev/warp/pull/16460) |  |
+| Warp | Requested | [#16407](https://github.com/warpdotdev/warp/issues/16407) | A pull request adding only a spec for it closed after review stalled |
 | Paseo | Pull request open | [#6962](https://github.com/getpaseo/paseo/pull/6962) | An agent workspace; would take each terminal's activity from the reports |
-| agterm | Waits on libghostty | [backlog](https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md) | A macOS terminal on libghostty, whose embedding layer drops the reports and leaves the query unanswered, so Claude Code sends none. Its own hook adapters set a status glyph per session. |
-| tmux | Declined for now | [#5713](https://github.com/tmux/tmux/issues/5713) | Drops the sequence, so reports from inside tmux never reach the outer terminal |
-| WezTerm, Alacritty, VS Code | No support found |  |  |
+| agterm | Backlog item dropped | [commit](https://github.com/umputun/agterm/commit/71a9483fd6b4cec0039241f995e1cf659f7849a7) | A macOS terminal on libghostty, whose embedding layer drops the reports and leaves the query unanswered, so Claude Code sends none. It dropped the backlog item; its own hook adapters set a status glyph per session. |
+| WezTerm, Alacritty, VS Code, Windows Terminal | No support found |  |  |
 
 ### Coding agents
 
 | Program | Status | Source | Notes |
 |:---|:---|:---|:---|
 | pi | Shipped v1.1.0 | [release](https://github.com/earendil-works/pi/releases/tag/v1.1.0) | `PI_PROGRAM_STATUS=0` turns it off |
+| Docker Agent | Shipped v1.150.0 | [release](https://github.com/docker/docker-agent/releases/tag/v1.150.0) | In both the TUI and lean mode |
 | Claude Code | Shipped 2.1.295 | [release](https://github.com/anthropics/claude-code/releases/tag/v2.1.295) | Sends only after the terminal answers the query. `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` turns it off, along with Claude's window title. |
 | Crush | Shipped v0.98.0 | [release](https://github.com/charmbracelet/crush/releases/tag/v0.98.0) | Through Bubble Tea |
+| Factory Droid | Shipped v0.236.0 | [changelog](https://docs.factory.com/changelog/release-notes) | The changelog calls it terminal activity status |
 | Codex CLI | Shipped rust-v0.163.0 | [#52725](https://github.com/openai/codex/pull/52725) | `idle`, `working`, and `blocked`, whenever its output is a terminal |
 | oh-my-pi | Shipped v18.8.7 | [release](https://github.com/can1357/oh-my-pi/releases/tag/v18.8.7) | Carries the pending question or the error in `msg`; `terminal.programStatus` turns it off |
-| goose | Merged, unreleased | [#12928](https://github.com/aaif-goose/goose/pull/12928) |  |
-| OpenClaw | Merged, unreleased | [#175692](https://github.com/openclaw/openclaw/pull/175692) |  |
-| Gemini CLI | Requested | [#29710](https://github.com/google-gemini/gemini-cli/issues/29710) |  |
-| Qwen Code | Pull request open | [#13994](https://github.com/QwenLM/qwen-code/pull/13994) |  |
+| Qwen Code | Shipped v0.26.9 | [release](https://github.com/QwenLM/qwen-code/releases/tag/v0.26.9) |  |
+| GitHub Copilot CLI | Shipped v1.0.107 | [release](https://github.com/github/copilot-cli/releases/tag/v1.0.107) |  |
+| opencode | Shipped v2.2.0 | [release](https://github.com/anomalyco/opencode/releases/tag/v2.2.0) | OpenCode 2 only: a root record plus one per session waiting on you. OpenCode 1, still on npm as `opencode-ai`, sends none. |
+| Hermes Agent | Shipped v0.23.4 | [release](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4) |  |
+| goose | Shipped v1.56.0 | [release](https://github.com/aaif-goose/goose/releases/tag/v1.56.0) |  |
+| Antigravity CLI | Shipped 1.4.0 | [release](https://github.com/google-antigravity/antigravity-cli/releases/tag/1.4.0) | Queries first; `AGY_CLI_OSC7501=off` turns it off, `=on` sends to a terminal that doesn't answer the query |
+| OpenClaw | Shipped v2026.11.5 | [release](https://github.com/openclaw/openclaw/releases/tag/v2026.11.5) |  |
+| Mistral Vibe | Shipped v3.0.0 | [release](https://github.com/mistralai/mistral-vibe/releases/tag/v3.0.0) | The Rust CLI, with session titles and error messages |
+| Gemini CLI | Requested | [#29710](https://github.com/google-gemini/gemini-cli/issues/29710) | A pull request for it closed unmerged |
 | MiMo Code | Requested | [#2631](https://github.com/XiaomiMiMo/MiMo-Code/issues/2631) |  |
-| GitHub Copilot CLI | Requested | [#5112](https://github.com/github/copilot-cli/issues/5112) |  |
 | Kilo Code | Requested | [#14973](https://github.com/Kilo-Org/kilocode/issues/14973) |  |
-| opencode | Pull request open | [#54560](https://github.com/anomalyco/opencode/pull/54560) |  |
 | Mastra Code | Requested | [#26910](https://github.com/mastra-ai/mastra/issues/26910) |  |
-| Hermes Agent | Pull request open | [#140837](https://github.com/NousResearch/hermes-agent/pull/140837) |  |
 
 ### Libraries and developer tools
 
 | Program | Status | Source | Notes |
 |:---|:---|:---|:---|
 | Bubble Tea | Shipped v2.1.0 | [release](https://github.com/charmbracelet/bubbletea/releases/tag/v2.1.0) | Any Bubble Tea program can report |
+| Hugo | Shipped v0.168.0 | [release](https://github.com/gohugoio/hugo/releases/tag/v0.168.0) | `working`, `done`, `idle`, and `error`, beside its OSC 9;4 progress |
 | OpenTUI | Shipped v0.6.3 | [release](https://github.com/anomalyco/opentui/releases/tag/v0.6.3) | Any OpenTUI program can report; the renderer sends the query at startup |
+| Expo CLI | Merged, unreleased | [#51289](https://github.com/expo/expo/pull/51289) | Reports while a prompt waits on you; not yet in `@expo/cli` 58.1.21, the latest release |
 | Cargo | Requested | [#17559](https://github.com/rust-lang/cargo/issues/17559) | Labeled as needing more information |
 | Neovim | Requested | [#42276](https://github.com/neovim/neovim/issues/42276) |  |
 | ratatui | Requested | [#2811](https://github.com/ratatui/ratatui/issues/2811) | A helper for emitting reports |
 | tqdm | Pull request open | [#1884](https://github.com/tqdm/tqdm/pull/1884) | Optional, from its progress bars |
-| Expo CLI | Experimental pull request | [#51289](https://github.com/expo/expo/pull/51289) |  |
-| Gradle | Pull request open | [#39468](https://github.com/gradle/gradle/pull/39468) |  |
+| MSBuild | Draft pull request | [#15263](https://github.com/dotnet/msbuild/pull/15263) | From its terminal and console loggers |
 | Docker Compose | Requested | [#14365](https://github.com/docker/compose/issues/14365) | For its progress output |
+| Gradle | Pull request closed | [#39468](https://github.com/gradle/gradle/pull/39468) | Closed unmerged, still a draft, after it went stale |
 | Terraform, Homebrew | Proof of concept | [announcement](https://mitchellh.com/writing/program-status-osc7501) | No upstream change |
 
 ## Where it overlaps beacon

@@ -425,7 +425,7 @@ _beacon() {
     'prune:remove per-session state for long-idle sessions'
     'forget:remove per-session state for one session, by its per-pane hash'
     'focus:raise the iTerm2 window holding a session, by its per-pane hash'
-    'switch:raise the next or previous other session, needs-you first, or pick one'
+    'pick:choose a session from a filterable list and raise it'
     'drop:remove one deliverable from the status-line row'
     'refresh-links:read titles, dependencies, and linked issues for the status-line row'
     'export:emit a lossless JSON backup of all per-session state'
@@ -434,7 +434,7 @@ _beacon() {
     'install:run all install steps (wrapper, completions, + iTerm2 adapter if present)'
     'refresh-iterm-profiles:re-render the iTerm2 dynamic profiles from config'
     'layout:audit or apply the app-wide iTerm2 fleet layout'
-    'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, auto-pause, origins)'
+    'config:show or change the user config (tab.style, tab.look, tab.indent, tab.font-size, tab.vertical-padding, pane-title-bar, iterm-notifications, pick-key, auto-pause, origins)'
     'copy-url:copy the resolved URL to the clipboard'
     'open-url:open the project page (buttons.web.cmd)'
     'open-code:open a directory in the configured editor'
@@ -483,8 +483,8 @@ _beacon() {
     wip)
       compadd -- --json --since --all --timing
       ;;
-    switch)
-      compadd -- --next --prev --pick --list
+    pick)
+      compadd -- --json
       ;;
     watch)
       compadd -- --interval --since --all
@@ -530,7 +530,7 @@ _beacon() {
       ;;
     config)
       case "$CURRENT" in
-        3) compadd tab tab.style tab.look tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar iterm-notifications auto-pause origins ;;
+        3) compadd tab tab.style tab.look tab.indent tab.indent.1 tab.indent.2 tab.font-size tab.vertical-padding pane-title-bar iterm-notifications pick-key auto-pause origins ;;
         4) [[ "${words[3]}" == tab ]] && compadd reset
            [[ "${words[3]}" == tab.style ]] && compadd minimal compact regular
            [[ "${words[3]}" == tab.look ]] && compadd modern legacy
@@ -539,6 +539,7 @@ _beacon() {
            [[ "${words[3]}" == tab.vertical-padding ]] && compadd 0 5 10 20 reset
            [[ "${words[3]}" == pane-title-bar ]] && compadd on off reset
            [[ "${words[3]}" == iterm-notifications ]] && compadd on off reset
+           [[ "${words[3]}" == pick-key ]] && compadd off
            [[ "${words[3]}" == auto-pause ]] && compadd 30m 1h 2h off
            [[ "${words[3]}" == origins ]] && compadd add remove ;;
         5) [[ "${words[3]}" == origins ]] && _message 'origin (scheme://host[:port])' ;;
@@ -706,6 +707,11 @@ BLOCKED_TITLE_LEADS = {
 # knows when it ends.
 ATTENTION_KINDS = ("question", "permission")
 REVIEW_KIND = "review"
+# STATUS-04: a held review as the status panel draws it, the row a mode's slab
+# opens with (STATUS-09) in a hue of its own. It leads ahead of a declared mode
+# in the panel as its glyph does on the tab, since it is what wants the user now.
+# Dark like a mode's band, so the slab's one light foreground reads on it.
+REVIEW_PANEL = {"glyph": BLOCKED_TITLE_LEADS[REVIEW_KIND].strip(), "label": "in review", "band": "#4a3a22"}
 
 # Static badge format. The task slot self-collapses when empty — beacon_task
 # carries " · <task>" when set, "" when absent (BADGE-03). Both writers
@@ -765,6 +771,16 @@ MODE_SPECS = {
         "stood_down": True,
         "label": "paused",
         "band": "#44385f",
+        # STATE-16: a pause the idle sweep set rather than the user. Still the
+        # one `pause` mode underneath (the activity is `idle` either way, which
+        # is also all OSC 7501 has a word for), drawn so a derived park never
+        # passes for a deliberate one: a sleeping glyph and a slate ribbon that
+        # recedes further than the user's purple.
+        "inactive": {
+            "glyph": "💤",
+            "label": "inactive",
+            "band": "#383b4c",
+        },
     },
     # `release` is the one active mode: a ship-it flow is in progress.
     "release": {
@@ -901,6 +917,25 @@ def _pane_title_bar() -> bool:
     return _switch(_load_config().get("pane_title_bar"), "pane_title_bar")
 
 
+# FOCUS-09: a key of the user's own that also opens `beacon pick`, beside the
+# ⌘K the iTerm2 layout binds. None by default: zsh's emacs keymap binds nearly
+# every Ctrl letter, and the one beacon took (^G) was Claude Code's open-in-editor
+# to the fingers, if not to the shell.
+_PICK_KEY_RE = re.compile(r"[\x21-\x7e]+")
+
+
+def _pick_key() -> str | None:
+    """The extra key `bindkey` takes for `beacon pick` (`pick_key` in the user
+    config, FOCUS-09), or None when none is set."""
+    raw = _load_config().get("pick_key")
+    if raw is None or raw is False:
+        return None
+    if isinstance(raw, str) and _PICK_KEY_RE.fullmatch(raw):
+        return raw
+    log_error("config.pick_key", f"pick_key {raw!r} is not a zsh key sequence")
+    return None
+
+
 def _iterm_notifications() -> bool | None:
     """Whether the beacon profiles turn iTerm2's own alerts on or off
     (`iterm_notifications` in the user config, RENDER-06), or None to leave them
@@ -962,9 +997,18 @@ def _tab_hex(color_state: str) -> str:
     return _mute_hex(base, TAB_MUTE[_tab_style()].get(color_state, 1.0))
 
 
-def _mode_glyph(mode: str | None) -> str:
+def _mode_spec(mode: str | None, by: str = "") -> dict | None:
+    """How a mode is drawn: its MODE_SPECS entry, with the `inactive` look
+    over it when the idle sweep set it (STATE-16). None in the dev cycle."""
+    spec = MODE_SPECS.get(mode or "")
+    if spec and by == PARKED_BY and "inactive" in spec:
+        return {**spec, **spec["inactive"]}
+    return spec
+
+
+def _mode_glyph(mode: str | None, by: str = "") -> str:
     """A mode's tab glyph, "" in the dev cycle (which carries no mark)."""
-    spec = MODE_SPECS.get(mode)
+    spec = _mode_spec(mode, by)
     return spec["glyph"] if spec else ""
 
 
@@ -981,8 +1025,14 @@ def _wip_display_name(record: dict, mode: str) -> str:
     show, composed once so a row and its tab carry the same mark."""
     branch = f" ({record['branch']})" if record.get("branch") else ""
     lead = _mode_glyph_for({'mode': mode, 'activity': record.get('activity'),
-                            'kind': record.get('kind')})
+                            'kind': record.get('kind'), 'mode_by': _record_mode_by(record)})
     return f"{lead}{record['project']}{branch}"
+
+
+def _record_mode_by(record: dict) -> str:
+    """The `by` a wip record's mode stands for: the sweep, when it carries the
+    `inactive` look (STATE-16)."""
+    return PARKED_BY if (record.get("mode") or {}).get("inactive") else ""
 
 
 def _first_line(text: str) -> str:
@@ -1064,8 +1114,7 @@ def _tty_name() -> str | None:
 
 
 def _iterm_cache_key() -> str | None:
-    """Stable per-pane key for the engagement marker and the switcher's idea of
-    "this pane" (FOCUS-06). ITERM_SESSION_ID is `wNtNpN:GUID`; the `wNtNpN`
+    """Stable per-pane key for the engagement marker. ITERM_SESSION_ID is `wNtNpN:GUID`; the `wNtNpN`
     positional prefix changes when the pane is moved between windows, tabs, or
     splits, but the GUID after the last colon is stable for the pane's life, so
     keying on the full id loses a pane that moved. Mirror the GUID the CLI's
@@ -1269,6 +1318,17 @@ def write_mode(name: str, note: str = "", by: str = "",
     if parked:
         mode["parked"] = parked
     write_state("mode", json.dumps(mode, indent=2))
+
+
+def _mode_by(raw: object) -> str:
+    """Who set a stored mode other than the user (`sweep`), or ""."""
+    if not isinstance(raw, dict) or _mode_tuple(raw)[0] == DEV_MODE:
+        return ""
+    return str(raw.get("by") or "")
+
+
+def read_mode_by() -> str:
+    return _mode_by(read_state_json("mode", {}))
 
 
 def _parked_by_sweep() -> bool:
@@ -2597,6 +2657,7 @@ def cmd_shell_init(_args):
     sys.stdout.write(
         f"_BEACON_DATA_DIR={shlex.quote(str(DATA_DIR))}\n"
         f"_BEACON_BADGE_ON={shlex.quote(on)}\n"
+        f"_BEACON_PICK_KEY={shlex.quote(_pick_key() or '')}\n"
         f"_BEACON_INIT_HAD_CONFIG={shlex.quote(had_config)}\n"
     )
 
@@ -2634,7 +2695,9 @@ def cmd_json(_args):
         "task_provider": (state["task_provider"]
                           if state.get("task_display", state["task"]) else None),
         "mode": {"name": state["mode"], "note": state["note"],
-                 "glyph": _mode_glyph(state["mode"])},
+                 "glyph": _mode_glyph(state["mode"], state["mode_by"]),
+                 "stood_down": _mode_stood_down(state["mode"]),
+                 "inactive": state["mode_by"] == PARKED_BY},
         "activity": state["activity"],
         "planning": state["planning"],
         # Not a signal, and not resolved through a chain: empty means "on the
@@ -2687,6 +2750,14 @@ def _read_state_for(sh: str, field: str) -> str | None:
         return v or None
     except (FileNotFoundError, OSError):
         return None
+
+
+def _read_mode_by_for(sh: str) -> str:
+    """read_mode_by() for an arbitrary hash."""
+    try:
+        return _mode_by(json.loads(_read_state_for(sh, "mode") or "{}"))
+    except (ValueError, TypeError):
+        return ""
 
 
 def _read_mode_for(sh: str) -> tuple[str, str]:
@@ -2846,6 +2917,7 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
         return None
 
     mode, note = _read_mode_for(sh)
+    mode_by = _read_mode_by_for(sh)
     activity = _normalize_activity(_read_state_for(sh, "activity"))
     planning = _is_planning(_read_state_for(sh, "permission_mode"))
     pending = (STATE_DIR / f"{sh}.pending-attention").exists()
@@ -2909,7 +2981,12 @@ def _resolve_session(sh: str, branch_cache: dict | None = None,
         # annotates. Both published payloads carry the tuple in the same shape —
         # a flat top-level `note` here is the shape that let the old
         # `description` drift into claiming to be session-level recall context.
-        "mode": {"name": mode, "note": note, "glyph": _mode_glyph(mode)},
+        # `stood_down` (STATE-15) is what the sessions view's status order sinks
+        # below the work in flight (FOCUS-06), carried so a dashboard keeps no
+        # copy of MODE_SPECS, as `glyph` is.
+        "mode": {"name": mode, "note": note, "glyph": _mode_glyph(mode, mode_by),
+                 "stood_down": _mode_stood_down(mode),
+                 "inactive": mode_by == PARKED_BY},
         "activity": activity,
         # PERM-01's axis, alongside the other two (WIP-12). The sessions view is
         # where it surfaces: a card and a row have room for the word, where the
@@ -2967,6 +3044,9 @@ def _parse_since(s: str | None, strict: bool) -> float | None:
 # only runs where `beacon serve` does.
 AUTO_PAUSE_OFF = "off"
 PARKED_BY = "sweep"
+# A park's note opens with this (`inactive for >30 min`), the word line 2 of the
+# tab needs; the status panel's ribbon drops it under its own `inactive` label.
+PARK_NOTE_LEAD = "inactive "
 IDLE_SWEEP_SECONDS = 60
 PARKABLE_ACTIVITIES = ("idle", "blocked", "error")
 # Hooks that report the session asking rather than the user answering, so they
@@ -3045,7 +3125,7 @@ def _park_note(since: float, now: float, window: int) -> str:
         span = "for >1 day"
     else:
         span = "for >1 week"
-    return f"inactive {span}"
+    return f"{PARK_NOTE_LEAD}{span}"
 
 
 def _on_pane(sh: str, tty: str, guid: str, step) -> None:
@@ -3136,10 +3216,10 @@ def _run_idle_sweep(stop: threading.Event, interval: float = IDLE_SWEEP_SECONDS)
 
 
 def collect_sessions(since_epoch: float | None = None, timing: bool = False,
-                     full: bool = True) -> dict:
-    # full=False skips the git branch and the `tack tree` read per route, for a
-    # caller on a key press (FOCUS-06) that needs which sessions exist and their
-    # state, not where their work stands.
+                     full: bool = True, branch: bool | None = None) -> dict:
+    # full=False skips the `tack tree` read per route, and the git branch unless
+    # `branch` asks for it: `pick` (FOCUS-06) opens on a key press and draws the
+    # branch, but no route, and the route reads are most of a scan's time.
     # Sessions in a mode are exempt from the activity window: a declared mode is
     # deliberate and stays relevant however long it sits, so it
     # survives past since_epoch where an idle/working session of the same age
@@ -3188,8 +3268,9 @@ def collect_sessions(since_epoch: float | None = None, timing: bool = False,
     sessions = []
     for s in survivors:
         epoch = s.pop("_epoch", 0.0)
-        record = (_resolve_session(s["hash"], branch_cache=branch_cache,
-                                   epoch=epoch, compute_branch=True) if full else None) or s
+        record = (_resolve_session(s["hash"], branch_cache=branch_cache, epoch=epoch,
+                                   compute_branch=True, compute_route=full)
+                  if (full if branch is None else branch) else None) or s
         record.pop("_epoch", None)
         record["last_activity"] = _iso(epoch) if epoch else None
         record["age_seconds"] = int(now - epoch) if epoch else None
@@ -3678,145 +3759,346 @@ def cmd_focus(args):
         sys.exit(1)
 
 
-# FOCUS-06: a walk holds its order for this long after the last press, so the
-# ring doesn't reshuffle under a run of presses as the sessions' ages move.
-SWITCH_RING_SECONDS = 30
-SWITCH_WINDOW = "1d"
-# FOCUS-07: iTerm2 keystroke keys, `<char>-<modifiers>-<keycode>-0x1` as iTerm2
-# writes them itself; 0x180000 is Command (0x100000) with Option (0x80000).
-SWITCH_KEYS = {
-    "0x5d-0x180000-0x1e-0x1": "--next",  # ]
-    "0x5b-0x180000-0x21-0x1": "--prev",  # [
-    "0x2f-0x180000-0x2c-0x1": "--pick",  # /
-}
-_SWITCH_STATE_WORD = {"blocked": "needs you", "working": "working", "idle": "idle"}
+# FOCUS-06: the order every list of sessions takes. `status` is computed, not
+# chosen: waiting on the user, then working, then idle, then the parked and
+# finished below them. `recency` is newest first, whatever the state.
+PICK_ORDERS = ("status", "recency")
+_PICK_STOOD = 3
+# FOCUS-06: how often an open picker re-reads the sessions, in milliseconds.
+PICK_REFRESH_MS = 2000
+_PICK_WAIT = {"question": "asked you a question", "permission": "waiting on your permission",
+              "review": "waiting on your review"}
 
 
-def _switch_order(sessions: list[dict]) -> list[dict]:
-    """FOCUS-06: the focusable sessions, the ones that need you first (longest
-    wait first), then the rest most recently active first."""
-    focusable = [s for s in sessions if s.get("focusable")]
-    age = lambda s: s.get("age_seconds") or 0
-    blocked = sorted((s for s in focusable if s.get("color_state") == "blocked"), key=age, reverse=True)
-    rest = sorted((s for s in focusable if s.get("color_state") != "blocked"), key=age)
-    return blocked + rest
+def _waiting_on_you(s: dict) -> bool:
+    """Read off the axes rather than `color_state`, the dashboard's
+    `blockedOnUser`: a prompt open, a turn stopped on an error, a review held,
+    or the attention marker set."""
+    return (s.get("activity") in ("blocked", "error") or bool(s.get("pending_attention"))
+            or bool(s.get("review")))
 
 
-def _switch_label(s: dict) -> str:
+def _status_rank(s: dict) -> int:
+    if _mode_stood_down((s.get("mode") or {}).get("name")):
+        return _PICK_STOOD
+    if _waiting_on_you(s):
+        return 0
+    # A turn that ended with background tasks reads idle, as its dot does.
+    return 1 if s.get("activity") == "working" else 2
+
+
+def _session_order(sessions: list[dict], order: str = "status") -> list[dict]:
+    """FOCUS-06: the sessions in `status` or `recency` order, newest first
+    within a rank."""
+    age = lambda s: s.get("age_seconds") if s.get("age_seconds") is not None else 10 ** 12
+    if order == "recency":
+        return sorted(sessions, key=age)
+    return sorted(sessions, key=lambda s: (_status_rank(s), age(s)))
+
+
+def _pick_matches(s: dict, query: str) -> bool:
+    """FOCUS-06: every word typed appears in the project, branch, task, or
+    mode note, case aside."""
+    hay = " ".join(str(v) for v in (s.get("project"), s.get("branch"), s.get("task"),
+                                    (s.get("mode") or {}).get("note")) if v).lower()
+    return all(word in hay for word in query.lower().split())
+
+
+def _glance_age(secs: int | None) -> str:
+    """An age rounded to what a glance needs, as the tab stack rounds it (WIP-19)."""
+    if secs is None:
+        return ""
+    if secs < 60:
+        return "<1 min"
+    if secs < 3600:
+        return f"~{secs // 60} min"
+    if secs < 86400:
+        return f"~{secs // 3600} hr"
+    days = secs // 86400
+    return f"~{days} day" + ("" if days == 1 else "s")
+
+
+def _pick_glyph(s: dict) -> str:
     # The tab's own line-1 lead (TITLE-06), so a session reads the same here as on its tab.
-    glyph = _mode_glyph_for({"kind": s.get("kind"), "mode": (s.get("mode") or {}).get("name"),
-                             "activity": s.get("activity")}).strip()
-    name = " ".join(p for p in (glyph, s.get("project") or "?") if p)
+    return _mode_glyph_for({"kind": s.get("kind"), "mode": (s.get("mode") or {}).get("name"),
+                            "activity": s.get("activity"), "mode_by": _record_mode_by(s)}).strip()
+
+
+def _pick_detail(s: dict) -> str:
+    """A picker row's second line: what the session waits on, then its mode's
+    note, then its latest turn, the ones present joined by `·`."""
+    parts = []
+    if s.get("stop_error"):
+        parts.append(f"stopped on {s['stop_error'].replace('_', ' ')}")
+    elif _waiting_on_you(s):
+        parts.append(_PICK_WAIT.get(s.get("kind") or "", "waiting on you"))
+    mode = s.get("mode") or {}
+    if mode.get("name") not in (None, DEV_MODE):
+        note = _first_line(mode.get("note") or "")
+        parts.append(f"{mode['name']} · {note}" if note else mode["name"])
+    turn = (s.get("latest_turn") or {}).get("text")
+    if turn:
+        parts.append(turn)
+    return " · ".join(parts)
+
+
+_PICK_STATE_WORD = {"blocked": "needs you", "working": "working", "idle": "idle"}
+
+
+def _pick_label(s: dict) -> str:
+    """One line naming a session, for the band's list (FOCUS-08)."""
+    name = " ".join(p for p in (_pick_glyph(s), s.get("project") or "?") if p)
     task = s.get("task")
-    state = _SWITCH_STATE_WORD.get(s.get("color_state"), s.get("color_state") or "")
+    state = _PICK_STATE_WORD.get(s.get("color_state"), s.get("color_state") or "")
     return f"{name}: {task} ({state})" if task else f"{name} ({state})"
 
 
-def _switch_ring() -> list[dict]:
-    """The sessions a press walks, in FOCUS-06's order, held for
-    SWITCH_RING_SECONDS after the last press so a run of presses walks one
-    list. A session that appeared since joins at the end; one that left drops."""
-    since = _window_since(False, SWITCH_WINDOW, strict=True)
-    current = {s["hash"]: s for s in _switch_order(collect_sessions(since, full=False)["sessions"])}
-    ring_file = CACHE_DIR / "switch-ring.json"
-    held = []
-    try:
-        cached = json.loads(ring_file.read_text(encoding="utf-8"))
-        if time.time() - float(cached.get("at", 0)) < SWITCH_RING_SECONDS:
-            held = [h for h in cached.get("hashes") or [] if h in current]
-    except (OSError, ValueError, TypeError):
-        held = []
-    order = held + [h for h in current if h not in held]
-    _mkdir_private(CACHE_DIR)
-    _write_private(ring_file, json.dumps({"at": time.time(), "hashes": order}))
-    return [current[h] for h in order]
+def _pick_sessions(order: str = "status") -> list[dict]:
+    since = _window_since(False, None, strict=True)
+    return _session_order(collect_sessions(since, full=False, branch=True)["sessions"], order)
 
 
-def _switch_pick(ring: list[dict], here_hash: str | None) -> None:
-    """FOCUS-08: a list dialog of the other sessions, for when beacon can't
-    tell which one is meant. osascript, since the key press runs outside any
-    Claude Code session and so has no band to draw in."""
-    others = [s for s in ring if s["hash"] != here_hash]
-    if not others:
-        sys.exit("No other beacon session to switch to.")
-    items = [f"{i}. {_switch_label(s)}" for i, s in enumerate(others, 1)]
-    quoted = ", ".join('"' + item.replace("\\", "").replace('"', "'") + '"' for item in items)
-    script = (f'set picked to choose from list {{{quoted}}} with title "beacon" '
-              f'with prompt "Switch to a session" OK button name "Switch" '
-              f'default items {{"{items[0].replace(chr(34), chr(39))}"}}\n'
-              f'if picked is false then return ""\nreturn item 1 of picked')
-    try:
-        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=120)
-    except (OSError, subprocess.SubprocessError) as e:
-        sys.exit(f"picker failed: {e}")
-    if r.returncode != 0:
-        sys.exit(f"picker failed: {r.stderr.strip()}")
-    choice = r.stdout.strip()
-    if not choice:
-        return
-    target = others[int(choice.split(".", 1)[0]) - 1]
-    ok, msg = _focus_session(target["hash"])
-    if not ok:
-        sys.exit(f"{_switch_label(target)}: {msg}")
-
-
-def cmd_switch(args):
-    """FOCUS-06..08: raise the next (or previous) other beacon session, the
-    ones that need you first, or pick one from a list. Bound to Command-Option
-    `]` / `[` / `/` in the beacon profiles (FOCUS-07). Prints nothing on
-    success: a key binding's coprocess types its stdout into the pane."""
-    ring = _switch_ring()
-    here_guid = _iterm_cache_key()
-    here = next((s["hash"] for s in ring if _read_iterm_handle(s["hash"]) == here_guid), None)
-    if getattr(args, "list", False):
-        print(json.dumps([{"hash": s["hash"], "label": _switch_label(s), "color_state": s.get("color_state")}
-                          for s in ring if s["hash"] != (here or session_hash())]))
-        return
-    if getattr(args, "pick", False):
-        _switch_pick(ring, here)
-        return
-    if not [s for s in ring if s["hash"] != here]:
-        sys.exit("No other beacon session to switch to.")
-    step = -1 if getattr(args, "prev", False) else 1
-    at = next((i for i, s in enumerate(ring) if s["hash"] == here), None)
-    target = ring[(at + step) % len(ring)] if at is not None else ring[0 if step == 1 else -1]
-    ok, _ = _focus_session(target["hash"])
-    if not ok:
-        # The session listed can't be raised (its window closed, or iTerm2 lost
-        # the handle): which one was meant is now a guess, so ask (FOCUS-08).
-        _switch_pick(ring, here)
-
-
-def _switch_key_map(prefs: dict | None, parent: str | None) -> dict:
-    """FOCUS-07: the beacon profiles' Keyboard Map. iTerm2 replaces a dynamic
-    profile's map whole rather than merging the parent's into it, so the
-    parent's bindings are copied in under beacon's three, or every key the
-    user bound in their own profile would stop working in a beacon pane."""
-    inherited = {}
-    for profile in (prefs or {}).get("New Bookmarks") or []:
-        if profile.get("Name") == parent and isinstance(profile.get("Keyboard Map"), dict):
-            inherited = profile["Keyboard Map"]
+def _clip(text: str, width: int) -> str:
+    """`text` cut to `width` display columns, with an ellipsis when it was cut."""
+    if width <= 0:
+        return ""
+    if _display_width(text) <= width:
+        return text
+    out, used = [], 0
+    for ch in text:
+        w = _display_width(ch)
+        if used + w > width - 1:
             break
-    keymap = {key: binding for key, binding in inherited.items() if _json_safe(binding)}
-    script = str(PLUGIN_ROOT / "scripts" / "beacon")
-    python = sys.executable or "python3"
-    for key, flag in SWITCH_KEYS.items():
-        # The coprocess types its stdout into the pane, so only the error, and only into an alert.
-        keymap[key] = {
-            "Action": 35, "Version": 2, "Escaping": 1, "Apply Mode": 0,
-            "Text": (f'err=$("{python}" "{script}" switch {flag} 2>&1 >/dev/null) || '
-                     "{ msg=$(printf '%s' \"$err\" | tr -d '\"\\\\'); "
-                     'osascript -e "display alert \\"beacon\\" message \\"$msg\\"" >/dev/null 2>&1; }'),
-        }
-    return keymap
+        out.append(ch)
+        used += w
+    return "".join(out) + "…"
 
 
-def _json_safe(value) -> bool:
+def cmd_pick(args):
+    """FOCUS-06: a full-screen, filterable list of every session, in the
+    terminal it runs in. `--json` prints the same list for the band's
+    `/beacon switch` (FOCUS-08), less the session asking."""
+    if getattr(args, "json", False):
+        here = session_hash()
+        print(json.dumps([{"hash": s["hash"], "label": _pick_label(s), "color_state": s.get("color_state")}
+                          for s in _pick_sessions() if s["hash"] != here]))
+        return
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        sys.exit("beacon pick needs an interactive terminal; use `beacon wip` in a pipe")
     try:
-        json.dumps(value)
-        return True
-    except (TypeError, ValueError):
-        return False
+        import curses
+    except ImportError:
+        sys.exit("beacon pick needs Python's curses module, which this interpreter lacks")
+    import locale
+    locale.setlocale(locale.LC_ALL, "")
+    # A bare Esc is how the picker closes; curses waits a full second by
+    # default to tell it from the start of an arrow key's sequence.
+    os.environ.setdefault("ESCDELAY", "25")
+    # Silent on every exit, Ctrl-C included: a raise shows itself, and the
+    # zle widget (FOCUS-09) redraws the prompt over whatever was printed.
+    try:
+        curses.wrapper(lambda scr: _PickScreen(scr, curses).run())
+    except KeyboardInterrupt:
+        pass
+
+
+class _PickScreen:
+    """FOCUS-06's picker: a query line, the sessions two lines each, and a key
+    line. Plain keys go to the filter, which is why the open actions are on
+    Option."""
+
+    # Option-W and Option-C as macOS types them with Option as a normal key; with
+    # it as Esc+ they arrive as Esc and the letter.
+    OPT_KEYS = {"∑": "web", "ç": "code"}
+    KEYS = "↑↓ move   ↵ raise   ⌥W web   ⌥C code   tab sort   esc back to the shell"
+
+    def __init__(self, scr, curses):
+        self.scr, self.c = scr, curses
+        self.query, self.selected, self.flash = "", None, ""
+        self.order = "status"
+        self.sessions: list[dict] = []
+        self.attr = {}
+
+    def colors(self):
+        c = self.c
+        try:
+            c.start_color()
+            c.use_default_colors()
+        except c.error:
+            return
+        rich = c.COLORS >= 256
+        pairs = {"blocked": c.COLOR_RED, "working": 215 if rich else c.COLOR_YELLOW,
+                 "idle": 246 if rich else c.COLOR_WHITE, "branch": c.COLOR_CYAN,
+                 "faint": 244 if rich else c.COLOR_WHITE, "accent": 141 if rich else c.COLOR_MAGENTA}
+        for i, (name, color) in enumerate(pairs.items(), 1):
+            c.init_pair(i, color, -1)
+            self.attr[name] = c.color_pair(i)
+
+    def visible(self) -> list[dict]:
+        return [s for s in self.sessions if _pick_matches(s, self.query)]
+
+    def reload(self):
+        self.sessions = _pick_sessions(self.order)
+
+    def current(self, shown: list[dict]) -> dict | None:
+        hashes = [s["hash"] for s in shown]
+        if self.selected not in hashes:
+            self.selected = hashes[0] if hashes else None
+        return next((s for s in shown if s["hash"] == self.selected), None)
+
+    def move(self, shown: list[dict], step: int):
+        hashes = [s["hash"] for s in shown]
+        if not hashes:
+            return
+        at = hashes.index(self.selected) if self.selected in hashes else 0
+        self.selected = hashes[max(0, min(len(hashes) - 1, at + step))]
+
+    def put(self, y: int, x: int, text: str, attr: int = 0) -> int:
+        h, w = self.scr.getmaxyx()
+        if y >= h or x >= w:
+            return x
+        # The last cell of the last row can't be written without scrolling.
+        text = _clip(text, w - x - (1 if y == h - 1 else 0))
+        try:
+            self.scr.addstr(y, x, text, attr)
+        except self.c.error:
+            pass
+        return x + _display_width(text)
+
+    def rows(self, s: dict, width: int) -> list[list[tuple[str, int]]]:
+        c = self.c
+        stood = _status_rank(s) == _PICK_STOOD
+        name_attr = c.A_DIM if stood else c.A_BOLD
+        first = [("● ", self.attr.get(s.get("color_state") or "idle", 0))]
+        glyph = _pick_glyph(s)
+        if glyph:
+            first.append((glyph + " ", 0))
+        first.append((s.get("project") or "?", name_attr))
+        if s.get("branch"):
+            first.append(("  " + s["branch"], self.attr.get("branch", 0) | (c.A_DIM if stood else 0)))
+        if s.get("task"):
+            first.append(("  · " + s["task"], c.A_DIM if stood else 0))
+        lines = [first]
+        detail = _pick_detail(s)
+        if detail:
+            lines.append([(detail, self.attr.get("faint", c.A_DIM))])
+        return lines
+
+    def draw(self):
+        c, scr = self.c, self.scr
+        scr.erase()
+        h, w = scr.getmaxyx()
+        shown = self.visible()
+        sel = self.current(shown)
+        x = self.put(0, 0, "beacon › ", self.attr.get("accent", 0) | c.A_BOLD)
+        if self.query:
+            x = self.put(0, x, self.query)
+        else:
+            self.put(0, x, "type to filter", c.A_DIM)
+        count = f"sort: {self.order}   {len(shown)}/{len(self.sessions)}"
+        self.put(0, max(x + 2, w - _display_width(count) - 1), count, c.A_DIM)
+
+        # Each session's lines, with a rule above the first parked or finished
+        # one when the order is by status.
+        blocks, ruled = [], False
+        for s in shown:
+            if self.order == "status" and not ruled and _status_rank(s) == _PICK_STOOD and blocks:
+                blocks.append((None, [[("─" * (w - 4), c.A_DIM)]]))
+                ruled = True
+            blocks.append((s, self.rows(s, w)))
+        top, room = 2, h - 4
+        flat = [(s, i, line) for s, lines in blocks for i, line in enumerate(lines)]
+        sel_at = next((n for n, (s, i, _) in enumerate(flat) if s is sel and i == 0), 0)
+        sel_end = sel_at + (len(self.rows(sel, w)) if sel else 1)
+        start = max(0, sel_end - room) if sel_end > room else 0
+        for n, (s, i, line) in enumerate(flat[start:start + room]):
+            y = top + n
+            pointer = "›" if (s is sel and i == 0) else " "
+            x = self.put(y, 0, pointer + " ", self.attr.get("accent", 0) | c.A_BOLD)
+            x += 0 if i == 0 else 2
+            for text, attr in line:
+                x = self.put(y, x, text, attr | (c.A_BOLD if s is sel and i == 0 and attr & c.A_DIM == 0 else 0))
+            if s is not None and i == 0:
+                age = _glance_age(s.get("age_seconds"))
+                if age and x + len(age) + 2 < w:
+                    self.put(y, w - len(age) - 1, age, c.A_DIM)
+        if not shown:
+            self.put(top, 2, f'No session matches "{self.query}". Backspace to widen it.'
+                     if self.query else "No beacon sessions in the window.", c.A_DIM)
+        self.put(h - 1, 0, self.flash or self.KEYS, self.attr.get("blocked", 0) if self.flash else c.A_DIM)
+        scr.refresh()
+
+    def act(self, target: str) -> str | None:
+        s = self.current(self.visible())
+        if not s:
+            return None
+        if target == "focus":
+            ok, msg = _focus_session(s["hash"])
+            if ok:
+                return f"raised {s.get('project') or s['hash']}"
+            self.flash = f"{s.get('project')}: {msg}"
+            return None
+        ok, msg = _open_for_session(s["hash"], target)
+        self.flash = (f"opened {s.get('project')} ({target})" if ok else f"{s.get('project')}: {msg}")
+        return None
+
+    def run(self) -> str | None:
+        c, scr = self.c, self.scr
+        try:
+            c.curs_set(0)
+        except c.error:
+            pass
+        scr.keypad(True)
+        self.colors()
+        self.reload()
+        scr.timeout(PICK_REFRESH_MS)
+        while True:
+            self.draw()
+            try:
+                key = scr.get_wch()
+            except c.error:
+                self.reload()
+                continue
+            shown = self.visible()
+            flash, self.flash = self.flash, ""
+            if key in (c.KEY_UP, "\x10"):
+                self.move(shown, -1)
+            elif key in (c.KEY_DOWN, "\x0e"):
+                self.move(shown, 1)
+            elif key == c.KEY_PPAGE:
+                self.move(shown, -10)
+            elif key == c.KEY_NPAGE:
+                self.move(shown, 10)
+            elif key in ("\n", "\r", c.KEY_ENTER):
+                done = self.act("focus")
+                if done:
+                    return done
+            elif key in self.OPT_KEYS:
+                self.act(self.OPT_KEYS[key])
+            elif key == "\x1b":
+                scr.timeout(30)
+                try:
+                    nxt = scr.get_wch()
+                except c.error:
+                    nxt = None
+                scr.timeout(PICK_REFRESH_MS)
+                if isinstance(nxt, str) and nxt.lower() in ("w", "c"):
+                    self.act("web" if nxt.lower() == "w" else "code")
+                else:
+                    return None
+            elif key == "\x03":
+                return None
+            elif key in (c.KEY_BACKSPACE, "\x7f", "\b"):
+                self.query = self.query[:-1]
+            elif key == "\x15":
+                self.query = ""
+            elif key == "\t":
+                self.order = PICK_ORDERS[(PICK_ORDERS.index(self.order) + 1) % len(PICK_ORDERS)]
+                self.reload()
+            elif key == c.KEY_RESIZE:
+                self.flash = flash
+            elif isinstance(key, str) and key.isprintable():
+                self.query += key
 
 
 # --- full-fidelity export / import (DUMP) ---
@@ -4064,7 +4346,7 @@ def _focus_session(sh: str) -> tuple[bool, str]:
 
 def _panel_for(sh: str) -> dict | None:
     """WIP-22: what the status panel draws for one session, by its hash, for the
-    dashboard's pop-out tiles. Scoped to that session's bucket on this request's
+    dashboard's tab stack tiles. Scoped to that session's bucket on this request's
     thread, as the idle sweep scopes a park (WIP-21). None for a hash with no
     anchored state, which the panel would draw as nothing."""
     if not re.fullmatch(r"[0-9a-f]{8,}", sh or "") or not _read_state_for(sh, "anchor.cwd"):
@@ -4139,7 +4421,7 @@ def wip_http_server(port: int):
     dashboard's close button on a timed-out card (FORGET-03).
 
     GET /panel/<hash> — what the status panel draws for that session (WIP-22),
-    for the pop-out's tiles.
+    for the tab stack's tiles.
 
     POST /focus — bring a session's window forward (FOCUS-01).
 
@@ -4735,7 +5017,7 @@ def resolve(cwd: Path | None = None) -> dict:
         "location": "",
         "task_display": task,
         "task_nl": task_nl,
-        "mode": mode, "note": note.strip(),
+        "mode": mode, "note": note.strip(), "mode_by": read_mode_by(),
         "activity": activity,
         "planning": planning,
         "pending_attention": _state_path("pending-attention").exists(),
@@ -5961,29 +6243,6 @@ def _hex_to_color_components(hex_str: str) -> dict:
     }
 
 
-# The switcher key bindings `install_dynamic_profile` bakes, read back out. The
-# binding's text is a shell one-liner, so the values are recovered by their
-# quoting rather than from a field of their own (`_switch_key_map`).
-_PROFILE_EXEC_RE = re.compile(r'\$\("([^"]+)" "([^"]+)" ')
-
-
-def _profile_baked_paths(profile: dict) -> dict | None:
-    """The `{python, script}` an installed profile's switcher keys (FOCUS-07)
-    will actually run, or None when it binds none.
-
-    These are baked at render time (see `install_dynamic_profile`), so nothing
-    re-derives them on a press: a profile written against one install keeps
-    pointing there after beacon moves, and the key fails with an alert that
-    reads as a switcher bug. Reading them back is what lets `doctor` tell the
-    two apart."""
-    for binding in (profile.get("Keyboard Map") or {}).values():
-        text = binding.get("Text") if isinstance(binding, dict) else None
-        exe = _PROFILE_EXEC_RE.search(text) if isinstance(text, str) and " switch " in text else None
-        if exe:
-            return {"python": exe.group(1), "script": exe.group(2)}
-    return None
-
-
 # iTerm2's Notification Center delivery and its escape-sequence alerts, the two
 # profile switches `config iterm-notifications` sets together (RENDER-06).
 ITERM_ALERT_KEYS = ("BM Growl", "Send Terminal Generated Alerts")
@@ -5998,7 +6257,7 @@ def _iterm_profile_names() -> set:
 
 
 def install_dynamic_profile() -> tuple[bool, str]:
-    """Write the beacon profile (badge sizing and the switcher keys, §6.6) into
+    """Write the beacon profile (badge sizing, §6.6) into
     iTerm2's DynamicProfiles directory. iTerm2 watches the directory and
     reloads on change without restart, so the write needs no quit.
 
@@ -6038,9 +6297,6 @@ def install_dynamic_profile() -> tuple[bool, str]:
     if notifications is not None:
         for key in ITERM_ALERT_KEYS:
             base_profile[key] = notifications
-    base_profile["Keyboard Map"] = _switch_key_map(
-        _iterm_prefs() if sys.platform == "darwin" else None,
-        base_profile.get("Dynamic Profile Parent Name"))
     try:
         target.write_text(json.dumps({"Profiles": [base_profile]}, indent=2))
     except OSError as e:
@@ -6147,7 +6403,7 @@ def _mode_glyph_for(state: dict) -> str:
     blocked_lead = BLOCKED_TITLE_LEADS.get(state.get("kind"))
     if blocked_lead:
         return blocked_lead
-    glyph = _mode_glyph(state.get("mode"))
+    glyph = _mode_glyph(state.get("mode"), state.get("mode_by") or "")
     if glyph:
         return f"{glyph} "
     return BACKGROUND_TITLE_LEAD if state.get("activity") == "background" else DEV_TITLE_LEAD
@@ -7008,7 +7264,7 @@ def _statusline_mode_segment() -> str:
     note = " ".join(note.split())
     if mode == DEV_MODE or not note:
         return ""
-    glyph = _mode_glyph(mode)
+    glyph = _mode_glyph(mode, read_mode_by())
     return (f"\033[{_MODE_NOTE_COLOR}m{glyph} "
             f"{_emphasize(note, _EMPHASIS_SGR)}\033[0m")
 
@@ -7326,10 +7582,14 @@ def _status_panel_mode() -> dict | None:
     mode's `band` hue carrying its glyph, label and note, and the label in
     Claude Code's own footer of modes. None in the dev cycle."""
     mode, note = read_mode()
-    spec = MODE_SPECS.get(mode)
+    by = read_mode_by()
+    spec = _mode_spec(mode, by)
     if not spec:
         return None
     note = " ".join(note.split())
+    if by == PARKED_BY and note.startswith(PARK_NOTE_LEAD):
+        # The label already says `inactive`; the ribbon carries how long.
+        note = note[len(PARK_NOTE_LEAD):]
     return {
         "name": mode,
         "note": note or None,
@@ -7338,8 +7598,7 @@ def _status_panel_mode() -> dict | None:
         "band": spec.get("band"),
         # STATUS-01a's emphasis, as SGR the panel already parses.
         "note_line": _emphasize(note, _EMPHASIS_SGR) if note else None,
-        "resumes_on_prompt": mode in AUTO_RESUME_MODES,
-        # STATE-15: a halted session, which the pop-out lets recede.
+        # STATE-15: a halted session, which the tab stack lets recede.
         "stood_down": bool(spec.get("stood_down")),
     }
 
@@ -7369,11 +7628,25 @@ def cmd_status_panel(_args):
     print(json.dumps(_status_panel_payload()))
 
 
+def _status_panel_review() -> dict | None:
+    """STATUS-04: a held review as the panel draws it, a row like a mode's: the
+    `👀` glyph and label, then the target, a URL linked to itself. Neither form
+    is shortened, for the reason the status line gives."""
+    review = read_review_block()
+    if not review:
+        return None
+    target = review["target"]
+    href = _safe_uri(target) if re.match(r"^https?://", target) else None
+    return {**REVIEW_PANEL, "target": _display_safe(target, limit=None), "href": href}
+
+
 def _status_panel_payload() -> dict:
     head = _status_panel_head()
+    review = _status_panel_review()
     # A mode with a ribbon carries its note there, so line 1 doesn't repeat it.
     ribbon = bool(head["mode"] and head["mode"]["band"])
-    return {**head, "lines": _status_lines(mode_note=not ribbon)}
+    # A held review is its own row, so the line STATUS-04 puts in place of the others isn't drawn twice.
+    return {**head, "review": review, "lines": [] if review else _status_lines(mode_note=not ribbon)}
 
 
 def _status_lines(mode_note: bool = True) -> list[str]:
@@ -7520,8 +7793,7 @@ _SOURCE_LINE_TARGET_RE = re.compile(r'"([^"]+)"')
 # is behind where the breakdown names each of them (HOOK-14).
 _SHELL_SURFACE = "the .zshrc line"
 _WRAPPER_SURFACE = "the $PATH command"
-_ITERM_SURFACE = "the iTerm2 switcher keys"
-_SURFACE_ORDER = (_SHELL_SURFACE, _WRAPPER_SURFACE, _ITERM_SURFACE)
+_SURFACE_ORDER = (_SHELL_SURFACE, _WRAPPER_SURFACE)
 
 
 def _pinned_surfaces() -> list[tuple[str, str, Path]]:
@@ -7531,7 +7803,7 @@ def _pinned_surfaces() -> list[tuple[str, str, Path]]:
     A surface that was never installed contributes nothing — absent is not
     stale, and a user running beacon without the shell integration or without
     iTerm2 should hear about neither. Each is normalized to the script path so
-    one comparison covers all three."""
+    one comparison covers both."""
     surfaces: list[tuple[str, str, Path]] = []
 
     try:
@@ -7556,19 +7828,6 @@ def _pinned_surfaces() -> list[tuple[str, str, Path]]:
                              snippet.parent.parent / "scripts" / "beacon"))
         break
 
-    profiles_dir = _iterm_profiles_dir()
-    for stem in sorted(_iterm_profile_names()):
-        try:
-            profile = json.loads(
-                (profiles_dir / f"{stem}.json").read_text(encoding="utf-8")
-            )["Profiles"][0]
-        except (OSError, ValueError, KeyError, IndexError):
-            continue
-        baked = _profile_baked_paths(profile)
-        if baked:
-            surfaces.append((f"the {stem} switcher keys", _ITERM_SURFACE,
-                             Path(baked["script"])))
-
     return surfaces
 
 
@@ -7578,7 +7837,7 @@ def _freshness_drift() -> tuple[dict, dict]:
 
     Grouped by target because one `install` writes every surface from the same
     root, so they drift together and naming each separately would report the
-    same path up to seven times.
+    same path once per surface.
 
     A target under a git checkout is how beacon is developed, so pointing there
     from a marketplace root is deliberate and stays silent — but only while the
@@ -7689,6 +7948,26 @@ def _freshness_message(gone: dict, stale: dict) -> str:
     return "\n".join(lines)
 
 
+# STATE-17: auto-pause is on, and the one process that runs it isn't.
+_AUTO_PAUSE_BANNER = "beacon: beacon serve install  # auto-pause is on, but nothing is running it"
+
+
+def _auto_pause_unserved() -> str | None:
+    """STATE-17: why auto-pause parks nothing, when it is on and no `beacon
+    serve` answers, else None. An idle session fires no hooks, so the sweep
+    lives in `serve` (WIP-21); with it stopped the setting does nothing, and
+    the one warning `config auto-pause` prints is long gone. The probe is a
+    loopback connect, refused at once when nothing listens; the short timeout
+    bounds a port held by something that never answers."""
+    window = _auto_pause_seconds()
+    if not window or _serve_answering(timeout=0.3):
+        return None
+    return (f"Auto-pause is on ({_load_config().get('auto_pause')}), but no `beacon serve` answers on "
+            f"127.0.0.1:{DEFAULT_SERVE_PORT}, so no idle session is parked: an idle session fires no "
+            "hooks, and the sweep that parks it runs only in `serve` (WIP-21). `beacon serve install` "
+            "keeps it running across logins; `beacon config auto-pause off` turns the setting off.")
+
+
 def cmd_freshness(args):
     """HOOK-14: report, as SessionStart context, any entry point left behind by
     a background plugin update.
@@ -7708,14 +7987,22 @@ def cmd_freshness(args):
     to the user, so the banner is what actually delivers the finding and the
     context is what tells the model why."""
     try:
+        banners, contexts = [], []
         gone, stale = _freshness_drift()
-        if not gone and not stale:
+        if gone or stale:
+            banners.append(_FRESHNESS_BANNER)
+            contexts.append(_freshness_message(gone, stale))
+        unparked = _auto_pause_unserved()
+        if unparked:
+            banners.append(_AUTO_PAUSE_BANNER)
+            contexts.append(unparked)
+        if not banners:
             return
         print(json.dumps({
-            "systemMessage": _FRESHNESS_BANNER,
+            "systemMessage": "\n".join(banners),
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",
-                "additionalContext": _freshness_message(gone, stale),
+                "additionalContext": "\n\n".join(contexts),
             },
         }, separators=(",", ":")))
     except Exception as exc:
@@ -8156,6 +8443,28 @@ def _config_pane_title_bar(values: list[str]) -> None:
     _config_switch("pane-title-bar", _pane_title_bar, _store_pane_title_bar, values)
 
 
+def _config_pick_key(values: list[str]) -> None:
+    """`pick-key` sets an extra zsh key that opens `beacon pick` (FOCUS-09),
+    in `bindkey` notation, or `off` to drop it. ⌘K, from the iTerm2 layout, needs
+    no setting. The shell reads it when it starts."""
+    usage = "usage: beacon config pick-key [<key, as bindkey writes it: ^[p, ^X^P> | off]"
+    if not values:
+        print(_pick_key() or "off")
+        return
+    if len(values) != 1:
+        sys.exit(usage)
+    value = values[0].strip()
+    data = _config_for_edit()
+    if value.lower() in ("off", "reset"):
+        data.pop("pick_key", None)
+    elif _PICK_KEY_RE.fullmatch(value):
+        data["pick_key"] = value
+    else:
+        sys.exit(usage)
+    _save_config(data)
+    print(f"pick-key: {_pick_key() or 'off'} (in {_config_file()}); `exec zsh` picks it up")
+
+
 def _iterm_notifications_display() -> str:
     value = _iterm_notifications()
     return "profile" if value is None else _on_off(value)
@@ -8190,13 +8499,15 @@ def _config_iterm_notifications(values: list[str]) -> None:
     print(f"✓ {msg}")
 
 
-def _serve_answering(port: int = DEFAULT_SERVE_PORT) -> bool:
+def _serve_answering(port: int = DEFAULT_SERVE_PORT, timeout: float = 1.0) -> bool:
     """Whether a `beacon serve` answers on its loopback port: the one process
-    auto-pause runs in (WIP-21)."""
+    auto-pause runs in (WIP-21). Asks for the dashboard, a file read, rather
+    than `/wip.json`, whose full session scan takes seconds on a long-lived
+    install and would read as nothing answering."""
     import urllib.request
 
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/wip.json", timeout=1) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=timeout) as r:
             return r.status == 200
     except Exception:
         return False
@@ -8247,6 +8558,8 @@ def cmd_config(args):
         _config_pane_title_bar(args.values)
     elif args.setting == "iterm-notifications":
         _config_iterm_notifications(args.values)
+    elif args.setting == "pick-key":
+        _config_pick_key(args.values)
     elif args.setting == "auto-pause":
         _config_auto_pause(args.values)
     elif args.setting == "origins":
@@ -8258,6 +8571,7 @@ def cmd_config(args):
             print(f"  {name:<22}{value}")
         print(f"  {'pane-title-bar':<22}{_on_off(_pane_title_bar())}")
         print(f"  {'iterm-notifications':<22}{_iterm_notifications_display()}")
+        print(f"  {'pick-key':<22}{_pick_key() or 'off'}")
         pause =_load_config().get("auto_pause")
         print(f"  {'auto-pause':<22}{str(pause).strip().lower() if pause is not None else AUTO_PAUSE_OFF}")
         origins = sorted(BROWSER_ORIGIN_ALLOWLIST) + _configured_origins(data)
@@ -8305,6 +8619,8 @@ _DOCTOR_ADVICE = {
     "config.pane_title_bar": f"`pane_title_bar` in {_config_file()} isn't true or false, so "
                           f"`{LAYOUT_COMMAND}` recommends split panes without title bars. "
                           "`beacon config pane-title-bar reset` clears it.",
+    "config.pick_key": f"`pick_key` in {_config_file()} isn't a key sequence or false, so "
+                       "it was ignored. `beacon config pick-key off` clears it.",
     "config.iterm_notifications": f"`iterm_notifications` in {_config_file()} isn't true or "
                                   "false, so iTerm2's alerts follow your own profile. "
                                   "`beacon config iterm-notifications reset` clears it.",
@@ -8372,52 +8688,6 @@ _DOCTOR_MARKS = {
     _DOCTOR_WARN: ("33", "!"),
     _DOCTOR_BAD: ("31", "✗"),
 }
-
-
-def _doctor_profile_paths(profiles_dir: Path, want: set) -> tuple[str, str]:
-    """Whether the installed profiles' switcher keys (FOCUS-07) still point at
-    this install — the half `profiles` present/absent can't see.
-
-    The interpreter and script are checked for *existence*: pointing them at a
-    working tree is how beacon is developed, so a difference is worth naming but
-    is not a fault. A profile from 2.x carries no switcher keys at all.
-
-    One render writes all five profiles, so a finding almost always holds for
-    every one of them; each is reported once, named by profile only where they
-    disagree."""
-    this_script = PLUGIN_ROOT / "scripts" / "beacon"
-    faults, notes = [], []
-    for stem in sorted(want):
-        path = profiles_dir / f"{stem}.json"
-        try:
-            profile = json.loads(path.read_text(encoding="utf-8"))["Profiles"][0]
-        except (OSError, ValueError, KeyError, IndexError) as e:
-            faults.append((stem, f"unreadable ({e})"))
-            continue
-        baked = _profile_baked_paths(profile)
-        if not baked:
-            faults.append((stem, "binds no switcher keys"))
-            continue
-        if not os.access(baked["python"], os.X_OK):
-            faults.append((stem, f"interpreter {baked['python']} is gone"))
-        if not Path(baked["script"]).is_file():
-            faults.append((stem, f"script {baked['script']} is gone"))
-        elif Path(baked["script"]) != this_script:
-            notes.append((stem, f"the switcher keys run {baked['script']}"))
-
-    def phrase(findings):
-        by_text = {}
-        for stem, detail in findings:
-            by_text.setdefault(detail, []).append(stem)
-        return "; ".join(detail if len(stems) == len(want)
-                         else f"{', '.join(stems)}: {detail}"
-                         for detail, stems in by_text.items())
-
-    if faults:
-        return _DOCTOR_BAD, f"{phrase(faults)} — run `beacon refresh-iterm-profiles`"
-    if notes:
-        return _DOCTOR_WARN, f"{phrase(notes)}, not this install's {this_script}"
-    return _DOCTOR_OK, f"the switcher keys run {this_script}"
 
 
 # The one-shot migration iTerm2 3.7.0 records once it has re-marked the
@@ -8567,6 +8837,18 @@ def _doctor_checks() -> list[dict]:
             f"{_freshness_summary(gone, stale)}: pinned to {pinned} "
             f"· run {_FRESHNESS_COMMAND}")
 
+    # STATE-17: the setting is read here, and the process that acts on it is
+    # asked, since either can be true without the other.
+    window = _auto_pause_seconds()
+    if window:
+        raw = _load_config().get("auto_pause")
+        if _serve_answering():
+            add("Data", "auto-pause", _DOCTOR_OK, f"after {raw}, run by `beacon serve`")
+        else:
+            add("Data", "auto-pause", _DOCTOR_WARN,
+                f"on ({raw}), but `beacon serve` isn't running, so nothing parks "
+                "· run `beacon serve install`")
+
     # iTerm2 adapter — optional by design (NFR-06), so absence is not a fault.
     if not _is_iterm_installed():
         add("iTerm2", "adapter", _DOCTOR_OK,
@@ -8584,8 +8866,6 @@ def _doctor_checks() -> list[dict]:
             f"{len(want)} present" if not missing
             else f"missing {', '.join(missing)} — run `beacon refresh-iterm-profiles`")
         if not missing:
-            status, detail = _doctor_profile_paths(profiles, want)
-            add("iTerm2", "profile paths", status, detail)
             live = _doctor_profiles_shadowed(profiles, want)
             if live:
                 add("iTerm2", "profiles live", *live)
@@ -9390,11 +9670,11 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp = sub.add_parser("config",
                         help="show or change the user config: tab.style, tab.look, tab.indent, "
                              "tab.font-size, tab.vertical-padding, pane-title-bar, "
-                             "iterm-notifications, auto-pause, origins")
+                             "iterm-notifications, pick-key, auto-pause, origins")
     sp.add_argument("setting", nargs="?",
                     choices=("tab", "tab.style", "tab.look", "tab.indent", "tab.indent.1",
                              "tab.indent.2", "tab.font-size", "tab.vertical-padding",
-                             "pane-title-bar", "iterm-notifications", "auto-pause", "origins"),
+                             "pane-title-bar", "iterm-notifications", "pick-key", "auto-pause", "origins"),
                     help="the setting to read or change (default: show them all)")
     sp.add_argument("values", nargs="*", metavar="VALUE",
                     help="tab: reset; tab.style: minimal|compact|regular; "
@@ -9403,6 +9683,7 @@ def _build_parser() -> "argparse.ArgumentParser":
                          "tab.font-size, tab.vertical-padding: <points> | reset; "
                          "pane-title-bar: on | off | reset; "
                          "iterm-notifications: on | off | reset; "
+                         "pick-key: <key> | off; "
                          "auto-pause: <duration> | off; "
                          "origins: add|remove <origin>")
 
@@ -9456,14 +9737,10 @@ def _build_parser() -> "argparse.ArgumentParser":
     sp = sub.add_parser("focus", help="raise the iTerm2 window holding a session, by its per-pane hash")
     sp.add_argument("hash", help="the session's per-pane hash (the `hash` field of a `wip --json` record)")
 
-    sp = sub.add_parser("switch", help="raise the next or previous other beacon session, "
-                                       "the ones that need you first, or pick one from a list")
-    which = sp.add_mutually_exclusive_group()
-    which.add_argument("--next", action="store_true", help="the next session (the default; Command-Option-])")
-    which.add_argument("--prev", action="store_true", help="the previous session (Command-Option-[)")
-    which.add_argument("--pick", action="store_true", help="choose from a list (Command-Option-/)")
-    which.add_argument("--list", action="store_true",
-                       help="(internal) print the other sessions in switch order as JSON, for the status panel's picker")
+    sp = sub.add_parser("pick", help="choose a session from a filterable list and raise it "
+                                     "(Enter raises, Option-W / Option-C open its project page / directory)")
+    sp.add_argument("--json", action="store_true",
+                    help="(internal) print the other sessions in status order as JSON, for the status panel's list")
 
     sp = sub.add_parser("drop", help="remove one deliverable from this session's status-line row")
     sp.add_argument("ref", help="the deliverable's ref (#42, !17, otherproj#9) or its URL")
@@ -9636,7 +9913,7 @@ def main(argv=None):
         "open-url": cmd_open_url, "open-code": cmd_open_code,
         "json": cmd_json,
         "wip": cmd_wip, "watch": cmd_watch, "serve": cmd_serve, "prune": cmd_prune,
-        "forget": cmd_forget, "focus": cmd_focus, "switch": cmd_switch, "drop": cmd_drop, "refresh-links": cmd_refresh_links,
+        "forget": cmd_forget, "focus": cmd_focus, "pick": cmd_pick, "drop": cmd_drop, "refresh-links": cmd_refresh_links,
         "export": cmd_export, "import": cmd_import,
         "data-dir": cmd_data_dir,
         "doctor": cmd_doctor,

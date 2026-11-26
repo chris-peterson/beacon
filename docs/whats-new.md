@@ -14,7 +14,7 @@ It replaces both the status line row and the iTerm2 status bar, and it works the
 
 A mode you declare (`pause`, `release`, `done`) now opens the panel with a bar in the mode's own hue, carrying its glyph, its name, and your note. The mode's name also joins the labels at the right of Claude Code's footer, so it still shows with the panel collapsed. Your pane keeps its own background in every mode, and the bar's text meets WCAG AA contrast on every hue; the hues and their ratios are on [the palette](/palette).
 
-**`pause`**: you've stepped away. The bar says *type to resume*, since your next prompt does exactly that.
+**`pause`**: you've stepped away. Your next prompt lifts it.
 
 ![A paused session's panel: the purple bar reading "paused · waiting on design review before the toggle lands" with "type to resume" at its right, above what the session delivered and the change request it has open.](images/statusline-paused.png)
 
@@ -30,15 +30,27 @@ A mode you declare (`pause`, `release`, `done`) now opens the panel with a bar i
 
 ![A retro session's panel: the purple line "writing up the dark mode rollout" led by a clipboard glyph, above the release the session shipped.](images/statusline-retro.png)
 
-## The pop-out is the dashboard, stacked
+## The tab stack: every session's status panel, on top
 
-The dashboard's **pop out** button (Chrome and Edge) opens a small window that stays on top of everything else. It now holds every session the dashboard shows, in the same order, as one column of compact tiles, where it used to start with only the sessions waiting on you. Each tile is one line: the session's project, branch, and task, its activity dot and age, and buttons to raise its window (`go →`) and open its project page and directory. Click a tile to expand it to its mode's note, its latest turn, and the change requests and issues it's working. A mode marks a tile with its glyph and an edge in its color, and a paused or finished session's tile recedes behind the ones still working.
+The dashboard's **tab stack** button (Chrome and Edge) opens a small window that stays on top of everything else. It holds every session the dashboard shows, in the same order, each drawn the way Claude Code draws that session's status panel above its prompt: the mode's bar in its color, the project, branch, and task with `[ ↖ github ]` and `[ code ↗ ]`, and the change requests and issues underneath. Through 2.x this window was the pop-out, and it started with only the sessions waiting on you.
 
-![The pop-out window: a quiet "needs you" heading over the waiting sessions' one-line tiles, then the rest; release tiles carry a blue edge and a rocket, and paused tiles a purple edge on a darker ground.](images/demo-popout.png ':size=480')
+Both list the sessions with no headings, in **status** order: waiting on you, then working, then idle, then paused and finished sessions below a rule, on a darker ground. The sort switch in the top line shows which order is in force; click `recency` for newest first whatever the state, and the browser remembers your choice. Each tile adds the session's activity dot, its age, and `[ go ]` to raise its window. Click a tile's top row to show its latest turn, with its links as clickable labels rather than addresses. A paused or finished session gets a thin bar and dimmer text, so it recedes behind the ones still working.
 
-## Switch to the session that needs you
+![The tab stack: one column of status panels, the waiting sessions first, each with its project, branch, task, and buttons, and a purple bar over each paused session.](images/demo-popout.png ':size=480')
 
-Command-Option-] raises the next beacon session and Command-Option-[ the previous one, the sessions waiting on you first. Command-Option-/ opens a list to choose from, and `/beacon switch` shows the same list in the panel. From a shell, [`beacon switch`](/cli?id=beacon-switch) does the same.
+## Pick a session from the keyboard
+
+Press **⌘K** at a zsh prompt in iTerm2 and [`beacon pick`](/cli?id=beacon-pick) takes over the terminal with every session, two lines each, in the status order above: the project, branch, and task, then what it waits on or its latest turn. Type to narrow the list by project, branch, task, or note.
+
+| Key | Does |
+|:---|:---|
+| ↑ ↓ | move |
+| ↵ | raise the session's window |
+| ⌥W / ⌥C | open its project page / its directory in your editor |
+| Tab | flip between status and recency order |
+| Esc | hand the terminal back to the shell |
+
+It reads session state directly, so it works with `beacon serve` stopped. ⌘K comes from an app-wide iTerm2 key binding `beacon layout` adds, since a Command chord never reaches the shell; it takes the place of Clear Buffer, which stays in the Edit menu. In another terminal, or for a key of your own, `beacon config pick-key` binds one in zsh (`^[p` for Option-P); `exec zsh` picks up the change, and `beacon pick` typed at the prompt always works. For a key that works from any app, give an iTerm2 hotkey window's profile `beacon pick` as its text to send at start. Inside a Claude Code session, `/beacon switch` lists the other sessions in the same order in the panel.
 
 ## Also in 3.0
 
@@ -65,7 +77,7 @@ Check the rest against your setup:
 | set `statusbar.buttons.<name>.cmd` in `~/.config/beacon/config.json` | move it to `buttons.<name>.cmd`. beacon no longer reads the old key. Button labels are no longer configurable: the panel labels each button by what it opens. |
 | named the `beacon-dev` profile in a script, an AppleScript, or a key binding | use `beacon`. The profile keeps its GUID, so iTerm2's default-profile setting and existing windows follow it on their own. |
 | used `beacon config status-panel` or `/beacon on` / `off` | drop them: the panel is always on, so there is nothing to switch. |
-| run your own dashboard against `beacon serve` | `/mode-bg/<mode>` is gone, since mode cards take the bar's hue. The pop-out's new `/panel/<hash>` and `/open` routes fall under the same `focus_origins` allowlist as the others. |
+| run your own dashboard against `beacon serve` | `/mode-bg/<mode>` is gone, since mode cards take the bar's hue. The tab stack's new `/panel/<hash>` and `/open` routes fall under the same `focus_origins` allowlist as the others. |
 
 The pause, release, and done pane backgrounds and their watermarks are gone with nothing to replace them: the panel's bar and the tab's glyph carry the mode.
 

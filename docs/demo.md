@@ -28,9 +28,9 @@ python3 dev/demo.py --seed-only      # write static sessions and exit (no serve)
 
 ## What you'll see
 
-A card per session, colored by what each is doing right now, in the same colors beacon paints on an iTerm2 pane. Sessions that need you (waiting, or flagged) rise into a loud **Needs you** band at the top; the rest of the sessions sit quietly below:
+A card per session, colored by what each is doing right now, in the same colors beacon paints on an iTerm2 pane, in one list with no headings. It starts in **status** order: the sessions waiting on you (or flagged) first, glowing red, then the working, then the idle, with paused and finished sessions below a rule on a darker ground. The sort switch in the header shows which order is in force; click `recency` for newest first, and the browser remembers which you chose. A waiting session always takes its own slot, never tucked behind another card for the same project:
 
-![The beacon dashboard: a Needs-you band of red waiting cards above a grid of the rest: gray idle, amber working, and mode cards tinted in their ribbon hues.](images/demo-sessions.png)
+![The beacon dashboard: red waiting cards first, then gray idle and amber working ones, and mode cards tinted in their ribbon hues.](images/demo-sessions.png)
 
 - **Gray**: idle, at rest, waiting for its next prompt
 - **Amber**: Claude is working
@@ -49,9 +49,9 @@ A red card is the only kind you can click. In the demo, clicking it **returns th
 
 Let the board run for a minute and you'll watch it drift redder as work stalls, then clear it card by card. That's the loop the sessions view is built for.
 
-## Pop it out
+## The tab stack
 
-**pop out** (in Chrome and Edge) opens a small window that stays on top of everything else, so your sessions stay in view while you work in your editor. It holds the same sessions as the dashboard, in the same order, stacked in one column: the ones waiting on you first, under their own heading. Each tile is one line from that session's [status panel](/statusline): the project, branch, and task, with buttons to raise its window and open its project page and directory. Click a tile to expand it to its mode's note, latest turn, and the change requests and issues it's working.
+**tab stack** (in Chrome and Edge) opens a small window that stays on top of everything else, so your sessions stay in view while you work in your editor. It holds the same sessions as the dashboard, in the same order, stacked in one column, each drawn as that session's [status panel](/statusline): the mode's bar, the project, branch, and task with buttons to raise its window and open its project page and directory, and the change requests and issues underneath. Click a tile's top row to show its latest turn.
 
 ## On Windows or a non-iTerm terminal
 

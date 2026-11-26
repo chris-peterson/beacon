@@ -28,6 +28,9 @@ PAGE = ROOT / "docs" / "program-status.md"
 PLOT_LEFT, PLOT_RIGHT = 160.0, 860.0
 STATUS_X, NAME_X, WIDTH = 880, 150, 1040
 ROW = 30
+# Below this column width a two-digit day number touches its neighbor, so only
+# Mondays keep a printed number and the rest appear when their column is hovered.
+DAY_LABEL_MIN_STEP = 18
 SPEC_ROW = 38
 GROUP_GAP = 22
 HEADER_RULE = 72
@@ -162,7 +165,8 @@ def svg(data: dict) -> str:
         head.append(f'<rect class="colhl h{i}" x="{axis.edge(i):.1f}" y="52" width="{axis.step:.1f}" height="{bottom - 52:.0f}"/>')
         if d.weekday() != 0:
             head.append(f'<line class="dayline" x1="{axis.edge(i):.1f}" x2="{axis.edge(i):.1f}" y1="52" y2="{bottom:.0f}"/>')
-        head.append(f'<text class="day dl{i}" x="{axis.x(d):.1f}" y="64" text-anchor="middle">{d.day}</text>')
+        minor = " minor" if axis.step < DAY_LABEL_MIN_STEP and d.weekday() != 0 else ""
+        head.append(f'<text class="day{minor} dl{i}" x="{axis.x(d):.1f}" y="64" text-anchor="middle">{d.day}</text>')
     today = axis.today
     tag = f"As of {short(axis.as_of)}"
     head.append(f'<line class="today" x1="{today:.1f}" x2="{today:.1f}" y1="20" y2="{bottom:.0f}"/>')
@@ -173,12 +177,16 @@ def svg(data: dict) -> str:
         if d.weekday() == 0:
             x = axis.edge(i)
             head.append(f'<line class="week" x1="{x:.1f}" x2="{x:.1f}" y1="30" y2="{bottom:.0f}"/>')
-            head.append(f'<text class="weekhd" x="{x + 6:.1f}" y="42">Week of {short(d)}</text>')
+            label = f"Week of {short(d)}" if axis.step >= DAY_LABEL_MIN_STEP else short(d)
+            head.append(f'<text class="weekhd" x="{x + 6:.1f}" y="42">{label}</text>')
     head.append(f'<line class="rule" x1="{PLOT_LEFT:.0f}" x2="{PLOT_RIGHT:.0f}" y1="{HEADER_RULE}" y2="{HEADER_RULE}"/>')
     head.append(f'<text class="colhd" x="{STATUS_X}" y="42">Where it stands</text>')
     head += day_cells(axis, "hcell", 52, HEADER_RULE - 52)
     hovered = lambda target: ",".join(f".osc-gantt:has(.c{i}:hover) .{target}{i}" for i in range(axis.days))
-    head.append(f"<style>{hovered('h')}{{opacity:1}}{hovered('dl')}{{fill:var(--fg);font-weight:600}}</style>")
+    head.append(
+        f"<style>.osc-gantt .day.minor{{opacity:0}}{hovered('h')}{{opacity:1}}"
+        f"{hovered('dl')}{{fill:var(--fg);font-weight:600;opacity:1}}</style>"
+    )
 
     shipped = sum(p["kind"] == "shipped" for g in data["groups"] for p in charted(g))
     title = f"OSC 7501 adoption, {short(axis.start)} to {short(axis.as_of)} {axis.as_of.year}"

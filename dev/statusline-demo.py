@@ -190,8 +190,7 @@ def ribbon_ansi(ribbon: dict) -> str:
     if ribbon["note_line"]:
         body += f"{hint} · {fg}{ribbon['note_line']}"
     blank = f"{bg}\033[K\033[0m"
-    tail = f"{hint}\033[3m  type to resume \033[23m" if ribbon["resumes_on_prompt"] else ""
-    return f"{blank}\n{body}{tail}\033[K\033[0m\n{blank}\n"
+    return f"{blank}\n{body}\033[K\033[0m\n{blank}\n"
 
 
 def ribbon_html(ribbon: dict) -> str:
@@ -199,11 +198,9 @@ def ribbon_html(ribbon: dict) -> str:
     if ribbon["note_line"]:
         note = (f'<span style="color:{RIBBON_HINT}"> · </span>'
                 f'<span style="color:{RIBBON_TEXT}">{ansi_to_html(ribbon["note_line"])}</span>')
-    hint = (f'<span style="color:{RIBBON_HINT};font-style:italic">type to resume</span>'
-            if ribbon["resumes_on_prompt"] else "")
     return (f'<div class="ribbon" style="background:{ribbon["band"]}">'
             f'<span><b style="color:{RIBBON_TEXT}">{html.escape(ribbon["glyph"])} '
-            f'{html.escape(ribbon["label"])}</b>{note}</span>{hint}</div>')
+            f'{html.escape(ribbon["label"])}</b>{note}</span></div>')
 
 
 # The attributes the status line emits, as CSS. Colors approximate a dark

@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-10-22",
+  "as_of": "2026-11-25",
   "start": "2026-09-28",
   "spec": {
     "name": "Program Status Protocol",
@@ -9,7 +9,7 @@
       {"date": "2026-09-28", "label": "0.1 draft", "event": "Revision 0.1, initial draft", "tip": "Revision 0.1, initial draft", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"},
       {"date": "2026-10-06", "label": "0.2 announced", "event": "Revision 0.2, announced", "tip": "Revision 0.2; Mitchell Hashimoto's announcement post", "source": "post", "url": "https://mitchellh.com/writing/program-status-osc7501"},
       {"date": "2026-10-07", "label": "0.3", "below": true, "event": "Revision 0.3", "tip": "Revision 0.3: absent progress means indeterminate; programs may send without querying", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"},
-      {"date": "2026-10-10", "label": "0.4", "event": "Revision 0.4", "tip": "Revision 0.4: the query reply may list states and kinds", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"}
+      {"date": "2026-10-10", "label": "0.4", "below": true, "event": "Revision 0.4", "tip": "Revision 0.4: the query reply may list states and kinds", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"}
     ]
   },
   "groups": [
@@ -25,21 +25,24 @@
           "events": [{"date": "2026-10-06", "event": "Shipped with the spec", "source": "spec", "url": "https://www.superlogical.com/rex/docs/build/program-status"}]
         },
         {
-          "name": "libghostty", "kind": "merged", "start": "2026-10-06",
-          "status": "Merged, for Ghostty 1.4.0", "source": "#14560", "link": "https://github.com/ghostty-org/ghostty/pull/14560",
-          "note": "The library keeps the records; the Ghostty app doesn't show them yet",
+          "name": "libghostty", "kind": "shipped", "start": "2026-10-06", "released": "2026-10-27",
+          "status": "Shipped in Ghostty 1.4.0", "source": "release notes", "link": "https://ghostty.org/docs/install/release-notes/1-4-0",
+          "note": "Ghostty 1.4.0 parses the records; the Ghostty app ignores them for now",
           "events": [
             {"date": "2026-10-06", "event": "Merged", "source": "#14560", "url": "https://github.com/ghostty-org/ghostty/pull/14560"},
-            {"date": "2026-10-10", "event": "Updated to revision 0.4", "source": "#14630", "url": "https://github.com/ghostty-org/ghostty/pull/14630"}
+            {"date": "2026-10-10", "event": "Updated to revision 0.4", "source": "#14630", "url": "https://github.com/ghostty-org/ghostty/pull/14630"},
+            {"date": "2026-10-27", "event": "Shipped in Ghostty 1.4.0", "source": "release notes", "url": "https://ghostty.org/docs/install/release-notes/1-4-0"}
           ]
         },
         {
-          "name": "Windows Terminal", "kind": "open", "start": "2026-10-07",
-          "status": "Sent to Intelligent Terminal", "source": "#1096", "link": "https://github.com/microsoft/intelligent-terminal/issues/1096",
-          "note": "The team moved the request to Intelligent Terminal, Microsoft's agent-focused fork, to evaluate first; it awaits triage there. ConPTY passes the sequence through, so it reaches Windows Terminal, which doesn't draw it or answer the query.",
+          "name": "Intelligent Terminal", "kind": "shipped", "start": "2026-10-07", "released": "2026-11-19",
+          "status": "Shipped v0.3.3213", "source": "release", "link": "https://github.com/microsoft/intelligent-terminal/releases/tag/v0.3.3213",
+          "note": "Microsoft's agent-focused fork of Windows Terminal; with Agent Status on, its sidebar shows each session's status, reports over SSH included. The request began as a Windows Terminal one, and Windows Terminal itself doesn't draw it.",
           "events": [
-            {"date": "2026-10-07", "event": "Requested", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"},
-            {"date": "2026-10-08", "event": "Moved to Intelligent Terminal", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"}
+            {"date": "2026-10-07", "event": "Requested for Windows Terminal", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"},
+            {"date": "2026-10-08", "event": "Moved to Intelligent Terminal", "source": "#1096", "url": "https://github.com/microsoft/intelligent-terminal/issues/1096"},
+            {"date": "2026-11-17", "event": "Merged", "source": "#1388", "url": "https://github.com/microsoft/intelligent-terminal/pull/1388"},
+            {"date": "2026-11-19", "event": "Shipped in v0.3.3213", "source": "release", "url": "https://github.com/microsoft/intelligent-terminal/releases/tag/v0.3.3213"}
           ]
         },
         {
@@ -73,22 +76,34 @@
           "events": [{"date": "2026-10-11", "event": "Draft pull request opened", "source": "#5172", "url": "https://github.com/herdrdev/herdr/pull/5172"}]
         },
         {
-          "name": "kitty", "kind": "merged", "start": "2026-10-13",
-          "status": "Merged, for 0.50.0", "source": "#10657", "link": "https://github.com/kovidgoyal/kitty/pull/10657",
+          "name": "kitty", "kind": "shipped", "start": "2026-10-13", "released": "2026-11-03",
+          "status": "Shipped 0.50.0", "source": "changelog", "link": "https://sw.kovidgoyal.net/kitty/changelog/",
           "note": "`tab.program_status` in the tab title template; `kitten @ ls`",
-          "events": [{"date": "2026-10-13", "event": "Merged, for 0.50.0", "source": "#10657", "url": "https://github.com/kovidgoyal/kitty/pull/10657"}]
+          "events": [
+            {"date": "2026-10-13", "event": "Merged", "source": "#10657", "url": "https://github.com/kovidgoyal/kitty/pull/10657"},
+            {"date": "2026-11-03", "event": "Shipped in 0.50.0", "source": "changelog", "url": "https://sw.kovidgoyal.net/kitty/changelog/"}
+          ]
         },
         {
-          "name": "tmux", "kind": "declined", "start": "2026-10-13",
-          "status": "Declined for now", "source": "#5713", "link": "https://github.com/tmux/tmux/issues/5713",
-          "tip": "premature, waiting to see wider adoption",
-          "note": "Drops the sequence, so reports from inside tmux never reach the outer terminal",
-          "events": [{"date": "2026-10-13", "event": "Declined for now", "source": "#5713", "url": "https://github.com/tmux/tmux/issues/5713"}]
+          "name": "tmux", "kind": "merged", "start": "2026-10-13",
+          "status": "Merged, unreleased", "source": "`9e5702fbb`", "link": "https://github.com/tmux/tmux/commit/9e5702fbb75e7ebcd9938eda72b764f4d7237c29",
+          "tip": "declined Oct 13 as premature, then taken in a minimal form",
+          "note": "Keeps each pane's report in the `pane_program_state`, `pane_program_name`, and `pane_program_message` formats, and forwards the active pane's to the outer terminal",
+          "events": [
+            {"date": "2026-10-13", "event": "Declined for now", "source": "#5713", "url": "https://github.com/tmux/tmux/issues/5713"},
+            {"date": "2026-11-12", "event": "Minimal support merged", "source": "`434ab3a25`", "url": "https://github.com/tmux/tmux/commit/434ab3a25072837616c34f6d6256f82f52ed988b"},
+            {"date": "2026-11-23", "event": "Forwarding to the outer terminal merged", "source": "`9e5702fbb`", "url": "https://github.com/tmux/tmux/commit/9e5702fbb75e7ebcd9938eda72b764f4d7237c29"}
+          ]
         },
         {
-          "name": "Warp", "kind": "open", "start": "2026-10-14",
-          "status": "Pull request open", "source": "#16460", "link": "https://github.com/warpdotdev/warp/pull/16460",
-          "events": [{"date": "2026-10-14", "event": "Pull request opened", "source": "#16460", "url": "https://github.com/warpdotdev/warp/pull/16460"}]
+          "name": "Warp", "kind": "open", "start": "2026-10-10",
+          "status": "Requested", "source": "#16407", "link": "https://github.com/warpdotdev/warp/issues/16407",
+          "note": "A pull request adding only a spec for it closed after review stalled",
+          "events": [
+            {"date": "2026-10-10", "event": "Requested", "source": "#16407", "url": "https://github.com/warpdotdev/warp/issues/16407"},
+            {"date": "2026-10-14", "event": "Spec pull request opened", "source": "#16460", "url": "https://github.com/warpdotdev/warp/pull/16460"},
+            {"date": "2026-10-31", "event": "Spec pull request closed, stale", "source": "#16460", "url": "https://github.com/warpdotdev/warp/pull/16460"}
+          ]
         },
         {
           "name": "Paseo", "kind": "open", "start": "2026-10-15",
@@ -106,19 +121,25 @@
           ]
         },
         {
-          "name": "Zellij", "kind": "merged", "start": "2026-10-20",
-          "status": "Merged, unreleased", "source": "#5734", "link": "https://github.com/zellij-org/zellij/pull/5734",
+          "name": "Zellij", "kind": "shipped", "start": "2026-10-20", "released": "2026-11-11",
+          "status": "Shipped v0.46.0", "source": "release", "link": "https://github.com/zellij-org/zellij/releases/tag/v0.46.0",
           "note": "Marks on pane frames and tabs, an inbox in the session manager; forwards to the outer terminal by default",
-          "events": [{"date": "2026-10-20", "event": "Merged", "source": "#5734", "url": "https://github.com/zellij-org/zellij/pull/5734"}]
+          "events": [
+            {"date": "2026-10-20", "event": "Merged", "source": "#5734", "url": "https://github.com/zellij-org/zellij/pull/5734"},
+            {"date": "2026-11-11", "event": "Shipped in v0.46.0", "source": "release", "url": "https://github.com/zellij-org/zellij/releases/tag/v0.46.0"}
+          ]
         },
         {
-          "name": "agterm", "kind": "open", "start": "2026-10-21",
-          "status": "Waits on libghostty", "source": "backlog", "link": "https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md",
-          "note": "A macOS terminal on libghostty, whose embedding layer drops the reports and leaves the query unanswered, so Claude Code sends none. Its own hook adapters set a status glyph per session.",
-          "events": [{"date": "2026-10-21", "event": "Backlogged, waits on libghostty", "source": "backlog", "url": "https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md"}]
+          "name": "agterm", "kind": "declined", "start": "2026-10-21",
+          "status": "Backlog item dropped", "source": "commit", "link": "https://github.com/umputun/agterm/commit/71a9483fd6b4cec0039241f995e1cf659f7849a7",
+          "note": "A macOS terminal on libghostty, whose embedding layer drops the reports and leaves the query unanswered, so Claude Code sends none. It dropped the backlog item; its own hook adapters set a status glyph per session.",
+          "events": [
+            {"date": "2026-10-21", "event": "Backlogged, waits on libghostty", "source": "backlog", "url": "https://github.com/umputun/agterm/blob/master/docs/backlog/program-status-waits-on-an-upstream-app-action.md"},
+            {"date": "2026-11-06", "event": "Backlog item dropped", "source": "commit", "url": "https://github.com/umputun/agterm/commit/71a9483fd6b4cec0039241f995e1cf659f7849a7"}
+          ]
         },
         {
-          "name": "WezTerm, Alacritty, VS Code", "kind": "none", "chart": false,
+          "name": "WezTerm, Alacritty, VS Code, Windows Terminal", "kind": "none", "chart": false,
           "status": "No support found"
         }
       ]
@@ -135,6 +156,15 @@
           "events": [{"date": "2026-10-07", "event": "Shipped in v1.1.0", "source": "release", "url": "https://github.com/earendil-works/pi/releases/tag/v1.1.0"}]
         },
         {
+          "name": "Docker Agent", "kind": "shipped", "start": "2026-10-07", "released": "2026-10-09",
+          "status": "Shipped v1.150.0", "source": "release", "link": "https://github.com/docker/docker-agent/releases/tag/v1.150.0",
+          "note": "In both the TUI and lean mode",
+          "events": [
+            {"date": "2026-10-07", "event": "Merged", "source": "#4544", "url": "https://github.com/docker/docker-agent/pull/4544"},
+            {"date": "2026-10-09", "event": "Shipped in v1.150.0", "source": "release", "url": "https://github.com/docker/docker-agent/releases/tag/v1.150.0"}
+          ]
+        },
+        {
           "name": "Claude Code", "kind": "shipped", "start": "2026-10-08", "released": "2026-10-08",
           "status": "Shipped 2.1.295", "source": "release", "link": "https://github.com/anthropics/claude-code/releases/tag/v2.1.295",
           "note": "Sends only after the terminal answers the query. `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` turns it off, along with Claude's window title.",
@@ -145,6 +175,12 @@
           "status": "Shipped v0.98.0", "source": "release", "link": "https://github.com/charmbracelet/crush/releases/tag/v0.98.0",
           "note": "Through Bubble Tea",
           "events": [{"date": "2026-10-08", "event": "Shipped in v0.98.0", "source": "release", "url": "https://github.com/charmbracelet/crush/releases/tag/v0.98.0"}]
+        },
+        {
+          "name": "Factory Droid", "kind": "shipped", "start": "2026-10-08", "released": "2026-10-08",
+          "status": "Shipped v0.236.0", "source": "changelog", "link": "https://docs.factory.com/changelog/release-notes",
+          "note": "The changelog calls it terminal activity status",
+          "events": [{"date": "2026-10-08", "event": "Shipped in v0.236.0", "source": "changelog", "url": "https://docs.factory.com/changelog/release-notes"}]
         },
         {
           "name": "Codex CLI", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-15",
@@ -164,14 +200,21 @@
         {
           "name": "Gemini CLI", "kind": "open", "start": "2026-10-10",
           "status": "Requested", "source": "#29710", "link": "https://github.com/google-gemini/gemini-cli/issues/29710",
-          "events": [{"date": "2026-10-10", "event": "Requested", "source": "#29710", "url": "https://github.com/google-gemini/gemini-cli/issues/29710"}]
+          "note": "A pull request for it closed unmerged",
+          "events": [
+            {"date": "2026-10-10", "event": "Requested", "source": "#29710", "url": "https://github.com/google-gemini/gemini-cli/issues/29710"},
+            {"date": "2026-10-24", "event": "Pull request opened", "source": "#29918", "url": "https://github.com/google-gemini/gemini-cli/pull/29918"},
+            {"date": "2026-11-08", "event": "Pull request closed", "source": "#29918", "url": "https://github.com/google-gemini/gemini-cli/pull/29918"}
+          ]
         },
         {
-          "name": "Qwen Code", "kind": "open", "start": "2026-10-10",
-          "status": "Pull request open", "source": "#13994", "link": "https://github.com/QwenLM/qwen-code/pull/13994",
+          "name": "Qwen Code", "kind": "shipped", "start": "2026-10-10", "released": "2026-11-06",
+          "status": "Shipped v0.26.9", "source": "release", "link": "https://github.com/QwenLM/qwen-code/releases/tag/v0.26.9",
           "events": [
             {"date": "2026-10-10", "event": "Requested", "source": "#13870", "url": "https://github.com/QwenLM/qwen-code/issues/13870"},
-            {"date": "2026-10-12", "event": "Pull request opened", "source": "#13994", "url": "https://github.com/QwenLM/qwen-code/pull/13994"}
+            {"date": "2026-10-12", "event": "Pull request opened", "source": "#13994", "url": "https://github.com/QwenLM/qwen-code/pull/13994"},
+            {"date": "2026-11-06", "event": "Merged", "source": "#16407", "url": "https://github.com/QwenLM/qwen-code/pull/16407"},
+            {"date": "2026-11-06", "event": "Shipped in v0.26.9", "source": "release", "url": "https://github.com/QwenLM/qwen-code/releases/tag/v0.26.9"}
           ]
         },
         {
@@ -180,9 +223,12 @@
           "events": [{"date": "2026-10-10", "event": "Requested", "source": "#2631", "url": "https://github.com/XiaomiMiMo/MiMo-Code/issues/2631"}]
         },
         {
-          "name": "GitHub Copilot CLI", "kind": "open", "start": "2026-10-10",
-          "status": "Requested", "source": "#5112", "link": "https://github.com/github/copilot-cli/issues/5112",
-          "events": [{"date": "2026-10-10", "event": "Requested", "source": "#5112", "url": "https://github.com/github/copilot-cli/issues/5112"}]
+          "name": "GitHub Copilot CLI", "kind": "shipped", "start": "2026-10-10", "released": "2026-11-06",
+          "status": "Shipped v1.0.107", "source": "release", "link": "https://github.com/github/copilot-cli/releases/tag/v1.0.107",
+          "events": [
+            {"date": "2026-10-10", "event": "Requested", "source": "#5112", "url": "https://github.com/github/copilot-cli/issues/5112"},
+            {"date": "2026-11-06", "event": "Shipped in v1.0.107", "source": "release", "url": "https://github.com/github/copilot-cli/releases/tag/v1.0.107"}
+          ]
         },
         {
           "name": "Kilo Code", "kind": "open", "start": "2026-10-11",
@@ -190,9 +236,14 @@
           "events": [{"date": "2026-10-11", "event": "Requested", "source": "#14973", "url": "https://github.com/Kilo-Org/kilocode/issues/14973"}]
         },
         {
-          "name": "opencode", "kind": "open", "start": "2026-10-11",
-          "status": "Pull request open", "source": "#54560", "link": "https://github.com/anomalyco/opencode/pull/54560",
-          "events": [{"date": "2026-10-11", "event": "Pull request opened", "source": "#54560", "url": "https://github.com/anomalyco/opencode/pull/54560"}]
+          "name": "opencode", "kind": "shipped", "start": "2026-10-11", "released": "2026-10-27",
+          "status": "Shipped v2.2.0", "source": "release", "link": "https://github.com/anomalyco/opencode/releases/tag/v2.2.0",
+          "note": "OpenCode 2 only: a root record plus one per session waiting on you. OpenCode 1, still on npm as `opencode-ai`, sends none.",
+          "events": [
+            {"date": "2026-10-11", "event": "Pull request opened", "source": "#54560", "url": "https://github.com/anomalyco/opencode/pull/54560"},
+            {"date": "2026-10-13", "event": "Merged", "source": "#55172", "url": "https://github.com/anomalyco/opencode/pull/55172"},
+            {"date": "2026-10-27", "event": "Shipped in v2.2.0", "source": "release", "url": "https://github.com/anomalyco/opencode/releases/tag/v2.2.0"}
+          ]
         },
         {
           "name": "Mastra Code", "kind": "open", "start": "2026-10-13",
@@ -200,22 +251,42 @@
           "events": [{"date": "2026-10-13", "event": "Requested", "source": "#26910", "url": "https://github.com/mastra-ai/mastra/issues/26910"}]
         },
         {
-          "name": "Hermes Agent", "kind": "open", "start": "2026-10-14",
-          "status": "Pull request open", "source": "#140837", "link": "https://github.com/NousResearch/hermes-agent/pull/140837",
+          "name": "Hermes Agent", "kind": "shipped", "start": "2026-10-14", "released": "2026-11-24",
+          "status": "Shipped v0.23.4", "source": "release", "link": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4",
           "events": [
             {"date": "2026-10-14", "event": "Requested, pull request opened", "source": "#138152", "url": "https://github.com/NousResearch/hermes-agent/pull/138152"},
-            {"date": "2026-10-18", "event": "Second pull request opened", "source": "#140837", "url": "https://github.com/NousResearch/hermes-agent/pull/140837"}
+            {"date": "2026-10-18", "event": "Second pull request opened", "source": "#140837", "url": "https://github.com/NousResearch/hermes-agent/pull/140837"},
+            {"date": "2026-11-22", "event": "Merged", "source": "#140837", "url": "https://github.com/NousResearch/hermes-agent/pull/140837"},
+            {"date": "2026-11-24", "event": "Shipped in v0.23.4", "source": "release", "url": "https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.4"}
           ]
         },
         {
-          "name": "goose", "kind": "merged", "start": "2026-10-16",
-          "status": "Merged, unreleased", "source": "#12928", "link": "https://github.com/aaif-goose/goose/pull/12928",
-          "events": [{"date": "2026-10-16", "event": "Merged", "source": "#12928", "url": "https://github.com/aaif-goose/goose/pull/12928"}]
+          "name": "goose", "kind": "shipped", "start": "2026-10-16", "released": "2026-10-23",
+          "status": "Shipped v1.56.0", "source": "release", "link": "https://github.com/aaif-goose/goose/releases/tag/v1.56.0",
+          "events": [
+            {"date": "2026-10-16", "event": "Merged", "source": "#12928", "url": "https://github.com/aaif-goose/goose/pull/12928"},
+            {"date": "2026-10-23", "event": "Shipped in v1.56.0", "source": "release", "url": "https://github.com/aaif-goose/goose/releases/tag/v1.56.0"}
+          ]
         },
         {
-          "name": "OpenClaw", "kind": "merged", "start": "2026-10-18",
-          "status": "Merged, unreleased", "source": "#175692", "link": "https://github.com/openclaw/openclaw/pull/175692",
-          "events": [{"date": "2026-10-18", "event": "Merged", "source": "#175692", "url": "https://github.com/openclaw/openclaw/pull/175692"}]
+          "name": "Antigravity CLI", "kind": "shipped", "start": "2026-10-16", "released": "2026-10-16",
+          "status": "Shipped 1.4.0", "source": "release", "link": "https://github.com/google-antigravity/antigravity-cli/releases/tag/1.4.0",
+          "note": "Queries first; `AGY_CLI_OSC7501=off` turns it off, `=on` sends to a terminal that doesn't answer the query",
+          "events": [{"date": "2026-10-16", "event": "Shipped in 1.4.0", "source": "release", "url": "https://github.com/google-antigravity/antigravity-cli/releases/tag/1.4.0"}]
+        },
+        {
+          "name": "OpenClaw", "kind": "shipped", "start": "2026-10-18", "released": "2026-11-17",
+          "status": "Shipped v2026.11.5", "source": "release", "link": "https://github.com/openclaw/openclaw/releases/tag/v2026.11.5",
+          "events": [
+            {"date": "2026-10-18", "event": "Merged", "source": "#175692", "url": "https://github.com/openclaw/openclaw/pull/175692"},
+            {"date": "2026-11-17", "event": "Shipped in v2026.11.5", "source": "release", "url": "https://github.com/openclaw/openclaw/releases/tag/v2026.11.5"}
+          ]
+        },
+        {
+          "name": "Mistral Vibe", "kind": "shipped", "start": "2026-10-19", "released": "2026-10-19",
+          "status": "Shipped v3.0.0", "source": "release", "link": "https://github.com/mistralai/mistral-vibe/releases/tag/v3.0.0",
+          "note": "The Rust CLI, with session titles and error messages",
+          "events": [{"date": "2026-10-19", "event": "Shipped in v3.0.0", "source": "release", "url": "https://github.com/mistralai/mistral-vibe/releases/tag/v3.0.0"}]
         }
       ]
     },
@@ -257,9 +328,28 @@
           ]
         },
         {
-          "name": "Expo CLI", "kind": "open", "start": "2026-10-09",
-          "status": "Experimental pull request", "source": "#51289", "link": "https://github.com/expo/expo/pull/51289",
-          "events": [{"date": "2026-10-09", "event": "Experimental pull request opened", "source": "#51289", "url": "https://github.com/expo/expo/pull/51289"}]
+          "name": "Expo CLI", "kind": "merged", "start": "2026-10-09",
+          "status": "Merged, unreleased", "source": "#51289", "link": "https://github.com/expo/expo/pull/51289",
+          "note": "Reports while a prompt waits on you; not yet in `@expo/cli` 58.1.21, the latest release",
+          "events": [
+            {"date": "2026-10-09", "event": "Experimental pull request opened", "source": "#51289", "url": "https://github.com/expo/expo/pull/51289"},
+            {"date": "2026-10-27", "event": "Merged", "source": "#51289", "url": "https://github.com/expo/expo/pull/51289"}
+          ]
+        },
+        {
+          "name": "Hugo", "kind": "shipped", "start": "2026-10-09", "released": "2026-10-13",
+          "status": "Shipped v0.168.0", "source": "release", "link": "https://github.com/gohugoio/hugo/releases/tag/v0.168.0",
+          "note": "`working`, `done`, `idle`, and `error`, beside its OSC 9;4 progress",
+          "events": [
+            {"date": "2026-10-09", "event": "Merged", "source": "`d1024ae6`", "url": "https://github.com/gohugoio/hugo/commit/d1024ae6"},
+            {"date": "2026-10-13", "event": "Shipped in v0.168.0", "source": "release", "url": "https://github.com/gohugoio/hugo/releases/tag/v0.168.0"}
+          ]
+        },
+        {
+          "name": "MSBuild", "kind": "open", "start": "2026-10-12",
+          "status": "Draft pull request", "source": "#15263", "link": "https://github.com/dotnet/msbuild/pull/15263",
+          "note": "From its terminal and console loggers",
+          "events": [{"date": "2026-10-12", "event": "Draft pull request opened", "source": "#15263", "url": "https://github.com/dotnet/msbuild/pull/15263"}]
         },
         {
           "name": "OpenTUI", "kind": "shipped", "start": "2026-10-13", "released": "2026-10-13",
@@ -268,9 +358,13 @@
           "events": [{"date": "2026-10-13", "event": "Shipped in v0.6.3", "source": "release", "url": "https://github.com/anomalyco/opentui/releases/tag/v0.6.3"}]
         },
         {
-          "name": "Gradle", "kind": "open", "start": "2026-10-14",
-          "status": "Pull request open", "source": "#39468", "link": "https://github.com/gradle/gradle/pull/39468",
-          "events": [{"date": "2026-10-14", "event": "Pull request opened", "source": "#39468", "url": "https://github.com/gradle/gradle/pull/39468"}]
+          "name": "Gradle", "kind": "declined", "start": "2026-10-14",
+          "status": "Pull request closed", "source": "#39468", "link": "https://github.com/gradle/gradle/pull/39468",
+          "note": "Closed unmerged, still a draft, after it went stale",
+          "events": [
+            {"date": "2026-10-14", "event": "Pull request opened", "source": "#39468", "url": "https://github.com/gradle/gradle/pull/39468"},
+            {"date": "2026-11-13", "event": "Pull request closed", "source": "#39468", "url": "https://github.com/gradle/gradle/pull/39468"}
+          ]
         },
         {
           "name": "Docker Compose", "kind": "open", "start": "2026-10-20",

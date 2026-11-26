@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# SessionStart hook: report entry points a plugin update left behind.
+# SessionStart hook: report entry points a plugin update left behind, and
+# auto-pause turned on with no `beacon serve` running it (STATE-17).
 #
 # Claude Code updates the plugin in the background, so new code arrives with no
 # action from the user — while the wrapper on $PATH, the `.zshrc` source line,
