@@ -1562,26 +1562,10 @@
          buttons and lines wait for the pointer (or the expanded turn), so the
          work in flight stays the loudest thing in the stack. */
       .pip-row.moded.stood-down .pip-slab { padding: 0.35em 0; }
-      .pip-row.stood-down .pip-moderow { display: none; }
       .pip-row.stood-down .pip-proj .note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--hint); }
       .pip-row.stood-down .pip-proj .task { flex: 0 10 auto; }
       .pip-row.stood-down:not(:hover, :focus-within) .pip-actions { display: none; }
       .pip-row.stood-down:not(:hover, :focus-within, .expanded) .pip-lines { display: none; }
-
-      /* The mode's row opens the slab, a blank row under it; its label shares
-         the project's column, so the note and the branch start together. */
-      .pip-moderow {
-        display: flex; align-items: center; gap: 0 2ch; white-space: nowrap;
-        padding: 0 0.75rem 0 1.75rem; margin-bottom: 1.45em;
-      }
-      .pip-moderow[hidden] { display: none; }
-      .pip-row.stood-down .pip-moderow { margin-bottom: 0.3em; }
-      /* STATUS-04: a held review opens the slab ahead of the mode, in its own
-         hue; the blank row falls under whichever opening row comes last. */
-      .pip-moderow.review:has(+ .pip-moderow:not([hidden])) { margin-bottom: 0; }
-      .pip-moderow.review .rb-note { overflow-wrap: anywhere; white-space: normal; }
-      .pip-moderow .rb-mode { flex: none; font-weight: 700; }
-      .pip-moderow .rb-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--hint); }
 
       .pip-headrow {
         display: flex; align-items: center; gap: 0 0.5rem; padding: 0 0.75rem;
@@ -1597,14 +1581,13 @@
       .pip-proj .lead { flex: none; font-weight: 700; }
       .pip-proj .br { flex: none; }
       .pip-proj .task { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-      .pip-row.moded .pip-proj .task { color: var(--hint); }
       .pip-proj a { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-thickness: 1px; }
       .pip-age { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
       .pip-age:empty { display: none; }
 
       /* The band's buttons: chips a step above what they sit on, each label in
          its action's hue, inverting whole under the pointer as the band's do.
-         Docked at the tile's top right, on whichever row opens it. */
+         Docked at the tile's top right, at the end of the head row. */
       .pip-actions { flex: none; display: flex; gap: 0 1ch; margin-left: auto; }
       .pip-btn {
         --hue: var(--fg);
@@ -1629,9 +1612,22 @@
       }
       .pip-tip[hidden] { display: none; }
 
-      /* STATUS-01's lines, indented under the head as the band indents them. */
-      .pip-lines { display: flex; flex-direction: column; padding: 0 0.75rem 0 1.85rem; }
-      .pip-lines > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      /* The gutter under the project, as the band hangs its rows (STATUS-06,
+         STATUS-09): the review's and mode's labels on the left, beside the
+         target, the note, and STATUS-01's lines, which all start under the
+         branch. The padding matches the head row's up to the project, past
+         the activity dot. */
+      .pip-lines {
+        display: grid; grid-template-columns: auto minmax(0, 1fr);
+        column-gap: 2ch; padding: 0 0.75rem 0 1.75rem;
+      }
+      /* Sized in the gutter's own bold ch, as the head row's bold project is:
+         a bold face can run wider than the regular ch, and a column measured
+         in one weight drifts off the other over a long project name. */
+      .pip-lines > .g { font-weight: 700; white-space: nowrap; min-width: calc(var(--gutter, 0) * 1ch); }
+      .pip-lines > .c { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .pip-lines > .c.note { color: var(--hint); }
+      .pip-lines > .c.target { color: var(--hint); overflow-wrap: anywhere; white-space: normal; }
       .pip-lines a { text-decoration: underline dashed; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 
       /* The latest turn, revealed by a click on the head: Markdown, so a link is
@@ -1760,13 +1756,11 @@
     };
     const BRANCH_HUE = { default: "#8d98c4", clean: "#8be9fd", diverged: "#f1fa8c", untracked: "#ffb86c" };
     // A chip on the slab: the band lifted toward white, as the panel's lift() does.
-    function liftHex(hex, by = 0.1) {
+    function liftHex(hex, by = 0.18) {
       const n = parseInt(hex.slice(1), 16);
       const ch = (shift) => { const v = (n >> shift) & 0xff; return Math.round(v + (255 - v) * by).toString(16).padStart(2, "0"); };
       return "#" + ch(16) + ch(8) + ch(0);
     }
-    // Past this many cells, a shared column parts a label from its note more than it lines anything up (the panel's LEAD_SLACK).
-    const LEAD_SLACK = 8;
     // Cells a short label takes, as the panel's cells() counts them.
     function cells(text) {
       let n = 0;
@@ -1866,8 +1860,6 @@
       row.dataset.hash = hash;
       row.innerHTML =
         '<div class="pip-slab">' +
-          '<div class="pip-moderow review" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
-          '<div class="pip-moderow mode" hidden><span class="rb-mode"></span><span class="rb-note"></span></div>' +
           '<div class="pip-headrow">' +
             '<span class="pip-rdot"></span><span class="pip-proj"></span>' +
             '<button type="button" class="pip-btn go" data-tip="Raise its terminal window" hidden>go</button>' +
@@ -1968,30 +1960,14 @@
       const headrow = row.querySelector(".pip-headrow");
       headrow.setAttribute("aria-expanded", String(pip.expanded.has(s.hash)));
 
-      // The slab's first row, as the band draws it: glyph and label bold, then the note.
-      const reviewrow = row.querySelector(".pip-moderow.review");
-      reviewrow.hidden = !review;
+      // The labels the gutter holds under the project, as the band hangs them: the review's, then the mode's.
       const reviewLabel = review ? review.glyph + " " + review.label : "";
-      if (review) {
-        setHtml(reviewrow.querySelector(".rb-mode"), escapeHtml(reviewLabel));
-        setHtml(reviewrow.querySelector(".rb-note"), review.href ? linkHtml(review.href, escapeHtml(review.target)) : escapeHtml(review.target));
-      }
-      const moderow = row.querySelector(".pip-moderow.mode");
-      moderow.hidden = !modeBand;
       const modeLabel = modeBand ? (mode.glyph ? mode.glyph + " " : "") + (mode.label || mode.name) : "";
-      if (modeBand) {
-        const note = mode.note_line
-          ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
-              '<span style="' + (r.style.bold ? "font-weight:700;color:var(--fg);" : "") + (r.style.italic ? "font-style:italic" : "") + '">'
-              + escapeHtml(r.text) + "</span>").join("")
-          : escapeHtml(mode.note || "");
-        setHtml(moderow.querySelector(".rb-mode"), escapeHtml(modeLabel));
-        setHtml(moderow.querySelector(".rb-note"), note);
-      }
-      // The buttons dock on whichever row opens the tile.
-      const actions = row.querySelector(".pip-actions");
-      const dock = review ? reviewrow : modeBand && !folded ? moderow : headrow;
-      if (actions.parentNode !== dock) dock.appendChild(actions);
+      const noteHtml = !modeBand ? "" : mode.note_line
+        ? panelSegments(mode.note_line).map((r) => "href" in r ? "" :
+            '<span style="' + (r.style.bold ? "font-weight:700;color:var(--fg);" : "") + (r.style.italic ? "font-style:italic" : "") + '">'
+            + escapeHtml(r.text) + "</span>").join("")
+        : escapeHtml(mode.note || "");
 
       row.querySelector(".pip-btn.go").hidden = !s.focusable;
 
@@ -2006,18 +1982,17 @@
       // A mode with no ribbon (retro) marks the head row with its glyph, as the band does.
       // A folded tile leads with the mode's glyph, as a mode with no ribbon does.
       const glyph = mode && (!mode.band || folded) ? (mode.glyph || "") : "";
-      // On the slab the opening rows' labels share the project's column (STATUS-09), unless
-      // the project is so much wider that the column would part a label from its note.
-      const labels = [reviewLabel, modeBand && !folded ? modeLabel : ""].filter(Boolean).map(cells);
-      const labelW = labels.length ? Math.max(...labels) : 0;
-      const aligned = labelW && Math.abs(cells(parts[0] || "") - labelW) <= LEAD_SLACK;
-      const lead = aligned ? Math.max(labelW, cells(parts[0] || "")) : 0;
-      for (const r of [reviewrow, moderow]) r.querySelector(".rb-mode").style.minWidth = (lead || labelW) + "ch";
+      // One gutter column holds the project and the labels under it (STATUS-09), so the branch,
+      // a note, and every status line start together; a head-row glyph widens it by itself and a gap.
+      // Folded, the mode's label leaves the gutter and its note joins the head row.
+      const labels = [reviewLabel, modeBand && !folded ? modeLabel : ""].filter(Boolean);
+      const column = Math.max(cells(parts[0] || ""), ...labels.map(cells));
+      row.style.setProperty("--gutter", String((glyph ? cells(glyph) + 2 : 0) + column));
       // Folded, the note (why it's parked) follows the project; the branch drops, the task trails.
       const shown = folded ? parts.filter((p) => p !== branch) : parts;
-      const note = folded ? moderow.querySelector(".rb-note").innerHTML : "";
+      const note = folded ? noteHtml : "";
       const head = shown.map((p, i) => {
-        if (i === 0) return '<span class="lead"' + (lead ? ' style="min-width:' + lead + 'ch"' : "") + ">" + escapeHtml(p) + "</span>";
+        if (i === 0) return '<span class="lead" style="min-width:' + column + 'ch">' + escapeHtml(p) + "</span>";
         if (p === branch && panel) {
           const text = '<span style="color:' + (BRANCH_HUE[panel.branch_slot] || "inherit") + '">'
             + escapeHtml(panel.branch_sync ? panel.branch_sync + " " + p : p) + "</span>";
@@ -2039,10 +2014,21 @@
         code.dataset.tip = "Open its directory in " + panel.code_label;
       }
 
-      setHtml(row.querySelector(".pip-lines"), lines
-        .map((segs) => segs.filter((g) => !("href" in g && used.has(g.label))))
-        .filter((segs) => segs.some((g) => "href" in g || g.text.replace(/[\s·]/g, "") !== ""))
-        .map((segs) => "<div>" + segs.map(segHtml).join("") + "</div>").join(""));
+      // Each label pairs with the row at its index, so a label with nothing of its own to say
+      // shares its row with the next status line.
+      const contents = [
+        ...(review ? ['<div class="c target">' + (review.href ? linkHtml(review.href, escapeHtml(review.target)) : escapeHtml(review.target)) + "</div>"] : []),
+        ...(modeBand && !folded && noteHtml ? ['<div class="c note">' + noteHtml + "</div>"] : []),
+        ...lines
+          .map((segs) => segs.filter((g) => !("href" in g && used.has(g.label))))
+          .filter((segs) => segs.some((g) => "href" in g || g.text.replace(/[\s·]/g, "") !== ""))
+          .map((segs) => '<div class="c">' + segs.map(segHtml).join("") + "</div>"),
+      ];
+      const hung = [];
+      for (let i = 0; i < Math.max(labels.length, contents.length); i++) {
+        hung.push('<span class="g">' + escapeHtml(labels[i] || "") + "</span>" + (contents[i] || '<div class="c"></div>'));
+      }
+      setHtml(row.querySelector(".pip-lines"), hung.join(""));
 
       // The turn is Markdown (WIP-20): escaped first, then formatted, so a link
       // shows as its label and opens on a click.

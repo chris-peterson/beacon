@@ -152,6 +152,10 @@ already matches. Covers `pane-title-bar`, `tab.font-size`,
 A C1 control character in an announced title or URL no longer reaches the
 status line, where a terminal can read one as the start of an escape sequence.
 
+A ref from another project is named with its project (`anchor#201`) even when
+it is the only project on the row. Bare, it read as an issue in the session's
+own project.
+
 ## 2.22.0
 
 ### The selected tab stands out in a Minimal strip

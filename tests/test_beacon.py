@@ -2018,6 +2018,55 @@ class ShellLeavesThePluginItsSlots(unittest.TestCase):
                 self.assertNotIn(gone, self.shell)
 
 
+@unittest.skipIf(sys.platform == "win32",
+                 "the project's Claude Code hooks are bash scripts for a POSIX checkout")
+@unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+class PanelTileParityHook(unittest.TestCase):
+    """The project's Stop hook refuses, once, a branch that changes the status
+    panel without the tab stack tiles that redraw it (WIP-19), so the two
+    renderers can't drift apart unnoticed. Run against a scratch repo shaped
+    like this one, since the hook reads the branch's diff from main."""
+
+    HOOK = REPO_ROOT / ".claude" / "hooks" / "panel-tile-parity.sh"
+
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.repo)
+        for rel in ("hooks/status-panel.tsx", "dashboard/index.html"):
+            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / rel).write_text("a\n", encoding="utf-8")
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"]
+        for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-qm", "init"], ["checkout", "-qb", "feat"]):
+            subprocess.run(git + args, cwd=self.repo, check=True, capture_output=True)
+
+    def stop(self, **payload):
+        r = subprocess.run(["bash", str(self.HOOK)], cwd=self.repo, input=json.dumps(payload),
+                           capture_output=True, text=True, check=True)
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    def touch(self, rel):
+        with (self.repo / rel).open("a", encoding="utf-8") as f:
+            f.write("b\n")
+
+    def test_a_branch_that_touches_neither_stops(self):
+        self.assertIsNone(self.stop())
+
+    def test_a_panel_change_without_the_tiles_is_refused_with_the_reason(self):
+        self.touch("hooks/status-panel.tsx")
+        verdict = self.stop()
+        self.assertEqual(verdict["decision"], "block")
+        self.assertIn("dashboard/index.html", verdict["reason"])
+
+    def test_the_second_stop_goes_through(self):
+        self.touch("hooks/status-panel.tsx")
+        self.assertIsNone(self.stop(stop_hook_active=True))
+
+    def test_a_panel_change_with_the_tiles_stops(self):
+        self.touch("hooks/status-panel.tsx")
+        self.touch("dashboard/index.html")
+        self.assertIsNone(self.stop())
+
+
 class ShellDefersTheSessionNameToClaude(unittest.TestCase):
     """TITLE-04: a shell Claude Code spawns skips the startup set-name, since
     its data dir may hold no engagement marker for the pane it runs in."""
@@ -6717,8 +6766,8 @@ class StatusLineLinks(BeaconTest):
             "theme!3",
             "agent!47",
             "toolbox!159",
-            "  site!5",
-            "    skills!14",
+            "  ↳ site!5",
+            "    ↳ skills!14",
         ])
 
     def test_crs_outside_the_graph_keep_one_line_above_it(self):
@@ -6726,7 +6775,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("site", 2), waits_on=[_mr("lib", 54)])
         self._touch(_mr("other", 7))
         self._touch(_mr("more", 8))
-        self.assertEqual(self._lines(), ["more!8 · other!7", "lib!54", "  site!2"])
+        self.assertEqual(self._lines(), ["more!8 · other!7", "lib!54", "  ↳ site!2"])
 
     def test_a_branch_reads_under_its_own_parent(self):
         # A ← B ← C and A ← D: C belongs under B, not under the block of every
@@ -6736,7 +6785,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(b, waits_on=[a])
         self._touch(c, waits_on=[b])
         self._touch(d, waits_on=[a])
-        self.assertEqual(self._lines(), ["!1", "  !4", "  !2", "    !3"])
+        self.assertEqual(self._lines(), ["!1", "  ↳ !4", "  ↳ !2", "    ↳ !3"])
 
     def test_a_dependency_off_the_row_draws_no_tree(self):
         self._touch(_mr("site", 5), waits_on=[_mr("gone", 1)])
@@ -6748,7 +6797,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(b, waits_on=[a])
         lines = self._lines()
         self.assertEqual(len(lines), 2)
-        self.assertEqual({line.strip() for line in lines}, {"!1", "!2"})
+        self.assertEqual({line.strip().removeprefix("↳ ") for line in lines}, {"!1", "!2"})
 
     def test_a_cycle_keeps_the_edges_of_what_waits_on_it(self):
         a, b, c = _mr("x", 1), _mr("x", 2), _mr("x", 3)
@@ -6772,7 +6821,7 @@ class StatusLineLinks(BeaconTest):
     def test_issues_that_block_each_other_form_a_tree(self):
         self._touch(_gl_issue("site", 1))
         self._touch(_gl_issue("site", 2), waits_on=[_gl_issue("site", 1)])
-        self.assertEqual(self._lines(), ["#1", "  #2"])
+        self.assertEqual(self._lines(), ["#1", "  ↳ #2"])
 
     def test_an_over_wide_line_shortens_titles_before_dropping_them(self):
         self._touch(_mr("site", 5), title="A" * 60)
@@ -6847,7 +6896,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(tip, stacked_on=[mid])
         self._touch(_mr("site", 5), waits_on=[_mr("toolbox", 159)])
         self.assertEqual(self._lines(), [
-            "toolbox!159", "  site!5",
+            "toolbox!159", "  ↳ site!5",
             "site!20", "  └ !21", "    └ !22",
         ])
 
@@ -6864,6 +6913,24 @@ class StatusLineLinks(BeaconTest):
         self._touch(tip, stacked_on=[base], waits_on=[other])
         self.assertEqual(self._lines(), ["site!20", "toolbox!159", "  └ site!21"])
 
+    def test_two_stacks_off_one_base_fork_and_a_rail_holds_the_column(self):
+        base, left, left_tip, right = _mr("site", 20), _mr("site", 21), _mr("site", 23), _mr("site", 22)
+        self._touch(base)
+        self._touch(right, stacked_on=[base])
+        self._touch(left, stacked_on=[base])
+        self._touch(left_tip, stacked_on=[left])
+        self.assertEqual(self._lines(), ["!20", "  ├ !21", "  │ └ !23", "  └ !22"])
+        raw = self._raw()
+        for glyph in ("├ ", "│ ", "└ "):
+            self.assertIn(f"\033[{self.beacon.STATUSLINE_TREE_SGR}m{glyph}\033[0m", raw)
+
+    def test_a_lone_stack_never_forks(self):
+        base, mid, tip = _mr("site", 20), _mr("site", 21), _mr("site", 22)
+        self._touch(base)
+        self._touch(mid, stacked_on=[base])
+        self._touch(tip, stacked_on=[mid])
+        self.assertEqual(self._lines(), ["!20", "  └ !21", "    └ !22"])
+
     def test_a_merged_base_lifts_its_stack_a_level(self):
         self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
         base, mid, tip = _mr("site", 20), _mr("site", 21), _mr("site", 22)
@@ -6877,6 +6944,18 @@ class StatusLineLinks(BeaconTest):
         self.assertEqual(self._lines(), ["!5 Add a settings page"])
         self._touch(_mr("lib", 9))
         self.assertEqual(self._lines(), ["lib!9 · site!5 Add a settings page"])
+
+    def test_a_row_wholly_in_another_project_names_it(self):
+        self.beacon.write_state("resolved.project_id",
+                                self.beacon._project_id_from_url(_gl_issue("site", 1)))
+        self._touch(_gl_issue("lib", 201))
+        self.assertEqual(self._lines(), ["lib#201"])
+
+    def test_a_row_wholly_in_the_sessions_project_reads_bare(self):
+        self.beacon.write_state("resolved.project_id",
+                                self.beacon._project_id_from_url(_gl_issue("site", 1)))
+        self._touch(_gl_issue("site", 201))
+        self.assertEqual(self._lines(), ["#201"])
 
     def test_a_delivered_ref_in_another_project_qualifies_the_row(self):
         self.beacon.write_state("session_started_at", "2026-10-13T09:00:00+00:00")
@@ -6894,7 +6973,7 @@ class StatusLineLinks(BeaconTest):
         b = self.beacon
         self.assertIn(f"\033[{b.STATUSLINE_CR_SGR}m\033]8;;{base}\a!20", out)
         self.assertIn(f"\033[{b.STATUSLINE_CR_BLOCKED_SGR}m\033]8;;{tip}\a!21", out)
-        self.assertIn(f"  \033[{b.STATUSLINE_STACK_LEAD_SGR}m└ \033[0m\033[{b.STATUSLINE_CR_BLOCKED_SGR}m",
+        self.assertIn(f"  \033[{b.STATUSLINE_TREE_SGR}m└ \033[0m\033[{b.STATUSLINE_CR_BLOCKED_SGR}m",
                       out)
         self.assertIn(f"\033[{b.STATUSLINE_ISSUE_SGR}m\033]8;;{_gl_issue('site', 1)}\a#1", out)
         self.assertIn(f"\033[{b.STATUSLINE_ISSUE_BLOCKED_SGR}m\033]8;;{_gl_issue('site', 2)}\a#2",
@@ -6924,7 +7003,7 @@ class StatusLineLinks(BeaconTest):
         self._touch(_mr("site", 1))
         self._touch(_mr("site", 2), title="C" * 80, waits_on=[_mr("site", 1)])
         line = self._lines(columns=40)[1]
-        self.assertTrue(line.startswith("  !2 C"))
+        self.assertTrue(line.startswith("  ↳ !2 C"))
         self.assertLessEqual(self.beacon._visible_width(line), 40)
 
 
