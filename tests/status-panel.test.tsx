@@ -14,7 +14,7 @@ const BAND: RenderInput<'AbovePrompt', 'terminal'> = {
   surface: 'terminal',
   requestId: 'band',
   plugin: 'beacon',
-  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, scroll: { offset: 0, bodyRows: 10 } },
+  props: { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { offset: 0, bodyRows: 10 } },
 } as RenderInput<'AbovePrompt', 'terminal'>
 
 const PAUSED = JSON.stringify({
@@ -110,6 +110,27 @@ function propsOf(tree: unknown, text: string): Record<string, unknown> | undefin
   if (Reflect.get(tree, 'type') === 'Text' && textOf(children) === text) return props
   return propsOf(children, text)
 }
+
+/** Every fixed-width column in a drawn tree, top to bottom: the project's on the head row, then the gutter of each row under it. */
+function gutterOf(tree: unknown): number[] {
+  if (Array.isArray(tree)) return tree.flatMap(gutterOf)
+  if (typeof tree !== 'object' || !tree) return []
+  const props = Reflect.get(tree, 'props') as Record<string, unknown> | undefined
+  const children: unknown = Reflect.get(tree, 'children') ?? props?.children ?? []
+  const own = Reflect.get(tree, 'type') === 'Box' && typeof props?.width === 'number' ? [props.width] : []
+  return [...own, ...gutterOf(children)]
+}
+
+/** The props of the outermost Box that paints a background: the slab. */
+function slabOf(tree: unknown): Record<string, unknown> | undefined {
+  if (Array.isArray(tree)) return tree.map(slabOf).find(Boolean)
+  if (typeof tree !== 'object' || !tree) return undefined
+  const props = Reflect.get(tree, 'props') as Record<string, unknown> | undefined
+  if (Reflect.get(tree, 'type') === 'Box' && props?.backgroundColor) return props
+  return slabOf(Reflect.get(tree, 'children') ?? props?.children ?? [])
+}
+
+const PAUSED_NO_NOTE = JSON.stringify({ ...JSON.parse(PAUSED), mode: { ...JSON.parse(PAUSED).mode, note: null, note_line: null } })
 
 /** The hover overrides of the Text drawing `text`, which the engine carries beside its props. */
 function hoverOf(tree: unknown, text: string): unknown {
@@ -228,7 +249,39 @@ describe('status panel', () => {
     expect(text.split('⏸').length).toBe(2)
     // The head row sits on the same slab, not on the terminal's ground between two bars.
     expect(propsOf(drawn, 'acme')).toMatchObject({ backgroundColor: '#44385f', bold: true })
-    expect(propsOf(drawn, ' ↖ github ')).toMatchObject({ color: '#8be9fd', backgroundColor: '#574c6f' })
+    expect(propsOf(drawn, ' ↖ github ')).toMatchObject({ color: '#8be9fd', backgroundColor: '#665c7c' })
+    // The task is the headline, in the names' color rather than the note's hint.
+    expect(propsOf(drawn, 'widgets')).toMatchObject({ color: '#f8f8f2' })
+  })
+
+  test('the slab opens and closes on whole rows of its background, never half-block glyphs', async ($, on) => {
+    worldOf(on, { head: PAUSED, statusline: '' })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    // A glyph edge draws narrower than a background cell fills, so the ground shows at the slab's corners.
+    expect(textOf(drawn)).not.toMatch(/[▄▀]/)
+    expect(slabOf(drawn)).toMatchObject({ backgroundColor: '#44385f', paddingX: 1, paddingY: 1 })
+  })
+
+  test('the mode sits in the gutter under the project, and its note and the status lines start under the branch', async ($, on) => {
+    worldOf(on, { head: PAUSED })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    const text = textOf(drawn)
+    // The head row comes first and carries the buttons; the mode's label hangs under it.
+    expect(text.indexOf('acme')).toBeLessThan(text.indexOf('⏸ paused'))
+    expect(text.indexOf('code ↗')).toBeLessThan(text.indexOf('⏸ paused'))
+    expect(text).toContain('⏸ pausedwaiting for the VPN')
+    // `⏸ paused` is 8 cells, so `acme`'s column widens to it: the head row, the mode's row, the status line's.
+    expect(gutterOf(drawn)).toEqual([8, 8, 8])
+  })
+
+  test('a mode with no note shares its gutter row with the first status line', async ($, on) => {
+    worldOf(on, { head: PAUSED_NO_NOTE })
+    await started($)
+    const drawn = await $.ui.render(BAND)
+    expect(textOf(drawn)).toContain('⏸ paused⏸ back after standup')
+    expect(gutterOf(drawn)).toEqual([8, 8])
   })
 
   test('the dev cycle draws no slab, and a button is a chip that inverts whole under the pointer', async ($, on) => {
@@ -236,12 +289,14 @@ describe('status panel', () => {
     await started($)
     const drawn = await $.ui.render(BAND)
     expect(propsOf(drawn, 'acme')?.backgroundColor).toBeUndefined()
+    expect(slabOf(drawn)).toBeUndefined()
+    expect(gutterOf(drawn)).toEqual([4, 4])
     expect(propsOf(drawn, ' ↖ github ')).toMatchObject({ color: '#8be9fd', backgroundColor: '#343746' })
     // No hover of its own: the terminal's inversion of the plain button is the whole effect.
     expect(hoverOf(drawn, ' ↖ github ')).toBeUndefined()
   })
 
-  test('STATUS-04: a held review opens the slab in its own hue, ahead of the mode, with its target', async ($, on) => {
+  test('STATUS-04: a held review takes the slab\'s hue, its label in the gutter above the mode\'s, with its target', async ($, on) => {
     const reviewing = JSON.stringify({
       ...JSON.parse(PAUSED),
       review: { glyph: '👀', label: 'in review', band: '#4a3a22', target: 'https://example.com/acme/pull/7', href: 'https://example.com/acme/pull/7' },
@@ -269,10 +324,12 @@ describe('status panel', () => {
 
   test('a mode with no band keeps its glyph on the head row and draws no ribbon', async ($, on) => {
     const retro = JSON.stringify({ ...JSON.parse(HEAD), mode: { name: 'retro', note: null, glyph: '📋', label: 'retro', band: null, note_line: null } })
-    worldOf(on, { head: retro, statusline: '' })
+    worldOf(on, { head: retro })
     await started($)
-    const text = textOf(await $.ui.render(BAND))
-    expect(text.startsWith('📋')).toBe(true)
+    const drawn = await $.ui.render(BAND)
+    expect(textOf(drawn).startsWith('📋')).toBe(true)
+    // The glyph leads the head row, so the gutter under it spans the glyph's 2 cells, a gap, and `acme`.
+    expect(gutterOf(drawn)).toEqual([4, 8])
   })
 
   test('the declared mode joins Claude Code\'s footer of modes', async ($, on) => {

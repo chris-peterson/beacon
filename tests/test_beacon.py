@@ -2018,6 +2018,53 @@ class ShellLeavesThePluginItsSlots(unittest.TestCase):
                 self.assertNotIn(gone, self.shell)
 
 
+@unittest.skipUnless(shutil.which("jq"), "jq is not installed")
+class PanelTileParityHook(unittest.TestCase):
+    """The project's Stop hook refuses, once, a branch that changes the status
+    panel without the tab stack tiles that redraw it (WIP-19), so the two
+    renderers can't drift apart unnoticed. Run against a scratch repo shaped
+    like this one, since the hook reads the branch's diff from main."""
+
+    HOOK = REPO_ROOT / ".claude" / "hooks" / "panel-tile-parity.sh"
+
+    def setUp(self):
+        self.repo = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.repo)
+        for rel in ("hooks/status-panel.tsx", "dashboard/index.html"):
+            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / rel).write_text("a\n", encoding="utf-8")
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false"]
+        for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-qm", "init"], ["checkout", "-qb", "feat"]):
+            subprocess.run(git + args, cwd=self.repo, check=True, capture_output=True)
+
+    def stop(self, **payload):
+        r = subprocess.run(["bash", str(self.HOOK)], cwd=self.repo, input=json.dumps(payload),
+                           capture_output=True, text=True, check=True)
+        return json.loads(r.stdout) if r.stdout.strip() else None
+
+    def touch(self, rel):
+        with (self.repo / rel).open("a", encoding="utf-8") as f:
+            f.write("b\n")
+
+    def test_a_branch_that_touches_neither_stops(self):
+        self.assertIsNone(self.stop())
+
+    def test_a_panel_change_without_the_tiles_is_refused_with_the_reason(self):
+        self.touch("hooks/status-panel.tsx")
+        verdict = self.stop()
+        self.assertEqual(verdict["decision"], "block")
+        self.assertIn("dashboard/index.html", verdict["reason"])
+
+    def test_the_second_stop_goes_through(self):
+        self.touch("hooks/status-panel.tsx")
+        self.assertIsNone(self.stop(stop_hook_active=True))
+
+    def test_a_panel_change_with_the_tiles_stops(self):
+        self.touch("hooks/status-panel.tsx")
+        self.touch("dashboard/index.html")
+        self.assertIsNone(self.stop())
+
+
 class ShellDefersTheSessionNameToClaude(unittest.TestCase):
     """TITLE-04: a shell Claude Code spawns skips the startup set-name, since
     its data dir may hold no engagement marker for the pane it runs in."""
