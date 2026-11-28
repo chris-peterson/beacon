@@ -1569,14 +1569,15 @@ site!16 login flow
 agent!47 agent docs
 theme!3 shared chrome
 toolbox!159 doc generator
-  site!5 settings page
-    skills!14 input fixes
+  ↳ site!5 settings page
+    ↳ skills!14 input fixes
 site!20 base refactor
-  └ !21 api layer
-    └ !22 ui polish
+  ├ !21 api layer
+  │ └ !23 ui polish
+  └ !22 cli flags
 ```
 
-Top to bottom is merge order, so what can move now leads. **What waits on open work is gray** (the item's own weight, gray in place of white), so the white refs are exactly the ones that can merge now; weight still separates a CR from an issue, so the blocked state takes a hue rather than a weight. A stacked CR is led by `└`, and its stack joins the row with it (*Expansion*). Drawn directly under its base it drops its project, since a stack is one repo's branches and the line above just named it; placed under anything else, it keeps it. A dependency takes no lead: the indent and the gray already say it comes after what is above it. The two answer different questions: a dependency is declared on the forge and says *merge that first*, while a stack is a fact of the branches and says *this is built on that*, so it merges as the base does and is retargeted when the base merges. A CR that is both stacked and waiting is led by `└`, the structural relation. Stack and dependency edges share one layout, so the rules below apply to both.
+Top to bottom is merge order, so what can move now leads. **What waits on open work is gray** (the item's own weight, gray in place of white), so the white refs are exactly the ones that can merge now; weight still separates a CR from an issue, so the blocked state takes a hue rather than a weight. The two relations answer different questions, so each takes its own glyph family, gray like what it leads: a dependency is declared on the forge and says *merge that first*, while a stack is a fact of the branches and says *this is built on that*, so it merges as the base does and is retargeted when the base merges. A stacked CR hangs off its base in box-drawing, as a branch would: `└` on the last stack off a base, `├` while another stack off the same base follows it, with `│` holding that column on the lines between. Its stack joins the row with it (*Expansion*). Drawn directly under its base it drops its project, since a stack is one repo's branches and the line above just named it; placed under anything else, it keeps it. A dependency is led by the arrow `↳`, an ordering rather than a joint (`↳` rather than `⤷`, since common terminal faces carry it). A CR that is both stacked and waiting is led as a stack, the structural relation. Stack and dependency edges share one layout, so the rules below apply to both.
 
 An item that waits on nothing sits at the margin; an item that waits on others is indented one step per level of its longest chain of waits. It is placed directly after the last of the items it waits on, so the several items one CR waits on collect as the block above it, and a branch of the tree reads under its own parent. Only edges between items on the row count: the row can order only what it shows, and a merged prerequisite has stopped mattering. A stack meets this by bringing its bases onto the row; a dependency brings nothing, since what a CR waits on can sit in any project and any state, where a stack is one repo's open branches. A cycle, which a forge should not allow, has its edges dropped rather than its items. Within a block, newest first still applies. Where two items share some but not all of what they wait on, the block above one of them can hold an item it does not wait on; the tree still reads top to bottom as a valid merge order, which is the question it answers.
 

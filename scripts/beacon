@@ -7306,13 +7306,19 @@ def _statusline_link_segment(entries: list[dict]) -> str:
     return f"\033[{STATUSLINE_LINK_COLOR}m{body}\033[0m"
 
 
-# A stacked CR is built on the one above it rather than waiting for it, so it
-# hangs off that CR as a branch would. A dependency takes no lead: the indent
-# and the blocked hue already say it comes after what is above it.
+# Two relations, two glyph families, so "built on" and "merge after" tell apart
+# at a glance. A stacked CR is built on the one above it, so it hangs off that
+# CR in box-drawing as a branch would: `└` on the last stack off a base, `├`
+# while another follows, and `│` holding the column between them. A dependency
+# only says "merge that first", so it takes an arrow rather than a joint. `↳`
+# over `⤷`: Menlo and SF Mono carry it, so it never falls back to another face.
 STATUSLINE_STACK_LEAD = "└ "
-# A stacked CR always waits on its open base, so its lead takes the blocked
-# hue, at normal weight: structure reads a step quieter than the ref it leads.
-STATUSLINE_STACK_LEAD_SGR = "38;5;247"
+STATUSLINE_STACK_FORK = "├ "
+STATUSLINE_STACK_RAIL = "│ "
+STATUSLINE_WAIT_LEAD = "↳ "
+# Whatever a lead hangs off is still open, so the lead takes the blocked hue,
+# at normal weight: structure reads a step quieter than the ref it leads.
+STATUSLINE_TREE_SGR = "38;5;247"
 STATUSLINE_INDENT = "  "
 # Claude Code strips a status-line row's leading whitespace, which flattened
 # every tree to the margin. A zero-width reset in front means the row no longer
@@ -7492,17 +7498,46 @@ def _statusline_kind_lines(entries: list[dict], links: dict, sgr: str, blocked_s
     if loose:
         lines.append(_fit_line(
             lambda cap: STATUSLINE_SEPARATOR.join(item(u, cap) for u in loose), width))
+    def tree_glyph(glyph):
+        return f"\033[{STATUSLINE_TREE_SGR}m{glyph}\033[0m"
+
     for tree in trees:
+        # The next stack off the same base, at the same depth with nothing
+        # shallower between: while one follows, the joint forks and a rail
+        # holds its column on the lines between.
+        def next_stack(i):
+            d, u = tree[i]
+            for j in range(i + 1, len(tree)):
+                dj, v = tree[j]
+                if dj < d:
+                    return None
+                if dj == d:
+                    return j if set(stacked_on[v]) & set(stacked_on[u]) else None
+            return None
+
+        rails = [set() for _ in tree]
+        forks = set()
+        for i, (depth, u) in enumerate(tree):
+            if depth and stacked_on[u] and (j := next_stack(i)) is not None:
+                forks.add(i)
+                for k in range(i + 1, j):
+                    rails[k].add(depth)
+
         above = None
-        for depth, u in tree:
+        for i, (depth, u) in enumerate(tree):
             # A stack is one repo's branches, so a base on the line directly
             # above has just named the project. Placed under anything else, a
             # stacked CR keeps it.
             if above in stacked_on[u]:
                 refs[u] = _qualify_deliverable(by_url[u], False)
-            mark = (f"\033[{STATUSLINE_STACK_LEAD_SGR}m{STATUSLINE_STACK_LEAD}\033[0m"
-                    if stacked_on[u] else "")
-            lead = STATUSLINE_INDENT_GUARD + STATUSLINE_INDENT * depth + mark if depth else ""
+            if not depth:
+                lead = ""
+            else:
+                joint = (STATUSLINE_WAIT_LEAD if not stacked_on[u]
+                         else STATUSLINE_STACK_FORK if i in forks else STATUSLINE_STACK_LEAD)
+                columns = "".join(tree_glyph(STATUSLINE_STACK_RAIL) if c in rails[i] else STATUSLINE_INDENT
+                                  for c in range(depth))
+                lead = STATUSLINE_INDENT_GUARD + columns + tree_glyph(joint)
             lines.append(_fit_line(
                 lambda cap, u=u, lead=lead, d=depth: lead + item(u, cap, d > 0), width))
             above = u
